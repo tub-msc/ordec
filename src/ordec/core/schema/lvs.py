@@ -48,6 +48,16 @@ class LvsItemType(Enum):
 
 
 @public
+class LvsSide(Enum):
+    """Which side of the LVS comparison a parameter comes from."""
+    Layout = 'layout'
+    Schematic = 'schematic'
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}.{self.name}'
+
+
+@public
 class LvsReport(SubgraphRoot):
     """LVS report containing layout vs. schematic comparison results."""
     view_builder = ViewBuilder
@@ -100,17 +110,52 @@ class LvsItem(Node):
     # Layout device position from LVSDB in database units. GDS SRef records
     # are unnamed, so the LVSDB only provides a location for extracted devices.
     layout_pos = Attr(Vec2I, factory=coerce_tuple(Vec2I, 2), optional=True)
-    layout_params = Attr(tuple, optional=True)
 
     # Schematic side: Net for pins/nets, SchemInstance for devices.
     # Only resolves when circuit.ref_schematic is set (top-level circuit).
     schem = ExternalRef(Net|SchemInstance,
         of_subgraph=lambda c: c.circuit.ref_schematic,
         optional=True)
-    # Schematic side: reference device parameters (W, L, etc.)
-    schem_params = Attr(tuple, optional=True)
 
     message = Attr(str, optional=True)
 
     layout_name = Attr(str, optional=True)
     schem_name = Attr(str, optional=True)
+
+    def _params_of_side(self, side: 'LvsSide') -> dict:
+        """Device parameters of one side as a name->value dict ({} if none)."""
+        return {p.name: p.value for p in self.root.all(
+            LvsItemParam.item_side_idx.query((self, side)))}
+
+    def layout_params(self) -> dict:
+        """Layout-side device parameters as a name->value dict ({} if none)."""
+        return self._params_of_side(LvsSide.Layout)
+
+    def schematic_params(self) -> dict:
+        """Schematic-side device parameters as a name->value dict ({} if none)."""
+        return self._params_of_side(LvsSide.Schematic)
+
+
+@public
+class LvsItemParam(Node):
+    """One device parameter (layout or schematic side) of an LvsItem.
+
+    Device parameter sets are normalized one node per (item, side, name)
+    rather than as a packed key->value tuple. The layout and schematic
+    sides of a device are recorded separately; matching them is a query,
+    not a tuple comparison.
+    """
+    in_subgraphs = [LvsReport]
+    wire_id = WIRE_DOMAIN | 4
+
+    item = LocalRef(LvsItem, optional=False)
+    side = Attr(LvsSide, optional=False)
+    name = Attr(str, optional=False)
+    #: Parameter value verbatim from the LVSDB: float for numeric
+    #: parameters (l, w, ...), str for the string-valued ones KLayout
+    #: can emit.
+    value = Attr(object, optional=False,
+        typecheck_custom=lambda v: isinstance(v, (int, float, str)))
+
+    item_side_name_idx = CombinedIndex([item, side, name], unique=True)
+    item_side_idx = CombinedIndex([item, side])

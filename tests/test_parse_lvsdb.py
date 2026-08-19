@@ -88,11 +88,11 @@ def test_parse_lvsdb_device_details():
 
     # Device parameters ('E' entries) from both netlist sections; layout and
     # reference agree here since the design is LVS-clean.
-    assert dict(devices['R1'].layout_params)['l'] == 0.5
-    assert dict(devices['R2'].layout_params)['l'] == 1.5
-    assert dict(devices['R3'].layout_params)['l'] == 1.0
+    assert devices['R1'].layout_params()['l'] == 0.5
+    assert devices['R2'].layout_params()['l'] == 1.5
+    assert devices['R3'].layout_params()['l'] == 1.0
     for dev in devices.values():
-        assert dev.layout_params == dev.schem_params
+        assert dev.layout_params() == dev.schematic_params()
         # Layout devices are unnamed in the LVSDB (GDS structure references
         # carry no instance names); they are identified by location only.
         assert dev.layout_name == ''

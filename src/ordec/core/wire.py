@@ -70,7 +70,7 @@ from .schema.base import PathEndType, SourceLocInfo, GdsLayer, RGBColor
 from .schema.schematic import PinType, SchemErrorType
 from .schema.report import ScaleType
 from .schema.simhier import SimType
-from .schema.lvs import LvsStatus, LvsItemType
+from .schema.lvs import LvsStatus, LvsItemType, LvsSide
 
 # Hash-domain separator. The trailing digit is a manual format identifier,
 # not an auto-incremented version: wire data is fully ephemeral (regenerated
@@ -110,6 +110,7 @@ ENUM_TAGS = {
     LvsStatus: 390015,
     LvsItemType: 390016,
     Quantity: 390017,
+    LvsSide: 390018,
 }
 ENUM_BY_TAG = {tag: cls for cls, tag in ENUM_TAGS.items()}
 

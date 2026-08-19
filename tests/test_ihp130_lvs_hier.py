@@ -46,7 +46,7 @@ def summary_of(report, pair):
 
 def devices_of(report, pair):
     """Sorted (schem_name, layout l param) tuples of pair's device items."""
-    return sorted((i.schem_name, dict(i.layout_params)['l'])
+    return sorted((i.schem_name, i.layout_params()['l'])
                   for i in items_of(report, pair, LvsItemType.Device))
 
 

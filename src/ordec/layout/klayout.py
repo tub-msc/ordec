@@ -776,13 +776,6 @@ def insert_lvs_item(report: LvsReport, circuit, item_data: dict,
     an ORDB node of the pair's schematic where possible. This enables e.g.
     highlighting in the schematic view when items are selected.
     """
-    layout_params = item_data['layout_params']
-    if layout_params:
-        layout_params = tuple(layout_params.items())
-    schem_params = item_data['schem_params']
-    if schem_params:
-        schem_params = tuple(schem_params.items())
-
     schem_nid = None
     schem_item_name = item_data['schem_name']
     if directory is not None and ref_schematic is not None:
@@ -793,7 +786,7 @@ def insert_lvs_item(report: LvsReport, circuit, item_data: dict,
             schem_item_name = Directory.basename_of_node(node)
             schem_nid = node.nid
 
-    report % LvsItem(
+    item = report % LvsItem(
         circuit=circuit,
         item_type=item_data['item_type'],
         status=item_data['status'],
@@ -801,10 +794,16 @@ def insert_lvs_item(report: LvsReport, circuit, item_data: dict,
         schem_name=schem_item_name,
         schem=schem_nid,
         layout_pos=item_data['layout_pos'],
-        layout_params=layout_params,
-        schem_params=schem_params,
         message=item_data['message'] or None,
     )
+
+    # Device parameters are stored one normalized node per (side, name);
+    # both sides are recorded separately (see LvsItemParam).
+    for side, params in ((LvsSide.Layout, item_data['layout_params']),
+                         (LvsSide.Schematic, item_data['schem_params'])):
+        for name, value in (params or {}).items():
+            report % LvsItemParam(item=item, side=side, name=name,
+                                  value=value)
 
 
 def parse_lvsdb(filename, layout: Layout, schematic: Schematic, directory=None) -> LvsReport:

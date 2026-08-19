@@ -90,8 +90,9 @@ def webdata(report: LvsReport, ept):
             'schem_name': item_schem_name(item),
             'schem_nid': item.schem.nid if item.schem else None,
             'layout_pos': [int(pos.x), int(pos.y)] if pos else None,
-            'layout_params': dict(item.layout_params) if item.layout_params else None,
-            'schem_params': dict(item.schem_params) if item.schem_params else None,
+            # Empty dict -> None so the web viewer shows no params section.
+            'layout_params': item.layout_params() or None,
+            'schem_params': item.schematic_params() or None,
             'message': item.message,
         })
 
