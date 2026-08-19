@@ -129,41 +129,44 @@ class Simulator:
                 yield f"@{name}[{param}]"
 
     def _store_results(self, sim_array: SimArray):
-        """Store SimArray and assign field names to SimNet/SimPin/SimParam."""
+        """Assign result columns to SimNet/SimPin/SimParam nodes."""
         sim_type = self.simhier.sim_type
-        self.simhier.sim_data = sim_array
+        if not sim_array.fields:
+            raise ValueError("Simulation returned no fields")
 
-        if sim_type == SimType.DCSWEEP:
-            if not sim_array.fields:
-                raise ValueError("DC sweep returned no fields")
-            self.simhier.sweep_field = sim_array.fields[0].fid
+        # The independent variable is field 0 in the rawfile, except for
+        # op results, which have none. All result columns of the run
+        # share this axis; it is stored once, as a SimScale node.
+        if sim_type == SimType.OP:
+            data_fields = list(enumerate(sim_array.fields))
+        else:
+            scale = sim_array.column(0)
+            # AC rawfiles store the frequency scale as complex with zero
+            # imaginary part; .real is a zero-copy f8 view into the same
+            # buffer.
+            if scale.dtype == 'c16':
+                scale = scale.real
+            self.simhier % SimScale(pos=0, column=scale)
+            data_fields = list(enumerate(sim_array.fields))[1:]
 
-        for f in sim_array.fields:
+        for i, f in data_fields:
             fid = f.fid
-            if fid == "time":
-                self.simhier.time_field = fid
-                continue
-            if fid.startswith("frequency"):
-                self.simhier.freq_field = fid
-                continue
-            if sim_type == SimType.DCSWEEP and fid == self.simhier.sweep_field:
-                continue
-
+            column = sim_array.column(i)
             node_name, subname = parse_signal_name(fid)
             try:
                 if subname is None:
                     simnet = self.hier_simobj_of_name(node_name)
-                    simnet.voltage_field = fid
+                    simnet.voltage = column
                 else:
                     # Try progressively shorter paths for internal model nodes
                     siminstance = None
                     remaining_path = []
                     parts = node_name.split(".")
-                    for i in range(len(parts), 0, -1):
-                        try_path = ".".join(parts[:i])
+                    for plen in range(len(parts), 0, -1):
+                        try_path = ".".join(parts[:plen])
                         try:
                             siminstance = self.hier_simobj_of_name(try_path)
-                            remaining_path = parts[i:]
+                            remaining_path = parts[plen:]
                             break
                         except KeyError:
                             continue
@@ -194,7 +197,7 @@ class Simulator:
                                 fid, node_name)
                             continue
                         simpin = self.simhier % SimPin(instance=siminstance, eref=pin)
-                        simpin.current_field = fid
+                        simpin.current = column
                     elif siminstance.schematic is not None and not remaining_path:
                         pin = None
                         try:
@@ -210,7 +213,7 @@ class Simulator:
                         if existing:
                             continue
                         simpin = self.simhier % SimPin(instance=siminstance, eref=pin)
-                        simpin.current_field = fid
+                        simpin.current = column
                     elif ":" in fid:
                         # Port currents (i(inst:port)) that couldn't be mapped to SimPins
                         continue
@@ -223,7 +226,7 @@ class Simulator:
                                 full_subname = subname
                         simparam = self.simhier % SimParam(
                             instance=siminstance, name=full_subname)
-                        simparam.field = fid
+                        simparam.value = column
             except KeyError:
                 continue
 

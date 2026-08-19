@@ -64,7 +64,7 @@ from .ordb.base import (
 )
 from .rational import R
 from .geoprim import Vec2R, Vec2I, Rect4R, Rect4I, TD4R, TD4I, D4
-from .simarray import SimArray, SimArrayField, SimColumn, Quantity
+from .simarray import SimColumn, Quantity
 from .schema.base import PathEndType, SourceLocInfo, GdsLayer, RGBColor
 from .schema.schematic import PinType, SchemErrorType
 from .schema.report import ScaleType
@@ -82,7 +82,7 @@ TAG_RECT4R = 390003
 TAG_RECT4I = 390004
 TAG_TD4R = 390005
 TAG_TD4I = 390006
-TAG_SIMARRAY = 390020
+TAG_SIMARRAY = 390020 # retired (SimArray is no longer a schema attr type); number stays reserved
 TAG_SOURCELOC = 390021
 TAG_GDSLAYER = 390022
 TAG_RGBCOLOR = 390023
@@ -216,12 +216,6 @@ def encode_plain(val, blobs: BlobTable=None):
             [encode_plain(val.transl), encode_plain(val.d4)])
     if t in ENUM_TAGS:
         return cbor2.CBORTag(ENUM_TAGS[t], val.name)
-    if t is SimArray:
-        # data may be a memoryview (SimArray permits it); force bytes so the
-        # encoding is a CBOR byte string either way.
-        return cbor2.CBORTag(TAG_SIMARRAY,
-            [[[f.fid, f.dtype, encode_plain(f.quantity)]
-                for f in val.fields], bytes(val.data)])
     if t is SimColumn:
         return encode_simcolumn(val, blobs)
     if t is SourceLocInfo:
@@ -350,8 +344,6 @@ def tag_hook(tag, shareable):
         return TD4I(transl=v[0], d4=v[1])
     if t in ENUM_BY_TAG:
         return ENUM_BY_TAG[t][v]
-    if t == TAG_SIMARRAY:
-        return SimArray([SimArrayField(*f) for f in v[0]], v[1])
     if t == TAG_SOURCELOC:
         return SourceLocInfo(*v)
     if t == TAG_GDSLAYER:

@@ -32,7 +32,7 @@ array, recursive). Everything else is tagged:
   390003/390004, Rect4R / Rect4I, "[lx, ly, ux, uy]"
   390005/390006, TD4R / TD4I, "[transl, d4]"
   390007; 390010–390017, "D4; PathEndType, PinType, SchemErrorType, ScaleType, SimType, LvsStatus, LvsItemType, Quantity", member name string
-  390020, SimArray, "[[[fid, dtype], ...], data bytes]"
+  390020, (retired: SimArray), number stays reserved
   390021, SourceLocInfo, "[filename, line, column]"
   390024, SimColumn, "[blob index, offset, stride, length, dtype, name, quantity]"
   390022, GdsLayer, "[layer, data_type]"
