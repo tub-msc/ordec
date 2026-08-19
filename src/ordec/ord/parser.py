@@ -110,10 +110,78 @@ def format_error(code, line, column, window=2):
     return "\n".join(error)
 
 
+def syntax_error(msg, code, line, column, end_column=None):
+    """
+    Builds a SyntaxError carrying a structured error position. The filename
+    is left as None and filled in by the caller of the ORD compiler (see
+    ordec.language.ord_to_code). Python's standard traceback rendering then
+    produces the usual "File ..., line N" display with a correctly aligned
+    caret, and the web UI can point the editor at the error position.
+
+    Args:
+        msg (str): Error message (without position information)
+        code (str): String containing ORD code
+        line (int): Error line number (1-based)
+        column (int): Error column (1-based)
+        end_column (int): Exclusive end column of the offending range
+    Returns:
+        SyntaxError to be raised by the caller
+    """
+    lines = code.splitlines()
+    if line > len(lines) and lines:
+        # Error on the virtual newline/EOF appended by parse_with_errors:
+        # point at the end of the last real line instead.
+        line = len(lines)
+        column = len(lines[line - 1]) + 1
+        end_column = None
+    text = lines[line - 1] if 0 < line <= len(lines) else None
+    return SyntaxError(msg, (None, line, column, text, line, end_column))
+
+
+def expected_summary(parser, expected, limit=12):
+    """
+    Human-readable display of a lark expected-terminals set: literal
+    terminals (keywords, punctuation) show their text, a few common
+    terminals get friendly names, anonymous/internal ones are dropped,
+    and long lists are capped.
+
+    Returns the summary string, or None if nothing is worth showing.
+    """
+    # Friendly names for regex/synthetic terminals. All other non-literal
+    # terminal names are shown as-is (internal ones are dropped).
+    expected_names = {
+        "_NEWLINE": "newline",
+        "_INDENT": "indented block",
+        "_DEDENT": "end of block",
+        "$END": "end of input",
+        "NAME": "identifier",
+    }
+    literals = {t.name: t.pattern.value for t in parser.terminals
+        if t.pattern.type == "str"}
+    names = set()
+    for name in expected:
+        if name in literals:
+            names.add(repr(literals[name]))
+        elif name in expected_names:
+            names.add(expected_names[name])
+        elif not name.startswith("_"):
+            names.add(name)
+    # Words (keywords, friendly names) before punctuation: when the list is
+    # capped, they are the more helpful suggestions.
+    names = sorted(names,
+        key=lambda n: (not n.lstrip("'")[:1].isalpha(), n))
+    if not names:
+        return None
+    shown = ", ".join(names[:limit])
+    if len(names) > limit:
+        shown += f", … ({len(names) - limit} more)"
+    return shown
+
+
 def parse_with_errors(parser, code):
     """
-    Function which parses an ORD string with improved
-    error messages
+    Function which parses an ORD string, converting lark parse errors into
+    SyntaxErrors that carry a structured error position (see syntax_error).
 
     Args:
         parser: ORD Lark parser
@@ -124,34 +192,32 @@ def parse_with_errors(parser, code):
     try:
         return parser.parse(code + "\n")
     except UnexpectedToken as e:
-        expected = ", ".join(e.expected)
-        error = format_error(code, e.line, e.column)
-        error_message = (
-            f"Syntax Error: Unexpected token `{e.token}`\n\n"
-            f"Expected one of: {expected}\n"
-            f"At line {e.line}, column {e.column}:\n\n"
-            f"{error}"
-        )
-        raise SyntaxError(error_message) from None
+        if e.token.type == "$END":
+            msg = "unexpected end of input"
+        else:
+            # Lexemes can be long or multi-line; keep the message one line.
+            tok = str(e.token).split("\n")[0]
+            if len(tok) > 20:
+                tok = tok[:20] + "…"
+            msg = f"unexpected token {tok!r}" if tok else "unexpected token"
+        expected = expected_summary(parser, e.expected)
+        if expected:
+            msg += f" (expected: {expected})"
+        # Underline the offending token, but only if it ends on its line.
+        end_column = None
+        if (getattr(e.token, "end_line", None) == e.line
+                and e.token.end_column > e.column):
+            end_column = e.token.end_column
+        raise syntax_error(msg, code, e.line, e.column,
+            end_column=end_column) from None
 
     except UnexpectedCharacters as e:
-        error = format_error(code, e.line, e.column)
-        error_message = (
-            f"Syntax Error: Unexpected character `{e.char}`\n\n"
-            f"At line {e.line}, column {e.column}:\n\n"
-            f"{error}"
-        )
-        raise SyntaxError(error_message) from None
+        raise syntax_error(f"unexpected character {e.char!r}", code,
+            e.line, e.column, end_column=e.column + 1) from None
 
     # fallback
     except UnexpectedInput as e:
-        error = format_error(code, e.line, e.column)
-        error_message = (
-            "Syntax Error\n\n"
-            f"At line {e.line}, column {e.column}:\n\n"
-            f"{error}"
-        )
-        raise SyntaxError(error_message) from None
+        raise syntax_error("invalid syntax", code, e.line, e.column) from None
 
 
 parser = Lark.open_from_package(
