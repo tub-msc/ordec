@@ -7,6 +7,15 @@ import { HierSelector } from './hier-selector.js';
 import { getCourseController, suppressCloseControls } from './course.js';
 import { viewClassOf } from './view/index.js';
 
+// One-line "Etype: message" summary of a structured exception dict (server.py
+// format_user_exception / message_exception), for the course build error strip
+// and the editor annotation (main.js). Only the first message line is kept
+// (ORD syntax errors can carry multi-line messages).
+export function excSummary(exc) {
+    return exc.message
+        ? `${exc.etype}: ${exc.message.split('\n')[0]}` : exc.etype;
+}
+
 export class ResultViewer {
     static refreshAll = false;
     static useHierSelector = true;
@@ -561,8 +570,7 @@ export class ResultViewer {
     showBuildError(exc) {
         this.buildError = exc;
         // Summary for the strip, e.g. "SyntaxError: invalid syntax".
-        this.buildErrorText.textContent = exc.message
-            ? `${exc.etype}: ${exc.message.split('\n')[0]}` : exc.etype;
+        this.buildErrorText.textContent = excSummary(exc);
         this.updateOverlay();
         // Keep the details open across consecutive failed builds. With no
         // previously rendered report there is nothing to preserve, so open

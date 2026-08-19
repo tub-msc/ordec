@@ -24,7 +24,7 @@ import { OrdMode } from "./ace-ord-mode.js";
 
 import { authenticateLocalQuery, initSession, session } from './auth.js';
 
-import { ResultViewer } from "./resultviewer.js";
+import { ResultViewer, excSummary } from "./resultviewer.js";
 import { initTheme, registerAceEditor, unregisterAceEditor } from './theme.js';
 import { OrdecApp } from './app.js';
 import { initCourseMode, getCourseController, suppressCloseControls } from './course.js';
@@ -571,6 +571,23 @@ app.eventBus.on('editor:goto-source', (data) => {
     }
 });
 
+// The exception's location within the integrated editor's source, to point
+// an annotation at: the syntax error position if it lies there, otherwise
+// the deepest traceback frame that does. Returns {lineno, col} (1-based,
+// col may be null) or null if the exception has no location in the editor.
+// ('<webeditor>' is the filename the server stamps on such frames/positions.)
+function excEditorLocation(exc) {
+    if (!exc) {
+        return null;
+    }
+    if (exc.pos && exc.pos.filename === '<webeditor>') {
+        return { lineno: exc.pos.lineno, col: exc.pos.col };
+    }
+    const frame = (exc.frames || []).findLast(
+        f => f.filename === '<webeditor>');
+    return frame ? { lineno: frame.lineno, col: null } : null;
+}
+
 // Build errors mark the failing line in the editor with a red gutter
 // annotation: the syntax error position if there is one, otherwise the
 // deepest traceback frame in the editor source. Cleared again by the
@@ -581,25 +598,13 @@ app.eventBus.on('editor:build-exception', (exc) => {
     if (!editorComponent) {
         return;
     }
-    let row = null, column = 0;
-    if (exc) {
-        if (exc.pos && exc.pos.filename === '<webeditor>') {
-            row = exc.pos.lineno - 1;
-            column = (exc.pos.col || 1) - 1;
-        } else {
-            const frame = (exc.frames || []).findLast(
-                f => f.filename === '<webeditor>');
-            if (frame) {
-                row = frame.lineno - 1;
-            }
-        }
-    }
-    editorComponent.editor.session.setAnnotations((row === null) ? [] : [{
-        row,
-        column,
+    const loc = excEditorLocation(exc);
+    editorComponent.editor.session.setAnnotations(loc ? [{
+        row: loc.lineno - 1,
+        column: (loc.col || 1) - 1,
         type: 'error',
-        text: exc.message ? `${exc.etype}: ${exc.message}` : exc.etype,
-    }]);
+        text: excSummary(exc),
+    }] : []);
 });
 
 app.eventBus.on('lvs:request-open-views', (data) => {
