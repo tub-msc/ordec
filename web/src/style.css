@@ -197,6 +197,14 @@ body {
 /* -- Base layout ------------------------------------------------- */
 *, *::before, *::after { box-sizing: border-box; }
 
+/* Drop the browser's default 1em pre margins. Classed preformatted blocks
+   (.report-preformatted, .report-markdown pre, .exc-frame-line) set their
+   own; the classless fallback pres (pre.exception, "no handler found")
+   rely on this reset. */
+pre {
+    margin: 0px;
+}
+
 body {
     margin: 0px;
     padding: 0px;
@@ -765,9 +773,6 @@ canvas.layoutFit {
         var(--color-exception) 18%, transparent);
     text-decoration: underline wavy var(--color-exception);
     text-underline-offset: 3px;
-}
-pre {
-    margin: 0px;
 }
 
 /* -- DC table ---------------------------------------------------- */
