@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from ordec.layout import SRouter, compare
+from ordec.layout import SRouter, SRouterException, compare
 from ordec.lib import ihp130
 from ordec.core import *
 
@@ -96,3 +96,45 @@ def test_push_pop_layerchange():
     expected % LayoutRect(layer=layers.Via1, rect=Rect4I(905, -95, 1095, 95))
     expected % LayoutRect(layer=layers.Metal2, rect=Rect4I(895, -105, 1105, 105))
     assert compare(layout_push_pop_layerchange(), expected) is None
+
+@viewgen_noctx
+def layout_pass_through_riser():
+    """move, layer(Metal2), layer(Metal3), then a wire."""
+    l = Layout(ref_layers=layers)
+    s = Solver(l)
+    sr = SRouter(rs, layout=l, solver=s)
+    sr.move(layers.Metal1, (0, 0))
+    sr.layer(layers.Metal2)
+    sr.layer(layers.Metal3)
+    sr.wire((1000, 0))
+    s.solve()
+    return l
+
+def test_pass_through_riser_gets_a_full_pad_on_the_stack_top():
+    # The Metal1 start pad and the Metal3 destination pad are wire-sized.
+    # The Metal2 start pad of the second layer() call sits on top of the
+    # first stack and gets the full route_via pad.
+    expected = Layout(ref_layers=layers)
+    expected % LayoutRect(layer=layers.Metal1, rect=Rect4I(-105, -105, 105, 105))
+    expected % LayoutRect(layer=layers.Via1, rect=Rect4I(-95, -95, 95, 95))
+    expected % LayoutRect(layer=layers.Metal2, rect=Rect4I(-105, -105, 105, 105))
+    expected % LayoutRect(layer=layers.Metal2, rect=Rect4I(-240, -150, 240, 150))
+    expected % LayoutRect(layer=layers.Via2, rect=Rect4I(-95, -95, 95, 95))
+    expected % LayoutRect(layer=layers.Metal3, rect=Rect4I(-105, -105, 105, 105))
+    expected % LayoutPath(layer=layers.Metal3, width=200, endtype=PathEndType.Custom,
+        ext_bgn=150, ext_end=150,
+        vertices=[Vec2I(0, 0), Vec2I(1000, 0)])
+    assert compare(layout_pass_through_riser(), expected) is None
+
+def test_path_after_layer_change_raises_with_the_idiom():
+    import pytest
+    l = Layout(ref_layers=layers)
+    s = Solver(l)
+    sr = SRouter(rs, layout=l, solver=s)
+    sr.move(layers.Metal1, (0, 0))
+    sr.wire((1000, 0))
+    assert sr.path is not None
+    sr.layer(layers.Metal2)
+    # layer() ends the path.
+    with pytest.raises(SRouterException, match="right after the last wire"):
+        sr.path
