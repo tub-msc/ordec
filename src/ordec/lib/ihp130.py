@@ -650,17 +650,15 @@ def _layoutgen_resistor(
         add_psd: bool = False,
         add_nsd: bool = False) -> Layout:
     """
-    Generate an SG13G2 poly resistor.
-
-    This is still simpler than the foundry PCells and currently supports only
-    the straight-body case. The IHP resistor PCells have several asymmetry and
-    contact-push corner cases for bent devices which are intentionally kept out
-    of scope until ORDeC has a PCell-compatible implementation.
+    Generate an SG13G2 poly resistor: straight (b=0) or meandered (b bends,
+    b+1 stripes of length l, ps apart, joined at alternating ends). Bent
+    Rppd and Rhigh require a larger ps instead of the foundry PCell's
+    contact pushing.
     """
     if cell.m != 1:
         raise ParameterError("m != 1 not supported for layout.")
-    if cell.b != 0:
-        raise ParameterError("b != 0 not supported for layout.")
+    if cell.b < 0:
+        raise ParameterError("b must be non-negative.")
 
     layers = SG13G2().layers
     l = Layout(ref_layers=layers, cell=cell, symbol=cell.symbol)
@@ -681,6 +679,16 @@ def _layoutgen_resistor(
             f"l above {kind} maximum length ({kind}_maxL). Use series segments.")
     if bends != 0 and ps < _tech_nm(f"{kind}_minPS"):
         raise ParameterError(f"ps below {kind} minimum spacing.")
+    add_salblock = kind in ("rhigh", "rppd")
+    if bends >= 2 and add_salblock:
+        # Keep the SalBlock covers legal next to the salicided terminal
+        # heads; the foundry PCell would push the contacts out instead.
+        ps_floor = _tech_nm("Sal_c") + _tech_nm("Sal_d")
+        if ps < ps_floor:
+            raise ParameterError(
+                f"bent {kind} with b >= 2 needs ps >= {ps_floor} nm "
+                "(SalBlock enclosure plus spacing next to the terminal "
+                "contacts); set ps on the instance.")
 
     cont_size = _tech_nm("Cnt_a")
     poly_over_cont = _tech_nm("Cnt_d")
@@ -722,19 +730,60 @@ def _layoutgen_resistor(
         setattr(l, f"term_{name}", LayoutRect(layer=layers.Metal1, rect=term_rect))
         return head_rect, cont_rect, term_rect
 
-    body_x_lo = 0
-    body_y_lo = 0
-    body_x_hi = width
-    body_y_hi = length
+    stripes = bends + 1
+    pitch = width + ps
+    # LVS measures a bent body as its shortest port-adjacent edge plus w,
+    # so each stripe is drawn l - w long to restore the l parameter.
+    stripe_len = length if bends == 0 else length - width
+    if bends and stripe_len < _tech_nm(f"{kind}_minL"):
+        raise ParameterError(
+            f"bent {kind} stripes are drawn l - w long; l = {length} nm "
+            f"with w = {width} nm leaves less than {kind} minimum length.")
 
-    body_rect = Rect4I(0, 0, width, length)
-    l.poly_body = LayoutRect(layer=layers.PolyRes, rect=body_rect)
+    def stripe_x(i):
+        return i * pitch
 
-    if add_res:
-        l.res = LayoutRect(layer=layers.RES, rect=body_rect)
+    # Connector j joins stripes j and j+1, at the top for even j, at the
+    # bottom for odd j; n sits below stripe 0, p at the last free end.
+    body_rects = [
+        Rect4I(stripe_x(i), 0, stripe_x(i) + width, stripe_len)
+        for i in range(stripes)
+    ]
+    bend_rects = [
+        Rect4I(stripe_x(j), stripe_len, stripe_x(j + 1) + width, stripe_len + width)
+        if j % 2 == 0 else
+        Rect4I(stripe_x(j), -width, stripe_x(j + 1) + width, 0)
+        for j in range(bends)
+    ]
+
+    if bends == 0:
+        l.poly_body = LayoutRect(layer=layers.PolyRes, rect=body_rects[0])
+        if add_res:
+            l.res = LayoutRect(layer=layers.RES, rect=body_rects[0])
+    else:
+        l.poly_body = PathNode()
+        for i, rect in enumerate(body_rects):
+            l.poly_body[i] = LayoutRect(layer=layers.PolyRes, rect=rect)
+        l.poly_bend = PathNode()
+        for j, rect in enumerate(bend_rects):
+            l.poly_bend[j] = LayoutRect(layer=layers.PolyRes, rect=rect)
+        if add_res:
+            # RES must match the body exactly (rsil core = PolyRes AND
+            # RES); covering the heads would grow the extracted body.
+            l.res = PathNode()
+            for i, rect in enumerate(body_rects + bend_rects):
+                l.res[i] = LayoutRect(layer=layers.RES, rect=rect)
 
     make_terminal("n", 0, 0, -1)
-    make_terminal("p", 0, length, 1)
+    if stripes % 2 == 1:
+        make_terminal("p", stripe_x(stripes - 1), stripe_len, 1)
+    else:
+        make_terminal("p", stripe_x(stripes - 1), 0, -1)
+
+    body_x_lo = 0
+    body_y_lo = min([0] + [r.ly for r in bend_rects])
+    body_x_hi = stripe_x(stripes - 1) + width
+    body_y_hi = max([stripe_len] + [r.uy for r in bend_rects])
 
     total_x_lo = body_x_lo
     total_x_hi = body_x_hi
@@ -757,14 +806,35 @@ def _layoutgen_resistor(
                 rect=(total_x_lo - sd_enc, total_y_lo - sd_enc, total_x_hi + sd_enc, total_y_hi + sd_enc),
             )
 
-        l.salblock = LayoutRect(
-            layer=layers.SalBlock,
-            # Straight Rppd/Rhigh devices keep SalBlock flush with the resistor
-            # body in the longitudinal direction; only the lateral enclosure is
-            # present. Extending SalBlock beyond the body collapses the required
-            # 0.20 um spacing to the terminal contact.
-            rect=(body_x_lo - sal_enc, body_y_lo, body_x_hi + sal_enc, body_y_hi),
-        )
+        # SalBlock defines the resistor core, so it covers stripes and bend
+        # connectors but stays flush where a terminal head attaches (keeps
+        # the spacing to the terminal contact).
+        if bends == 0:
+            l.salblock = LayoutRect(
+                layer=layers.SalBlock,
+                rect=(body_x_lo - sal_enc, 0, body_x_hi + sal_enc, stripe_len),
+            )
+        else:
+            l.salblock = PathNode()
+            l.salblock[0] = LayoutRect(
+                layer=layers.SalBlock,
+                rect=(body_x_lo - sal_enc, 0, body_x_hi + sal_enc, stripe_len),
+            )
+            top_bends = [r for r in bend_rects if r.ly == stripe_len]
+            bot_bends = [r for r in bend_rects if r.uy == 0]
+            l.salblock[1] = LayoutRect(
+                layer=layers.SalBlock,
+                rect=(min(r.lx for r in top_bends) - sal_enc, stripe_len,
+                      max(r.ux for r in top_bends) + sal_enc,
+                      stripe_len + width + sal_enc),
+            )
+            if bot_bends:
+                l.salblock[2] = LayoutRect(
+                    layer=layers.SalBlock,
+                    rect=(min(r.lx for r in bot_bends) - sal_enc,
+                          -width - sal_enc,
+                          max(r.ux for r in bot_bends) + sal_enc, 0),
+                )
         l.extblock = LayoutRect(
             layer=layers.EXTBlock,
             rect=(total_x_lo - sal_enc, total_y_lo - sal_enc, total_x_hi + sal_enc, total_y_hi + sal_enc),
@@ -881,6 +951,11 @@ class Res(SimLeafCell):
     pin ``bn`` connecting the device's bulk/substrate node. ``bn`` is part
     of the LVS comparison and requires care in hierarchical designs; see
     :ref:`ihp130_substrate_lvs`.
+
+    ``b`` bends fold the body into ``b + 1`` stripes of length ``l`` each,
+    ``ps`` apart, joined at alternating ends, so a large resistance becomes
+    a compact meander. With three or more stripes, Rppd and Rhigh need
+    ``ps`` >= 400 nm on SG13G2.
     """
     l = Parameter(R)
     w = Parameter(R)
