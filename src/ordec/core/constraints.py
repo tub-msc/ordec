@@ -102,6 +102,21 @@ class Variable:
     def mav(self):
         return MissingAttrVal(self.subgraph, self.nid, self.attr)
 
+class SolverVar:
+    """
+    A scalar unknown that lives only in the solver, not in the ORDB subgraph:
+    it has no node or attribute, and its value is discarded after solving rather
+    than written back. Useful to relate constrainable quantities, e.g. a shared
+    symmetry axis. Identity-based: each instance is a distinct unknown.
+    """
+    __slots__ = ()
+
+    def __repr__(self):
+        return f"SolverVar(0x{id(self):x})"
+
+    def term(self):
+        return LinearTerm((self,), (1.0,), 0.0)
+
 @dataclass(frozen=True)
 class LinearTerm:
     """
@@ -363,6 +378,35 @@ class TD4LinearTerm(TD4):
             )
         return super().__mul__(other)
 
+@public
+def solver_scalar() -> LinearTerm:
+    """A fresh scalar unknown as a LinearTerm."""
+    return SolverVar().term()
+
+@public
+def solver_vec2() -> Vec2LinearTerm:
+    """A fresh point of two independent unknowns as a Vec2LinearTerm."""
+    return Vec2LinearTerm(SolverVar().term(), SolverVar().term())
+
+@public
+def solver_rect4() -> Rect4LinearTerm:
+    """A fresh rectangle of four independent unknowns as a Rect4LinearTerm."""
+    return Rect4LinearTerm(
+        SolverVar().term(), SolverVar().term(),
+        SolverVar().term(), SolverVar().term())
+
+@public
+def symmetric_y(a: Vec2LinearTerm, b: Vec2LinearTerm,
+        axis: LinearTerm) -> "MultiConstraint":
+    """
+    Constrains point terms a and b (e.g. ``inst.outline.center``, a port pos or
+    a group center) to mirror about a vertical axis: equal y, and x equidistant
+    on either side of axis. For use with the ``!`` statement. Pass a shared
+    solver_scalar() axis to tie several pairs to one floating axis, or a concrete
+    coordinate to pin it.
+    """
+    return (a.y == b.y) & (a.x + b.x == 2 * axis)
+
 class Constraint:
     __slots__=()
 
@@ -607,13 +651,18 @@ class Solver:
             variables |= set(e.term.variables)
 
         for v in variables:
+            # SolverVars are solver-only unknowns: no home subgraph, no
+            # write-back. They stay as plain LP columns but are excluded from
+            # the subgraph guard, the mav set and the write-back below.
+            if isinstance(v, SolverVar):
+                continue
             if v.subgraph != self.subgraph.subgraph:
                 raise SolverError(f"Solver found Variables of unexpected subgraph {v.subgraph}.")
 
         # Expand variable set to include all subids for each affected
         # attribute, so that check_solution_uniqueness can detect variables
         # that are completely missing from constraints.
-        mavs = {v.mav() for v in variables}
+        mavs = {v.mav() for v in variables if not isinstance(v, SolverVar)}
         for mav in mavs:
             for subid in mav.attr.placeholder.subids():
                 variables.add(Variable(mav.subgraph, mav.nid, mav.attr, subid))

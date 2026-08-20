@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+from ordec.core import *
+from ordec.lib.generic_mos import Nmos
+
+cell SymPair:
+    viewgen symbol(self) -> Symbol:
+        input inp
+        input inn
+        output outp
+        output outn
+        inout tail
+        inout vss
+
+    viewgen schematic(self) -> Schematic:
+        port inp: .align=West
+        port inn: .align=West
+        port outp: .align=East
+        port outn: .align=East
+        port tail: .align=South
+        port vss: .align=South
+
+        Nmos m1: .g -- inp; .s -- tail; .b -- vss; .d -- outp
+        Nmos m2: .g -- inn; .s -- tail; .b -- vss; .d -- outn; .orientation=FlippedSouth
+
+        # m1 anchors the pair; symmetric_y mirrors m2 about a vertical axis
+        # six units to the right of m1's center (centers at equal y, mirrored in x).
+        ! m1.pos == (2, 2)
+        ! symmetric_y(m1.outline.center, m2.outline.center, m1.outline.cx + 6)

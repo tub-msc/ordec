@@ -797,3 +797,19 @@ def test_place_ports_keeps_defined_positions():
     schem_place_ports(sch)
 
     assert p0.pos == Vec2R(10, 10)
+
+
+def test_ord_symmetric_y():
+    # symmetric_y used via the `!` constraint statement mirrors a matched pair
+    # about a vertical axis: outline centers at equal y, mirrored in x.
+    from .lib.ord.symmetric_pair import SymPair
+
+    sch = SymPair().schematic
+
+    assert sch.m1.pos == Vec2R(2, 2)
+    # Outline centers at equal y (symmetric about a vertical axis).
+    assert sch.m1.outline.cy == sch.m2.outline.cy
+    # Mirrored in x, spaced by the extra constraint.
+    assert sch.m2.outline.cx - sch.m1.outline.cx == R(12)
+
+    assert not sch.has_errors()

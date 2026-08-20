@@ -215,3 +215,29 @@ def test_unresolved_subcursor_uses_recorded_params():
             sch.inst1.params.bits = 3
 
     build()
+
+
+def test_solver_scalar_shared_axis():
+    # A solver_scalar() axis shared across two matched pairs propagates the
+    # mirror position from the pinned pair to the other one.
+    sch = Schematic()
+    sch.inst1 = SchemInstance(symbol=SimpleSymbol().symbol)
+    sch.inst2 = SchemInstance(symbol=SimpleSymbol().symbol)
+    sch.inst3 = SchemInstance(symbol=SimpleSymbol().symbol)
+    sch.inst4 = SchemInstance(symbol=SimpleSymbol().symbol)
+
+    c = solver_scalar()
+    solver = Solver(sch)
+    # Pair (inst1, inst2) fully pinned: fixes the shared axis at x=5.
+    solver.constrain(sch.inst1.pos == Vec2R(0, 0))
+    solver.constrain(sch.inst2.pos == Vec2R(10, 0))
+    solver.constrain(sch.inst1.pos.x + sch.inst2.pos.x == 2 * c)
+    solver.constrain(sch.inst1.pos.y == sch.inst2.pos.y)
+    # Pair (inst3, inst4) coupled to the same axis; inst3 pinned, inst4 solved.
+    solver.constrain(sch.inst3.pos.x == 2)
+    solver.constrain(sch.inst3.pos.y == 3)
+    solver.constrain(sch.inst3.pos.x + sch.inst4.pos.x == 2 * c)
+    solver.constrain(sch.inst3.pos.y == sch.inst4.pos.y)
+    solver.solve()
+
+    assert sch.inst4.pos == Vec2R(8, 3)
