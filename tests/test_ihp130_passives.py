@@ -8,39 +8,56 @@ import pytest
 from ordec.core import *
 from ordec.core import ParameterError
 from ordec.lib import ihp130, Gnd, Vdc
-from .lib.thinwrap import thin_wrapper_cell
+from .lib.thinwrap import gallery_wrapper_cell
 
 
-@pytest.mark.parametrize("kind", [ihp130.Rsil, ihp130.Rppd, ihp130.Rhigh])
-def test_resistor_lvs_clean(kind):
-    cell = thin_wrapper_cell(kind())
-    lvs_report = ihp130.run_lvs(cell.layout, cell.symbol, use_tempdir=True)
+# All passive devices plus representative meanders in one gallery layout:
+# deck startup dominates KLayout runtime, so a single DRC and a single LVS
+# run cover them all. Meander picks span the resistor kinds, both stripe
+# parities (even and odd counts place the p terminal at opposite ends) and
+# a high bend count.
+GALLERY = [
+    ihp130.Rsil(), ihp130.Rppd(), ihp130.Rhigh(), ihp130.Cmim(),
+    ihp130.Rsil(l="2.0u", w="0.5u", b=1, ps="180n"),
+    ihp130.Rppd(l="2.0u", w="0.5u", b=2, ps="400n"),
+    ihp130.Rhigh(l="2.0u", w="0.5u", b=5, ps="400n"),
+]
+
+
+def test_passive_gallery_lvs_clean():
+    wrapper = gallery_wrapper_cell(GALLERY, "PassiveGallery")
+    lvs_report = ihp130.run_lvs(wrapper.layout, wrapper.symbol, use_tempdir=True)
     assert lvs_report.clean()
 
 
-@pytest.mark.parametrize("kind", [ihp130.Rsil, ihp130.Rppd, ihp130.Rhigh])
-def test_resistor_meander_layout_rejected(kind):
-    with pytest.raises(ParameterError, match="b != 0 not supported for layout."):
-        thin_wrapper_cell(kind(l="1.0u", w="0.5u", b=2, ps="0.5u")).layout
-
-
-@pytest.mark.parametrize("kind", [ihp130.Rsil, ihp130.Rppd, ihp130.Rhigh])
-def test_resistor_drc_clean(kind):
-    cell = thin_wrapper_cell(kind())
-    res = ihp130.run_drc(cell.layout, use_tempdir=True)
+def test_passive_gallery_drc_clean():
+    wrapper = gallery_wrapper_cell(GALLERY, "PassiveGallery")
+    res = ihp130.run_drc(wrapper.layout, use_tempdir=True)
     assert res.summary() == {}
 
 
-def test_cmim_lvs_clean():
-    cell = thin_wrapper_cell(ihp130.Cmim())
-    lvs_report = ihp130.run_lvs(cell.layout, cell.symbol, use_tempdir=True)
-    assert lvs_report.clean()
+def test_resistor_meander_geometry():
+    """b+1 stripes of l - w, joined at alternating ends, terminals at
+    stripe 0 bottom and the last stripe's free end."""
+    lay = ihp130.Rhigh(l="2u", w="500n", b=2, ps="400n").layout
+    stripe = 2000 - 500
+    for i in range(3):
+        r = lay.poly_body[i].rect
+        assert (int(r.lx), int(r.ly), int(r.ux), int(r.uy)) == (
+            i * 900, 0, i * 900 + 500, stripe)
+    top = lay.poly_bend[0].rect
+    assert (int(top.ly), int(top.uy)) == (stripe, stripe + 500)
+    bot = lay.poly_bend[1].rect
+    assert (int(bot.ly), int(bot.uy)) == (-500, 0)
+    # Odd stripe count: the p terminal sits at the top of the last stripe.
+    assert int(lay.term_p.rect.ly) > stripe
+    assert int(lay.term_n.rect.uy) < 0
 
 
-def test_cmim_drc_clean():
-    cell = thin_wrapper_cell(ihp130.Cmim())
-    res = ihp130.run_drc(cell.layout, use_tempdir=True)
-    assert res.summary() == {}
+@pytest.mark.parametrize("kind", [ihp130.Rppd, ihp130.Rhigh])
+def test_resistor_meander_ps_floor(kind):
+    with pytest.raises(ParameterError, match="ps >= 400 nm"):
+        kind(l="2.0u", w="0.5u", b=2, ps="180n").layout
 
 
 # Two parameter sets per resistor type, moving l and w in opposite directions:
@@ -55,6 +72,8 @@ def test_cmim_drc_clean():
     (ihp130.Rppd(l="4u", w="1u"), 1097.73),
     (ihp130.Rhigh(l="2u", w="2u"), 1496.98),
     (ihp130.Rhigh(l="4u", w="1u"), 6073.46),
+    # leff = (b+1)*l + (2/kappa*weff + ps)*b: bends fold length into area.
+    (ihp130.Rhigh(l="28u", w="500n", b=10, ps="400n"), 1026707.0),
 ])
 def test_resistor_op(cell, expected_r):
     """Ngspice op-point: drive each resistor with 1 V and check R = V / I."""
