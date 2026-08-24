@@ -34,11 +34,32 @@ which dedicated servers do and most budget cloud VMs do not.
 
 The containers sit on an ``internal: true`` Docker network, so they have no
 NAT, no DNS and no egress — the hub proxy reaching the ORDeC port is the only
-path in or out. Per-user CPU and memory caps are enforced by the kernel, so a
-runaway simulation burns only its owner's allowance, and an out-of-memory kill
-lands inside that user's own VM. Nothing is mounted and nothing persists:
+path in or out. In the other direction they see just the hub's REST API, which
+they need for OAuth and activity reporting: the public proxy binds the hub's
+address on the Caddy-facing network instead of every interface, so it is not
+exposed to the containers it serves. Per-user CPU and memory caps are enforced
+by the kernel, so a runaway simulation burns only its owner's allowance, and an
+out-of-memory kill lands inside that user's own VM. Nothing is mounted and nothing persists:
 stopping an instance deletes it. The idle culler stops instances after 90
 minutes by default, long enough to survive a lunch break.
+
+All containers and the hub share one bridge on that network, which is an
+accepted residual risk rather than an oversight. Frames forged inside a guest
+do reach the bridge, since Kata's tcfilter networking mirrors between the veth
+and the tap without inspecting them; a participant who first wins a
+guest-kernel privilege escalation could therefore ARP-spoof the hub's address
+and read proxy-to-container traffic, which carries other participants' session
+cookies and ORDeC auth tokens. The mitigation would be host-side (a network per
+user, static ARP entries or ebtables rules on the bridge), and a per-user
+network in particular means restructuring how the hub reaches containers, as
+DockerSpawner attaches exactly one. It is accepted because the attack needs
+that escalation first, and because the app-layer gate still denies cross-user
+access. What does *not* help is hardening inside the guest, such as dropping
+``CAP_NET_RAW``: under Kata the guest kernel is conceded by design, so an
+attacker who can forge frames at all can also rewrite their own capability
+set. The same reasoning is why there is no pids limit; a fork bomb exhausts
+only the attacker's own VM. Under ``ORDEC_HUB_RUNTIME=runc`` none of this
+holds, which is one more reason that mode is for local testing only.
 
 Rough sizing: about 1.5–2 GB of RAM per participant, and CPU that is bursty
 enough to oversubscribe safely. RAM is the binding resource — 80 participants
@@ -100,6 +121,7 @@ for the workshop hostname; Caddy fetches Let's Encrypt certificates by itself.
 
     # 3. Configuration
     cp support/hub/example.env support/hub/.env
+    python3 -c 'import secrets; print(secrets.token_urlsafe(24))'   # per key
     $EDITOR support/hub/.env     # domain, workshop key, admin key, limits
 
     # 4. Start hub + TLS proxy
@@ -135,9 +157,15 @@ Admins
     enter an allowlisted username (``ORDEC_HUB_ADMINS``) plus the separate admin
     key (``ORDEC_HUB_ADMIN_KEY``). Admins land directly on the JupyterHub admin
     panel at ``/hub/admin`` (no ORDeC container is spawned for them), which lists
-    every session, shows activity, and can stop, access or delete servers. For
+    every session, shows activity, and can stop or delete servers. For
     live CPU/RAM use ``docker stats`` on the host. Leaving ``ORDEC_HUB_ADMIN_KEY``
     empty disables admin login.
+
+    Admins deliberately cannot *open* a participant's ORDeC UI. The hub does not
+    enforce this: its built-in admin role holds ``access:servers`` and cannot be
+    narrowed, so the "access server" link does get a valid OAuth grant. ORDeC's
+    own user check in ``login_with_code`` (``ordec/hub.py``, commented with the
+    reason) is the single guard that refuses it.
 
     The username is not a credential. ``authenticate`` never lets a caller pick
     an existing guest identity — an empty username always mints a fresh random
@@ -145,6 +173,26 @@ Admins
     the admin key) — so knowing a participant's URL-visible ``guest-<random>``
     name does not grant access to their session. Access is gated by the signed
     hub session cookie and per-server OAuth, not the username.
+
+Key strength
+    Both keys guard code execution on the host, so generate them
+    (``python3 -c 'import secrets; print(secrets.token_urlsafe(24))'``) rather
+    than inventing them. The hub refuses to start on the ``example.env``
+    placeholders or on keys shorter than 16 characters. Entropy is the defense
+    that matters: the login page answers guesses from the internet and, since
+    the proxy also listens on the user network, from inside every participant
+    container.
+
+    Failed logins are additionally rate-limited per client address (30 at once,
+    refilling at 10/min, answered with 429 over budget). Successful logins are
+    never charged, so a room sharing one NAT address does not throttle itself.
+    This needs the real client address, which is read from the end of the
+    ``X-Forwarded-For`` chain, skipping the proxies named by
+    ``ORDEC_HUB_TRUSTED_PROXY_IPS`` (docker-compose.yml pins Caddy's address).
+    Each hop appends the peer it actually saw, so a client can prepend entries
+    but never append one. Tornado's ``request.remote_ip`` is deliberately not
+    used: it honours a client-supplied ``X-Real-Ip`` header without any trust
+    check, which the Caddyfile therefore also strips.
 
 Ending a session
     The ORDeC toolbar shows an **End session** button in hub mode. It navigates
@@ -187,8 +235,9 @@ Local testing without KVM
 Setting ``ORDEC_HUB_RUNTIME=runc`` in ``.env`` runs the whole flow with plain
 containers, which is useful on a laptop and must never be used for a real
 workshop: it is the shared-kernel isolation that Kata exists to avoid. For
-testing without TLS, publish port 8000 of the jupyterhub service and use
-``http://localhost:8000``.
+testing without TLS, publish port 8000 of the jupyterhub service, set
+``ORDEC_HUB_BIND_IP: 0.0.0.0`` so the proxy listens on every interface rather
+than only the one Caddy uses, and browse to ``http://localhost:8000``.
 
 To exercise the full path through Caddy on a development host that has no
 domain and no certificate, point ``ORDEC_HUB_DOMAIN`` at an ``http://`` address

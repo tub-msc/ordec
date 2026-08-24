@@ -900,7 +900,6 @@ class StaticHandler:
             req_path = Path(path[1:])
 
             if self.hub:
-                self.hub.touch_activity()
                 response = self.process_request_hub(request, req_path, url)
                 if response is not None:
                     return response
@@ -941,6 +940,11 @@ class StaticHandler:
 
         user = self.hub.session_user_from_cookie(cookie_header)
         if user is not None:
+            # Activity is recorded here, not for every request that reaches the
+            # server: a rejected request must not postpone idle culling, or
+            # anyone who knows the instance URL could pin the container alive
+            # (and hold one of the hub's slots) with a loop of 401s.
+            self.hub.touch_activity()
             if req_path == Path('api/token'):
                 # Token handoff to the hub-authenticated frontend; replaces
                 # the #auth= URL fragment of standalone operation. Also carries
@@ -950,7 +954,9 @@ class StaticHandler:
                     'hub_logout_url': self.hub.logout_url,
                 })
                 return build_response(data=data.encode('utf8'),
-                    mime_type='application/json')
+                    mime_type='application/json',
+                    # Keep the auth token out of any cache on the way back.
+                    extra_headers=[('Cache-Control', 'no-store')])
             return None
 
         # Unauthenticated: browsers navigating to a page get the OAuth
@@ -971,10 +977,13 @@ class StaticHandler:
         state_cookie = self.hub.get_cookie(
             request.headers.get('Cookie', ''), self.hub.COOKIE_STATE)
         # The state cookie proves that the callback belongs to a login this
-        # server started in this browser (OAuth CSRF protection).
-        if not code or not state or state != state_cookie:
+        # server started in this browser (OAuth CSRF protection). Compared in
+        # constant time and as bytes: compare_digest rejects non-ASCII str,
+        # which a hand-crafted cookie can contain.
+        if not code or not state or not state_cookie or not hmac.compare_digest(
+                state.encode('utf8'), state_cookie.encode('utf8')):
             return build_response(http.HTTPStatus.FORBIDDEN)
-        next_url = self.hub.pop_state(state)
+        next_url = self.hub.check_state(state)
         if next_url is None:
             return build_response(http.HTTPStatus.FORBIDDEN)
         try:
@@ -994,9 +1003,14 @@ class StaticHandler:
 
     @staticmethod
     def request_is_https(request):
-        # Behind the hub proxy / TLS terminator, the original scheme
-        # arrives in X-Forwarded-Proto.
-        return request.headers.get('X-Forwarded-Proto', '') == 'https'
+        # Behind the hub proxy / TLS terminator, the original scheme arrives in
+        # X-Forwarded-Proto. With more than one proxy in the path the header is
+        # a comma-separated list, appended to per hop: Caddy sets 'https', then
+        # configurable-http-proxy adds its own 'http', giving 'https,http'. The
+        # leftmost entry is the scheme the browser actually used, and it is the
+        # only one that decides whether the cookie needs Secure.
+        hdr = request.headers.get('X-Forwarded-Proto', '')
+        return hdr.split(',')[0].strip().lower() == 'https'
 
     def process_request_example(self, name):
         srctype = None

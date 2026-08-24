@@ -5,5 +5,11 @@
 # certificates automatically for the domain in ORDEC_HUB_DOMAIN (.env).
 
 {$ORDEC_HUB_DOMAIN} {
-	reverse_proxy jupyterhub:8000
+	reverse_proxy jupyterhub:8000 {
+		# Tornado trusts X-Real-Ip from anyone, ahead of X-Forwarded-For and
+		# with no trust check, so a client sending it would decide what the hub
+		# records as its address. Caddy appends the true peer to
+		# X-Forwarded-For, which is what the hub should use instead.
+		header_up -X-Real-IP
+	}
 }

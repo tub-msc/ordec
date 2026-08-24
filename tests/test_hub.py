@@ -148,6 +148,14 @@ def get_cookie_value(headers, name):
     return None
 
 
+def get_set_cookie(headers, name):
+    """The full Set-Cookie line (attributes included) for a cookie name."""
+    for set_cookie in headers.get('Set-Cookie', []):
+        if set_cookie.startswith(name + '='):
+            return set_cookie
+    return None
+
+
 def login(port, entry_path=PREFIX):
     """Walk the OAuth flow like a browser; returns the session cookie."""
     # 1. Unauthenticated page navigation -> redirect to hub authorize:
@@ -227,6 +235,29 @@ def test_oauth_rejects_state_mismatch(hub_server):
     assert status == 403
 
 
+def test_cookies_secure_behind_tls_proxy(hub_server):
+    # In the TLS deployment two proxies prepend to X-Forwarded-Proto: Caddy
+    # sets 'https', configurable-http-proxy appends its own hop. Both cookies
+    # must still get Secure; without it they travel in the clear on any plain
+    # HTTP request that precedes Caddy's redirect.
+    port, _, _ = hub_server
+    proxy_header = {'X-Forwarded-Proto': 'https,http'}
+
+    # The state cookie set with the redirect to the hub:
+    status, headers, _ = request(port, PREFIX,
+        dict(proxy_header, Accept='text/html'))
+    assert status == 302
+    assert 'Secure' in get_set_cookie(headers, 'ordec-hub-state')
+
+    # ...and the session cookie set by the callback:
+    state = get_cookie_value(headers, 'ordec-hub-state')
+    status, headers, _ = request(port,
+        f'{PREFIX}oauth_callback?code=goodcode&state={state}',
+        dict(proxy_header, Cookie=f'ordec-hub-state={state}'))
+    assert status == 302
+    assert 'Secure' in get_set_cookie(headers, 'ordec-hub-session')
+
+
 def test_base_path_enforcement(hub_server):
     port, _, _ = hub_server
     # Outside the prefix: 404, no OAuth redirect.
@@ -280,11 +311,61 @@ def test_activity_reporting(hub_server, fake_hub):
     assert len(fake_hub.activity_posts) == posts_before + 1
 
 
+def test_pending_login_survives_unauthenticated_flood(hub_server):
+    port, _, _ = hub_server
+    # A login starts, i.e. a state is issued and cookied in the browser:
+    _, headers, _ = request(port, PREFIX, {'Accept': 'text/html'})
+    state = get_cookie_value(headers, 'ordec-hub-state')
+
+    # Meanwhile anyone can make the server issue states without logging in.
+    # That must not invalidate the login above.
+    for _ in range(200):
+        request(port, PREFIX, {'Accept': 'text/html'})
+
+    status, headers, _ = request(port,
+        f'{PREFIX}oauth_callback?code=goodcode&state={state}',
+        {'Cookie': f'ordec-hub-state={state}'})
+    assert status == 302
+    assert get_cookie_value(headers, 'ordec-hub-session')
+
+
+def test_state_rejects_forgery(fake_hub):
+    hub = make_hub(fake_hub)
+    state = hub.new_state('/user/alice/')
+    assert hub.check_state(state) == '/user/alice/'
+
+    body, _, sig = state.partition('.')
+    assert hub.check_state(f'{body}x.{sig}') is None    # tampered payload
+    assert hub.check_state(f'{body}.{sig[:-1]}x') is None  # tampered signature
+    assert hub.check_state(body) is None                # unsigned
+    assert hub.check_state('nonsense') is None
+    # A state signed by another instance does not open this one:
+    assert hub.check_state(make_hub(fake_hub).new_state('/user/alice/')) is None
+
+
+def test_activity_needs_authentication(hub_server):
+    port, _, hub = hub_server
+    cookie = login(port)
+
+    # Rejected requests must not postpone culling, whether they are answered
+    # with 401 or with the OAuth redirect:
+    hub._last_activity = 0.0
+    request(port, f'{PREFIX}api/version')
+    request(port, PREFIX, {'Accept': 'text/html'})
+    assert hub._last_activity == 0.0
+
+    # An authenticated one does count:
+    request(port, f'{PREFIX}api/version', {'Cookie': cookie})
+    assert hub._last_activity > 0.0
+
+
 def test_login_with_code_direct(fake_hub):
     hub = make_hub(fake_hub)
     assert hub.login_with_code('goodcode') == 'alice'
     with pytest.raises(HubAuthError):
-        hub.login_with_code('evilcode')  # wrong user
+        # Any other user is refused, hub admins included: this is what keeps an
+        # admin out of a participant's ORDeC UI (see login_with_code).
+        hub.login_with_code('evilcode')
     with pytest.raises(HubAuthError):
         hub.login_with_code('nonsense')  # unknown code
 
