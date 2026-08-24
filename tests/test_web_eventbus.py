@@ -37,7 +37,7 @@ def emit_drc_clear(web):
 
 def load_layout_view(web):
     """Load the layoutgl_example in local mode."""
-    qs_local = web.key.query_string_local("tests.lib.layoutgl_example", "layoutgl_example()")
+    qs_local = web.key.query_string_local("tests.lib.layoutgl_example", ["layoutgl_example()"])
     web.navigate(f'app.html#refreshall=true&{qs_local}')
     web.wait_for_ready()
 
@@ -94,7 +94,7 @@ def test_pending_event_applied_on_layout_open(web):
     """A pending drc:select is applied when a matching layout view opens,
     and stays pending until deselect (reopening restores the highlight)."""
     # Load layout module but don't auto-select a view
-    qs = web.key.query_string_local("tests.lib.layoutgl_example", "")
+    qs = web.key.query_string_local("tests.lib.layoutgl_example", [])
     web.navigate(f'app.html#refreshall=true&viewsel_flat=true&{qs}')
     web.wait_for_ready()
 
@@ -166,7 +166,7 @@ def test_drc_select_targeted_filtering(web):
 def test_drc_pending_targeted_not_applied(web):
     """A pending drc:select targeted at a different view is not applied
     when a non-matching layout view opens."""
-    qs = web.key.query_string_local("tests.lib.layoutgl_example", "")
+    qs = web.key.query_string_local("tests.lib.layoutgl_example", [])
     web.navigate(f'app.html#refreshall=true&viewsel_flat=true&{qs}')
     web.wait_for_ready()
 
@@ -225,7 +225,7 @@ def test_drc_subcell_item_select(web):
     and highlights it only there: the subcell item in the subcell's view
     (cell-local coordinates), the top item in the top layout view."""
     qs_local = web.key.query_string_local(
-        "tests.lib.drc_example_hier", "Top().drc_report")
+        "tests.lib.drc_example_hier", ["Top().drc_report"])
     web.navigate(f'app.html#refreshall=true&{qs_local}')
     web.wait_until(
         "return !!document.querySelector('.drc-item.drc-item-subcell');")
@@ -376,7 +376,7 @@ def test_lvs_clear_removes_highlight(web):
 
 def load_schematic_view(web):
     """Load a schematic view using the lvs_example."""
-    qs_local = web.key.query_string_local("tests.lib.lvs_example", "schematic()")
+    qs_local = web.key.query_string_local("tests.lib.lvs_example", ["schematic()"])
     web.navigate(f'app.html#refreshall=true&{qs_local}')
     web.wait_until("return !!document.querySelector('.rescontent svg');")
 
@@ -550,7 +550,7 @@ def test_lvs_select_highlights_pin(web):
 
 def load_lvs_report_view(web):
     """Load the LVS report view of the lvs_example in local mode."""
-    qs_local = web.key.query_string_local("tests.lib.lvs_example", "lvs_report()")
+    qs_local = web.key.query_string_local("tests.lib.lvs_example", ["lvs_report()"])
     web.navigate(f'app.html#refreshall=true&{qs_local}')
     web.wait_until("return !!document.querySelector('.lvs-circuit-link');")
 
@@ -666,7 +666,7 @@ def test_lvs_subcircuit_item_select(web):
     """Selecting an LvsItem of a subcircuit pair opens the pair's own
     layout/schematic views and highlights the item there."""
     qs_local = web.key.query_string_local(
-        "tests.lib.lvs_example_hier", "C_Hier().lvs_report")
+        "tests.lib.lvs_example_hier", ["C_Hier().lvs_report"])
     web.navigate(f'app.html#refreshall=true&{qs_local}')
     web.wait_until("""
         const circuits = Array.from(document.querySelectorAll('.lvs-circuit'));

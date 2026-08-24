@@ -190,7 +190,7 @@ def request_local(web, module, request_views):
     res = {}
     web.resize_viewport()
 
-    qs_local = web.key.query_string_local(module, '')
+    qs_local = web.key.query_string_local(module, [])
     web.navigate(f'app.html#refreshall=true&viewsel_flat=true&{qs_local}')
 
     web.wait_for_ready()
@@ -645,7 +645,7 @@ def test_layoutgl(web):
     """Fuzzy visual testing of web layout viewer (layout-gl.js)."""
     web.resize_viewport()
 
-    qs_local = web.key.query_string_local("tests.lib.layoutgl_example", "layoutgl_example()")
+    qs_local = web.key.query_string_local("tests.lib.layoutgl_example", ["layoutgl_example()"])
     web.navigate(f'app.html#refreshall=true&{qs_local}')
 
     web.wait_for_ready()
@@ -834,3 +834,24 @@ def test_structured_traceback(web):
     web.wait_until("return !window.ordecApp.client.exception;")
     web.wait_for_ready()
     assert editor_js("return ed.session.getAnnotations();") == []
+
+@pytest.mark.web
+def test_local_multiple_views(web):
+    """Each --view opens a result viewer of its own, side by side."""
+    web.resize_viewport()
+
+    views = ["schematic()", "lvs_report()"]
+    qs_local = web.key.query_string_local("tests.lib.lvs_example", views)
+    web.navigate(f'app.html#refreshall=true&{qs_local}')
+
+    web.wait_for_ready()
+
+    viewers = web.driver.execute_script("""
+        return window.ordecApp.client.resultViewers.map(rv => {
+            const r = rv.container.element.getBoundingClientRect();
+            return {view: rv.viewSelected, top: r.top, left: r.left};
+        });
+    """)
+    assert [v['view'] for v in viewers] == views
+    assert viewers[0]['top'] == viewers[1]['top']
+    assert viewers[0]['left'] < viewers[1]['left']

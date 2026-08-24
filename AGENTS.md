@@ -121,8 +121,10 @@ npm run dev
 # Terminal 2: Start backend-only server
 ordec -b
 
-# Local mode example (importing mymodule.py and displaying MyCell().schematic):
-ordec -b -m "mymodule:MyCell().schematic"
+# Local mode example (opening mymodule.py and displaying MyCell().schematic):
+ordec -b mymodule.py -e "MyCell().schematic"
+# Equivalent with python-style module import (-m):
+ordec -b -m mymodule -e "MyCell().schematic"
 ```
 
 ### Documentation
@@ -373,7 +375,7 @@ Each schema type is a Node subclass with Attr declarations and indexes.
 4. Freeze mutable subgraphs before returning: `mutable_node.freeze()`
 
 ### Debugging view generation
-1. Use local mode: `ordec -m mymodule`
+1. Use local mode: `ordec mymodule.py` (or `ordec -m mymodule`)
 2. Edit files in external editor
 3. Server auto-reloads on file changes (inotify)
 4. Check server terminal for Python tracebacks

@@ -78,11 +78,7 @@ export async function authenticateLocalQuery(queryLocal, queryHmac) {
     }
 
     if(valid) {
-        const s = queryLocal.split(":", 2);
-        return {
-            module: s[0],
-            view: s[1],
-        };
+        return JSON.parse(queryLocal); // {module, views}
     } else {
         return null;
     }

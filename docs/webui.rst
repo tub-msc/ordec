@@ -15,7 +15,7 @@ For serious work, you likely want to **use your own local files and text editor*
 
     docker run --rm -p 127.0.0.1:8100:8100 -v .:/designs -w /designs \
         -it ghcr.io/tub-msc/ordec:latest ordec -l 0.0.0.0 -p 8100 \
-        --no-browser --url-authority 127.0.0.1:8100 -m my_design
+        --no-browser --url-authority 127.0.0.1:8100 my_design.ord
 
 The web UI will automatically refresh when it detects changes to ``my_design.ord``.
 
@@ -32,7 +32,7 @@ Integrated mode is recommended for demo purposes and getting started. Local mode
 
 The mode is selected purely using URL parameters passed the frontend. Every running server supports both integrated and local mode.
 ``/app.html?example=nand2`` opens example *nand2* in integrated mode.
-``/app.html?module=mymodule&view=CellA().schematic`` opens *mymodule* in local mode and shows *CellA().schematic*.
+``/app.html#local=...&hmac=...`` opens local mode: ``local`` is a JSON object such as ``{"module": "mymodule", "views": ["CellA().schematic"]}`` (one result viewer per view, side by side; this is what ``ordec mymodule.py -e "CellA().schematic"`` generates), and ``hmac`` authenticates it (see below).
 
 Security
 --------

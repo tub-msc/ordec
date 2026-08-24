@@ -320,7 +320,8 @@ document.querySelector("#savejson").onclick = () => {
     dlAnchorElem.click();
 };
 
-// Local mode: only a single result view is opened by default. To prevent CSRF
+// Local mode: one result view per preselected view (--view on the command
+// line), side by side; without views, a single empty one. To prevent CSRF
 // attacks, queryLocal is authenticated using the queryHmac parameter. Returns
 // null (no client) if authentication fails.
 async function initLocalMode() {
@@ -332,20 +333,17 @@ async function initLocalMode() {
 
     document.querySelector("#toolSourcetype").style.display = 'none';
 
+    const views = local.views.length ? local.views : [null];
     const uistate = {
         "content": [
             {
                 "type": "row",
-                "content": [
-                    {
-                        "type": "component",
-                        "title": "Result View",
-                        "componentName": "result",
-                        "componentState": {
-                            "view": local.view,
-                        }
-                    }
-                ]
+                "content": views.map(view => ({
+                    "type": "component",
+                    "title": "Result View",
+                    "componentName": "result",
+                    "componentState": {"view": view}
+                }))
             }
         ]
     };

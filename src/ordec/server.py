@@ -35,7 +35,7 @@ Furthermore, there are two modes in which you can use the ORDeC web UI:
     source code is not saved anywhere. Please save any code that you want to
     keep manually using copy & paste to local files.
 
-    Unless ``--module`` (``-m``) is specified, the web UI is launched in
+    Unless a file or module (``-m``) is specified, the web UI is launched in
     integrated mode.
 
 (2) **Local mode:**
@@ -43,14 +43,26 @@ Furthermore, there are two modes in which you can use the ORDeC web UI:
     outside the web browser is used. The design is rebuilt automatically when
     it is detected that source files have changed. This is done using inotify.
 
-    By specifying ``--module`` (``-m``), the web UI is launched in local mode.
+    Local mode is launched by passing a file or module, mirroring the
+    ``python`` command line. ``ordec mydesign.ord`` (or ``mydesign.py``)
+    opens the given file; as with ``python mydesign.py``, the file's
+    directory is put first on ``sys.path``. A package directory (containing
+    an ``__init__.py`` or ``__init__.ord``) can be passed as well, which
+    enables projects with multiple modules / source files. A file inside a
+    package is opened without package context, exactly like
+    ``python pkg/sub.py``; use ``-m pkg.sub`` where relative imports are
+    needed.
 
-    The specified module name (e.g. ``--module mydesign``) is treated as regular
-    Python module import. It could reference a single Python file mydesign.py,
-    a single ORD file mydesign.ord, or a directory mydesign/ containing an
-    __init__.py (which enables projects / packages with multiple modules / 
-    source files). Hierarchical names such as mydesign.submodule are permitted
-    as well.
+    ``ordec -m mydesign`` treats the argument as a regular Python module
+    import, like ``python -m``: the current directory is put first on
+    ``sys.path``. Hierarchical names such as ``mydesign.submodule`` are
+    permitted.
+
+    ``--view`` (``-e``) preselects a view, e.g.
+    ``ordec mydesign.ord -e "MyCell().schematic"``. It may be given several
+    times; each view opens in its own result viewer, side by side.
+    ``mydesign.ord:MyCell().schematic`` and ``-m mydesign:MyCell().schematic``
+    are shorthand for a single ``--view``.
 """
 
 import argparse
@@ -67,6 +79,7 @@ import threading
 import importlib
 from contextlib import contextmanager
 import importlib.resources
+import importlib.util
 import tarfile
 import secrets
 import hmac
@@ -116,10 +129,13 @@ class ServerKey:
     def authenticate(self, other_b16: str) -> bool:
         return secrets.compare_digest(self.token(), other_b16)
 
-    def query_string_local(self, module: str, view: str) -> str:
-        moduleview = f"{module}:{view}"
-        digest = hmac.digest(self.key, moduleview.encode('utf8'), digest=hashlib.sha256)
-        return f"local={quote_plus(moduleview)}&hmac={digest.hex()}"
+    def query_string_local(self, module: str, views: list) -> str:
+        # The signed message is exactly what the frontend parses (JSON), so
+        # no separator can be confused with characters of a view name.
+        message = json.dumps({'module': module, 'views': list(views)},
+            separators=(',', ':'))
+        digest = hmac.digest(self.key, message.encode('utf8'), digest=hashlib.sha256)
+        return f"local={quote_plus(message)}&hmac={digest.hex()}"
 
 def discover_views(conn_globals, recursive=True, modules_visited=None):
     if modules_visited is None:
@@ -1140,24 +1156,89 @@ def secure_url_open(user_url):
 
     return launch_html
 
-def main():
+def build_argparser():
     parser = argparse.ArgumentParser(prog='ordec',
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
 
+    # Local-mode target, mirroring python's "python FILE" / "python -m MODULE":
+    target = parser.add_mutually_exclusive_group()
+    target.add_argument('file', nargs='?', help="Python (.py) or ORD (.ord) file, or package directory, to open in local mode. As with python, the file's directory is put first on sys.path.")
+    target.add_argument('-m', '--module', help="Module to open in local mode, imported like 'python -m MODULE' (the current directory is put first on sys.path).")
+    parser.add_argument('-e', '--view', action='append', default=[], metavar='VIEW', help="Preselect a view, e.g. \"MyCell().schematic\". May be given several times; each view opens in its own result viewer, side by side. FILE:VIEW and MODULE:VIEW are shorthand for one --view.")
     parser.add_argument('-l', '--hostname', default="127.0.0.1", help="Hostname to listen on (default 127.0.0.1).")
     parser.add_argument('-p', '--port', default=8100, type=int, help="Port to listen on (default 8100).")
     parser.add_argument('-r', '--static-root', help="Path for static web resources. If not specified, the webdist.tar file included in the ORDeC installation is used.", nargs='?')
     parser.add_argument('-b', '--backend-only', action='store_true', help="Serve backend only. Requires a separate server (e.g. Vite) to serve the frontend.")
     parser.add_argument('-n', '--no-browser', action='store_true', help="Show URL, but do not launch browser.")
-    parser.add_argument('-m', '--module', help="Open the specified module from the local file system (local mode). Furthermore, a specific view can be preselected as MODULE:VIEW.")
     parser.add_argument('-j', '--jobs', default=4, type=int, help="Maximum number of concurrently generated views (default 4). With 0, views are generated inline in the connection handler (no progress reporting or cancellation).")
     parser.add_argument('--url-authority', help="Use provided URL authority part (host:port) instead values of --hostname and --port for printed / opened URL.")
     parser.add_argument('--base-url', default='/', help="URL path prefix to serve under (e.g. /ordec/). Behind JupyterHub, the prefix is taken from JUPYTERHUB_SERVICE_PREFIX instead.")
     parser.add_argument('-V', '--version', action='version', version=f'%(prog)s {version}')
+    return parser
 
+def resolve_local(args, parser):
+    """
+    Turns the local-mode target of the command line (FILE or -m MODULE) into
+    an importable module name plus the views to preselect, and puts the
+    target's directory first on sys.path the way python does (the file's
+    directory for FILE, the current directory for -m).
 
+    Returns (module, views), or None in integrated mode (no target given).
+    Like python, problems are reported before the server starts: exit code 2
+    for an unusable FILE, 1 for a module that cannot be found.
+    """
+    def fail(msg, code):
+        print(f"ordec: {msg}", file=sys.stderr)
+        raise SystemExit(code)
+
+    if args.file is None and args.module is None:
+        if args.view:
+            parser.error("--view requires FILE or -m MODULE")
+        return None
+
+    target, _, colon_view = (args.module if args.file is None else args.file).partition(':')
+    views = ([colon_view] if colon_view else []) + args.view
+
+    if args.file is None:
+        module = target
+        sys.path.insert(0, os.getcwd())
+    else:
+        path = Path(target)
+        if path.is_dir():
+            if not any((path / f'__init__{s}').is_file() for s in ('.py', '.ord')):
+                fail(f"can't find '__init__' module in {target!r}", 1)
+            path = path.resolve()
+            module = path.name
+        elif path.is_file():
+            if path.suffix not in ('.py', '.ord'):
+                fail(f"unsupported file type {target!r} (expected a .py or .ord file, or a package directory)", 2)
+            path = path.resolve()
+            module = path.stem
+        else:
+            fail(f"can't open file {str(path.absolute())!r}: [Errno 2] No such file or directory", 2)
+        sys.path.insert(0, str(path.parent))
+
+    # find_spec on the top-level name executes no code and leaves sys.modules
+    # untouched, so it does not interfere with the later reload logic of
+    # ConnectionHandler.
+    top = module.partition('.')[0]
+    spec = importlib.util.find_spec(top)
+    if spec is None:
+        fail(f"No module named {top}", 1)
+    if args.file is not None:
+        # The module name is derived from the file name: make sure the import
+        # system resolves it to that file and not to an already imported or
+        # installed module of the same name (e.g. "ordec os.py").
+        origin = spec.origin and Path(spec.origin).resolve()
+        if not origin or (origin.parent if path.is_dir() else origin) != path:
+            fail(f"{target!r} is shadowed by module {top!r} at {spec.origin}; rename the file or use -m", 1)
+    return module, views
+
+def main():
+    parser = build_argparser()
     args = parser.parse_args()
+    local = resolve_local(args, parser)
     hostname = args.hostname
     port = args.port
 
@@ -1172,8 +1253,8 @@ def main():
     if not base_path.endswith('/'):
         base_path += '/'
     if hub:
-        if args.module:
-            print("ERROR: local mode (-m) is not supported behind JupyterHub.")
+        if local:
+            print("ERROR: local mode (FILE / -m) is not supported behind JupyterHub.")
             raise SystemExit(1)
         base_path = hub.prefix
         args.no_browser = True
@@ -1216,16 +1297,10 @@ def main():
         # the auth token via api/token after OAuth; there is no user URL to
         # print or open here.
         user_url = None
-    elif args.module:
-        try:
-            module, view = args.module.split(':', 1)
-        except ValueError:
-            module = args.module
-            view = ''
-        qs_module = key.query_string_local(module, view)
+    elif local:
+        module, views = local
+        qs_module = key.query_string_local(module, views)
         user_url += f"{base_path}app.html#auth={key.token()}&{qs_module}"
-        # Enable importing modules from current working directory:
-        sys.path.append(os.getcwd())
     else:
         user_url += f"{base_path}#auth={key.token()}"
 
