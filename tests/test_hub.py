@@ -311,6 +311,22 @@ def test_activity_reporting(hub_server, fake_hub):
     assert len(fake_hub.activity_posts) == posts_before + 1
 
 
+def test_activity_needs_authentication(hub_server):
+    port, _, hub = hub_server
+    cookie = login(port)
+
+    # Rejected requests must not postpone culling, whether they are answered
+    # with 401 or with the OAuth redirect:
+    hub._last_activity = 0.0
+    request(port, f'{PREFIX}api/version')
+    request(port, PREFIX, {'Accept': 'text/html'})
+    assert hub._last_activity == 0.0
+
+    # An authenticated one does count:
+    request(port, f'{PREFIX}api/version', {'Cookie': cookie})
+    assert hub._last_activity > 0.0
+
+
 def test_login_with_code_direct(fake_hub):
     hub = make_hub(fake_hub)
     assert hub.login_with_code('goodcode') == 'alice'

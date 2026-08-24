@@ -900,7 +900,6 @@ class StaticHandler:
             req_path = Path(path[1:])
 
             if self.hub:
-                self.hub.touch_activity()
                 response = self.process_request_hub(request, req_path, url)
                 if response is not None:
                     return response
@@ -941,6 +940,11 @@ class StaticHandler:
 
         user = self.hub.session_user_from_cookie(cookie_header)
         if user is not None:
+            # Activity is recorded here, not for every request that reaches the
+            # server: a rejected request must not postpone idle culling, or
+            # anyone who knows the instance URL could pin the container alive
+            # (and hold one of the hub's slots) with a loop of 401s.
+            self.hub.touch_activity()
             if req_path == Path('api/token'):
                 # Token handoff to the hub-authenticated frontend; replaces
                 # the #auth= URL fragment of standalone operation. Also carries
