@@ -954,7 +954,9 @@ class StaticHandler:
                     'hub_logout_url': self.hub.logout_url,
                 })
                 return build_response(data=data.encode('utf8'),
-                    mime_type='application/json')
+                    mime_type='application/json',
+                    # Keep the auth token out of any cache on the way back.
+                    extra_headers=[('Cache-Control', 'no-store')])
             return None
 
         # Unauthenticated: browsers navigating to a page get the OAuth
@@ -975,8 +977,11 @@ class StaticHandler:
         state_cookie = self.hub.get_cookie(
             request.headers.get('Cookie', ''), self.hub.COOKIE_STATE)
         # The state cookie proves that the callback belongs to a login this
-        # server started in this browser (OAuth CSRF protection).
-        if not code or not state or state != state_cookie:
+        # server started in this browser (OAuth CSRF protection). Compared in
+        # constant time and as bytes: compare_digest rejects non-ASCII str,
+        # which a hand-crafted cookie can contain.
+        if not code or not state or not state_cookie or not hmac.compare_digest(
+                state.encode('utf8'), state_cookie.encode('utf8')):
             return build_response(http.HTTPStatus.FORBIDDEN)
         next_url = self.hub.check_state(state)
         if next_url is None:

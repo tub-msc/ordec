@@ -60,6 +60,12 @@ def checked_key(name, value):
             f"python3 -c 'import secrets; print(secrets.token_urlsafe(24))'")
     return value
 
+def keys_equal(submitted, expected):
+    # Compared as bytes: compare_digest raises TypeError on non-ASCII str, so a
+    # participant typing an accented key would get a 500 instead of a rejection.
+    return secrets.compare_digest(
+        submitted.encode('utf8'), expected.encode('utf8'))
+
 # A per-IP limit needs a trustworthy client IP. The hub sees X-Forwarded-For as
 # "<client>, <caddy>" (Caddy appends the real peer, configurable-http-proxy
 # then appends Caddy), and Tornado picks the rightmost entry that is not a
@@ -174,11 +180,11 @@ class ORDeCWorkshopAuthenticator(Authenticator):
         if username:
             # Admin path: allowlisted name + admin key.
             if (self.admin_key and username in self.admin_users_allowed
-                    and secrets.compare_digest(key, self.admin_key)):
+                    and keys_equal(key, self.admin_key)):
                 return {'name': username, 'admin': True}
             return self.failed(handler)
         # Guest path: workshop key only, unique ephemeral identity per login.
-        if secrets.compare_digest(key, self.workshop_key):
+        if keys_equal(key, self.workshop_key):
             return {'name': 'guest-' + secrets.token_hex(6), 'admin': False}
         return self.failed(handler)
 

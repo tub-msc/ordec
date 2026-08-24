@@ -40,6 +40,24 @@ lands inside that user's own VM. Nothing is mounted and nothing persists:
 stopping an instance deletes it. The idle culler stops instances after 90
 minutes by default, long enough to survive a lunch break.
 
+All containers and the hub share one bridge on that network, which is an
+accepted residual risk rather than an oversight. Frames forged inside a guest
+do reach the bridge, since Kata's tcfilter networking mirrors between the veth
+and the tap without inspecting them; a participant who first wins a
+guest-kernel privilege escalation could therefore ARP-spoof the hub's address
+and read proxy-to-container traffic, which carries other participants' session
+cookies and ORDeC auth tokens. The mitigation would be host-side (a network per
+user, static ARP entries or ebtables rules on the bridge), and a per-user
+network in particular means restructuring how the hub reaches containers, as
+DockerSpawner attaches exactly one. It is accepted because the attack needs
+that escalation first, and because the app-layer gate still denies cross-user
+access. What does *not* help is hardening inside the guest, such as dropping
+``CAP_NET_RAW``: under Kata the guest kernel is conceded by design, so an
+attacker who can forge frames at all can also rewrite their own capability
+set. The same reasoning is why there is no pids limit; a fork bomb exhausts
+only the attacker's own VM. Under ``ORDEC_HUB_RUNTIME=runc`` none of this
+holds, which is one more reason that mode is for local testing only.
+
 Rough sizing: about 1.5–2 GB of RAM per participant, and CPU that is bursty
 enough to oversubscribe safely. RAM is the binding resource — 80 participants
 want something in the region of 256 GB and 32 cores, which is one rented
