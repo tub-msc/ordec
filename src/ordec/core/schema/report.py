@@ -104,6 +104,11 @@ class Report(SubgraphRoot):
             return self % PassFail(label=label, passed=False,
                 instructions=instructions, hint=hint)
 
+    def score(self, label: str, value: float, unit: str="",
+            eligible: bool=True):
+        return self % Score(label=label, value=value, unit=unit,
+            eligible=eligible)
+
     def bode_plot(self, *signals, **kwargs):
         """
         Append a Bode magnitude/phase plot pair from AC simulation results;
@@ -239,6 +244,30 @@ class PassFail(ReportElement):
             webdata["instructions"] = self.instructions
             webdata["hint"] = self.hint
         return webdata
+
+
+@public
+class Score(ReportElement):
+    """
+    Competition score: a labeled numeric value plus an eligibility flag
+    (e.g. "all spec gates pass"). Rendered prominently; in competition
+    course mode the frontend also pushes eligible scores to the workshop
+    scoreboard (see web/src/course.js).
+    """
+    wire_id = WIRE_DOMAIN | 10
+    label = Attr(str, optional=False)
+    value = Attr(float, optional=False)
+    unit = Attr(str, default="", optional=False)
+    eligible = Attr(bool, optional=False)
+
+    def element_webdata(self) -> dict:
+        return {
+            "element_type": "score",
+            "label": self.label,
+            "value": self.value,
+            "unit": self.unit,
+            "eligible": self.eligible,
+        }
 
 
 @public

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Markdown, Html, PreformattedText, Svg, PassFail,
-    Plot2d } from './report-elements.js';
+    Plot2d, Score } from './report-elements.js';
 import { View } from './view.js';
 
 class ReportPlotGroups {
@@ -91,6 +91,7 @@ const reportElementClassOf = {
     svg: Svg,
     passfail: PassFail,
     plot2d: Plot2d,
+    score: Score,
 }
 
 export class ReportView extends View {

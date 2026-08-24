@@ -1181,6 +1181,23 @@ body:not(.show-debug) .debug {
 .report-passfail-hint code {
     font-style: normal;
 }
+.report-score {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: var(--font-size-lg);
+}
+.report-score-value {
+    font-weight: bold;
+}
+.report-score-ineligible .report-score-value {
+    color: var(--color-text-secondary);
+}
+.report-score-note {
+    font-size: var(--font-size-sm);
+    color: var(--color-text-secondary);
+    font-style: italic;
+}
 
 /* -- Course mode --------------------------------------------------- */
 /* The navigator toolbar fills the header of the Course result viewer, which

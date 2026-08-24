@@ -148,6 +148,34 @@ export class PassFail extends ReportElement {
     }
 }
 
+export class Score extends ReportElement {
+    update(msgData) {
+        const root = document.createElement('div');
+        root.classList.add('report-score');
+
+        const label = document.createElement('span');
+        label.classList.add('report-score-label');
+        label.innerText = msgData.label + ':';
+        root.appendChild(label);
+
+        const value = document.createElement('span');
+        value.classList.add('report-score-value');
+        value.innerText = msgData.value.toFixed(2)
+            + (msgData.unit ? ' ' + msgData.unit : '');
+        root.appendChild(value);
+
+        if (!msgData.eligible) {
+            root.classList.add('report-score-ineligible');
+            const note = document.createElement('span');
+            note.classList.add('report-score-note');
+            note.innerText = 'counts once all checks pass';
+            root.appendChild(note);
+        }
+
+        this.container.replaceChildren(root);
+    }
+}
+
 export class Plot2d extends ReportElement {
     constructor(container, reportContext) {
         super(container, reportContext);
