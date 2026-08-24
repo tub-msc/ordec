@@ -148,6 +148,14 @@ def get_cookie_value(headers, name):
     return None
 
 
+def get_set_cookie(headers, name):
+    """The full Set-Cookie line (attributes included) for a cookie name."""
+    for set_cookie in headers.get('Set-Cookie', []):
+        if set_cookie.startswith(name + '='):
+            return set_cookie
+    return None
+
+
 def login(port, entry_path=PREFIX):
     """Walk the OAuth flow like a browser; returns the session cookie."""
     # 1. Unauthenticated page navigation -> redirect to hub authorize:
@@ -225,6 +233,29 @@ def test_oauth_rejects_state_mismatch(hub_server):
         f'{PREFIX}oauth_callback?code=goodcode&state=forged',
         {'Cookie': 'ordec-hub-state=forged'})
     assert status == 403
+
+
+def test_cookies_secure_behind_tls_proxy(hub_server):
+    # In the TLS deployment two proxies prepend to X-Forwarded-Proto: Caddy
+    # sets 'https', configurable-http-proxy appends its own hop. Both cookies
+    # must still get Secure; without it they travel in the clear on any plain
+    # HTTP request that precedes Caddy's redirect.
+    port, _, _ = hub_server
+    proxy_header = {'X-Forwarded-Proto': 'https,http'}
+
+    # The state cookie set with the redirect to the hub:
+    status, headers, _ = request(port, PREFIX,
+        dict(proxy_header, Accept='text/html'))
+    assert status == 302
+    assert 'Secure' in get_set_cookie(headers, 'ordec-hub-state')
+
+    # ...and the session cookie set by the callback:
+    state = get_cookie_value(headers, 'ordec-hub-state')
+    status, headers, _ = request(port,
+        f'{PREFIX}oauth_callback?code=goodcode&state={state}',
+        dict(proxy_header, Cookie=f'ordec-hub-state={state}'))
+    assert status == 302
+    assert 'Secure' in get_set_cookie(headers, 'ordec-hub-session')
 
 
 def test_base_path_enforcement(hub_server):

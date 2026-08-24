@@ -994,9 +994,14 @@ class StaticHandler:
 
     @staticmethod
     def request_is_https(request):
-        # Behind the hub proxy / TLS terminator, the original scheme
-        # arrives in X-Forwarded-Proto.
-        return request.headers.get('X-Forwarded-Proto', '') == 'https'
+        # Behind the hub proxy / TLS terminator, the original scheme arrives in
+        # X-Forwarded-Proto. With more than one proxy in the path the header is
+        # a comma-separated list, appended to per hop: Caddy sets 'https', then
+        # configurable-http-proxy adds its own 'http', giving 'https,http'. The
+        # leftmost entry is the scheme the browser actually used, and it is the
+        # only one that decides whether the cookie needs Secure.
+        hdr = request.headers.get('X-Forwarded-Proto', '')
+        return hdr.split(',')[0].strip().lower() == 'https'
 
     def process_request_example(self, name):
         srctype = None
