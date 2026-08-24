@@ -42,9 +42,28 @@ c.JupyterHub.cookie_secret_file = '/srv/jupyterhub/data/jupyterhub_cookie_secret
 # OAuth, not by the (URL-visible) username.
 # Swapping to institutional/OAuth login is a pure config change of
 # c.JupyterHub.authenticator_class (requires oauthenticator in the hub image).
+
+# These keys are the only credential in front of code execution on this host,
+# and /hub/login answers guesses without limit. Refuse to start on the
+# example.env placeholders or on a key short enough to be worth guessing, so a
+# deployment cannot go live on 'change-me'.
+MIN_KEY_LEN = 16
+
+def checked_key(name, value):
+    if value.startswith('change-me') or len(value) < MIN_KEY_LEN:
+        raise ValueError(
+            f"{name} is the example placeholder or shorter than "
+            f"{MIN_KEY_LEN} characters. Generate one with: "
+            f"python3 -c 'import secrets; print(secrets.token_urlsafe(24))'")
+    return value
+
 class ORDeCWorkshopAuthenticator(Authenticator):
-    workshop_key = os.environ['ORDEC_HUB_WORKSHOP_KEY']
+    workshop_key = checked_key(
+        'ORDEC_HUB_WORKSHOP_KEY', os.environ['ORDEC_HUB_WORKSHOP_KEY'])
+    # Empty disables admin login entirely; any other value must be a real key.
     admin_key = os.environ.get('ORDEC_HUB_ADMIN_KEY', '')
+    if admin_key:
+        admin_key = checked_key('ORDEC_HUB_ADMIN_KEY', admin_key)
     admin_users_allowed = frozenset(
         filter(None, os.environ.get('ORDEC_HUB_ADMINS', '').split(',')))
 

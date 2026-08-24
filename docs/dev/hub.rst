@@ -100,6 +100,7 @@ for the workshop hostname; Caddy fetches Let's Encrypt certificates by itself.
 
     # 3. Configuration
     cp support/hub/example.env support/hub/.env
+    python3 -c 'import secrets; print(secrets.token_urlsafe(24))'   # per key
     $EDITOR support/hub/.env     # domain, workshop key, admin key, limits
 
     # 4. Start hub + TLS proxy
@@ -151,6 +152,15 @@ Admins
     the admin key) — so knowing a participant's URL-visible ``guest-<random>``
     name does not grant access to their session. Access is gated by the signed
     hub session cookie and per-server OAuth, not the username.
+
+Key strength
+    Both keys guard code execution on the host, so generate them
+    (``python3 -c 'import secrets; print(secrets.token_urlsafe(24))'``) rather
+    than inventing them. The hub refuses to start on the ``example.env``
+    placeholders or on keys shorter than 16 characters. Entropy is the defense
+    that matters: the login page answers guesses from the internet and, since
+    the proxy also listens on the user network, from inside every participant
+    container.
 
 Ending a session
     The ORDeC toolbar shows an **End session** button in hub mode. It navigates
