@@ -119,8 +119,8 @@ class WebInfo:
             window.localStorage.setItem('ordecHmacBypass', arguments[1]?"true":"");
         """, self.key.token(), hmac_bypass)
 
-    def wait_for_ready(self):
-        WebDriverWait(self.driver, 10, poll_frequency=0.05).until(
+    def wait_for_ready(self, timeout=20):
+        WebDriverWait(self.driver, timeout, poll_frequency=0.05).until(
             EC.text_to_be_present_in_element((By.ID, 'status'), "ready"))
 
     def wait_until(self, js, timeout=10):
