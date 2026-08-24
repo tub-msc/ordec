@@ -29,6 +29,11 @@ services:
       # when running without Caddy: the limiter then stays off rather than
       # bucketing every client together.
       ORDEC_HUB_TRUSTED_PROXY_IPS: 172.31.0.3
+      # The hub's own address on the web network below. The public proxy binds
+      # it instead of 0.0.0.0, so it is reachable from Caddy but not from the
+      # user containers, which only ever need the REST API on 8081. Set this to
+      # 0.0.0.0 when publishing port 8000 for local testing without Caddy.
+      ORDEC_HUB_BIND_IP: 172.31.0.2
     volumes:
       # The hub spawns user containers through the host docker daemon.
       # This makes the hub container root-equivalent on the host; the hub
@@ -43,6 +48,9 @@ services:
       - jupyterhub-data:/srv/jupyterhub/data
     networks:
       web:
+        # Pinned so the proxy can bind this address only (matches
+        # ORDEC_HUB_BIND_IP above); Caddy still reaches it as 'jupyterhub'.
+        ipv4_address: 172.31.0.2
       users:
         # Pinned so user containers can reach the hub by IP with DNS disabled
         # (matches ORDEC_HUB_CONNECT_IP above).
@@ -66,7 +74,8 @@ services:
 
 networks:
   web:
-    # Fixed subnet so Caddy can hold a static IP (172.31.0.3 above).
+    # Fixed subnet so the hub and Caddy can hold static IPs (172.31.0.2 and
+    # 172.31.0.3 above).
     ipam:
       config:
         - subnet: 172.31.0.0/24

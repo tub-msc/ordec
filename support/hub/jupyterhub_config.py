@@ -336,9 +336,20 @@ c.Spawner.default_url = os.environ.get('ORDEC_HUB_DEFAULT_URL', '/')
 c.Spawner.env_keep = []
 
 # --- Hub networking (hub runs as the 'jupyterhub' compose service) --------
+# The REST API listens on both bridges: user containers need it for OAuth and
+# activity reporting.
 c.JupyterHub.hub_ip = '0.0.0.0'
 c.JupyterHub.hub_connect_ip = os.environ.get(
     'ORDEC_HUB_CONNECT_IP', 'jupyterhub')
+# The public proxy does not: only Caddy has any business talking to it, so it
+# binds the hub's address on the web network and stays off the user bridge,
+# where it would just be pre-auth attack surface (CHP plus every unauthenticated
+# hub handler) facing untrusted containers. bind_url is what JupyterHub passes
+# to configurable-http-proxy as --ip; it does not affect browser-facing URLs,
+# which come from public_url/subdomain_host. Default 0.0.0.0 keeps the
+# publish-port development setup in docs/dev/hub.rst working.
+c.JupyterHub.bind_url = \
+    f"http://{os.environ.get('ORDEC_HUB_BIND_IP', '0.0.0.0')}:8000"
 
 # --- Capacity --------------------------------------------------------------
 c.JupyterHub.active_server_limit = int(

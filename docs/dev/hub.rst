@@ -34,9 +34,12 @@ which dedicated servers do and most budget cloud VMs do not.
 
 The containers sit on an ``internal: true`` Docker network, so they have no
 NAT, no DNS and no egress — the hub proxy reaching the ORDeC port is the only
-path in or out. Per-user CPU and memory caps are enforced by the kernel, so a
-runaway simulation burns only its owner's allowance, and an out-of-memory kill
-lands inside that user's own VM. Nothing is mounted and nothing persists:
+path in or out. In the other direction they see just the hub's REST API, which
+they need for OAuth and activity reporting: the public proxy binds the hub's
+address on the Caddy-facing network instead of every interface, so it is not
+exposed to the containers it serves. Per-user CPU and memory caps are enforced
+by the kernel, so a runaway simulation burns only its owner's allowance, and an
+out-of-memory kill lands inside that user's own VM. Nothing is mounted and nothing persists:
 stopping an instance deletes it. The idle culler stops instances after 90
 minutes by default, long enough to survive a lunch break.
 
@@ -232,8 +235,9 @@ Local testing without KVM
 Setting ``ORDEC_HUB_RUNTIME=runc`` in ``.env`` runs the whole flow with plain
 containers, which is useful on a laptop and must never be used for a real
 workshop: it is the shared-kernel isolation that Kata exists to avoid. For
-testing without TLS, publish port 8000 of the jupyterhub service and use
-``http://localhost:8000``.
+testing without TLS, publish port 8000 of the jupyterhub service, set
+``ORDEC_HUB_BIND_IP: 0.0.0.0`` so the proxy listens on every interface rather
+than only the one Caddy uses, and browse to ``http://localhost:8000``.
 
 To exercise the full path through Caddy on a development host that has no
 domain and no certificate, point ``ORDEC_HUB_DOMAIN`` at an ``http://`` address
