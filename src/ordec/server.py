@@ -1094,6 +1094,9 @@ class StaticHandler:
         data = json.dumps({
             'name': name,
             'title': manifest['title'],
+            # Competition courses (a single task against a scoreboard) hide
+            # the lesson navigator in the frontend:
+            'competition': bool(manifest.get('competition', False)),
             'lessons': lessons,
         })
         return build_response(data=data.encode('utf8'), mime_type='application/json')

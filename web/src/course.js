@@ -575,6 +575,10 @@ export class CourseController {
         let text;
         if (kind === 'success' && this.welcomeFlagged()) {
             text = `<strong>Press here to proceed to lesson 2!</strong>`;
+        } else if (kind === 'success' && this.course.competition) {
+            text = `<strong>All checks pass!</strong>
+                <p>Note down the score from the report below and submit it
+                on the scoreboard &mdash; then keep improving it.</p>`;
         } else if (kind === 'success' && isLast) {
             text = `<strong>Lesson completed!</strong>
                 <p>Well done &mdash; all checks pass. This was the last lesson
@@ -669,13 +673,17 @@ export class CourseController {
     // loadLayout.
     mountNavigator(nav) {
         nav.classList.add('course-nav');
-        nav.innerHTML = `
+        // A competition course is a single task against a scoreboard: no
+        // lesson navigator, the report itself carries the title. Status
+        // marker and source management stay.
+        const lessonNav = this.course.competition ? '' : `
             <button class="toolbar-btn course-prev" title="Previous lesson"><svg class="course-arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3 L5 8 L10 13"/></svg></button>
             <span class="course-nav-sep"></span>
             <select class="toolbar-btn course-lessonsel"></select>
             <span class="course-nav-sep"></span>
             <button class="toolbar-btn course-next" title="Next lesson"><svg class="course-arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3 L11 8 L6 13"/></svg></button>
-            <span class="course-nav-sep"></span>
+            <span class="course-nav-sep"></span>`;
+        nav.innerHTML = lessonNav + `
             <span class="course-marker"></span>
             <span class="course-nav-spacer"></span>
             <span class="course-nav-sep"></span>
@@ -687,21 +695,23 @@ export class CourseController {
             <input type="file" class="course-import-file" accept=".zip" style="display:none">
         `;
 
-        nav.querySelector('.course-prev').onclick = () => {
-            const i = this.state.currentLesson - 1;
-            if (i >= 0) {
-                this.activateLesson(i);
-            }
-        };
-        nav.querySelector('.course-next').onclick = () => {
-            const i = this.state.currentLesson + 1;
-            if (i < this.course.lessons.length && this.lessonUnlocked(i)) {
-                this.activateLesson(i);
-            }
-        };
-        nav.querySelector('.course-lessonsel').onchange = (ev) => {
-            this.activateLesson(parseInt(ev.target.value, 10));
-        };
+        if (!this.course.competition) {
+            nav.querySelector('.course-prev').onclick = () => {
+                const i = this.state.currentLesson - 1;
+                if (i >= 0) {
+                    this.activateLesson(i);
+                }
+            };
+            nav.querySelector('.course-next').onclick = () => {
+                const i = this.state.currentLesson + 1;
+                if (i < this.course.lessons.length && this.lessonUnlocked(i)) {
+                    this.activateLesson(i);
+                }
+            };
+            nav.querySelector('.course-lessonsel').onchange = (ev) => {
+                this.activateLesson(parseInt(ev.target.value, 10));
+            };
+        }
         nav.querySelector('.course-export').onclick = () => this.exportZip();
         const fileInput = nav.querySelector('.course-import-file');
         nav.querySelector('.course-import').onclick = () => fileInput.click();
@@ -728,24 +738,27 @@ export class CourseController {
     renderNavigator(nav) {
         const cur = this.state.currentLesson;
 
+        // Absent on competition courses (see mountNavigator).
         const sel = nav.querySelector('.course-lessonsel');
-        sel.replaceChildren();
-        this.course.lessons.forEach((lesson, i) => {
-            const option = document.createElement('option');
-            const unlocked = this.lessonUnlocked(i);
-            option.value = i;
-            // Lesson numbering starts at 0 (the welcome lesson):
-            option.innerText = (i + 1) + ': ' + lesson.title;
-            option.title = lesson.description || '';
-            option.disabled = !unlocked;
-            option.selected = (i === cur);
-            sel.appendChild(option);
-        });
+        if (sel) {
+            sel.replaceChildren();
+            this.course.lessons.forEach((lesson, i) => {
+                const option = document.createElement('option');
+                const unlocked = this.lessonUnlocked(i);
+                option.value = i;
+                // Lesson numbering starts at 0 (the welcome lesson):
+                option.innerText = (i + 1) + ': ' + lesson.title;
+                option.title = lesson.description || '';
+                option.disabled = !unlocked;
+                option.selected = (i === cur);
+                sel.appendChild(option);
+            });
 
-        nav.querySelector('.course-prev').disabled = (cur <= 0);
-        nav.querySelector('.course-next').disabled =
-            (cur + 1 >= this.course.lessons.length)
-            || !this.lessonUnlocked(cur + 1);
+            nav.querySelector('.course-prev').disabled = (cur <= 0);
+            nav.querySelector('.course-next').disabled =
+                (cur + 1 >= this.course.lessons.length)
+                || !this.lessonUnlocked(cur + 1);
+        }
 
         const marker = nav.querySelector('.course-marker');
         marker.className = 'course-marker course-marker-' + this.reportStatus;

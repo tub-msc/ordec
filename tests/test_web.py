@@ -515,6 +515,31 @@ def test_course_intro_callout(web):
 
 
 @pytest.mark.web
+def test_course_competition_nav(web):
+    """A competition course (amp_competition) hides the lesson navigator; the
+    status marker and the source management buttons remain."""
+    web.resize_viewport()
+    web.driver.get(web.url)
+    web.driver.execute_script(
+        "window.localStorage.removeItem('ordecCourse:amp_competition');")
+
+    web.navigate('app.html#course=amp_competition')
+    web.wait_for_ready()
+    info = web.driver.execute_script("""
+        return {
+            prev: !!document.querySelector('.course-prev'),
+            lessonsel: !!document.querySelector('.course-lessonsel'),
+            next: !!document.querySelector('.course-next'),
+            marker: !!document.querySelector('.course-marker'),
+            export_: !!document.querySelector('.course-export'),
+            startover: !!document.querySelector('.course-startover'),
+        };
+    """)
+    assert info == {'prev': False, 'lessonsel': False, 'next': False,
+        'marker': True, 'export_': True, 'startover': True}
+
+
+@pytest.mark.web
 def test_course_welcome_no_tour(web):
     """The generic welcome flag without the getting_started tour: lesson 1
     of the layout tutorial auto-passes and shows the proceed callout right

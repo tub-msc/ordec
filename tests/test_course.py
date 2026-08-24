@@ -671,6 +671,25 @@ courses_testdata = {
             """),
         ]),
     ]),
+    'amp_competition': CourseTestdata('Amplifier Competition', [
+        # Competition lesson: meet the spec gates, minimize supply current.
+        # The empty skeleton passes the device whitelist (nothing forbidden
+        # yet) and fails the three measured gates. The reference solution is
+        # a ratio-centered CMOS inverter amplifier at ~30 uA; the
+        # headroom below it (down to ~5 uA at minimum widths, where the
+        # unity-gain gate binds) is playtested but not asserted here.
+        LessonTestdata(passfails=4,
+            skeleton_passed=[True, False, False, False],
+            solution=[
+            InsertSolution("""
+            # EDIT HERE: your amplifier. Only ihp130 Nmos, Pmos, Rsil,
+            # Rppd and Rhigh are allowed (see the course panel).
+            """, """
+            Nmos mn: .$w=1u; .$l=500n; .g -- vin; .d -- vout; .s -- vss; .b -- vss; .pos=(6,4)
+            Pmos mp: .$w=6.25u; .$l=500n; .$ng=2; .g -- vin; .d -- vout; .s -- vdd; .b -- vdd; .pos=(6,10)
+            """),
+        ]),
+    ]),
 }
 
 
@@ -750,6 +769,13 @@ def test_course_special_lesson_flags():
     for lesson in course_data('cmos_circuits')['lessons']:
         assert not lesson['welcome']
         assert not lesson['epilogue']
+
+
+def test_course_competition_flag():
+    # The competition flag (hides the lesson navigator in the frontend)
+    # must be passed through, and only amp_competition carries it.
+    for name in courses_testdata:
+        assert course_data(name)['competition'] is (name == 'amp_competition')
 
 
 def test_course_unknown():

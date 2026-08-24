@@ -1,0 +1,12 @@
+{
+  "title": "Amplifier Competition",
+  "competition": true,
+  "lessons": [
+    {
+      "file": "challenge.ord",
+      "title": "The task",
+      "description": "Meet the amplifier specs, then minimize supply current. Lowest current wins.",
+      "lesson_gen": "gen_challenge"
+    }
+  ]
+}
