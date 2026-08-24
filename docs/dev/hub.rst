@@ -135,9 +135,15 @@ Admins
     enter an allowlisted username (``ORDEC_HUB_ADMINS``) plus the separate admin
     key (``ORDEC_HUB_ADMIN_KEY``). Admins land directly on the JupyterHub admin
     panel at ``/hub/admin`` (no ORDeC container is spawned for them), which lists
-    every session, shows activity, and can stop, access or delete servers. For
+    every session, shows activity, and can stop or delete servers. For
     live CPU/RAM use ``docker stats`` on the host. Leaving ``ORDEC_HUB_ADMIN_KEY``
     empty disables admin login.
+
+    Admins deliberately cannot *open* a participant's ORDeC UI. The hub does not
+    enforce this: its built-in admin role holds ``access:servers`` and cannot be
+    narrowed, so the "access server" link does get a valid OAuth grant. ORDeC's
+    own user check in ``login_with_code`` (``ordec/hub.py``, commented with the
+    reason) is the single guard that refuses it.
 
     The username is not a credential. ``authenticate`` never lets a caller pick
     an existing guest identity — an empty username always mints a fresh random

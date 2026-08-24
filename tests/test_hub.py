@@ -284,7 +284,9 @@ def test_login_with_code_direct(fake_hub):
     hub = make_hub(fake_hub)
     assert hub.login_with_code('goodcode') == 'alice'
     with pytest.raises(HubAuthError):
-        hub.login_with_code('evilcode')  # wrong user
+        # Any other user is refused, hub admins included: this is what keeps an
+        # admin out of a participant's ORDeC UI (see login_with_code).
+        hub.login_with_code('evilcode')
     with pytest.raises(HubAuthError):
         hub.login_with_code('nonsense')  # unknown code
 

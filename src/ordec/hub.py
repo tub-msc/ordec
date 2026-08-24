@@ -217,6 +217,18 @@ class HubIntegration:
         except (URLError, HTTPError, KeyError, ValueError) as e:
             raise HubAuthError(f"hub user lookup failed: {e}") from e
 
+        # Single-user gate, and it deliberately refuses hub admins as well. Do
+        # not relax that (e.g. to make the admin panel's "access server" button
+        # work): ORDeC renders participant-authored HTML from Reports as script
+        # on this instance's origin, so in an admin's browser it would run
+        # same-origin with /hub/admin, whose container mounts the docker socket.
+        # Nothing else stops this: JupyterHub's built-in admin role holds
+        # 'access:servers' and cannot be narrowed (load_roles refuses to
+        # redefine it, and c.JupyterHub.admin_access is a no-op since
+        # JupyterHub 2.0), so the hub does hand an admin a valid OAuth grant
+        # for this instance. This check is the only guard, and it compares
+        # identity, not scopes, so it holds however the hub hands out
+        # 'access:servers' (admin role, shares, ...).
         if username != self.user:
             raise HubAuthError(
                 f"user {username!r} is not authorized for this server")

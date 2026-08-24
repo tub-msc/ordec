@@ -117,6 +117,13 @@ c.JupyterHub.authenticator_class = ORDeCWorkshopAuthenticator
 # We mint guest names ourselves and gate admins in authenticate(), so every
 # name returned above is already authorized:
 c.Authenticator.allow_all = True
+# Admins here hold 'access:servers', and that cannot be changed: it is part of
+# JupyterHub's built-in admin role, load_roles refuses to redefine that role
+# (RoleValueError), and c.JupyterHub.admin_access has been a no-op since
+# JupyterHub 2.0. The admin panel's "access server" link therefore does get a
+# valid OAuth grant for a participant's instance; the only thing that refuses it
+# is the user check in login_with_code() (src/ordec/hub.py), which explains why
+# that matters. Do not weaken that check.
 
 # --- Login form / logout ---------------------------------------------------
 # Custom login.html (see support/hub/templates/) renders the workshop-key page
