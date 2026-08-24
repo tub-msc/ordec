@@ -23,6 +23,12 @@ services:
       # block a DNS covert channel, so the hub is pinned to a static address on
       # the users network below and referenced by that IP here.
       ORDEC_HUB_CONNECT_IP: 172.30.0.2
+      # Caddy's address on the web network below. The hub skips it when
+      # reading X-Forwarded-For, so logins are rate-limited per real client
+      # address instead of per proxy (see jupyterhub_config.py). Leave it unset
+      # when running without Caddy: the limiter then stays off rather than
+      # bucketing every client together.
+      ORDEC_HUB_TRUSTED_PROXY_IPS: 172.31.0.3
     volumes:
       # The hub spawns user containers through the host docker daemon.
       # This makes the hub container root-equivalent on the host; the hub
@@ -53,10 +59,17 @@ services:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
     networks:
-      - web
+      web:
+        # Pinned so the hub can name it as a trusted proxy and recover the real
+        # client address from X-Forwarded-For (ORDEC_HUB_TRUSTED_PROXY_IPS).
+        ipv4_address: 172.31.0.3
 
 networks:
   web:
+    # Fixed subnet so Caddy can hold a static IP (172.31.0.3 above).
+    ipam:
+      config:
+        - subnet: 172.31.0.0/24
   users:
     name: ordec-hub-users
     # internal: no NAT / no route to the outside. User containers reach the

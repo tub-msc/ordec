@@ -11,6 +11,9 @@ from environment variables (ORDEC_HUB_*), see support/hub/example.env.
 import os
 import secrets
 import sys
+import time
+
+from tornado import web
 
 from jupyterhub.auth import Authenticator
 from jupyterhub.handlers.login import LoginHandler, LogoutHandler
@@ -57,6 +60,100 @@ def checked_key(name, value):
             f"python3 -c 'import secrets; print(secrets.token_urlsafe(24))'")
     return value
 
+# A per-IP limit needs a trustworthy client IP. The hub sees X-Forwarded-For as
+# "<client>, <caddy>" (Caddy appends the real peer, configurable-http-proxy
+# then appends Caddy), and Tornado picks the rightmost entry that is not a
+# trusted downstream. Unless that is Caddy, every internet client reads as one
+# address and a shared bucket would lock out the whole workshop, so the limiter
+# below stays off when the proxy address is unknown. Requests arriving straight
+# from the user network carry the container's own address either way.
+trusted_proxy_ips = [ip.strip() for ip
+    in os.environ.get('ORDEC_HUB_TRUSTED_PROXY_IPS', '').split(',') if ip.strip()]
+c.JupyterHub.trusted_downstream_ips = trusted_proxy_ips
+
+def client_ip(request):
+    """
+    The client address according to the proxy chain, or None if it cannot be
+    determined.
+
+    Deliberately not request.remote_ip: Tornado lets *any* client override that
+    with an X-Real-Ip header, unconditionally and with no trust check
+    (httpserver.py, _apply_xheaders), and neither Caddy nor
+    configurable-http-proxy strips it. Keying a limit on remote_ip would hand
+    an attacker a fresh bucket per request.
+
+    X-Forwarded-For cannot be forged the same way. Every hop appends the
+    address it actually received the connection from, so the chain reads
+    "<client>, <caddy>" from the internet and "<container>" from the user
+    network: a client can prepend junk, never append. The last entry that is
+    not a known proxy is therefore the real client.
+    """
+    forwarded = request.headers.get('X-Forwarded-For', '')
+    for entry in reversed(forwarded.split(',')):
+        entry = entry.strip()
+        if entry and entry not in trusted_proxy_ips:
+            return entry
+    # No proxy in front: a direct connection to the hub port. The socket peer
+    # is genuine, unlike remote_ip, which xheaders may have rewritten.
+    context = getattr(request.connection, 'context', None)
+    address = getattr(context, 'address', None)
+    return address[0] if address else None
+
+class FailedLoginLimiter:
+    """
+    Token bucket of failed logins per client IP: BURST at once, refilling at
+    PER_MINUTE. Only failures are charged, and the burst is generous, because
+    participants routinely share one NAT address: a lecture hall logging in at
+    the same time must not throttle itself.
+
+    This bounds naive brute forcing. It is not what makes guessing infeasible,
+    since an attacker with many addresses spreads across buckets; key entropy
+    (checked_key above) is.
+    """
+    BURST = 30
+    PER_MINUTE = 10
+    MAX_TRACKED = 4096
+
+    def __init__(self, enabled):
+        self.enabled = enabled
+        self._buckets = {}  # ip -> (tokens, monotonic timestamp)
+
+    def _tokens(self, ip, now):
+        tokens, updated = self._buckets.get(ip, (self.BURST, now))
+        return min(self.BURST, tokens + (now - updated) * self.PER_MINUTE / 60)
+
+    def blocked(self, ip):
+        # ip is None when the client cannot be identified; fail open there
+        # rather than share one bucket, which would let one client lock out
+        # everybody. Key entropy still applies.
+        if not self.enabled or ip is None:
+            return False
+        return self._tokens(ip, time.monotonic()) < 1
+
+    def record_failure(self, ip):
+        if ip is None:
+            return
+        now = time.monotonic()
+        tokens = max(0.0, self._tokens(ip, now) - 1)
+        if ip not in self._buckets and len(self._buckets) >= self.MAX_TRACKED:
+            self._make_room(now)
+        self._buckets[ip] = (tokens, now)
+
+    def _make_room(self, now):
+        # Refilled buckets behave exactly like unseen IPs, so they are free to
+        # drop. If that frees nothing, an attacker is cycling through more
+        # addresses than a per-IP limit can help with anyway; evict oldest.
+        refilled = []
+        for ip in self._buckets:
+            if self._tokens(ip, now) >= self.BURST:
+                refilled.append(ip)
+        for ip in refilled:
+            del self._buckets[ip]
+        while len(self._buckets) >= self.MAX_TRACKED:
+            del self._buckets[next(iter(self._buckets))]
+
+login_limiter = FailedLoginLimiter(enabled=bool(trusted_proxy_ips))
+
 class ORDeCWorkshopAuthenticator(Authenticator):
     workshop_key = checked_key(
         'ORDEC_HUB_WORKSHOP_KEY', os.environ['ORDEC_HUB_WORKSHOP_KEY'])
@@ -67,6 +164,10 @@ class ORDeCWorkshopAuthenticator(Authenticator):
     admin_users_allowed = frozenset(
         filter(None, os.environ.get('ORDEC_HUB_ADMINS', '').split(',')))
 
+    # Note a delay on failure would be no defense at all: an attacker need not
+    # wait for the response, and the delay itself signals the failure. The
+    # limiter refuses instead, before the key is looked at (see the login
+    # handler below).
     async def authenticate(self, handler, data):
         username = data.get('username', '').strip()
         key = data.get('password', '')
@@ -75,10 +176,17 @@ class ORDeCWorkshopAuthenticator(Authenticator):
             if (self.admin_key and username in self.admin_users_allowed
                     and secrets.compare_digest(key, self.admin_key)):
                 return {'name': username, 'admin': True}
-            return None
+            return self.failed(handler)
         # Guest path: workshop key only, unique ephemeral identity per login.
         if secrets.compare_digest(key, self.workshop_key):
             return {'name': 'guest-' + secrets.token_hex(6), 'admin': False}
+        return self.failed(handler)
+
+    @staticmethod
+    def failed(handler):
+        """Charge the failure to the client's budget and reject the login."""
+        if handler is not None:
+            login_limiter.record_failure(client_ip(handler.request))
         return None
 
     def get_handlers(self, app):
@@ -95,6 +203,16 @@ class ORDeCWorkshopAuthenticator(Authenticator):
 # at /hub/login?admin, and also when re-rendering after a failed admin login
 # (which submits a non-empty username).
 class ORDeCLoginHandler(LoginHandler):
+    async def post(self):
+        # Refuse over budget without looking at the submitted key, so the
+        # response says nothing about whether it was right.
+        ip = client_ip(self.request)
+        if login_limiter.blocked(ip):
+            self.log.warning("login rate limit reached for %s", ip)
+            raise web.HTTPError(
+                429, "Too many failed logins. Try again in a minute.")
+        await super().post()
+
     def _render(self, login_error=None, username=None, **kwargs):
         admin_login = (self.get_argument('admin', default=None) is not None
             or bool((username or '').strip()))

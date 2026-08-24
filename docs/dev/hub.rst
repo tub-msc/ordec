@@ -162,6 +162,17 @@ Key strength
     the proxy also listens on the user network, from inside every participant
     container.
 
+    Failed logins are additionally rate-limited per client address (30 at once,
+    refilling at 10/min, answered with 429 over budget). Successful logins are
+    never charged, so a room sharing one NAT address does not throttle itself.
+    This needs the real client address, which is read from the end of the
+    ``X-Forwarded-For`` chain, skipping the proxies named by
+    ``ORDEC_HUB_TRUSTED_PROXY_IPS`` (docker-compose.yml pins Caddy's address).
+    Each hop appends the peer it actually saw, so a client can prepend entries
+    but never append one. Tornado's ``request.remote_ip`` is deliberately not
+    used: it honours a client-supplied ``X-Real-Ip`` header without any trust
+    check, which the Caddyfile therefore also strips.
+
 Ending a session
     The ORDeC toolbar shows an **End session** button in hub mode. It navigates
     to ``/hub/logout``; the hub runs with ``shutdown_on_logout`` so logging out
