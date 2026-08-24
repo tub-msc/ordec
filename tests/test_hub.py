@@ -311,6 +311,38 @@ def test_activity_reporting(hub_server, fake_hub):
     assert len(fake_hub.activity_posts) == posts_before + 1
 
 
+def test_pending_login_survives_unauthenticated_flood(hub_server):
+    port, _, _ = hub_server
+    # A login starts, i.e. a state is issued and cookied in the browser:
+    _, headers, _ = request(port, PREFIX, {'Accept': 'text/html'})
+    state = get_cookie_value(headers, 'ordec-hub-state')
+
+    # Meanwhile anyone can make the server issue states without logging in.
+    # That must not invalidate the login above.
+    for _ in range(200):
+        request(port, PREFIX, {'Accept': 'text/html'})
+
+    status, headers, _ = request(port,
+        f'{PREFIX}oauth_callback?code=goodcode&state={state}',
+        {'Cookie': f'ordec-hub-state={state}'})
+    assert status == 302
+    assert get_cookie_value(headers, 'ordec-hub-session')
+
+
+def test_state_rejects_forgery(fake_hub):
+    hub = make_hub(fake_hub)
+    state = hub.new_state('/user/alice/')
+    assert hub.check_state(state) == '/user/alice/'
+
+    body, _, sig = state.partition('.')
+    assert hub.check_state(f'{body}x.{sig}') is None    # tampered payload
+    assert hub.check_state(f'{body}.{sig[:-1]}x') is None  # tampered signature
+    assert hub.check_state(body) is None                # unsigned
+    assert hub.check_state('nonsense') is None
+    # A state signed by another instance does not open this one:
+    assert hub.check_state(make_hub(fake_hub).new_state('/user/alice/')) is None
+
+
 def test_activity_needs_authentication(hub_server):
     port, _, hub = hub_server
     cookie = login(port)

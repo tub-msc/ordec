@@ -28,6 +28,8 @@ responses, cookies on the wire) lives in server.py.
 import os
 import json
 import time
+import base64
+import hmac
 import secrets
 import threading
 from datetime import datetime, timezone
@@ -36,11 +38,10 @@ from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 
-# Bound the in-memory state/session stores. Both only grow through requests
-# that already reached this server via the hub proxy, so these are
-# anti-accident limits, not the primary defense.
-MAX_PENDING_STATES = 100
 STATE_TTL = 600  # seconds a pending OAuth state stays valid
+# Bounds the in-memory session store. It only grows through logins that the hub
+# authenticated, so this is an anti-accident limit, not the primary defense.
+# (Pending OAuth states need no such bound: they are signed tokens, not rows.)
 MAX_SESSIONS = 100
 
 
@@ -98,7 +99,9 @@ class HubIntegration:
         self.activity_interval = activity_interval
 
         self._lock = threading.Lock()
-        self._states = {}    # state id -> (creation time, next_url)
+        # Signing key for OAuth state tokens; per process, since a state only
+        # has to outlive one login (STATE_TTL).
+        self._state_secret = secrets.token_bytes(32)
         self._sessions = {}  # session id -> username
         self._last_activity = time.time()
         self._reported_activity = 0.0
@@ -152,31 +155,46 @@ class HubIntegration:
 
     def new_state(self, next_url):
         """
-        Register a pending OAuth login; returns the state id to put in both
+        Mint the state for a pending OAuth login; the result goes into both
         the authorize redirect and the state cookie. next_url is where the
         browser goes after a successful callback.
-        """
-        state = secrets.token_urlsafe(32)
-        now = time.time()
-        with self._lock:
-            for k in [k for k, (t, _) in self._states.items()
-                    if now - t > STATE_TTL]:
-                del self._states[k]
-            while len(self._states) >= MAX_PENDING_STATES:
-                del self._states[next(iter(self._states))]
-            self._states[state] = (now, next_url)
-        return state
 
-    def pop_state(self, state):
-        """Consume a pending state; returns its next_url or None."""
-        with self._lock:
-            entry = self._states.pop(state, None)
-        if entry is None:
+        The state carries its own issue time and next_url, authenticated by
+        HMAC, rather than naming a row in a server-side table. Minting one is
+        unauthenticated (any page navigation does it), and a table would let a
+        flood of such requests evict a real login's pending entry and break it.
+        Nothing is stored, so there is nothing to evict or exhaust.
+        """
+        payload = f"{int(time.time())}:{next_url}".encode()
+        body = base64.urlsafe_b64encode(payload).rstrip(b'=')
+        return (body + b'.' + self._state_sig(body)).decode()
+
+    def check_state(self, state):
+        """
+        Validate a state; returns its next_url, or None if the state was not
+        issued here, is malformed, or has expired.
+
+        Unlike a table entry a state is not consumed, so it stays valid for
+        STATE_TTL. Replaying one is of no use by itself: the callback also
+        requires the matching state cookie in the browser, and the hub accepts
+        each OAuth code only once.
+        """
+        body, _, sig = state.encode().partition(b'.')
+        if not hmac.compare_digest(sig, self._state_sig(body)):
             return None
-        created, next_url = entry
-        if time.time() - created > STATE_TTL:
+        try:
+            payload = base64.urlsafe_b64decode(
+                body + b'=' * (-len(body) % 4)).decode()
+            issued, next_url = payload.split(':', 1)
+            if time.time() - int(issued) > STATE_TTL:
+                return None
+        except (ValueError, UnicodeDecodeError):
             return None
-        return next_url
+        return next_url or None
+
+    def _state_sig(self, body):
+        return base64.urlsafe_b64encode(
+            hmac.digest(self._state_secret, body, 'sha256')).rstrip(b'=')
 
     def authorize_redirect_url(self, state):
         return self.authorize_url + '?' + urlencode({

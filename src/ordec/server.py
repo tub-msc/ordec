@@ -978,7 +978,7 @@ class StaticHandler:
         # server started in this browser (OAuth CSRF protection).
         if not code or not state or state != state_cookie:
             return build_response(http.HTTPStatus.FORBIDDEN)
-        next_url = self.hub.pop_state(state)
+        next_url = self.hub.check_state(state)
         if next_url is None:
             return build_response(http.HTTPStatus.FORBIDDEN)
         try:
