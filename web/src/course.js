@@ -8,7 +8,9 @@
 // CourseController below for the navigator UI and persistence.
 
 import { zipSync, unzipSync, strToU8, strFromU8 } from 'fflate';
+import { session } from './auth.js';
 import { startCourseTour } from './tour.js';
+import { Scoreboard } from './scoreboard.js';
 
 let courseController = null;
 
@@ -68,6 +70,11 @@ export class CourseController {
         this.courseViewer = null;
         this.navElements = []; // navigator DOM roots (re-created per Editor)
         this.reportStatus = 'busy'; // 'busy' | 'unchecked' | 'pass' | 'fail' | 'error'
+        // Competition courses push scores to the hub's scoreboard service,
+        // where one runs (see scoreboard.js); main.js has the team join the
+        // scoreboard before the course opens.
+        this.scoreboard = (course.competition && session.scoreboardUrl)
+            ? new Scoreboard(session.scoreboardUrl, course) : null;
         this.suspendUistateSave = false;
         // Callout shown over the lesson report: null | 'intro' | 'success'.
         this.calloutKind = null;
@@ -348,6 +355,7 @@ export class CourseController {
     onReportResult(msg) {
         if (msg.exception) {
             this.reportStatus = 'error';
+            this.pushScore([]);
         } else if (this.welcomeFlagged() || this.epilogueFlagged()) {
             // Task-free lessons (welcome lesson, epilogue) count as solved
             // right away, unlocking the following lesson if any.
@@ -369,11 +377,31 @@ export class CourseController {
             if (passed) {
                 this.markLessonPassed();
             }
+            this.pushScore(msg.data.elements || []);
         } else {
             console.error('course: unexpected report view type', msg.type);
             this.reportStatus = 'error';
         }
         this.renderNavigators();
+    }
+
+    // Pushes the state of this build to the workshop scoreboard, where one
+    // runs: the score when all checks pass, else null (the board then shows
+    // "no score" again), plus the source and the report's schematic as
+    // audit trail.
+    pushScore(elements) {
+        if (!this.scoreboard || !this.editor) {
+            return;
+        }
+        const score = elements.find(e => e.element_type === 'score');
+        const svg = elements.find(e => e.element_type === 'svg');
+        const markup = svg ? '<svg xmlns="http://www.w3.org/2000/svg"'
+            + ' viewBox="' + svg.viewbox.join(' ') + '"'
+            + (svg.width ? ' width="' + svg.width + '"' : '')
+            + (svg.height ? ' height="' + svg.height + '"' : '')
+            + '>' + svg.inner + '</svg>' : null;
+        this.scoreboard.push((score && score.eligible) ? score.value : null,
+            this.editor.editor.getValue(), markup);
     }
 
     // -- Zip import/export ----------------------------------------------
@@ -576,9 +604,12 @@ export class CourseController {
         if (kind === 'success' && this.welcomeFlagged()) {
             text = `<strong>Press here to proceed to lesson 2!</strong>`;
         } else if (kind === 'success' && this.course.competition) {
-            text = `<strong>All checks pass!</strong>
-                <p>Note down the score from the report below and submit it
-                on the scoreboard &mdash; then keep improving it.</p>`;
+            text = this.scoreboard
+                ? `<strong>All checks pass!</strong>
+                    <p>Your score is live on the scoreboard &mdash; keep
+                    improving it.</p>`
+                : `<strong>All checks pass!</strong>
+                    <p>Now push the supply current as low as you can.</p>`;
         } else if (kind === 'success' && isLast) {
             text = `<strong>Lesson completed!</strong>
                 <p>Well done &mdash; all checks pass. This was the last lesson
@@ -733,6 +764,9 @@ export class CourseController {
         this.navElements = this.navElements.filter(e => e.isConnected);
         this.navElements.forEach(nav => this.renderNavigator(nav));
         this.updateCallout();
+        // The scoreboard panel marks the own score stale while a rebuild
+        // runs (reportStatus 'busy').
+        this.scoreboard?.statusChanged();
     }
 
     renderNavigator(nav) {

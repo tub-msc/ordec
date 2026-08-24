@@ -44,6 +44,12 @@ fetch('api/version')
 // and the logout URL; wire the "End session" control from that (the same wiring
 // lives in main.js for the app page — keep in sync).
 await initSession();
+// The competition course needs the hub's scoreboard service, which is
+// enabled per workshop (ORDEC_HUB_SCOREBOARD); without it the course stays
+// unlisted (but reachable by URL).
+if (session.scoreboardUrl) {
+    document.querySelector('#competitionSection').hidden = false;
+}
 if (session.hubMode && session.hubLogoutUrl) {
     const endSession = document.querySelector('#hubEndSession');
     endSession.href = session.hubLogoutUrl;

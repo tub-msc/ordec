@@ -1980,3 +1980,98 @@ body.theme-dark .lm_content {
     padding: 8px 20px;
     cursor: pointer;
 }
+
+/* Team dialog of competition courses (scoreboard.js join), shown before the
+   course opens: a modal backdrop over the whole page with the name form. */
+#teamdialog {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.teamdialog-box {
+    background: var(--color-bg);
+    color: var(--color-text);
+    padding: 24px 32px;
+    border-radius: 6px;
+    max-width: 420px;
+}
+.teamdialog-box h2 {
+    margin-top: 0;
+}
+.teamdialog-name {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    margin: 6px 0;
+    font-size: var(--font-size-lg);
+}
+.teamdialog-error {
+    color: var(--color-fail-fg);
+    min-height: 1.2em;
+}
+.teamdialog-join {
+    font-size: 15px;
+    padding: 8px 20px;
+    cursor: pointer;
+}
+
+/* Scoreboard panel (scoreboard.js ScoreboardPanel): the live standings. */
+.scoreboard {
+    height: 100%;
+    box-sizing: border-box;
+    padding: 6px 8px;
+    overflow: auto;
+}
+.scoreboard table {
+    border-collapse: collapse;
+    width: 100%;
+}
+.scoreboard th,
+.scoreboard td {
+    padding: 3px 8px;
+    text-align: left;
+    border-bottom: 1px solid var(--color-border-light);
+}
+.scoreboard th {
+    background: var(--color-bg-table-header);
+}
+.scoreboard .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+.scoreboard .noscore {
+    color: var(--color-text-muted);
+}
+.scoreboard-own {
+    font-weight: bold;
+}
+.scoreboard-final {
+    margin: 0 0 6px;
+    font-weight: bold;
+}
+/* Spinner next to the own score while it is out of date (rebuild or push
+   in progress); only shown while the panel carries .scoreboard-stale. */
+.scoreboard-spinner {
+    display: none;
+    vertical-align: middle;
+    margin-left: 6px;
+}
+.scoreboard-stale .scoreboard-spinner {
+    display: inline-block;
+}
+.scoreboard-rename {
+    font-size: smaller;
+    color: var(--color-text-muted);
+}
+.teamdialog-cancel {
+    margin-left: 8px;
+    padding: 8px 20px;
+    cursor: pointer;
+}
+.scoreboard-error {
+    color: var(--color-fail-fg);
+}

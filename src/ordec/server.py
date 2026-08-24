@@ -964,10 +964,12 @@ class StaticHandler:
             if req_path == Path('api/token'):
                 # Token handoff to the hub-authenticated frontend; replaces
                 # the #auth= URL fragment of standalone operation. Also carries
-                # the hub logout URL for the UI's "End session" control.
+                # the hub logout URL for the UI's "End session" control and
+                # the competition scoreboard's URL (None without one).
                 data = json.dumps({
                     'auth': self.key.token(),
                     'hub_logout_url': self.hub.logout_url,
+                    'scoreboard': self.hub.scoreboard_url,
                 })
                 return build_response(data=data.encode('utf8'),
                     mime_type='application/json',

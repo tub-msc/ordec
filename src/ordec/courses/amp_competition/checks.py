@@ -117,10 +117,8 @@ def gen_challenge(g):
                 Rppd r1: .$w=1u; .$l=10u; .p -- vdd; .n -- vout; .bn -- vss; .pos=(6,9)
 
             Watch your design in the `report_dc` and `report_ac` views.
-            When all checks below are green, submit the reported score
-            with your team name on the
-            <a href="/services/scoreboard/" target="_blank">scoreboard</a>,
-            pasting your complete editor content as source.
+            Your score appears on the scoreboard automatically whenever
+            all checks pass.
         """)
 
         # Hints level the field without giving away sizings.
@@ -193,9 +191,19 @@ def gen_challenge(g):
         if isup is not None:
             eligible = all(e.passed for e in report.elements()
                 if isinstance(e, PassFail))
-            report.markdown(
-                f"### Score: {isup * 1e6:.2f} µA supply current\n" +
-                ("All checks pass — submit it!" if eligible else
-                 "Counts only once all checks above are green."))
+            # In competition course mode, the frontend pushes eligible
+            # scores to the workshop scoreboard (see web/src/scoreboard.js).
+            report.score("Score (supply current)", isup * 1e6, unit="µA",
+                eligible=eligible)
+        # The schematic goes to the scoreboard with the score (see
+        # course.js pushScore), so admins can look at a submission without
+        # running it. Skipped when it cannot be drawn: that case is already
+        # reported by the checks above.
+        try:
+            schematic = g['Amp']().schematic
+            report.markdown("Your schematic, as pushed with the score:")
+            report.svg(schematic)
+        except Exception:
+            pass
         return report
     return lesson

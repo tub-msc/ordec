@@ -193,6 +193,7 @@ def test_oauth_flow_and_token_handoff(hub_server):
     assert json.loads(body) == {
         'auth': key.token(),
         'hub_logout_url': hub.logout_url,
+        'scoreboard': None,
     }
 
     # ...but not without the session cookie:
@@ -387,6 +388,10 @@ def test_from_env():
     assert hub.logout_url == '/hub/logout'
     assert hub.callback_url == '/user/alice/oauth_callback'
     assert hub.service_url_bind(env) == ('0.0.0.0', 8100)
+    # The competition scoreboard is off unless the spawner says otherwise:
+    assert hub.scoreboard_url is None
+    assert HubIntegration.from_env(dict(env, ORDEC_HUB_SCOREBOARD='1')
+        ).scoreboard_url == '/services/scoreboard/'
 
     assert HubIntegration.from_env({}) is None
     assert HubIntegration.from_env(dict(env, ORDEC_HUB_DISABLE='1')) is None

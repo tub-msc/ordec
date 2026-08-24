@@ -115,21 +115,34 @@ for the workshop hostname; Caddy fetches Let's Encrypt certificates by itself.
     # 1. Host: Docker + Kata Containers + smoke test (review this first!)
     sudo support/hub/deploy/host-setup.sh
 
-    # 2. Images (from the repository root)
-    docker build -t ordec .
-    docker build -t ordec-hub-user -f support/hub/Dockerfile support/hub/
-
-    # 3. Configuration
+    # 2. Configuration
     cp support/hub/example.env support/hub/.env
     python3 -c 'import secrets; print(secrets.token_urlsafe(24))'   # per key
     $EDITOR support/hub/.env     # domain, workshop key, admin key, limits
 
-    # 4. Start hub + TLS proxy
-    cd support/hub/
-    docker compose up -d --build
+    # 3. Fresh start: stop a previous hub (it stops its user instances on the
+    #    way down) and drop its state -- user db, scoreboard, certificate
+    docker compose -f support/hub/docker-compose.yml down -v -t 120
+
+    # 4. Images (from the repository root)
+    docker build -t ordec .
+    docker build -t ordec-hub-user -f support/hub/Dockerfile support/hub/
+
+    # 5. Start hub + TLS proxy
+    docker compose -f support/hub/docker-compose.yml up -d --build
 
 Participants then browse to ``https://<domain>/``, enter the workshop key (no
 username), and land in ORDeC.
+
+Step 3 is for a new workshop or a schema change (the scoreboard's sqlite
+table is created once and never migrated); it also discards Caddy's
+certificate, which Let's Encrypt rate-limits to five per hostname and week.
+To apply changes (``.env``, hub config, ORDeC itself), re-run steps 4 and 5:
+``up`` recreates the hub only if its image or configuration changed, and new
+logins get the rebuilt user image while running instances keep the old one
+until they end. The one file this misses is ``deploy/Caddyfile``, which is
+bind-mounted: after editing it, ``docker compose -f
+support/hub/docker-compose.yml restart caddy``.
 
 The pieces live in ``support/hub/``: ``jupyterhub_config.py`` (authenticator, spawner,
 limits, culler — all tunable through ``ORDEC_HUB_*`` variables),
@@ -210,6 +223,61 @@ Ending a session
 Moving to institutional or OAuth login is a config change of
 ``c.JupyterHub.authenticator_class`` — nothing in ORDeC or the spawner setup may
 assume the shared-key model.
+
+Workshop competitions
+---------------------
+
+For competition workshops (course ``amp_competition``: meet the amplifier specs,
+lowest supply current wins), the hub can run a scoreboard as a JupyterHub
+service (``support/hub/scoreboard.py``), enabled per workshop in ``.env``:
+
+.. code-block:: sh
+
+    ORDEC_HUB_SCOREBOARD=1
+
+Participants find the course under the landing page's Competition heading
+(shown only while the scoreboard is enabled). Opening it first asks for a
+team name; the course then opens with a Scoreboard panel showing the live
+standings, and the session pushes its state to the scoreboard automatically
+after every rebuild: the score when all checks pass, otherwise "no score",
+together with the source and the schematic as drawn in the check report. All of this goes through the
+service's JSON API (``web/src/scoreboard.js``), keyed on the hub guest
+identity. A secret the browser generates and keeps in localStorage re-claims
+the team name from a new guest session after an idle cull; a team that
+switches browsers needs an admin to release its name first. Teams can
+rename themselves from the panel (the entry and its score stay), except
+while the board is frozen for final scoring.
+``/services/scoreboard/projector`` is a self-refreshing leaderboard for the
+beamer — log that browser in as admin, so the idle culler never ends its
+session mid-workshop. Admins release or delete entries at
+``/services/scoreboard/admin``, and open each team's pushed source and
+schematic from there. Entries live in ``scoreboard.sqlite`` on
+the ``jupyterhub-data`` volume and survive culled sessions.
+
+The live leaderboard is honor system; the pushed source is the audit trail.
+**Final scoring** on the admin page freezes the board (pushes are refused)
+and re-runs every submission against the pristine harness
+(``support/hub/rescore.py``: only the submitted ``Amp`` is grafted into the
+official ``challenge.ord``, so a tampered testbench has no effect) with the
+same checks the course runs. Since that executes participant code, the
+service runs it in a throwaway container of the user image, started through
+the docker socket with the spawner's runtime and resource caps and no
+network at all; the submissions go in and the result comes back through the
+docker API, nothing is mounted. Projector, in-app panel and admin page then
+show the verified ranking, the admin page with the full reasons for teams
+left out. **Back to live scores** lifts the freeze and discards the result;
+the run can also be repeated. The same rescoring is available from a shell,
+against a copy of the database:
+
+.. code-block:: sh
+
+    docker cp $(docker compose -f support/hub/docker-compose.yml ps -q jupyterhub):/srv/jupyterhub/data/scoreboard.sqlite support/hub/
+    docker run --rm --network none -v "$PWD/support/hub:/w" ordec-hub-user \
+        python3 /w/rescore.py /w/scoreboard.sqlite
+
+The scoreboard shares its origin with the hub (including ``/hub/admin``), so
+everything participant-controlled is escaped, submitted source is only ever
+served as plain text, and all pages carry a strict Content-Security-Policy.
 
 Security checklist
 ------------------

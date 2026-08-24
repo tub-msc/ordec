@@ -813,6 +813,11 @@ def test_lesson_solution(course_name, lesson_index, testdata):
     passfails = [e for e in elements if e['element_type'] == 'passfail']
     assert len(passfails) == testdata.passfails
     assert all(p['passed'] for p in passfails)
+    if course_name == 'amp_competition':
+        # The report carries the schematic, pushed to the scoreboard as
+        # audit trail (see checks.py / course.js pushScore).
+        svgs = [e for e in elements if e['element_type'] == 'svg']
+        assert len(svgs) == 1 and 'mn' in svgs[0]['inner']
 
 
 def cmos_variant_states(lesson_index, replace_from, replace_to):

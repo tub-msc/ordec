@@ -6,6 +6,7 @@ export const session = {
     authHmacBypass: null,
     hubMode: false,
     hubLogoutUrl: null,
+    scoreboardUrl: null, // competition scoreboard service, hub-hosted only
 };
 
 export async function initSession() {
@@ -38,6 +39,7 @@ export async function initSession() {
             session.authKey = data.auth;
             session.hubMode = true;
             session.hubLogoutUrl = data.hub_logout_url;
+            session.scoreboardUrl = data.scoreboard;
         }
     } catch (e) {
         // Network error: not hub-hosted or server gone; fall back to the
