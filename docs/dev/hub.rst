@@ -178,10 +178,9 @@ Key strength
     Both keys guard code execution on the host, so generate them
     (``python3 -c 'import secrets; print(secrets.token_urlsafe(24))'``) rather
     than inventing them. The hub refuses to start on the ``example.env``
-    placeholders or on keys shorter than 16 characters. Entropy is the defense
-    that matters: the login page answers guesses from the internet and, since
-    the proxy also listens on the user network, from inside every participant
-    container.
+    placeholders. Entropy is the defense that matters: the login page answers
+    guesses from the internet and, since the proxy also listens on the user
+    network, from inside every participant container.
 
     Failed logins are additionally rate-limited per client address (30 at once,
     refilling at 10/min, answered with 429 over budget). Successful logins are

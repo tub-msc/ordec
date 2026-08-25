@@ -48,15 +48,11 @@ c.JupyterHub.cookie_secret_file = '/srv/jupyterhub/data/jupyterhub_cookie_secret
 
 # These keys are the only credential in front of code execution on this host,
 # and /hub/login answers guesses without limit. Refuse to start on the
-# example.env placeholders or on a key short enough to be worth guessing, so a
-# deployment cannot go live on 'change-me'.
-MIN_KEY_LEN = 16
-
+# example.env placeholders, so a deployment cannot go live on 'change-me'.
 def checked_key(name, value):
-    if value.startswith('change-me') or len(value) < MIN_KEY_LEN:
+    if value.startswith('change-me'):
         raise ValueError(
-            f"{name} is the example placeholder or shorter than "
-            f"{MIN_KEY_LEN} characters. Generate one with: "
+            f"{name} is the example placeholder. Generate one with: "
             f"python3 -c 'import secrets; print(secrets.token_urlsafe(24))'")
     return value
 
@@ -114,7 +110,7 @@ class FailedLoginLimiter:
 
     This bounds naive brute forcing. It is not what makes guessing infeasible,
     since an attacker with many addresses spreads across buckets; key entropy
-    (checked_key above) is.
+    is.
     """
     BURST = 30
     PER_MINUTE = 10
