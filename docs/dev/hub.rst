@@ -228,7 +228,7 @@ Workshop competitions
 ---------------------
 
 For competition workshops (course ``amp_competition``: meet the amplifier specs
-at every process corner, lowest supply current wins), the hub can run a
+at every process corner, lowest current wins), the hub can run a
 scoreboard as a JupyterHub service (``support/hub/scoreboard.py``), enabled
 per workshop in ``.env``:
 
