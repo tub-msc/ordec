@@ -227,9 +227,10 @@ assume the shared-key model.
 Workshop competitions
 ---------------------
 
-For competition workshops (course ``amp_competition``: meet the amplifier specs,
-lowest supply current wins), the hub can run a scoreboard as a JupyterHub
-service (``support/hub/scoreboard.py``), enabled per workshop in ``.env``:
+For competition workshops (course ``amp_competition``: meet the amplifier specs
+at every process corner, lowest supply current wins), the hub can run a
+scoreboard as a JupyterHub service (``support/hub/scoreboard.py``), enabled
+per workshop in ``.env``:
 
 .. code-block:: sh
 

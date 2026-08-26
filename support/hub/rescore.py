@@ -32,8 +32,7 @@ import importlib.resources
 from ordec.language import compile_ord
 from ordec import courses
 from ordec.courses.amp_competition.checks import (
-    GAIN_MIN, GBW_MIN, VOUT_DC_MIN, VOUT_DC_MAX,
-    forbidden_devices, measure_ac, measure_op)
+    GAIN_MIN, VOUT_DC_MIN, VOUT_DC_MAX, forbidden_devices, measure_corners)
 
 TIMEOUT = 120  # seconds per submission (simulations included)
 
@@ -56,17 +55,16 @@ def rescore(source):
     ns = {}
     exec(compile_ord(OFFICIAL_SRC, ns, 'challenge.ord'), ns)
     ns['Amp'] = ns_sub['Amp']
-    gain, gbw = measure_ac(ns)
-    isup, vout_dc = measure_op(ns)
-    if gain < GAIN_MIN:
-        fails.append(f"gain {gain:.2f} < {GAIN_MIN:g}")
-    if gbw < GBW_MIN:
-        fails.append(f"unity-gain frequency {gbw / 1e6:.2f} MHz "
-            f"< {GBW_MIN / 1e6:g} MHz")
-    if not VOUT_DC_MIN <= vout_dc <= VOUT_DC_MAX:
-        fails.append(f"output DC level {vout_dc:.3f} V outside "
-            f"{VOUT_DC_MIN:g}...{VOUT_DC_MAX:g} V")
-    return isup, fails
+    # Gates at every corner; the score is the nominal (first) corner's
+    # supply current, as in the live check.
+    rows = measure_corners(ns)
+    for label, isup, vout_dc, gain in rows:
+        if gain < GAIN_MIN:
+            fails.append(f"gain {gain:.2f} < {GAIN_MIN:g} at {label}")
+        if not VOUT_DC_MIN <= vout_dc <= VOUT_DC_MAX:
+            fails.append(f"output DC level {vout_dc:.3f} V outside "
+                f"{VOUT_DC_MIN:g}...{VOUT_DC_MAX:g} V at {label}")
+    return rows[0][1], fails
 
 
 def timed_out(signum, frame):

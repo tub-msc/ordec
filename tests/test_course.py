@@ -672,21 +672,27 @@ courses_testdata = {
         ]),
     ]),
     'amp_competition': CourseTestdata('Amplifier Competition', [
-        # Competition lesson: meet the spec gates, minimize supply current.
-        # The empty skeleton passes the device whitelist (nothing forbidden
-        # yet) and fails the three measured gates. The reference solution is
-        # a ratio-centered CMOS inverter amplifier at ~30 uA; the
-        # headroom below it (down to ~5 uA at minimum widths, where the
-        # unity-gain gate binds) is playtested but not asserted here.
-        LessonTestdata(passfails=4,
-            skeleton_passed=[True, False, False, False],
+        # Competition lesson: meet the spec gates at every corner, minimize
+        # supply current. The empty skeleton passes the device whitelist
+        # (nothing forbidden yet) and fails the two measured gates. The
+        # reference solution is a ratio-centered CMOS inverter amplifier at
+        # ~30 uA, self-biased through Rhigh and AC-coupled through Cmim so
+        # its operating point survives the sf/fs and temperature corners
+        # (see test_amp_input_biased_fails_corners). The headroom below it
+        # (down to ~5 uA at minimum widths, where the gain gate binds) is
+        # playtested but not asserted here.
+        LessonTestdata(passfails=3,
+            skeleton_passed=[True, False, False],
             solution=[
             InsertSolution("""
             # EDIT HERE: your amplifier. Only ihp130 Nmos, Pmos, Rsil,
-            # Rppd and Rhigh are allowed (see the course panel).
+            # Rppd, Rhigh and Cmim are allowed (see the course panel).
             """, """
-            Nmos mn: .$w=1u; .$l=500n; .g -- vin; .d -- vout; .s -- vss; .b -- vss; .pos=(6,4)
-            Pmos mp: .$w=6.25u; .$l=500n; .$ng=2; .g -- vin; .d -- vout; .s -- vdd; .b -- vdd; .pos=(6,10)
+            net g
+            Cmim cc: .$w=30u; .$l=30u; .p -- vin; .n -- g; .pos=(3,7)
+            Rhigh rf: .$w=0.5u; .$l=2000u; .p -- vout; .n -- g; .bn -- vss; .pos=(13,13)
+            Nmos mn: .$w=1u; .$l=500n; .g -- g; .d -- vout; .s -- vss; .b -- vss; .pos=(8,4)
+            Pmos mp: .$w=6.25u; .$l=500n; .$ng=2; .g -- g; .d -- vout; .s -- vdd; .b -- vdd; .pos=(8,10)
             """),
         ]),
     ]),
@@ -818,6 +824,42 @@ def test_lesson_solution(course_name, lesson_index, testdata):
         # audit trail (see checks.py / course.js pushScore).
         svgs = [e for e in elements if e['element_type'] == 'svg']
         assert len(svgs) == 1 and 'mn' in svgs[0]['inner']
+
+
+def test_amp_score_and_corner_table():
+    """The score is the nominal corner's supply current (~30 uA for the
+    reference), and the report tabulates every corner."""
+    from ordec.courses.amp_competition.checks import CORNERS
+    lesson = course_data('amp_competition')['lessons'][0]
+    src = courses_testdata['amp_competition'].lessons[0].solution_src(lesson)
+    elements = [e.element_webdata()
+        for e in run_lesson(lesson, src)['lesson']().elements()]
+    score = [e for e in elements if e['element_type'] == 'score']
+    assert len(score) == 1 and score[0]['eligible']
+    assert abs(score[0]['value'] - 30.0) < 1.0
+    table = [e for e in elements if e['element_type'] == 'markdown'
+        and 'Measurements across corners' in e['html']]
+    assert len(table) == 1
+    assert all(label in table[0]['html'] for label, _, _ in CORNERS)
+
+
+def test_amp_input_biased_fails_corners():
+    """An inverter biased directly from the 0.6 V input passes at tt but
+    runs into a rail at the skewed corners: the gates fail and name the
+    corner, and no eligible score is reported."""
+    lesson = course_data('amp_competition')['lessons'][0]
+    src = courses_testdata['amp_competition'].lessons[0].solution_src(lesson)
+    src = src.replace(".g -- g;", ".g -- vin;")
+    assert ".g -- vin;" in src
+    elements = [e.element_webdata()
+        for e in run_lesson(lesson, src)['lesson']().elements()]
+    passfails = [e for e in elements if e['element_type'] == 'passfail']
+    assert [p['passed'] for p in passfails] == [True, False, False]
+    assert 'at sf 27 °C (fail)' in passfails[1]['instructions']
+    assert 'at sf 27 °C (fail)' in passfails[2]['instructions']
+    assert 'at tt 27 °C (fail)' not in passfails[2]['instructions']
+    score = [e for e in elements if e['element_type'] == 'score']
+    assert len(score) == 1 and not score[0]['eligible']
 
 
 def cmos_variant_states(lesson_index, replace_from, replace_to):

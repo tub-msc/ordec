@@ -28,9 +28,9 @@ def load_rescore():
 def submissions():
     lesson = course_data('amp_competition')['lessons'][0]
     good = courses_testdata['amp_competition'].lessons[0].solution_src(lesson)
-    # A tampered testbench (no load) makes the live check report a huge
-    # unity-gain frequency; rescoring grafts only Amp into the pristine
-    # harness, so it must verify identically to the honest submission.
+    # A tampered testbench (no load) makes the live check report a higher
+    # gain at 1 MHz; rescoring grafts only Amp into the pristine harness,
+    # so it must verify identically to the honest submission.
     tampered = good.replace("Cap cload: .$c=1p", "Cap cload: .$c=1f")
     assert tampered != good
     return [

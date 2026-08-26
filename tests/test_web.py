@@ -777,7 +777,7 @@ def test_course_competition_scoreboard(web):
             const editor = window.courseController.editor.editor;
             editor.setValue(editor.getValue().replace(arguments[0],
                 arguments[0] + arguments[1]));
-        """, '.b -- vdd; .pos=(6,10)',
+        """, '.b -- vdd; .pos=(8,10)',
             '\n        Cap cx: .$c=1p; .p -- vout; .n -- vss; .pos=(12,4)')
         wait_for_course_marker(web, 'unsolved')
         web.wait_until("""
