@@ -157,9 +157,11 @@ class SimHierarchy(SubgraphRoot):
     def subcursor(self):
         return SimHierarchySubcursor((self, None, self.schematic))
 
-    def simulate(self, enable_savecurrents: bool = True):
+    def simulate(self, enable_savecurrents: bool = True, corner=None,
+                 temp=None):
         from ...sim import Simulator
-        return Simulator(self, enable_savecurrents=enable_savecurrents)
+        return Simulator(self, enable_savecurrents=enable_savecurrents,
+                         corner=corner, temp=temp)
 
     def schematic_or_symbol_at(self, inst: Optional['SimInstance']):
         """Helper function for of_subgraph of SimNet.eref and SimInstance.eref."""

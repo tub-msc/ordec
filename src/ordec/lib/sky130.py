@@ -29,7 +29,8 @@ def pdk() -> PdkDict:
     return pdk
     
 def netlist_setup(netlister):
-    netlister.add(".include",f"\"{pdk().ngspice_deck['tt']}\"")
+    corner = 'tt' if netlister.corner is None else netlister.corner
+    netlister.add(".include",f"\"{pdk().ngspice_deck[corner]}\"")
     netlister.add(".param","mc_mm_switch=0")
 
 class Mos(SimLeafCell):

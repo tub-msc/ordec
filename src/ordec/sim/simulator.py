@@ -67,9 +67,15 @@ class Simulator:
     Args:
         simhier: The simulation hierarchy to simulate.
         enable_savecurrents: Enable .option savecurrents in the netlist.
+        corner: Process corner, interpreted by the PDK in use (e.g.
+            :class:`ordec.lib.ihp130.Corner` for ihp130 or a string auch as
+            ``'ss'`` for sky130). None selects the PDK's typical corner.
+        temp: Simulation temperature in degrees C. None keeps ngspice's
+            default of 27 degrees C.
     """
 
-    def __init__(self, simhier: SimHierarchy, enable_savecurrents: bool = True):
+    def __init__(self, simhier: SimHierarchy, enable_savecurrents: bool = True,
+                 corner=None, temp=None):
         self.simhier = simhier
         self.top = self.simhier.schematic
 
@@ -77,7 +83,8 @@ class Simulator:
 
         progress("Netlisting")
         self.netlister = Netlister(
-            self.directory, enable_savecurrents=enable_savecurrents)
+            self.directory, enable_savecurrents=enable_savecurrents,
+            corner=corner, temp=temp)
         self.netlister.netlist_hier(self.top)
 
     def hier_simobj_of_name(self, name: str) -> SimInstance|SimNet:
@@ -306,4 +313,23 @@ class Simulator:
         self.netlister.add(
             ".dc", source_name,
             vstart.compat_str(), vstop.compat_str(), vstep.compat_str())
+        self._store_results(self._run())
+
+    def temp_sweep(self, start, stop, step_count: int, save_params=False):
+        """
+        DC sweep over temperate variable (ngspice ``.dc temp``) from ``start``
+        to ``stop`` degrees C in ``step_count`` points. The optional ``temp``
+        given to :class:`Simulator` is overridden by this sweep.
+        """
+        if step_count < 2:
+            raise ValueError("step_count must be >= 2")
+        start = R(start)
+        stop = R(stop)
+        step = (stop - start) / R(step_count - 1)
+        self.simhier.sim_type = SimType.DCSWEEP
+        if save_params:
+            self._save_all_params()
+        self.netlister.add(
+            ".dc", "temp",
+            start.compat_str(), stop.compat_str(), step.compat_str())
         self._store_results(self._run())

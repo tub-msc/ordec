@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 from public import public
 import functools
+from enum import Enum
 
 from ..schematic.spice_in import DeviceMapping
 from ..core import *
@@ -76,17 +77,76 @@ def ngspice_setup():
         env={"PDK": "ihp-sg13g2", "PDK_ROOT": str(pdk().root)},
     )
 
+@public
+class MosCorner(Enum):
+    """MOS corner (section mos_<value> of cornerMOSlv.lib)."""
+    TT = 'tt'
+    SS = 'ss'
+    FF = 'ff'
+    SF = 'sf'
+    FS = 'fs'
+
+@public
+class ResCorner(Enum):
+    """Resistor corner (section res_<value> of cornerRES.lib)."""
+    TYP = 'typ'
+    BCS = 'bcs' #: Best case: low resistance
+    WCS = 'wcs' #: Worst case: high resistance
+
+@public
+class CapCorner(Enum):
+    """Capacitor corner (section cap_<value> of cornerCAP.lib)."""
+    TYP = 'typ'
+    BCS = 'bcs' #: Best case: low capacitance
+    WCS = 'wcs' #: Worst case: high capacitance
+
+@public
+class Corner:
+    """
+    Process corner for simulation: one MOS, resistor and capacitor corner
+    each, which the PDK varies independently. Pass as ``corner`` to
+    :meth:`SimHierarchy.simulate`. Strings are coerced to the enums, e.g.
+    ``Corner(mos='ss', cap='wcs')``. The class attributes ``Corner.TT``,
+    ``Corner.SS``, ``Corner.FF``, ``Corner.SF`` and ``Corner.FS`` are the
+    MOS corners with typical passives.
+    """
+    def __init__(self, mos='tt', res='typ', cap='typ'):
+        self.mos = MosCorner(mos)
+        self.res = ResCorner(res)
+        self.cap = CapCorner(cap)
+
+    def __repr__(self):
+        return (f"Corner(mos={self.mos.value!r}, res={self.res.value!r}, "
+            f"cap={self.cap.value!r})")
+
+    def __eq__(self, other):
+        if not isinstance(other, Corner):
+            return NotImplemented
+        return (self.mos, self.res, self.cap) == (other.mos, other.res, other.cap)
+
+    def __hash__(self):
+        return hash((self.mos, self.res, self.cap))
+
+Corner.TT = Corner(mos='tt')
+Corner.SS = Corner(mos='ss')
+Corner.FF = Corner(mos='ff')
+Corner.SF = Corner(mos='sf')
+Corner.FS = Corner(mos='fs')
+
 def netlister_setup(netlister):
     if netlister.lvs:
         return
 
-    # Load corner library with typical corner
+    corner = Corner.TT if netlister.corner is None else netlister.corner
+    if not isinstance(corner, Corner):
+        raise TypeError(
+            f"ihp130 expects an ihp130.Corner, not {netlister.corner!r}.")
     model_lib = pdk().ngspice_models_dir / "cornerMOSlv.lib"
-    netlister.add(".lib", f"\"{model_lib}\" mos_tt")
+    netlister.add(".lib", f"\"{model_lib}\" mos_{corner.mos.value}")
     model_lib = pdk().ngspice_models_dir / "cornerRES.lib"
-    netlister.add(".lib", f"\"{model_lib}\" res_typ")
+    netlister.add(".lib", f"\"{model_lib}\" res_{corner.res.value}")
     model_lib = pdk().ngspice_models_dir / "cornerCAP.lib"
-    netlister.add(".lib", f"\"{model_lib}\" cap_typ")
+    netlister.add(".lib", f"\"{model_lib}\" cap_{corner.cap.value}")
 
     # Add options from .spiceinit
     netlister.add(".option", "tnom=28")

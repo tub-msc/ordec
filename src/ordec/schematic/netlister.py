@@ -4,8 +4,15 @@
 from ..core import *
 
 class Netlister:
-    def __init__(self, directory: Directory, enable_savecurrents: bool = True, lvs: bool = False):
+    def __init__(self, directory: Directory, enable_savecurrents: bool = True,
+                 lvs: bool = False, corner=None, temp=None):
         self.directory = directory
+        # Process corner, interpreted by the PDK's netlist setup function
+        # (e.g. ihp130.Corner selects .lib sections); None = PDK's typical.
+        self.corner = corner
+        # Simulation temperature in degrees C; None keeps ngspice's
+        # default (27 degrees C).
+        self.temp = None if temp is None else R(temp)
         self.spice_cards = []
         self.cur_line = 0
         self.indent = 0
@@ -127,6 +134,8 @@ class Netlister:
         if self.enable_savecurrents:
             self.add('.probe', 'alli') 
             self.add(".option", "savecurrents")
+        if self.temp is not None:
+            self.add(".option", f"temp={self.temp.compat_str()}")
         subckt_dep = self.netlist_schematic(top)
         self.netlist_hier_deps(subckt_dep)
         self.add_setup()
