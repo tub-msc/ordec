@@ -86,6 +86,9 @@ def rescore_all(entries):
     signal.signal(signal.SIGALRM, timed_out)
     results = []
     for team, claimed, source in entries:
+        # Progress on stderr: when the run dies without a traceback (killed),
+        # the log still shows which submission it was on.
+        print(f"rescoring {team} ...", file=sys.stderr, flush=True)
         if source is None:
             isup, fails = None, ["registered, but never pushed a build"]
         else:

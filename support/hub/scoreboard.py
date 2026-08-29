@@ -259,8 +259,20 @@ def run_rescore(entries):
             container.kill()
             raise TimeoutError("final scoring container timed out")
         if status['StatusCode'] != 0:
-            raise RuntimeError("rescore.py failed:\n" + container.logs(
-                stdout=False, stderr=True).decode(errors='replace')[-4000:])
+            # A traceback on stderr is rescore.py's own failure; an empty
+            # log means the process was killed (OOMKilled: the 2G memory
+            # cap) or the sandbox itself failed (State.Error).
+            container.reload()
+            state = container.attrs.get('State', {})
+            error = state.get('Error') or (status.get('Error') or {}).get(
+                'Message', '')
+            raise RuntimeError(
+                f"rescore.py failed with exit status {status['StatusCode']}"
+                + (" (killed: out of memory)" if state.get('OOMKilled')
+                    else "")
+                + (f": {error}" if error else "")
+                + "\n" + container.logs(stdout=True, stderr=True).decode(
+                    errors='replace')[-4000:])
         # rescore.py --json prints the result as the last line of stdout.
         stdout = container.logs(stdout=True, stderr=False).decode()
         return json.loads(stdout.splitlines()[-1])
