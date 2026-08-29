@@ -250,13 +250,15 @@ rename themselves from the panel (the entry and its score stay), except
 while the board is frozen for final scoring.
 ``/services/scoreboard/projector`` is a self-refreshing leaderboard for the
 beamer — log that browser in as admin, so the idle culler never ends its
-session mid-workshop. Admins release or delete entries at
-``/services/scoreboard/admin``, and open each team's pushed source and
-schematic from there. Entries live in ``scoreboard.sqlite`` on
-the ``jupyterhub-data`` volume and survive culled sessions.
+session mid-workshop. For admins the same page links each team to its
+pushed source and schematic, shows when it last pushed and deletes entries
+(after a confirmation; this releases the team name). Entries are keyed by
+an id, not the team name, which is only a display name. They live in
+``scoreboard.sqlite`` on the ``jupyterhub-data`` volume and survive culled
+sessions.
 
 The live leaderboard is honor system; the pushed source is the audit trail.
-**Final scoring** on the admin page freezes the board (pushes are refused)
+**Final scoring** on the projector page freezes the board (pushes are refused)
 and re-runs every submission against the pristine harness
 (``support/hub/rescore.py``: only the submitted ``Amp`` is grafted into the
 official ``challenge.ord``, so a tampered testbench has no effect) with the
@@ -264,8 +266,8 @@ same checks the course runs. Since that executes participant code, the
 service runs it in a throwaway container of the user image, started through
 the docker socket with the spawner's runtime and resource caps and no
 network at all; the submissions go in and the result comes back through the
-docker API, nothing is mounted. Projector, in-app panel and admin page then
-show the verified ranking, the admin page with the full reasons for teams
+docker API, nothing is mounted. Projector and in-app panel then show the
+verified ranking, the projector for admins with the full reasons for teams
 left out. **Back to live scores** lifts the freeze and discards the result;
 the run can also be repeated. The same rescoring is available from a shell,
 against a copy of the database:

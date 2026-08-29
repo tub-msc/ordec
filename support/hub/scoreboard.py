@@ -15,11 +15,18 @@ binds entry and session; a secret the frontend generates and keeps in the
 browser's localStorage re-claims the name from a new session after the
 ephemeral guest was culled.
 
-The admin page's "Final scoring" freezes the board and re-runs every
-submission against the pristine harness (rescore.py) in a throwaway
-container of the user image, started through the docker socket with the
-spawner's isolation settings; the projector then shows the verified ranking
-until "Back to live scores" lifts the freeze.
+The projector page (for the beamer) doubles as the admin panel: when an
+admin opens it, the leaderboard links each team to its page (pushed source
+and schematic), shows the time of the last push and offers to delete
+entries, and controls for final scoring appear below it. "Final scoring"
+freezes the board and re-runs every submission against the pristine
+harness (rescore.py) in a throwaway container of the user image, started
+through the docker socket with the spawner's isolation settings; the
+projector then shows the verified ranking until "Back to live scores"
+lifts the freeze.
+
+Entries are keyed by an integer id: the team name is a display name that
+the team can change, and the guest identity is rebound on every re-claim.
 
 Everything participant-controlled (team names, pushed source) is untrusted:
 this service shares its origin with /hub/admin, so output escaping and the
@@ -42,7 +49,6 @@ import docker
 import requests
 
 from tornado import ioloop, web
-from tornado.escape import url_escape
 from tornado.template import Template
 from jupyterhub.services.auth import HubOAuthenticated, HubOAuthCallbackHandler
 from jupyterhub.utils import url_path_join
@@ -72,9 +78,10 @@ db = sqlite3.connect(os.environ.get('ORDEC_SCOREBOARD_DB', 'scoreboard.sqlite'))
 # whenever the latest build failed a check.
 db.execute("""
     CREATE TABLE IF NOT EXISTS entries (
-        team TEXT PRIMARY KEY,
+        id INTEGER PRIMARY KEY,
+        team TEXT NOT NULL UNIQUE,
         secret TEXT NOT NULL,
-        guest TEXT NOT NULL,
+        guest TEXT NOT NULL UNIQUE,
         score REAL,
         source TEXT,
         svg TEXT,
@@ -97,9 +104,9 @@ db.commit()
 
 
 def standings():
-    """(team, score, updated) rows; ranked first, unscored teams last."""
+    """(id, team, score, updated) rows; ranked first, unscored teams last."""
     return db.execute(
-        "SELECT team, score, updated FROM entries "
+        "SELECT id, team, score, updated FROM entries "
         "ORDER BY score IS NULL, score ASC, updated ASC").fetchall()
 
 
@@ -132,8 +139,8 @@ def claim(team, secret, guest):
         db.execute("UPDATE entries SET team = ?, secret = ? WHERE guest = ?",
             (team, secret, guest))
     elif row is None:
-        db.execute("INSERT INTO entries VALUES (?, ?, ?, NULL, NULL, NULL, ?)",
-            (team, secret, guest, now))
+        db.execute("INSERT INTO entries (team, secret, guest, updated) "
+            "VALUES (?, ?, ?, ?)", (team, secret, guest, now))
     elif secrets.compare_digest(secret.encode(), row[0].encode()):
         # Re-claim after logout/cull: rebind the entry to the new guest.
         db.execute("UPDATE entries SET guest = ? WHERE team = ?",
@@ -195,9 +202,9 @@ def ranking(result):
 
 def final_public():
     """
-    The final scoring state for participants (API and projector): the
-    verified ranking with each failure cut to its first line. Full reasons
-    (tracebacks may quote a submission) are for the admin page only.
+    The final scoring state for participants (API and non-admin projector):
+    the verified ranking with each failure cut to its first line. Full
+    reasons (tracebacks may quote a submission) are for the admin view only.
     """
     state = final()
     if state is None or state['result'] is None:
@@ -297,8 +304,8 @@ def end_final():
 
 
 STYLE = """
-    body { font-family: sans-serif; margin: 2em auto; max-width: 50em;
-        padding: 0 1em; }
+    body { font-family: sans-serif; background: #fff; color: #111;
+        margin: 2em auto; max-width: 50em; padding: 0 1em; }
     table { border-collapse: collapse; margin: 1em 0; }
     td, th { border: 1px solid #999; padding: 0.3em 0.8em; text-align: left; }
     th { background: #eee; }
@@ -310,44 +317,113 @@ SCORE_CELL = """{% if score is None %}
 <td class="num noscore">no score</td>
 {% else %}<td class="num">{{ '%.2f' % score }} µA</td>{% end %}"""
 
-# Autoescaped body templates, wrapped by PAGE via {% raw body %} after they
-# are rendered. Pre-rendered safe fragments (xsrf) are inserted with raw.
-PAGE = Template("""<!DOCTYPE html>
-<html><head><title>{{ title }}</title>
-{% if refresh %}<meta http-equiv="refresh" content="5">{% end %}
+# One team's audit trail: the source and schematic pushed with its score.
+# The schematic is an <img>: SVG shown as an image cannot run scripts or
+# load anything, whatever a participant put into it.
+TEAM_PAGE = Template("""<!DOCTYPE html>
+<html><head><title>{{ team }}</title>
 <style>""" + STYLE + """</style></head>
-<body><h1>{{ title }}</h1>{% raw body %}</body></html>""")
+<body><h1>{{ team }}</h1>
+{% if score is None %}
+<p class="noscore">No score pushed yet.</p>
+{% else %}
+<p>Supply current {{ '%.2f' % score }} µA, pushed {{ updated }}
+(<a href="source?id={{ id }}">raw source</a>).</p>
+{% if svg %}<p><img src="schematic?id={{ id }}"
+alt="schematic" style="max-width: 100%"></p>{% end %}
+<pre>{{ source }}</pre>
+{% end %}
+<p><a href="projector">Back to the projector</a></p>
+</body></html>""")
 
-ADMIN_BODY = Template("""
+# Team name cell of the leaderboard: a link to the team's page for admins
+# (while the entry exists; a final ranking may name a deleted one).
+TEAM_CELL = """{% set id = ids.get(team) %}
+<td>{% if id is not None %}<a href="team?id={{ id }}">{{ team }}</a>{% else %}{{ team }}{% end %}</td>"""
+
+# The small red X that asks (see .overlay) to delete an entry, admins only.
+DELETE_CELL = """<td>{% if id is not None %}<a class="delete"
+href="?delete={{ id }}" title="Delete entry">&#x2715;</a>{% end %}</td>"""
+
+# Big type for the beamer; a plain server-rendered page that reloads itself,
+# so it needs no script and re-authenticates through the hub by itself.
+# When the viewer is an admin, the leaderboard links teams to their pages,
+# shows the time of the last push and deletes entries, and the final scoring
+# controls appear below it. Deletion is confirmed by a dialog the page
+# renders itself (?delete=<id>): the CSP allows no script for a confirm().
+PROJECTOR_PAGE = Template("""<!DOCTYPE html>
+<html><head><title>Leaderboard</title>
+<meta http-equiv="refresh" content="5">
+<style>
+    body { font-family: sans-serif; background: #fff; color: #111;
+        margin: 5vh 10vw; }
+    h1 { font-size: 5vh; }
+    table { border-collapse: collapse; width: 100%; font-size: 4vh; }
+    td, th { border-bottom: 0.4vh solid #ccc; padding: 1vh 2vh;
+        text-align: left; }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .noscore { color: #999; }
+    a { color: #06c; }
+    a.delete { color: #c00; text-decoration: none; font-size: 2.5vh; }
+    .admin { font-size: 2vh; margin-top: 6vh;
+        border-top: 0.4vh solid #ccc; padding-top: 2vh; }
+    .admin button { font-size: 2vh; }
+    .overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5);
+        display: flex; align-items: center; justify-content: center; }
+    .dialog { background: #fff; padding: 3vh 4vh; font-size: 2.5vh;
+        max-width: 60vw; }
+    .dialog form { display: inline; margin-right: 1em; }
+    .dialog button { font-size: 2.5vh; }
+</style></head>
+<body>
+{% if final is not None and isinstance(final['result'], list) %}
+<h1>Final ranking</h1>
+<table><tr><th>#</th><th>Team</th><th class="num">Supply current</th>
+{% if admin %}<th>Claimed</th><th>Not ranked because</th><th></th>{% end %}</tr>
+{% for i, r in enumerate(final['result']) %}
+{% if not r['fails'] %}
+{% set score = r['verified'] %}{% set team = r['team'] %}
+<tr><td class="num">{{ i + 1 }}</td>
+""" + TEAM_CELL + SCORE_CELL + """
+{% if admin %}{% set score = r.get('claimed') %}""" + SCORE_CELL + """
+<td></td>""" + DELETE_CELL + """{% end %}
+</tr>
+{% end %}{% end %}
+{% for r in final['result'] %}{% if r['fails'] %}
+{% if admin %}
+{% set score = r.get('claimed') %}{% set team = r['team'] %}
+<tr><td class="num">&ndash;</td>
+""" + TEAM_CELL + """
+<td class="num noscore">not ranked</td>
+""" + SCORE_CELL + """
+<td><pre>{{ '\\n'.join(r['fails']) }}</pre></td>
+""" + DELETE_CELL + """</tr>
+{% else %}
+<p class="noscore">Not ranked: {{ r['team'] }} &ndash;
+{{ '; '.join(r['fails']) }}</p>
+{% end %}{% end %}{% end %}
+</table>
+{% else %}
+<h1>Leaderboard{% if final is not None %}
+<span class="noscore">(frozen for final scoring)</span>{% end %}</h1>
+<table><tr><th>#</th><th>Team</th><th class="num">Supply current</th>
+{% if admin %}<th>Updated</th><th></th>{% end %}</tr>
+{% for i, (id, team, score, updated) in enumerate(rows) %}
+<tr><td class="num">{{ i + 1 }}</td>
+""" + TEAM_CELL + SCORE_CELL + """
+{% if admin %}<td>{{ updated }}</td>""" + DELETE_CELL + """{% end %}</tr>
+{% end %}</table>
+{% end %}
+{% if admin %}
+<div class="admin">
 {% if final is None %}
 <form method="post">{% raw xsrf %}
 <input type="hidden" name="action" value="final">
 <button>Final scoring</button></form>
-<p>Freezes the scoreboard and re-runs every submission against the pristine
-harness in an isolated container; the projector then shows the verified
-ranking. Live scores can be restored afterwards.</p>
-{% elif final['result'] is None %}
-<p><b>Final scoring running</b> since {{ final['started'] }}; the scoreboard
-is frozen. This page reloads by itself.</p>
-{% else %}
+{% elif final['result'] is not None %}
 {% if isinstance(final['result'], dict) %}
-<p><b>Final scoring failed</b> (started {{ final['started'] }}); the
-scoreboard is frozen.</p>
-<pre>{{ final['result']['error'] }}</pre>
-{% else %}
-<h2>Final ranking</h2>
-<p>Started {{ final['started'] }}; the scoreboard is frozen and the projector
-shows this ranking.</p>
-<table><tr><th>#</th><th>Team</th><th>Verified</th><th>Claimed</th>
-<th>Not ranked because</th></tr>
-{% for i, r in enumerate(final_rows) %}
-<tr><td class="num">{% if r['fails'] %}&ndash;{% else %}{{ i + 1 }}{% end %}</td>
-<td><a href="admin/team?team={{ url_escape(r['team']) }}">{{ r['team'] }}</a></td>
-{% if r['verified'] is None %}<td class="num noscore">not ranked</td>
-{% else %}<td class="num">{{ '%.2f' % r['verified'] }} µA</td>{% end %}
-{% set score = r['claimed'] %}""" + SCORE_CELL + """
-<td><pre>{{ '\\n'.join(r['fails']) }}</pre></td></tr>
-{% end %}</table>
+<p><b>Final scoring failed</b> (started {{ final['started'] }}).</p>
+<pre>{{ final['result'].get('error', '') }}</pre>
 {% end %}
 <form method="post">{% raw xsrf %}
 <input type="hidden" name="action" value="final">
@@ -356,73 +432,18 @@ shows this ranking.</p>
 <input type="hidden" name="action" value="live">
 <button>Back to live scores</button></form>
 {% end %}
-<h2>Entries</h2>
-<table><tr><th>Team</th><th>Supply current</th><th>Updated</th>
-<th>Guest</th><th></th></tr>
-{% for team, score, updated, guest in rows %}
-<tr><td><a href="admin/team?team={{ url_escape(team) }}">{{ team }}</a></td>
-""" + SCORE_CELL + """
-<td>{{ updated }}</td><td>{{ guest }}</td>
-<td><form method="post">{% raw xsrf %}
+</div>
+{% if delete is not None %}
+<div class="overlay"><div class="dialog">
+<p>Delete the entry of team <b>{{ delete[1] }}</b>? This releases the
+team name for a fresh claim.</p>
+<form method="post">{% raw xsrf %}
 <input type="hidden" name="action" value="delete">
-<input type="hidden" name="team" value="{{ team }}">
-<button>delete</button></form></td></tr>
-{% end %}</table>
-<p>Deleting an entry releases the team name for a fresh claim. A team's
-page shows its pushed source and schematic.</p>""")
-
-# One team's audit trail: the source and schematic pushed with its score.
-# The schematic is an <img>: SVG shown as an image cannot run scripts or
-# load anything, whatever a participant put into it.
-TEAM_BODY = Template("""
-{% if score is None %}
-<p class="noscore">No score pushed yet.</p>
-{% else %}
-<p>Supply current {{ '%.2f' % score }} µA, pushed {{ updated }}
-(<a href="source?team={{ url_escape(team) }}">raw source</a>).</p>
-{% if svg %}<p><img src="schematic?team={{ url_escape(team) }}"
-alt="schematic" style="max-width: 100%"></p>{% end %}
-<pre>{{ source }}</pre>
+<input type="hidden" name="id" value="{{ delete[0] }}">
+<button>Delete</button></form>
+<form method="get" action="projector"><button>Cancel</button></form>
+</div></div>
 {% end %}
-<p><a href="../admin">Back to the admin page</a></p>""")
-
-# Big type for the beamer; a plain server-rendered page that reloads itself,
-# so it needs no script and re-authenticates through the hub by itself.
-PROJECTOR_PAGE = Template("""<!DOCTYPE html>
-<html><head><title>Leaderboard</title>
-<meta http-equiv="refresh" content="5">
-<style>
-    body { font-family: sans-serif; background: #111; color: #eee;
-        margin: 5vh 10vw; }
-    h1 { font-size: 5vh; }
-    table { border-collapse: collapse; width: 100%; font-size: 4vh; }
-    td, th { border-bottom: 0.4vh solid #444; padding: 1vh 2vh;
-        text-align: left; }
-    .num { text-align: right; font-variant-numeric: tabular-nums; }
-    .noscore { color: #777; }
-</style></head>
-<body>
-{% if final is not None and isinstance(final['result'], list) %}
-<h1>Final ranking</h1>
-<table><tr><th>#</th><th>Team</th><th class="num">Supply current</th></tr>
-{% for i, r in enumerate(final['result']) %}
-{% if not r['fails'] %}
-{% set score = r['verified'] %}
-<tr><td class="num">{{ i + 1 }}</td><td>{{ r['team'] }}</td>
-""" + SCORE_CELL + """</tr>
-{% end %}{% end %}</table>
-{% for r in final['result'] %}{% if r['fails'] %}
-<p class="noscore">Not ranked: {{ r['team'] }} &ndash;
-{{ '; '.join(r['fails']) }}</p>
-{% end %}{% end %}
-{% else %}
-<h1>Leaderboard{% if final is not None %}
-<span class="noscore">(frozen for final scoring)</span>{% end %}</h1>
-<table><tr><th>#</th><th>Team</th><th class="num">Supply current</th></tr>
-{% for i, (team, score, updated) in enumerate(rows) %}
-<tr><td class="num">{{ i + 1 }}</td><td>{{ team }}</td>
-""" + SCORE_CELL + """</tr>
-{% end %}</table>
 {% end %}
 </body></html>""")
 
@@ -430,7 +451,7 @@ PROJECTOR_PAGE = Template("""<!DOCTYPE html>
 class BaseHandler(HubOAuthenticated, web.RequestHandler):
     def set_default_headers(self):
         # No scripts, no external resources, on any page.
-        # img-src for the pushed schematics on the admin's team pages.
+        # img-src for the pushed schematics on team pages.
         self.set_header('Content-Security-Policy',
             "default-src 'none'; style-src 'unsafe-inline'; "
             "img-src 'self'; form-action 'self'; base-uri 'none'")
@@ -439,6 +460,14 @@ class BaseHandler(HubOAuthenticated, web.RequestHandler):
     def require_admin(self):
         if not self.current_user.get('admin', False):
             raise web.HTTPError(403, "admin only")
+
+    def entry_id(self, name='id', body=False):
+        """The integer entry id in the named query (or body) argument."""
+        get = self.get_body_argument if body else self.get_query_argument
+        try:
+            return int(get(name))
+        except ValueError:
+            raise web.HTTPError(400, "invalid entry id")
 
 
 class ApiHandler(BaseHandler):
@@ -469,7 +498,7 @@ class ApiHandler(BaseHandler):
 
     def write_state(self):
         rows = [{'team': team, 'score': score, 'updated': updated}
-            for team, score, updated in standings()]
+            for _, team, score, updated in standings()]
         self.set_header('Cache-Control', 'no-store')
         self.finish({'team': team_of(self.current_user['name']),
             'rows': rows, 'final': final_public()})
@@ -544,32 +573,33 @@ class RootHandler(BaseHandler):
 class ProjectorHandler(BaseHandler):
     @web.authenticated
     def get(self):
-        self.finish(PROJECTOR_PAGE.generate(rows=standings(),
-            final=final_public()))
-
-
-class AdminHandler(BaseHandler):
-    @web.authenticated
-    def get(self):
-        self.require_admin()
-        rows = db.execute("SELECT team, score, updated, guest FROM entries "
-            "ORDER BY score IS NULL, score ASC, updated ASC").fetchall()
-        state = final()
-        final_rows = ranking(state['result']) \
-            if state and isinstance(state['result'], list) else None
-        self.finish(PAGE.generate(title="Scoreboard Admin",
-            refresh=state is not None and state['result'] is None,
-            body=ADMIN_BODY.generate(rows=rows, final=state,
-                final_rows=final_rows, url_escape=url_escape,
-                xsrf=self.xsrf_form_html())))
+        rows = standings()
+        if self.current_user.get('admin', False):
+            state = final()
+            if state and isinstance(state['result'], list):
+                state = {'started': state['started'],
+                    'result': ranking(state['result'])}
+            # ?delete=<id> asks to confirm deleting that entry (if it still
+            # exists; the POST redirects to the bare page afterwards).
+            delete = None
+            if self.get_query_argument('delete', None) is not None:
+                delete = db.execute("SELECT id, team FROM entries WHERE id = ?",
+                    (self.entry_id('delete'),)).fetchone()
+            self.finish(PROJECTOR_PAGE.generate(rows=rows, final=state,
+                admin=True, ids={team: id for id, team, _, _ in rows},
+                delete=delete, xsrf=self.xsrf_form_html()))
+        else:
+            self.finish(PROJECTOR_PAGE.generate(rows=rows,
+                final=final_public(), admin=False, ids={}, delete=None,
+                xsrf=''))
 
     @web.authenticated
     def post(self):
         self.require_admin()
         action = self.get_body_argument('action')
         if action == 'delete':
-            db.execute("DELETE FROM entries WHERE team = ?",
-                (self.get_body_argument('team'),))
+            db.execute("DELETE FROM entries WHERE id = ?",
+                (self.entry_id(body=True),))
             db.commit()
         elif action == 'final':
             start_final()
@@ -580,40 +610,39 @@ class AdminHandler(BaseHandler):
         self.redirect(self.request.path)
 
 
-class AdminTeamHandler(BaseHandler):
+class TeamHandler(BaseHandler):
     @web.authenticated
     def get(self):
         self.require_admin()
-        team = self.get_query_argument('team')
-        row = db.execute("SELECT score, source, svg, updated FROM entries "
-            "WHERE team = ?", (team,)).fetchone()
+        id = self.entry_id()
+        row = db.execute("SELECT team, score, source, svg, updated FROM entries "
+            "WHERE id = ?", (id,)).fetchone()
         if row is None:
             raise web.HTTPError(404)
-        score, source, svg, updated = row
-        self.finish(PAGE.generate(title=team, refresh=False,
-            body=TEAM_BODY.generate(team=team, score=score, source=source,
-                svg=svg, updated=updated, url_escape=url_escape)))
+        team, score, source, svg, updated = row
+        self.finish(TEAM_PAGE.generate(id=id, team=team, score=score,
+            source=source, svg=svg, updated=updated))
 
 
-class AdminSchematicHandler(BaseHandler):
+class SchematicHandler(BaseHandler):
     @web.authenticated
     def get(self):
         self.require_admin()
-        row = db.execute("SELECT svg FROM entries WHERE team = ?",
-            (self.get_query_argument('team'),)).fetchone()
+        row = db.execute("SELECT svg FROM entries WHERE id = ?",
+            (self.entry_id(),)).fetchone()
         if row is None or row[0] is None:
             raise web.HTTPError(404)
-        # Served as an image (see TEAM_BODY); nosniff keeps it one.
+        # Served as an image (see TEAM_PAGE); nosniff keeps it one.
         self.set_header('Content-Type', 'image/svg+xml; charset=utf-8')
         self.finish(row[0])
 
 
-class AdminSourceHandler(BaseHandler):
+class SourceHandler(BaseHandler):
     @web.authenticated
     def get(self):
         self.require_admin()
-        row = db.execute("SELECT source FROM entries WHERE team = ?",
-            (self.get_query_argument('team'),)).fetchone()
+        row = db.execute("SELECT source FROM entries WHERE id = ?",
+            (self.entry_id(),)).fetchone()
         if row is None or row[0] is None:
             raise web.HTTPError(404)
         # text/plain + nosniff: pushed source must never render as HTML.
@@ -628,10 +657,9 @@ def main():
         (url_path_join(PREFIX, 'api/claim'), ClaimHandler),
         (url_path_join(PREFIX, 'api/push'), PushHandler),
         (url_path_join(PREFIX, 'projector'), ProjectorHandler),
-        (url_path_join(PREFIX, 'admin'), AdminHandler),
-        (url_path_join(PREFIX, 'admin/team'), AdminTeamHandler),
-        (url_path_join(PREFIX, 'admin/schematic'), AdminSchematicHandler),
-        (url_path_join(PREFIX, 'admin/source'), AdminSourceHandler),
+        (url_path_join(PREFIX, 'team'), TeamHandler),
+        (url_path_join(PREFIX, 'schematic'), SchematicHandler),
+        (url_path_join(PREFIX, 'source'), SourceHandler),
         (url_path_join(PREFIX, 'oauth_callback'), HubOAuthCallbackHandler),
     ], cookie_secret=secrets.token_bytes(32), xsrf_cookies=True)
     url = urlparse(os.environ['JUPYTERHUB_SERVICE_URL'])
