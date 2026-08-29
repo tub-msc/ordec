@@ -375,7 +375,7 @@ c.JupyterHub.services = [
             '--timeout', os.environ.get('ORDEC_HUB_IDLE_TIMEOUT', '5400'),
             # Ephemeral guests accumulate as user records; delete the ones whose
             # server has stopped and gone idle so the hub DB does not grow.
-            '--cull-users',
+            '--cull-users=true',
             # --cull-users would otherwise delete idle admin accounts too
             # (cull_admin_users defaults to true). Admins must survive
             # between workshops:
