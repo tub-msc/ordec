@@ -193,4 +193,4 @@ Command line reference
 
 .. automodule:: ordec.server
 
-Details of the web UI's client-server protocol, URL parameters and security model are described in :doc:`dev/webui`.
+Details of the web UI's client-server protocol, URL parameters and security model are described in :doc:`/dev/webui`.

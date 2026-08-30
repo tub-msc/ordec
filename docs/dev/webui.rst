@@ -1,7 +1,7 @@
 Web UI internals
 ================
 
-This page documents the internal architecture of the web UI for developers: the client–server protocol, the frontend module structure, and — in detail — the view event bus that coordinates the viewers, including its unintuitive properties. The user-facing introduction is at :doc:`/webui_design_organization`.
+This page documents the internal architecture of the web UI for developers: the client–server protocol, the frontend module structure, and — in detail — the view event bus that coordinates the viewers, including its unintuitive properties. The user-facing introduction is at :doc:`/guides/webui_design_organization`.
 
 Components
 ----------
@@ -60,7 +60,7 @@ This is load-bearing for the LVS viewer: an ``LvsReport`` references the compare
 Modes and URL parameters
 ------------------------
 
-The web UI has two modes, *integrated* (source code from the browser editor, not saved anywhere) and *local* (source files on the server's filesystem, watched with inotify); see :doc:`/webui_design_organization` for the user's perspective. The mode is selected purely using URL parameters passed to the frontend. Every running server supports both integrated and local mode.
+The web UI has two modes, *integrated* (source code from the browser editor, not saved anywhere) and *local* (source files on the server's filesystem, watched with inotify); see :doc:`/guides/webui_design_organization` for the user's perspective. The mode is selected purely using URL parameters passed to the frontend. Every running server supports both integrated and local mode.
 ``/app.html?example=nand2`` opens example *nand2* in integrated mode.
 ``/app.html#local=...&hmac=...`` opens local mode: ``local`` is a JSON object such as ``{"module": "mymodule", "views": ["CellA().schematic"]}`` (one result viewer per view, side by side; this is what ``ordec mymodule.py -e "CellA().schematic"`` generates), and ``hmac`` authenticates it (see below).
 
@@ -78,7 +78,7 @@ Version-matched documentation links
 
 The landing page (``web/index.html``) links into the documentation on Read the Docs. Because a given ORDeC install may be an older release, these links must point at the docs slug matching the *installed* version rather than always at ``latest``.
 
-The slug is computed server-side by ``doc_url()`` in ``src/ordec/version.py`` (``vX.Y.Z`` for releases, ``latest`` for development/unknown versions) and served as ``docs_url`` alongside ``version`` by ``/api/version``. In the markup, each documentation link carries a ``data-docs-page`` attribute naming the target page relative to the docs root (e.g. ``webui_design_organization.html``; empty means the docs root) and has **no** static ``href``. The inline script rewrites every ``a[data-docs-page]`` on load, setting ``href = docs_url + dataset.docsPage``.
+The slug is computed server-side by ``doc_url()`` in ``src/ordec/version.py`` (``vX.Y.Z`` for releases, ``latest`` for development/unknown versions) and served as ``docs_url`` alongside ``version`` by ``/api/version``. In the markup, each documentation link carries a ``data-docs-page`` attribute naming the target page relative to the docs root (e.g. ``guides/webui_design_organization.html``; empty means the docs root) and has **no** static ``href``. The inline script rewrites every ``a[data-docs-page]`` on load, setting ``href = docs_url + dataset.docsPage``.
 
 Keeping the links href-less makes ``doc_url()`` the single source of truth for the documentation URL: there is no hard-coded URL in the markup to drift out of sync. The trade-off is that the links only become clickable once ``/api/version`` has been fetched (fine for a page served by that same backend).
 

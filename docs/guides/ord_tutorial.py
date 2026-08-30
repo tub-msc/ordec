@@ -23,7 +23,7 @@
 # ORD (Open Rapid Design) is ORDeC's **hardware description language for IC design**. 
 # It is designed to make custom IC design more software-like and text-based, 
 # as an alternative to traditional GUI-based tools.
-# Follow this link for the full ORD language reference: {doc}`ref/ord`.
+# Follow this link for the full ORD language reference: {doc}`/ref/ord`.
 
 # This tutorial provides a starting point for writing basic ORD code.  
 # It covers all the main structures and features that ORD currently offers 
@@ -56,7 +56,7 @@ if ip is not None:
 # ## 1. Cell
 #
 # A `cell` is the **root** of an ORD file. It acts as the base of the design you
-# want to create. The name of the cell should describe the inner behavior of the design {doc}`ref/cell_and_viewgen`.
+# want to create. The name of the cell should describe the inner behavior of the design {doc}`/ref/cell_and_viewgen`.
 
 # + 
 %%ord
@@ -257,7 +257,7 @@ cell MultibitReg_ArrayOfStructs:
 
 # **Parameters for subcells** are set using the dollar `$` operator.
 # In this example, we set the length of the transistors `l` to 100n and the width `w` to 200n.
-# ORD supports all common SI suffixes for cell parameters that use the `Rational` class type {doc}`ref/rational`.
+# ORD supports all common SI suffixes for cell parameters that use the `Rational` class type {doc}`/ref/rational`.
 # (a=atto, f=femto, n=nano, u=micro, m=milli, k=kilo, M=Mega, G=Giga, T=Tera)
 # The `$` operator works the same way in layout viewgens. Parameters can be
 # assigned multiple times (the last assignment wins) until the instance is
@@ -378,7 +378,7 @@ NandPlaced().schematic
 
 # Ports that are not part of a group (`a`, `b`, `y`) are auto-placed on the
 # edge of the drawing based on their alignment, and all wires are routed
-# automatically. See {doc}`ref/arrange` for the full reference, including
+# automatically. See {doc}`/ref/arrange` for the full reference, including
 # the `gap`, `align`, `anchor` and `horizontal` attributes and the rules for
 # nesting groups.
 

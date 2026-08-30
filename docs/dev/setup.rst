@@ -49,7 +49,7 @@ Launch webinterface
 
 There are three setups to run the ``ordec`` web UI:
 
-1. **Combined frontend + backend server with regular installation:** A regular installation of ORDeC (e.g. from PyPI or in the Docker image) includes a compiled version of the frontend (*webdist.tar*). In this case, ORDeC is started through a simple ``ordec``. This is the setup for users; see :doc:`/webui_design_organization`.
+1. **Combined frontend + backend server with regular installation:** A regular installation of ORDeC (e.g. from PyPI or in the Docker image) includes a compiled version of the frontend (*webdist.tar*). In this case, ORDeC is started through a simple ``ordec``. This is the setup for users; see :doc:`/guides/webui_design_organization`.
 2. **Combined frontend + backend server with editable installation:** In case of an editable installation ("develop mode", ``pip install -e``), setup 1 is not supported, as *webdist.tar* is not available in the package. Instead, the frontend can be built separately through ``npm run build`` in the *web/* directory. The build results must then be supplied to the ordec command: ``ordec -r [...]/web/dist/``
 3. **Separate frontend + backend server for frontend development:** This gives the best development experience when working on the frontend code and is described below.
 
