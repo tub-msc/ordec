@@ -22,6 +22,7 @@ extensions = [
     'sphinx.ext.napoleon',
     'sphinx.ext.inheritance_diagram',
     'myst_nb',
+    'sphinx_design',
     'ordec.sphinx_ext',
 ]
 

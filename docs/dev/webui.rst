@@ -1,7 +1,7 @@
 Web UI internals
 ================
 
-This page documents the internal architecture of the web UI for developers: the client–server protocol, the frontend module structure, and — in detail — the view event bus that coordinates the viewers, including its unintuitive properties. The user-facing introduction is at :doc:`/webui`.
+This page documents the internal architecture of the web UI for developers: the client–server protocol, the frontend module structure, and — in detail — the view event bus that coordinates the viewers, including its unintuitive properties. The user-facing introduction is at :doc:`/webui_design_organization`.
 
 Components
 ----------
@@ -57,12 +57,28 @@ This is load-bearing for the LVS viewer: an ``LvsReport`` references the compare
 
 (Arbitrary expression evaluation is intentional and consistent with the security model: it is only reachable on an authenticated WebSocket, and the authenticated user may execute arbitrary code by design.)
 
+Modes and URL parameters
+------------------------
+
+The web UI has two modes, *integrated* (source code from the browser editor, not saved anywhere) and *local* (source files on the server's filesystem, watched with inotify); see :doc:`/webui_design_organization` for the user's perspective. The mode is selected purely using URL parameters passed to the frontend. Every running server supports both integrated and local mode.
+``/app.html?example=nand2`` opens example *nand2* in integrated mode.
+``/app.html#local=...&hmac=...`` opens local mode: ``local`` is a JSON object such as ``{"module": "mymodule", "views": ["CellA().schematic"]}`` (one result viewer per view, side by side; this is what ``ordec mymodule.py -e "CellA().schematic"`` generates), and ``hmac`` authenticates it (see below).
+
+Security
+--------
+
+To prevent unauthorized users from gaining access and executing arbitrary code through ORDeC, a new **authentication token** is generated on each start of the ``ordec`` server (similar to https://jupyter-server.readthedocs.io/en/latest/operators/security.html). This token-based authentication is also important in localhost / single-user setups to prevent privilege escalation. The authentication token is passed to the frontend using the ``auth=`` query parameter. From there, it is stored in the browser's localStorage and sent to the server at the start of each websocket connection.
+
+In combination with access to the web server, the authentication token allows executing arbitrary code in the context of the user running ``ordec``. Therefore, the authentication token must be kept secret.
+
+**CSRF protection:** The authentication token empowers the browser to execute arbitrary Python code on the ORDeC server. This opens up some scenarios in which an attacker could execute arbitrary code by linking to a running ORDeC web UI instance. This is a form of cross-site request forgery (CSRF). Links that open the web UI in *integrated mode* are considered safe, as only the predefined and safe examples can be run. However, links that open the web UI in local mode are a potential danger, as they can import (i.e. run) arbitrary locally available Python modules, which is unsafe in itself. Moreover, arbitrary code can be passed and executed through the view name in the URL's query string. To prevent this, in local mode, module and view name must be authenticated using an HMAC-SHA256 code passed through the query string. The authentication token, known to the web UI and the server, is used as shared secret. This HMAC is verified in client-side Javascript, before the websocket connection is established.
+
 Version-matched documentation links
 -----------------------------------
 
 The landing page (``web/index.html``) links into the documentation on Read the Docs. Because a given ORDeC install may be an older release, these links must point at the docs slug matching the *installed* version rather than always at ``latest``.
 
-The slug is computed server-side by ``doc_url()`` in ``src/ordec/version.py`` (``vX.Y.Z`` for releases, ``latest`` for development/unknown versions) and served as ``docs_url`` alongside ``version`` by ``/api/version``. In the markup, each documentation link carries a ``data-docs-page`` attribute naming the target page relative to the docs root (e.g. ``webui.html``; empty means the docs root) and has **no** static ``href``. The inline script rewrites every ``a[data-docs-page]`` on load, setting ``href = docs_url + dataset.docsPage``.
+The slug is computed server-side by ``doc_url()`` in ``src/ordec/version.py`` (``vX.Y.Z`` for releases, ``latest`` for development/unknown versions) and served as ``docs_url`` alongside ``version`` by ``/api/version``. In the markup, each documentation link carries a ``data-docs-page`` attribute naming the target page relative to the docs root (e.g. ``webui_design_organization.html``; empty means the docs root) and has **no** static ``href``. The inline script rewrites every ``a[data-docs-page]`` on load, setting ``href = docs_url + dataset.docsPage``.
 
 Keeping the links href-less makes ``doc_url()`` the single source of truth for the documentation URL: there is no hard-coded URL in the markup to drift out of sync. The trade-off is that the links only become clickable once ``/api/version`` has been fetched (fine for a page served by that same backend).
 

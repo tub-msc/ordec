@@ -4,7 +4,7 @@ View generation: progress and cancellation
 Long-running view generators — above all ngspice transient simulations —
 report progress to the web interface and can be aborted from it. This page
 follows a view request through the pieces involved. The wire protocol itself
-is specified in :doc:`webui`, and the API that view generators call is
+is specified in :doc:`/webui_design_organization`, and the API that view generators call is
 documented under :ref:`progress-and-cancellation`.
 
 .. figure:: view_generation.svg

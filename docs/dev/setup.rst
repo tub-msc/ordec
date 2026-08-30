@@ -47,19 +47,23 @@ Then, configure the environment variable ORDEC_PDK_IHP_SG13G2 to point to the IH
 Launch webinterface
 -------------------
 
-While the Docker-based demo runs using a single web server, it is recommended to use two separate webservers (frontend/backend) during development.
+There are three setups to run the ``ordec`` web UI:
 
-First, launch the frontend (using Vite_)::
+1. **Combined frontend + backend server with regular installation:** A regular installation of ORDeC (e.g. from PyPI or in the Docker image) includes a compiled version of the frontend (*webdist.tar*). In this case, ORDeC is started through a simple ``ordec``. This is the setup for users; see :doc:`/webui_design_organization`.
+2. **Combined frontend + backend server with editable installation:** In case of an editable installation ("develop mode", ``pip install -e``), setup 1 is not supported, as *webdist.tar* is not available in the package. Instead, the frontend can be built separately through ``npm run build`` in the *web/* directory. The build results must then be supplied to the ordec command: ``ordec -r [...]/web/dist/``
+3. **Separate frontend + backend server for frontend development:** This gives the best development experience when working on the frontend code and is described below.
+
+For frontend development, first launch the frontend (using Vite_)::
 
     cd web/
     npm ci
     npm run dev
 
 :code:`npm ci` is only needed at the first launch. In this setup, the Vite frontend server acts as proxy to the backend server on port 8100, which has to be run separately::
-    
+
     ordec -b
 
-This will launch a browser and open the ORDeC interface.
+This will launch a browser and open the ORDeC interface. Use the browser only to connect to the Vite server / port.
 
 Run tests
 ---------

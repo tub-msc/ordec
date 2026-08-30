@@ -1,3 +1,4 @@
 myst-nb>=1.2.0
 jupytext>=1.16.7
 sphinx-rtd-theme>=1.2.0
+sphinx-design>=0.6.0

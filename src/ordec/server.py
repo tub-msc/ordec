@@ -5,64 +5,36 @@
 ``ordec`` is the command line tool to start the web UI of
 ORDeC, the custom IC design platform.
 
-There are three recommended setups to run the ``ordec`` web UI:
+Without arguments, ``ordec`` starts the web UI in *integrated mode*: the
+source code is entered through the web UI's integrated editor and is not
+saved anywhere.
 
-(1) **Combined frontend + backend server with regular installation:**
-    A regular installation of ORDeC includes a compiled version of the
-    frontend (webdist.tar). In this case, ORDeC can be started through
-    a simple ``ordec``.
+Passing a file or module starts the web UI in *local mode*, where source
+code is stored in the local file system and edited outside the browser; the
+design is rebuilt automatically when source files change. The command line
+mirrors the ``python`` command line:
 
-(2) **Combined frontend + backend server with editable installation:**
-    In case of a editable installation ("develop mode" / pip -e), setup (1)
-    is not supported, as webdist.tar is not available in the package.
-    Instead, the frontend can be build separately through 'npm run build' in
-    the web/ directory. The build results must then be supplied to the
-    ordec command: ``ordec -r [...]/web/dist/``
+- ``ordec mydesign.ord`` (or ``mydesign.py``) opens the given file; as with
+  ``python mydesign.py``, the file's directory is put first on ``sys.path``.
+  A package directory (containing an ``__init__.py`` or ``__init__.ord``) can
+  be passed as well, which opens its ``__init__`` module. A file inside a
+  package is opened without package context, exactly like
+  ``python pkg/sub.py``; use ``-m pkg.sub`` where relative imports are
+  needed.
+- ``ordec -m mydesign`` treats the argument as a regular Python module
+  import, like ``python -m``: the current directory is put first on
+  ``sys.path``. Hierarchical names such as ``mydesign.submodule`` are
+  permitted.
+- ``--view`` (``-e``) preselects a view, e.g.
+  ``ordec mydesign.ord -e "MyCell().schematic"``. It may be given several
+  times; each view opens in its own result viewer, side by side.
+  ``mydesign.ord:MyCell().schematic`` and ``-m mydesign:MyCell().schematic``
+  are shorthand for a single ``--view``.
 
-(3) **Separate frontend + backend server for frontend development:**
-    In the web/ directory, run the Vite frontend server using 'npm run dev'.
-    Then, separately start the backend server using ``ordec -b``.
-    This gives the best development experience when working on the frontend
-    code. In this setup, the Vite server acts as proxy for the backend
-    server. Thus, you should use the browser only to connect to the Vite
-    server / port.
-
-Furthermore, there are two modes in which you can use the ORDeC web UI:
-
-(1) **Integrated mode:**
-    The source code is entered through the web UI's integrated editor. The
-    design is rebuilt automatically when the source is changed. The entered
-    source code is not saved anywhere. Please save any code that you want to
-    keep manually using copy & paste to local files.
-
-    Unless a file or module (``-m``) is specified, the web UI is launched in
-    integrated mode.
-
-(2) **Local mode:**
-    Source code is entered and stored in the local file system. An editor
-    outside the web browser is used. The design is rebuilt automatically when
-    it is detected that source files have changed. This is done using inotify.
-
-    Local mode is launched by passing a file or module, mirroring the
-    ``python`` command line. ``ordec mydesign.ord`` (or ``mydesign.py``)
-    opens the given file; as with ``python mydesign.py``, the file's
-    directory is put first on ``sys.path``. A package directory (containing
-    an ``__init__.py`` or ``__init__.ord``) can be passed as well, which
-    enables projects with multiple modules / source files. A file inside a
-    package is opened without package context, exactly like
-    ``python pkg/sub.py``; use ``-m pkg.sub`` where relative imports are
-    needed.
-
-    ``ordec -m mydesign`` treats the argument as a regular Python module
-    import, like ``python -m``: the current directory is put first on
-    ``sys.path``. Hierarchical names such as ``mydesign.submodule`` are
-    permitted.
-
-    ``--view`` (``-e``) preselects a view, e.g.
-    ``ordec mydesign.ord -e "MyCell().schematic"``. It may be given several
-    times; each view opens in its own result viewer, side by side.
-    ``mydesign.ord:MyCell().schematic`` and ``-m mydesign:MyCell().schematic``
-    are shorthand for a single ``--view``.
+In an editable installation (``pip install -e``), the packaged frontend
+(webdist.tar) is not available; pass a frontend build with ``-r web/dist/``
+or run the Vite dev server and ``ordec -b`` (see the development setup in
+the documentation).
 """
 
 import argparse

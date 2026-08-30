@@ -6,8 +6,8 @@ import ordec.version
 
 def test_doc_url_release(monkeypatch):
     monkeypatch.setattr(ordec.version, 'version', '0.6.0')
-    assert ordec.version.doc_url('webui.html') == \
-        'https://ordec.readthedocs.io/en/v0.6.0/webui.html'
+    assert ordec.version.doc_url('webui_design_organization.html') == \
+        'https://ordec.readthedocs.io/en/v0.6.0/webui_design_organization.html'
 
 
 def test_doc_url_dev(monkeypatch):

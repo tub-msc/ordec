@@ -80,7 +80,7 @@ cell Inv:
 
 # The view can be displayed with a simple function call. For a symbol, the resulting
 # symbol gets displayed. However, you don't need to worry about how to execute the ORD code yourself.
-# Just use ORDeC's built-in web interface {doc}`webui`!
+# Just use ORDeC's built-in web interface {doc}`webui_design_organization`!
 
 Inv().symbol 
 
@@ -521,6 +521,9 @@ import ordec.importer
 from ordec.examples.nand2 import Nand2
 # -
 
+# This is the basis for splitting designs into several files and organizing them
+# as Python packages; see {doc}`webui_design_organization`.
+#
 # I hope this short tutorial gave you some insights into how to get started
 # writing ORD code! Feel free to check out the ORD examples in `ordec.examples`
 # by importing and adjusting them in the web interface. 
