@@ -316,12 +316,20 @@ def end_final():
 
 
 STYLE = """
-    body { font-family: sans-serif; background: #fff; color: #111;
-        margin: 2em auto; max-width: 50em; padding: 0 1em; }
-    table { border-collapse: collapse; margin: 1em 0; }
-    td, th { border: 1px solid #999; padding: 0.3em 0.8em; text-align: left; }
-    th { background: #eee; }
-    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    body { font-family: sans-serif; background: #f4f5f7; color: #111;
+        margin: 0; padding: 2em 1em; }
+    main { max-width: 56em; margin: 0 auto; }
+    nav a { color: #06c; text-decoration: none; font-size: 0.95em; }
+    nav a:hover { text-decoration: underline; }
+    h1 { margin: 0.6em 0 0.2em; }
+    .meta { color: #555; margin: 0 0 1.5em; }
+    .meta a { color: #06c; }
+    .card { background: #fff; border: 1px solid #ddd; border-radius: 0.5em;
+        padding: 1em 1.5em; margin: 1em 0; overflow-x: auto; }
+    .card h2 { font-size: 1em; margin: 0 0 0.8em; color: #555;
+        text-transform: uppercase; letter-spacing: 0.05em; }
+    .card img { display: block; max-width: 100%; margin: 0 auto; }
+    .card pre { margin: 0; font-size: 0.9em; line-height: 1.4; }
     .noscore { color: #999; }
 """
 
@@ -335,18 +343,19 @@ SCORE_CELL = """{% if score is None %}
 TEAM_PAGE = Template("""<!DOCTYPE html>
 <html><head><title>{{ team }}</title>
 <style>""" + STYLE + """</style></head>
-<body><h1>{{ team }}</h1>
+<body><main>
+<nav><a href="projector">&larr; Back to scoreboard</a></nav>
+<h1>{{ team }}</h1>
 {% if score is None %}
-<p class="noscore">No score pushed yet.</p>
+<p class="meta noscore">No score pushed yet.</p>
 {% else %}
-<p>Supply current {{ '%.2f' % score }} µA, pushed {{ updated }}
-(<a href="source?id={{ id }}">raw source</a>).</p>
-{% if svg %}<p><img src="schematic?id={{ id }}"
-alt="schematic" style="max-width: 100%"></p>{% end %}
-<pre>{{ source }}</pre>
+<p class="meta">Supply current {{ '%.2f' % score }} µA, pushed {{ updated }}</p>
+{% if svg %}<section class="card"><h2>Schematic</h2>
+<img src="schematic?id={{ id }}" alt="schematic"></section>{% end %}
+<section class="card"><h2>Source</h2>
+<pre>{{ source }}</pre></section>
 {% end %}
-<p><a href="projector">Back to the projector</a></p>
-</body></html>""")
+</main></body></html>""")
 
 # Team name cell of the leaderboard: a link to the team's page for admins
 # (while the entry exists; a final ranking may name a deleted one).
@@ -369,22 +378,40 @@ PROJECTOR_PAGE = Template("""<!DOCTYPE html>
 <style>
     body { font-family: sans-serif; background: #fff; color: #111;
         margin: 5vh 10vw; }
-    h1 { font-size: 5vh; }
+    h1 { font-size: 5vh; margin: 0 0 3vh; }
+    h1 .noscore { font-size: 3vh; font-weight: normal; }
     table { border-collapse: collapse; width: 100%; font-size: 4vh; }
     td, th { border-bottom: 0.4vh solid #ccc; padding: 1vh 2vh;
         text-align: left; }
+    th { color: #555; font-size: 3vh; }
     .num { text-align: right; font-variant-numeric: tabular-nums; }
     .noscore { color: #999; }
     a { color: #06c; }
     a.delete { color: #c00; text-decoration: none; font-size: 2.5vh; }
-    .admin { font-size: 2vh; margin-top: 6vh;
-        border-top: 0.4vh solid #ccc; padding-top: 2vh; }
-    .admin button { font-size: 2vh; }
+    a.delete:hover { color: #f00; }
+    td pre { margin: 0; font-size: 2vh; white-space: pre-wrap; }
+    button { font: inherit; font-size: 2.2vh; padding: 1.2vh 3vh;
+        border-radius: 0.8vh; border: 0.25vh solid #06c; background: #06c;
+        color: #fff; cursor: pointer; }
+    button:hover { background: #0052a3; border-color: #0052a3; }
+    button.secondary { background: #fff; color: #06c; }
+    button.secondary:hover { background: #eef4fb; }
+    button.danger { background: #c00; border-color: #c00; }
+    button.danger:hover { background: #a00; border-color: #a00; }
+    .admin { display: flex; flex-wrap: wrap; align-items: center;
+        gap: 2vh; margin-top: 4vh; font-size: 2.2vh; }
+    .admin form { margin: 0; }
+    .failure { flex-basis: 100%; background: #fff3f3; border: 0.25vh solid
+        #f0c0c0; border-radius: 0.8vh; padding: 1.5vh 2.5vh; }
+    .failure p { margin: 0 0 1vh; }
+    .failure pre { margin: 0; white-space: pre-wrap; font-size: 2vh; }
     .overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5);
         display: flex; align-items: center; justify-content: center; }
     .dialog { background: #fff; padding: 3vh 4vh; font-size: 2.5vh;
-        max-width: 60vw; }
-    .dialog form { display: inline; margin-right: 1em; }
+        max-width: 60vw; border-radius: 1vh; }
+    .dialog p { margin: 0 0 3vh; }
+    .dialog .actions { display: flex; gap: 2vh; }
+    .dialog form { margin: 0; }
     .dialog button { font-size: 2.5vh; }
 </style></head>
 <body>
@@ -434,27 +461,31 @@ PROJECTOR_PAGE = Template("""<!DOCTYPE html>
 <button>Final scoring</button></form>
 {% elif final['result'] is not None %}
 {% if isinstance(final['result'], dict) %}
+<div class="failure">
 <p><b>Final scoring failed</b> (started {{ final['started'] }}).</p>
 <pre>{{ final['result'].get('error', '') }}</pre>
+</div>
 {% end %}
 <form method="post">{% raw xsrf %}
 <input type="hidden" name="action" value="final">
 <button>Run final scoring again</button></form>
 <form method="post">{% raw xsrf %}
 <input type="hidden" name="action" value="live">
-<button>Back to live scores</button></form>
+<button class="secondary">Back to live scores</button></form>
 {% end %}
 </div>
 {% if delete is not None %}
 <div class="overlay"><div class="dialog">
 <p>Delete the entry of team <b>{{ delete[1] }}</b>? This releases the
 team name for a fresh claim.</p>
+<div class="actions">
 <form method="post">{% raw xsrf %}
 <input type="hidden" name="action" value="delete">
 <input type="hidden" name="id" value="{{ delete[0] }}">
-<button>Delete</button></form>
-<form method="get" action="projector"><button>Cancel</button></form>
-</div></div>
+<button class="danger">Delete</button></form>
+<form method="get" action="projector">
+<button class="secondary">Cancel</button></form>
+</div></div></div>
 {% end %}
 {% end %}
 </body></html>""")
@@ -649,19 +680,6 @@ class SchematicHandler(BaseHandler):
         self.finish(row[0])
 
 
-class SourceHandler(BaseHandler):
-    @web.authenticated
-    def get(self):
-        self.require_admin()
-        row = db.execute("SELECT source FROM entries WHERE id = ?",
-            (self.entry_id(),)).fetchone()
-        if row is None or row[0] is None:
-            raise web.HTTPError(404)
-        # text/plain + nosniff: pushed source must never render as HTML.
-        self.set_header('Content-Type', 'text/plain; charset=utf-8')
-        self.finish(row[0])
-
-
 def main():
     app = web.Application([
         (PREFIX, RootHandler),
@@ -671,7 +689,6 @@ def main():
         (url_path_join(PREFIX, 'projector'), ProjectorHandler),
         (url_path_join(PREFIX, 'team'), TeamHandler),
         (url_path_join(PREFIX, 'schematic'), SchematicHandler),
-        (url_path_join(PREFIX, 'source'), SourceHandler),
         (url_path_join(PREFIX, 'oauth_callback'), HubOAuthCallbackHandler),
     ], cookie_secret=secrets.token_bytes(32), xsrf_cookies=True)
     url = urlparse(os.environ['JUPYTERHUB_SERVICE_URL'])
