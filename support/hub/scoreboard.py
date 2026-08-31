@@ -139,6 +139,12 @@ def claim(team, secret, guest):
         db.execute("UPDATE entries SET team = ?, secret = ? WHERE guest = ?",
             (team, secret, guest))
     elif row is None:
+        if final() is not None:
+            # A team registering now would show up on the frozen standings
+            # but not in the verified ranking, which scored the entries as
+            # they were when the freeze started.
+            return ("The scoreboard is frozen for final scoring; no new "
+                "teams can join now.")
         db.execute("INSERT INTO entries (team, secret, guest, updated) "
             "VALUES (?, ?, ?, ?)", (team, secret, guest, now))
     elif secrets.compare_digest(secret.encode(), row[0].encode()):
@@ -338,6 +344,9 @@ SCORE_CELL = """{% if score is None %}
 {% else %}<td class="num">{{ '%.2f' % score }} µA</td>{% end %}"""
 
 # One team's audit trail: the source and schematic pushed with its score.
+# The audit view follows the pushed source, not the score: a build that
+# failed a check stores source and schematic with a NULL score, and final
+# scoring ranks such a team from that source (see rescore.py).
 # The schematic is an <img>: SVG shown as an image cannot run scripts or
 # load anything, whatever a participant put into it.
 TEAM_PAGE = Template("""<!DOCTYPE html>
@@ -346,10 +355,15 @@ TEAM_PAGE = Template("""<!DOCTYPE html>
 <body><main>
 <nav><a href="projector">&larr; Back to scoreboard</a></nav>
 <h1>{{ team }}</h1>
+{% if source is None %}
+<p class="meta noscore">No build pushed yet.</p>
+{% else %}
 {% if score is None %}
-<p class="meta noscore">No score pushed yet.</p>
+<p class="meta noscore">No score: the latest build failed a check. Pushed
+{{ updated }}.</p>
 {% else %}
 <p class="meta">Supply current {{ '%.2f' % score }} µA, pushed {{ updated }}</p>
+{% end %}
 {% if svg %}<section class="card"><h2>Schematic</h2>
 <img src="schematic?id={{ id }}" alt="schematic"></section>{% end %}
 <section class="card"><h2>Source</h2>
@@ -428,8 +442,7 @@ PROJECTOR_PAGE = Template("""<!DOCTYPE html>
 <td></td>""" + DELETE_CELL + """{% end %}
 </tr>
 {% end %}{% end %}
-{% for r in final['result'] %}{% if r['fails'] %}
-{% if admin %}
+{% if admin %}{% for r in final['result'] %}{% if r['fails'] %}
 {% set score = r.get('claimed') %}{% set team = r['team'] %}
 <tr><td class="num">&ndash;</td>
 """ + TEAM_CELL + """
@@ -437,11 +450,14 @@ PROJECTOR_PAGE = Template("""<!DOCTYPE html>
 """ + SCORE_CELL + """
 <td><pre>{{ '\\n'.join(r['fails']) }}</pre></td>
 """ + DELETE_CELL + """</tr>
-{% else %}
+{% end %}{% end %}{% end %}
+</table>
+{% if not admin %}{% for r in final['result'] %}{% if r['fails'] %}
+{% comment Outside the table: a <p> inside one would be foster-parented
+above the leaderboard by the browser. %}
 <p class="noscore">Not ranked: {{ r['team'] }} &ndash;
 {{ '; '.join(r['fails']) }}</p>
 {% end %}{% end %}{% end %}
-</table>
 {% else %}
 <h1>Leaderboard{% if final is not None %}
 <span class="noscore">(frozen for final scoring)</span>{% end %}</h1>
@@ -523,12 +539,27 @@ class ApiHandler(BaseHandler):
 
     def check_xsrf_cookie(self):
         # The calling page (/user/<name>/app.html) cannot read this
-        # service's path-scoped xsrf cookie, so same-origin is enforced via
-        # the Origin header instead: browsers always send it on cross-origin
-        # requests and cannot be made to lie about it.
-        origin = self.request.headers.get('Origin', '')
-        if urlparse(origin).netloc != self.request.host:
-            raise web.HTTPError(403, "cross-origin request rejected")
+        # service's path-scoped xsrf cookie, so same-origin is enforced from
+        # the request headers instead. Both are set by the browser and
+        # cannot be forged by a cross-site page: Origin decides whenever it
+        # is present, and only where it is missing entirely (some browsers
+        # and extensions strip it from same-origin POSTs) does
+        # Sec-Fetch-Site decide. A cross-site request carries at least one
+        # of the two saying so, and is rejected either way.
+        origin = self.request.headers.get('Origin')
+        site = self.request.headers.get('Sec-Fetch-Site')
+        if origin:
+            if urlparse(origin).netloc != self.request.host:
+                raise web.HTTPError(403, "cross-origin request rejected")
+        elif site not in ('same-origin', 'none'):
+            # 'none' is what a direct navigation carries; 'same-site' is a
+            # different host on the same site, which this service is not.
+            if site:
+                raise web.HTTPError(403, "cross-origin request rejected "
+                    f"(Sec-Fetch-Site: {site})")
+            raise web.HTTPError(403, "request without Origin and "
+                "Sec-Fetch-Site headers rejected: the scoreboard cannot "
+                "tell it apart from a cross-site request")
 
     def json_body(self):
         try:

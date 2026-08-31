@@ -9,8 +9,9 @@
 //     localStorage (after an idle cull, the browser comes back as a new hub
 //     guest and has to re-bind its team).
 //   - push(): the state after a build: the score (null when checks fail)
-//     plus the source that produced it and its schematic as SVG. Dropped
-//     while the board is frozen for final scoring (state.final != null).
+//     plus the source that produced it and its schematic as SVG. Held back
+//     while the board is frozen for final scoring (state.final != null) and
+//     re-sent once it is live again.
 //   - ScoreboardPanel: GoldenLayout component polling the standings, or
 //     the verified final ranking once the admin ran final scoring. Shows
 //     a spinner on the own score while it is out of date (rebuild or push
@@ -32,9 +33,13 @@ export class Scoreboard {
         this.course = course;
         this.storageKey = 'ordecTeam:' + course.name;
         this.team = null; // team name bound to this session, once joined
-        this.lastPush = null; // {score, source} of the last successful push
+        this.lastPush = null; // {score, source, svg} of the last successful push
+        // Payload of a push that could not be sent (board frozen, or the
+        // entry was gone); re-sent once pushing is possible again.
+        this.pendingPush = null;
         this.frozen = false; // final scoring in progress or done: no pushes
         this.pushing = false; // a push request is in flight
+        this.rejoining = false; // a recovery join is running
         this.panel = null; // the ScoreboardPanel, while one exists
     }
 
@@ -76,12 +81,19 @@ export class Scoreboard {
         try {
             data = await resp.json();
         } catch (e) {
-            throw new Error('Unexpected answer from the scoreboard (HTTP '
-                + resp.status + ').');
+            // Tornado answers HTTPErrors with an HTML error page.
+            const error = new Error('Unexpected answer from the scoreboard '
+                + '(HTTP ' + resp.status + ').');
+            error.status = resp.status;
+            throw error;
         }
         if (!resp.ok) {
-            throw new Error(data.error || ('Scoreboard error (HTTP '
+            const error = new Error(data.error || ('Scoreboard error (HTTP '
                 + resp.status + ').'));
+            // Callers distinguish outcomes by status (404: this session has
+            // no entry any more, see push()).
+            error.status = resp.status;
+            throw error;
         }
         return data;
     }
@@ -92,7 +104,18 @@ export class Scoreboard {
     // a list of {team, verified, fails} when done, or {error}.
     async fetchState() {
         const state = await this.request('api/state');
+        const wasFrozen = this.frozen;
         this.frozen = state.final !== null;
+        if (wasFrozen && !this.frozen) {
+            // "Back to live scores": send what the freeze suppressed, so
+            // the board does not stay stale for this team.
+            this.flushPending();
+        }
+        if (this.team !== null && state.team === null) {
+            // An admin deleted this session's entry; rejoin instead of
+            // dropping every later score silently.
+            this.recoverTeam();
+        }
         return state;
     }
 
@@ -101,17 +124,21 @@ export class Scoreboard {
     // the last successful push; a failed push retries on the next report
     // refresh.
     push(score, source, svg) {
+        const payload = {score: score, source: source, svg: svg};
         if (this.frozen) {
-            return; // the service would refuse it (409) anyway
+            // The service would refuse it (409); remember it for the
+            // transition back to live scores.
+            this.pendingPush = payload;
+            return;
         }
         if (this.lastPush && this.lastPush.score === score
                 && this.lastPush.source === source) {
             return;
         }
-        this.lastPush = {score: score, source: source};
+        this.lastPush = payload;
         this.pushing = true;
         this.statusChanged();
-        this.request('api/push', {score: score, source: source, svg: svg})
+        this.request('api/push', payload)
         .then(() => {
             // Show the new score right away rather than at the next poll;
             // the own score counts as stale until it is on screen.
@@ -119,10 +146,48 @@ export class Scoreboard {
         }).catch((e) => {
             console.error('scoreboard push failed:', e);
             this.lastPush = null;
+            if (e.status === 404) {
+                // The service has no entry for this session any more (an
+                // admin deleted it): rejoin and re-send this build.
+                this.pendingPush = payload;
+                this.recoverTeam();
+            }
         }).finally(() => {
             this.pushing = false;
             this.statusChanged();
         });
+    }
+
+    // Re-sends the push that was suppressed while the board was frozen or
+    // while this session had no entry, once pushing is possible again.
+    flushPending() {
+        const pending = this.pendingPush;
+        this.pendingPush = null;
+        if (pending) {
+            this.push(pending.score, pending.source, pending.svg);
+        }
+    }
+
+    // Drops the stale team binding and runs the join flow again (silent
+    // re-claim with the stored name and secret, or the dialog), then
+    // re-sends the pending build. One at a time.
+    async recoverTeam() {
+        if (this.rejoining) {
+            return;
+        }
+        this.rejoining = true;
+        this.team = null;
+        this.lastPush = null;
+        try {
+            await this.join();
+        } catch (e) {
+            console.error('scoreboard rejoin failed:', e);
+        } finally {
+            this.rejoining = false;
+        }
+        if (this.team !== null) {
+            this.flushPending();
+        }
     }
 
     // -- Team registration ------------------------------------------------

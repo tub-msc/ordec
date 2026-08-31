@@ -598,8 +598,14 @@ SCOREBOARD_FAKE_JS = """
         }
         if (url === '/services/scoreboard/api/push') {
             const body = JSON.parse(opts.body);
+            const row = fake.rows.find(r => r.team === fake.team);
+            if (!row) {
+                // Like PushHandler when the entry is gone (admin deleted it).
+                return json({error: 'no team registered for this session'},
+                    404);
+            }
             fake.pushes.push(body);
-            fake.rows[1].score = body.score;
+            row.score = body.score;
             return new Response(null, {status: 204});
         }
         return realFetch(url, opts);
@@ -800,7 +806,8 @@ def test_course_competition_scoreboard(web):
 
         # Final scoring (admin-triggered on the service): the panel switches
         # to the verified ranking and pushes stop while the board is
-        # frozen; back to live scores restores the standings.
+        # frozen; back to live scores restores the standings and re-sends
+        # the build the freeze held back.
         web.driver.execute_script("""
             window.scoreboardFake.final = {started: '11:00:00', result: [
                 {team: 'Ohm my', verified: 30.01, fails: []},
@@ -838,6 +845,35 @@ def test_course_competition_scoreboard(web):
             return !document.querySelector('.scoreboard-final')
                 && document.querySelectorAll('.scoreboard tr').length === 3;
         """)
+        # The build made while the board was frozen is not lost: it goes out
+        # once the board is live again.
+        web.wait_until("return window.scoreboardFake.pushes.length === 5;")
+        assert web.driver.execute_script("""
+            return window.scoreboardFake.pushes[4].source;
+        """).endswith('# frozen\n')
+
+        # An admin deleting the entry must not silently drop every later
+        # score: the session notices that it has no team any more and
+        # re-claims its stored name.
+        web.driver.execute_script("""
+            const fake = window.scoreboardFake;
+            fake.team = null;
+            fake.rows = fake.rows.filter(r => r.team !== 'Ohm my');
+        """)
+        web.wait_until("""
+            return window.scoreboardFake.claims.length === 4
+                && !!document.querySelector('.scoreboard-own');
+        """)
+        info = web.driver.execute_script("""
+            return {
+                teamdialog: !!document.querySelector('#teamdialog'),
+                claim: window.scoreboardFake.claims[3],
+                own: document.querySelector('.scoreboard-own').innerText,
+            };
+        """)
+        assert info['teamdialog'] is False
+        assert info['claim']['team'] == 'Ohm my'
+        assert info['own'].split('\t')[1].startswith('Ohm my')
 
         # A fresh guest session (the fake forgets the team) silently
         # re-claims the stored name with its secret instead of asking again.

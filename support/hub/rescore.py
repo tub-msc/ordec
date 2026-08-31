@@ -32,8 +32,7 @@ import importlib.resources
 from ordec.language import compile_ord
 from ordec import courses
 from ordec.courses.amp_competition.checks import (
-    GAIN_MIN, VOUT_DC_MIN, VOUT_DC_MAX, VIN_AMP, THD_MAX,
-    forbidden_devices, measure_corners)
+    forbidden_devices, gate_failures, measure_corners)
 
 TIMEOUT = 120  # seconds per submission (simulations included)
 
@@ -56,20 +55,11 @@ def rescore(source):
     ns = {}
     exec(compile_ord(OFFICIAL_SRC, ns, 'challenge.ord'), ns)
     ns['Amp'] = ns_sub['Amp']
-    # Gates at every corner; the score is the nominal (first) corner's
+    # Gates at every corner, evaluated by the same helper as the live check
+    # (checks.py gate_failures); the score is the nominal (first) corner's
     # current (supply plus input source), as in the live check.
     rows = measure_corners(ns)
-    for label, isup, vout_dc, gain, vout_amp, thd in rows:
-        if gain < GAIN_MIN:
-            fails.append(f"gain {gain:.2f} < {GAIN_MIN:g} at {label}")
-        if not VOUT_DC_MIN <= vout_dc <= VOUT_DC_MAX:
-            fails.append(f"output DC level {vout_dc:.3f} V outside "
-                f"{VOUT_DC_MIN:g}...{VOUT_DC_MAX:g} V at {label}")
-        if vout_amp < GAIN_MIN * VIN_AMP or thd > THD_MAX:
-            fails.append(f"output {vout_amp * 1e3:.0f} mV with {thd:.1%} "
-                f"distortion for the {VIN_AMP * 1e3:g} mV input (required "
-                f"≥ {GAIN_MIN * VIN_AMP * 1e3:g} mV, ≤ {THD_MAX:.0%}) at "
-                f"{label}")
+    fails += gate_failures(rows)
     return rows[0][1], fails
 
 

@@ -7,9 +7,9 @@ Competition check for the 'amp_competition' course (Amplifier Competition).
 One lesson: design an amplifier inside the fixed Amp symbol, meet the spec
 gates at every process corner, minimize the current. gen_challenge renders
 rules, gates and the score as the lesson() view. The measurement functions,
-gate constants and corner list are also used by support/hub/rescore.py for
-the verified final ranking, so they must stay importable without side
-effects.
+the gates (see gate_failures) and the corner list are also used by
+support/hub/rescore.py for the verified final ranking, so they must stay
+importable without side effects and the gates must live in one place only.
 
 Like the cmos_circuits checks, a half-finished design is an expected state:
 simulation-based gates report a friendly status while the structure is
@@ -17,10 +17,11 @@ incomplete, and tracebacks are reserved for unexpected failures.
 """
 
 import math
-import traceback
 
 from ordec.core import *
 from ordec.lib import ihp130
+
+from ..common import blocked_passfails, exception_text, sim_failure_text
 
 # Spec gates. The score (current drawn from the testbench sources while
 # amplifying, see measure_tran) only counts with all gates passing at all
@@ -61,11 +62,6 @@ CORNERS = [
 # elements (ordec.lib Res/Cap/...) are excluded on purpose: an ideal
 # resistor load would buy arbitrary gain at no current cost.
 ALLOWED_DEVICES = (ihp130.Nmos, ihp130.Pmos, ihp130.Res, ihp130.Cmim)
-
-
-def exception_text():
-    """Format the current exception for display in a PassFail element."""
-    return "The check raised an exception:\n" + traceback.format_exc()
 
 
 def forbidden_devices(schematic, prefix="", depth=0):
@@ -163,6 +159,57 @@ def measure_corners(g):
     return rows
 
 
+# The spec gates, defined once: a predicate on a measurement row (as
+# measure_corners returns it) and the text describing its failure at that
+# corner. gen_challenge builds its PassFail rows from the predicates and
+# rescore.py's verified final ranking its reasons from gate_failures(), so
+# the live check and the final ranking cannot apply different rules.
+
+def gain_ok(row):
+    _, _, _, gain, _, _ = row
+    return gain >= GAIN_MIN
+
+
+def gain_fail_text(row):
+    label, _, _, gain, _, _ = row
+    return f"gain {gain:.2f} < {GAIN_MIN:g} at {label}"
+
+
+def dc_ok(row):
+    _, _, vout_dc, _, _, _ = row
+    return VOUT_DC_MIN <= vout_dc <= VOUT_DC_MAX
+
+
+def dc_fail_text(row):
+    label, _, vout_dc, _, _, _ = row
+    return (f"output DC level {vout_dc:.3f} V outside "
+        f"{VOUT_DC_MIN:g}...{VOUT_DC_MAX:g} V at {label}")
+
+
+def tran_ok(row):
+    _, _, _, _, vout_amp, thd = row
+    return vout_amp >= GAIN_MIN * VIN_AMP and thd <= THD_MAX
+
+
+def tran_fail_text(row):
+    label, _, _, _, vout_amp, thd = row
+    return (f"output {vout_amp * 1e3:.0f} mV with {thd:.1%} distortion for "
+        f"the {VIN_AMP * 1e3:g} mV input (required "
+        f"≥ {GAIN_MIN * VIN_AMP * 1e3:g} mV, ≤ {THD_MAX:.0%}) at {label}")
+
+
+GATES = ((gain_ok, gain_fail_text), (dc_ok, dc_fail_text),
+    (tran_ok, tran_fail_text))
+
+
+def gate_failures(rows):
+    """
+    Descriptions of every spec gate that fails at some corner of rows
+    (empty = all gates pass at all corners), corner by corner.
+    """
+    return [text(row) for row in rows for ok, text in GATES if not ok(row)]
+
+
 def gen_challenge(g):
     @viewgen_noctx
     def lesson() -> Report:
@@ -251,46 +298,37 @@ def gen_challenge(g):
         try:
             rows = measure_corners(g)
         except Exception:
-            if structure_ok:
-                reason = exception_text()
-            else:
-                reason = ("The simulation failed -- usually the amplifier "
-                    "is still incomplete (see the device check above).")
-            report.passfail(gain_label, False, instructions=reason,
-                hint=gain_hint)
-            report.passfail(dc_label, False, instructions=reason,
-                hint=dc_hint)
-            report.passfail(tran_label, False, instructions=reason,
-                hint=tran_hint)
+            blocked_passfails(report, (gain_label, dc_label, tran_label),
+                (gain_hint, dc_hint, tran_hint),
+                sim_failure_text(structure_ok, "the amplifier",
+                    structure_check="device check"))
             rows = None
 
         if rows is not None:
-            gain_ok = [gain >= GAIN_MIN for _, _, _, gain, _, _ in rows]
-            report.passfail(gain_label, all(gain_ok), hint=gain_hint,
+            gain_pass = [gain_ok(row) for row in rows]
+            report.passfail(gain_label, all(gain_pass), hint=gain_hint,
                 instructions=f"Gain at {GAIN_FREQ / 1e6:g} MHz: " + ", ".join(
                     f"{gain:.2f} ({20 * math.log10(max(gain, 1e-9)):.1f} dB)"
                     f" at {label}" + ("" if ok else " (fail)")
-                    for (label, _, _, gain, _, _), ok in zip(rows, gain_ok))
+                    for (label, _, _, gain, _, _), ok in zip(rows, gain_pass))
                 + f". Required: ≥ {GAIN_MIN:g} ({GAIN_MIN_DB:.0f} dB) at "
                 "every corner.")
-            dc_ok = [VOUT_DC_MIN <= vout_dc <= VOUT_DC_MAX
-                for _, _, vout_dc, _, _, _ in rows]
-            report.passfail(dc_label, all(dc_ok), hint=dc_hint,
+            dc_pass = [dc_ok(row) for row in rows]
+            report.passfail(dc_label, all(dc_pass), hint=dc_hint,
                 instructions="Output DC level: " + ", ".join(
                     f"{vout_dc:.3f} V at {label}" + ("" if ok else " (fail)")
-                    for (label, _, vout_dc, _, _, _), ok in zip(rows, dc_ok))
+                    for (label, _, vout_dc, _, _, _), ok in zip(rows, dc_pass))
                 + f". Required: {VOUT_DC_MIN:g} V … {VOUT_DC_MAX:g} V at "
                 "every corner. The input sits at 0.6 V; your amplifier "
                 "must place its own operating point.")
-            tran_ok = [vout_amp >= GAIN_MIN * VIN_AMP and thd <= THD_MAX
-                for _, _, _, _, vout_amp, thd in rows]
-            report.passfail(tran_label, all(tran_ok), hint=tran_hint,
+            tran_pass = [tran_ok(row) for row in rows]
+            report.passfail(tran_label, all(tran_pass), hint=tran_hint,
                 instructions=f"Output for the {VIN_AMP * 1e3:g} mV input "
                 "sine: " + ", ".join(
                     f"{vout_amp * 1e3:.0f} mV amplitude with {thd:.1%} "
                     f"distortion at {label}" + ("" if ok else " (fail)")
                     for (label, _, _, _, vout_amp, thd), ok
-                    in zip(rows, tran_ok))
+                    in zip(rows, tran_pass))
                 + f". Required: ≥ {GAIN_MIN * VIN_AMP * 1e3:g} mV with "
                 f"distortion ≤ {THD_MAX:.0%} at every corner.")
             report.markdown("Measurements across corners:\n\n"

@@ -13,9 +13,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-from .test_course import course_data, courses_testdata
+# course reference solutions and helpers from the main test suite
+# (conftest.py puts the repository root on sys.path)
+from tests.test_course import course_data, courses_testdata
 
-RESCORE = Path(__file__).parent.parent / 'support' / 'hub' / 'rescore.py'
+RESCORE = Path(__file__).parent.parent / 'rescore.py'
 
 
 def load_rescore():

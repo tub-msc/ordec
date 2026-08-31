@@ -390,18 +390,20 @@ export class CourseController {
     // "no score" again), plus the source and the report's schematic as
     // audit trail.
     pushScore(elements) {
-        if (!this.scoreboard || !this.editor) {
+        // The source of this build, not the current editor content: the two
+        // differ when the user keeps typing while the simulations run, and
+        // pushing the wrong one would make the final rescoring flag a claim
+        // mismatch the team never caused.
+        const source = this.client.srcBuilt;
+        if (!this.scoreboard || !this.editor || source === null) {
             return;
         }
         const score = elements.find(e => e.element_type === 'score');
         const svg = elements.find(e => e.element_type === 'svg');
-        const markup = svg ? '<svg xmlns="http://www.w3.org/2000/svg"'
-            + ' viewBox="' + svg.viewbox.join(' ') + '"'
-            + (svg.width ? ' width="' + svg.width + '"' : '')
-            + (svg.height ? ' height="' + svg.height + '"' : '')
-            + '>' + svg.inner + '</svg>' : null;
+        // The server renders the standalone document (see render.py
+        // webdata); it is passed through verbatim rather than re-assembled.
         this.scoreboard.push((score && score.eligible) ? score.value : null,
-            this.editor.editor.getValue(), markup);
+            source, (svg && svg.document) ? svg.document : null);
     }
 
     // -- Zip import/export ----------------------------------------------

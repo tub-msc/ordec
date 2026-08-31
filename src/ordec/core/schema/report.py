@@ -275,6 +275,7 @@ class Svg(ReportElement):
     """Static SVG element rendered without zoom."""
     wire_id = WIRE_DOMAIN | 6
     inner = Attr(str, optional=False) #: SVG markup inside the <svg> element
+    document = Attr(str) #: complete standalone <svg> document, when the source view provides one
     viewbox_min_x = Attr(float, optional=False) #: viewBox left edge
     viewbox_min_y = Attr(float, optional=False) #: viewBox top edge
     viewbox_width = Attr(float, optional=False) #: viewBox width
@@ -291,6 +292,7 @@ class Svg(ReportElement):
         vb = data["viewbox"]
         return cls(
             inner=data["inner"],
+            document=data.get("document"),
             viewbox_min_x=float(vb[0]),
             viewbox_min_y=float(vb[1]),
             viewbox_width=float(vb[2]),
@@ -303,6 +305,7 @@ class Svg(ReportElement):
         return {
             "element_type": "svg",
             "inner": self.inner,
+            "document": self.document,
             "viewbox": [
                 self.viewbox_min_x,
                 self.viewbox_min_y,

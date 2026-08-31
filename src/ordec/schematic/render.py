@@ -230,6 +230,10 @@ class Renderer:
     def webdata(self):
         return 'svg', {
             'inner': self.inner_svg().decode('ascii'),
+            # The complete standalone document, so that consumers needing a
+            # file (the scoreboard audit trail, see web/src/course.js) do not
+            # have to re-assemble the root tag from the fragments above.
+            'document': self.svg().decode('ascii'),
             'viewbox': self.viewbox,
             'width': self.root.attrib.get('width'),
             'height': self.root.attrib.get('height'),
