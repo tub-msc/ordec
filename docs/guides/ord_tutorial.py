@@ -18,12 +18,12 @@
 
 # (ord_tutorial)=
 #
-# # ORD Language Tutorial
+# # ORD language tutorial
 #
 # ORD (Open Rapid Design) is ORDeC's **hardware description language for IC design**. 
 # It is designed to make custom IC design more software-like and text-based, 
 # as an alternative to traditional GUI-based tools.
-# Follow this link for the full ORD language reference: {doc}`ref/ord`.
+# Follow this link for the full ORD language reference: {doc}`/ref/ord`.
 
 # This tutorial provides a starting point for writing basic ORD code.  
 # It covers all the main structures and features that ORD currently offers 
@@ -56,7 +56,7 @@ if ip is not None:
 # ## 1. Cell
 #
 # A `cell` is the **root** of an ORD file. It acts as the base of the design you
-# want to create. The name of the cell should describe the inner behavior of the design {doc}`ref/cell_and_viewgen`.
+# want to create. The name of the cell should describe the inner behavior of the design {doc}`/ref/cell_and_viewgen`.
 
 # + 
 %%ord
@@ -80,7 +80,7 @@ cell Inv:
 
 # The view can be displayed with a simple function call. For a symbol, the resulting
 # symbol gets displayed. However, you don't need to worry about how to execute the ORD code yourself.
-# Just use ORDeC's built-in web interface {doc}`webui`!
+# Just use ORDeC's built-in web interface {doc}`webui_design_organization`!
 
 Inv().symbol 
 
@@ -257,7 +257,7 @@ cell MultibitReg_ArrayOfStructs:
 
 # **Parameters for subcells** are set using the dollar `$` operator.
 # In this example, we set the length of the transistors `l` to 100n and the width `w` to 200n.
-# ORD supports all common SI suffixes for cell parameters that use the `Rational` class type {doc}`ref/rational`.
+# ORD supports all common SI suffixes for cell parameters that use the `Rational` class type {doc}`/ref/rational`.
 # (a=atto, f=femto, n=nano, u=micro, m=milli, k=kilo, M=Mega, G=Giga, T=Tera)
 # The `$` operator works the same way in layout viewgens. Parameters can be
 # assigned multiple times (the last assignment wins) until the instance is
@@ -378,7 +378,7 @@ NandPlaced().schematic
 
 # Ports that are not part of a group (`a`, `b`, `y`) are auto-placed on the
 # edge of the drawing based on their alignment, and all wires are routed
-# automatically. See {doc}`ref/arrange` for the full reference, including
+# automatically. See {doc}`/ref/arrange` for the full reference, including
 # the `gap`, `align`, `anchor` and `horizontal` attributes and the rules for
 # nesting groups.
 
@@ -521,6 +521,9 @@ import ordec.importer
 from ordec.examples.nand2 import Nand2
 # -
 
+# This is the basis for splitting designs into several files and organizing them
+# as Python packages; see {doc}`webui_design_organization`.
+#
 # I hope this short tutorial gave you some insights into how to get started
 # writing ORD code! Feel free to check out the ORD examples in `ordec.examples`
 # by importing and adjusting them in the web interface. 

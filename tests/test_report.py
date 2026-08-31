@@ -109,12 +109,12 @@ def test_passfail_webdata():
 
 def test_markdown_docs_links():
     report = Report()
-    report.markdown("See [WebUI](docs:webui.html#local-mode) for details.")
+    report.markdown("See [WebUI](docs:guides/webui_design_organization.html#intermediate-local-mode) for details.")
     _, data = report.webdata(ExportTable())
     html = data["elements"][0]["html"]
     assert 'target="_blank" rel="noopener" ' \
         'href="https://ordec.readthedocs.io/en/' in html
-    assert 'webui.html#local-mode"' in html
+    assert 'guides/webui_design_organization.html#intermediate-local-mode"' in html
     assert 'docs:' not in html
 
 

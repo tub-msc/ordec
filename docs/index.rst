@@ -6,10 +6,7 @@ Welcome to ORDeC's documentation!
    :caption: Contents:
 
    readme
-   webui
-   editor_support
-   ord_tutorial
-   howto_layout
+   guides/index
    ref/index
    cell_lib/index
    dev/index

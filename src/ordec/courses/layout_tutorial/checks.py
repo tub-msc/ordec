@@ -1435,7 +1435,7 @@ def gen_epilogue(g):
               everything from this course to a complete oscillator with
               constraint-based layout.
 
-            - **Consult the [layout how-to](docs:howto_layout.html)** in
+            - **Consult the [layout how-to](docs:guides/howto_layout.html)** in
               the documentation &mdash; it condenses this course's
               techniques into a reference, including orientations, pin
               creation and verification.
