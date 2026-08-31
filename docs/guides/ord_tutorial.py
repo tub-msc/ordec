@@ -18,7 +18,7 @@
 
 # (ord_tutorial)=
 #
-# # ORD Language Tutorial
+# # ORD language tutorial
 #
 # ORD (Open Rapid Design) is ORDeC's **hardware description language for IC design**. 
 # It is designed to make custom IC design more software-like and text-based, 

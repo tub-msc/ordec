@@ -1,4 +1,4 @@
-Howto Layout
+Howto layout
 ============
 
 This howto collects the practical knowledge needed to write layout view generators: placing instances, orientations, geometric constraints, routing with the stack router, and pin creation. It complements the reference documentation (:doc:`/ref/layout`, :doc:`/ref/constraints`, :doc:`/ref/geoprim`) with a task-oriented walkthrough and lists the pitfalls that are easy to hit.

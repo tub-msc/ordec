@@ -184,8 +184,6 @@ Open modules of a package with ``-m``, from the directory that contains ``myproj
 
 This mirrors ``python -m``: the current directory is put first on ``sys.path`` and the module is imported *as part of its package*, so relative imports work. Passing the file path instead (``ordec myproject/testbenches/tb_inv.ord``) opens it like ``python myproject/testbenches/tb_inv.py``, without package context, and relative imports fail with ``ImportError: attempted relative import with no known parent package``. Passing the package directory itself (``ordec myproject/``) opens its ``__init__`` module.
 
-Python's import machinery caches the compiled ``.ord`` modules in ``__pycache__`` directories next to the sources, just like ``.py`` modules. These directories can be deleted at any time and are covered by the usual ``__pycache__`` / ``*.pyc`` entries of a Python ``.gitignore``; see :ref:`ord_importing` for details.
-
 Beyond that, everything that applies to Python projects applies to ORDeC projects: for example, a ``pyproject.toml`` makes the project installable (``pip install -e .``) so it can be imported from anywhere and reused by other projects, and tests of your cells and views can be written with ``pytest``.
 
 Command line reference
