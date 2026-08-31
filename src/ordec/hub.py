@@ -62,7 +62,8 @@ class HubIntegration:
 
     def __init__(self, *, prefix, api_url, api_token, client_id, user,
             callback_url=None, authorize_url=None, logout_url=None,
-            activity_url=None, server_name='', activity_interval=300):
+            activity_url=None, server_name='', activity_interval=300,
+            scoreboard_url=None):
         """
         Args:
             prefix: URL path prefix this server is proxied under
@@ -83,6 +84,10 @@ class HubIntegration:
                 (JUPYTERHUB_ACTIVITY_URL); None disables reporting.
             server_name: named-server name, '' for the default server.
             activity_interval: seconds between activity reports.
+            scoreboard_url: browser-facing URL of the competition
+                scoreboard service, None when this deployment runs none;
+                reported to the frontend, which only offers the competition
+                course when there is one.
         """
         if not prefix.endswith('/'):
             prefix += '/'
@@ -97,6 +102,7 @@ class HubIntegration:
         self.activity_url = activity_url
         self.server_name = server_name
         self.activity_interval = activity_interval
+        self.scoreboard_url = scoreboard_url
 
         self._lock = threading.Lock()
         # Signing key for OAuth state tokens; per process, since a state only
@@ -149,6 +155,11 @@ class HubIntegration:
             logout_url=logout_url,
             activity_url=environ.get('JUPYTERHUB_ACTIVITY_URL'),
             server_name=environ.get('JUPYTERHUB_SERVER_NAME', ''),
+            # The flag is set by the spawner only when the hub runs the
+            # scoreboard service (see support/hub/jupyterhub_config.py).
+            scoreboard_url=(hub_host + url_path_join(base_url,
+                'services/scoreboard') + '/')
+                if environ.get('ORDEC_HUB_SCOREBOARD') else None,
         )
 
     # --- OAuth state (login CSRF protection) ---

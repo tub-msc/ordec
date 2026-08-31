@@ -13,6 +13,11 @@ export class OrdecClient {
         this.reqCounter = 0;
         this.srctype = srctype;
         this.src = ""; // set by Editor from the outside
+        // The source string actually sent to the server for the build whose
+        // results are coming in (null in local mode). Consumers that pair a
+        // result with its source (course.js pushScore) must use this rather
+        // than the live editor content, which may have moved on meanwhile.
+        this.srcBuilt = null;
         // Course mode: epilogue source binding the lesson's check as the
         // lesson() view, executed server-side after src (see course.js).
         this.checkSrc = null;
@@ -151,12 +156,14 @@ export class OrdecClient {
         this.setStatus('busy');
         if(this.localModule) {
             // Local mode:
+            this.srcBuilt = null;
             msg = {
                 msg: 'localmodule',
                 module: this.localModule,
                 auth: session.authKey,
             };
         } else {
+            this.srcBuilt = this.src;
             // Integrated mode:
             msg = {
                 msg: 'source',

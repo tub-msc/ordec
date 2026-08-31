@@ -15,6 +15,8 @@ RUN pip install --no-cache-dir \
     jupyterhub-idle-culler==2.0.0
 
 COPY jupyterhub_config.py /srv/jupyterhub/jupyterhub_config.py
+COPY scoreboard.py /srv/jupyterhub/scoreboard.py
+COPY rescore.py /srv/jupyterhub/rescore.py
 COPY templates/ /srv/jupyterhub/templates/
 COPY ordec_logo.svg /srv/jupyterhub/ordec_logo.svg
 

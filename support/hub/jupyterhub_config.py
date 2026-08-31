@@ -19,7 +19,7 @@ from jupyterhub.auth import Authenticator
 from jupyterhub.handlers.login import LoginHandler, LogoutHandler
 from jupyterhub.utils import maybe_future, url_path_join
 
-c = get_config()  # noqa
+c = get_config()  # set from the outside by JupyterHub
 
 # --- Persistent state ------------------------------------------------------
 # The jupyterhub-data volume is mounted at /srv/jupyterhub/data (see
@@ -375,7 +375,7 @@ c.JupyterHub.services = [
             '--timeout', os.environ.get('ORDEC_HUB_IDLE_TIMEOUT', '5400'),
             # Ephemeral guests accumulate as user records; delete the ones whose
             # server has stopped and gone idle so the hub DB does not grow.
-            '--cull-users',
+            '--cull-users=true',
             # --cull-users would otherwise delete idle admin accounts too
             # (cull_admin_users defaults to true). Admins must survive
             # between workshops:
@@ -383,3 +383,37 @@ c.JupyterHub.services = [
         ],
     },
 ]
+
+# --- Scoreboard: team leaderboard for competition workshops ----------------
+# Optional service (scoreboard.py) at /services/scoreboard/; enable per
+# workshop with ORDEC_HUB_SCOREBOARD=1. The sqlite file lives on the data
+# volume, so the leaderboard survives culled sessions and hub restarts.
+if os.environ.get('ORDEC_HUB_SCOREBOARD'):
+    c.JupyterHub.services.append({
+        'name': 'scoreboard',
+        'url': 'http://127.0.0.1:9000',
+        'command': [sys.executable, '/srv/jupyterhub/scoreboard.py'],
+        # Guests should land on the scoreboard, not on an OAuth consent page:
+        'oauth_no_confirm': True,
+        'environment': {
+            'ORDEC_SCOREBOARD_DB': '/srv/jupyterhub/data/scoreboard.sqlite',
+            # Final scoring runs participant code (rescore.py) in a
+            # throwaway container of the user image; give the service the
+            # spawner's resolved isolation settings so both match.
+            'ORDEC_HUB_IMAGE': c.DockerSpawner.image,
+            'ORDEC_HUB_RUNTIME': c.DockerSpawner.extra_host_config['runtime'],
+            'ORDEC_HUB_MEM_LIMIT': c.DockerSpawner.mem_limit,
+            'ORDEC_HUB_CPU_LIMIT': str(c.DockerSpawner.cpu_limit),
+        },
+    })
+    # The competition course is only listed in the UI when the scoreboard
+    # it pushes to is actually running (see src/ordec/hub.py); the spawner
+    # is the only path from this config into the user containers.
+    c.DockerSpawner.environment = {'ORDEC_HUB_SCOREBOARD': '1'}
+    # The default 'user' role only holds 'self', which does not include
+    # access to services; without this, the hub would refuse guests at the
+    # scoreboard's OAuth step. Unlike 'admin', 'user' may be redefined.
+    c.JupyterHub.load_roles.append({
+        'name': 'user',
+        'scopes': ['self', 'access:services!service=scoreboard'],
+    })

@@ -34,17 +34,13 @@ nominal supply of 1.2 V.
 """
 
 import math
-import traceback
 
 from ordec.core import *
 from ordec.sim import Simulator
 from ordec.lib import Gnd, Vdc, Res
 from ordec.lib import ihp130
 
-
-def exception_text() -> str:
-    """Format the current exception for display in a PassFail element."""
-    return "The check raised an exception:\n" + traceback.format_exc()
+from ..common import exception_text, blocked_passfails, sim_failure_text
 
 
 def instances_of(schematic, cell_type):
@@ -157,28 +153,6 @@ def guarded_passfail(report, label, checker, hint):
         passed, instructions = False, exception_text()
     report.passfail(label, passed, instructions=instructions, hint=hint)
     return passed
-
-
-def blocked_passfails(report, labels, hints, reason):
-    """
-    Emits one failing PassFail per label for a group of checks that could
-    not be evaluated, all sharing the same reason. Keeps the number of
-    PassFail elements of a lesson the same in every state.
-    """
-    for label, hint in zip(labels, hints):
-        report.passfail(label, False, instructions=reason, hint=hint)
-
-
-def sim_failure_text(structure_ok, what):
-    """
-    Explains why a group of simulation-based checks could not be measured.
-    An unexpected error is worth its traceback, a design that is not fully
-    wired up is not: that state is expected while the user is still typing.
-    """
-    if structure_ok:
-        return exception_text()
-    return (f"The simulation failed -- usually {what} is still incomplete "
-        "(see the structure check above).")
 
 
 # Lesson 1: MOS transistor curves

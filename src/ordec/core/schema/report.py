@@ -104,6 +104,11 @@ class Report(SubgraphRoot):
             return self % PassFail(label=label, passed=False,
                 instructions=instructions, hint=hint)
 
+    def score(self, label: str, value: float, unit: str="",
+            eligible: bool=True):
+        return self % Score(label=label, value=value, unit=unit,
+            eligible=eligible)
+
     def bode_plot(self, *signals, **kwargs):
         """
         Append a Bode magnitude/phase plot pair from AC simulation results;
@@ -242,10 +247,35 @@ class PassFail(ReportElement):
 
 
 @public
+class Score(ReportElement):
+    """
+    Competition score: a labeled numeric value plus an eligibility flag
+    (e.g. "all spec gates pass"). Rendered prominently; in competition
+    course mode the frontend also pushes eligible scores to the workshop
+    scoreboard (see web/src/course.js).
+    """
+    wire_id = WIRE_DOMAIN | 10
+    label = Attr(str, optional=False)
+    value = Attr(float, optional=False)
+    unit = Attr(str, default="", optional=False)
+    eligible = Attr(bool, optional=False)
+
+    def element_webdata(self) -> dict:
+        return {
+            "element_type": "score",
+            "label": self.label,
+            "value": self.value,
+            "unit": self.unit,
+            "eligible": self.eligible,
+        }
+
+
+@public
 class Svg(ReportElement):
     """Static SVG element rendered without zoom."""
     wire_id = WIRE_DOMAIN | 6
     inner = Attr(str, optional=False) #: SVG markup inside the <svg> element
+    document = Attr(str) #: complete standalone <svg> document, when the source view provides one
     viewbox_min_x = Attr(float, optional=False) #: viewBox left edge
     viewbox_min_y = Attr(float, optional=False) #: viewBox top edge
     viewbox_width = Attr(float, optional=False) #: viewBox width
@@ -262,6 +292,7 @@ class Svg(ReportElement):
         vb = data["viewbox"]
         return cls(
             inner=data["inner"],
+            document=data.get("document"),
             viewbox_min_x=float(vb[0]),
             viewbox_min_y=float(vb[1]),
             viewbox_width=float(vb[2]),
@@ -274,6 +305,7 @@ class Svg(ReportElement):
         return {
             "element_type": "svg",
             "inner": self.inner,
+            "document": self.document,
             "viewbox": [
                 self.viewbox_min_x,
                 self.viewbox_min_y,

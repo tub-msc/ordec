@@ -26,19 +26,14 @@ auto_refresh=False in the lesson sources and update only via their Refresh
 overlay.)
 """
 
-import traceback
-
 from ordec.core import *
 from ordec.lib import ihp130
+
+from ..common import exception_text
 
 # The SG13G2 layer stack; cells and views are cached, so this is the same
 # subgraph that the lesson sources reference via SG13G2().layers.
 layers = ihp130.SG13G2().layers
-
-
-def exception_text() -> str:
-    """Format the current exception for display in a PassFail element."""
-    return "The check raised an exception:\n" + traceback.format_exc()
 
 
 def rects_on(layout, layer):

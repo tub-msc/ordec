@@ -6,6 +6,7 @@ The web fixture rebuilds web/dist automatically when it is missing or older
 than the frontend sources, so no manual 'npm run build' is required.
 """
 
+import json
 import pytest
 import time
 from urllib.parse import urlparse
@@ -512,6 +513,389 @@ def test_course_intro_callout(web):
     present_again = web.driver.execute_script(
         "return !!document.querySelector('.course-callout-intro');")
     assert present_again is True
+
+
+@pytest.mark.web
+def test_course_competition_nav(web):
+    """A competition course (amp_competition) hides the lesson navigator; the
+    status marker and the source management buttons remain. Without the
+    hub's scoreboard service the course is unlisted on the landing page,
+    there is no team dialog, and the Scoreboard panel of the shipped layout
+    says so (see landing-page.js/scoreboard.js)."""
+    web.resize_viewport()
+    web.driver.get(web.url)
+    web.driver.execute_script(
+        "window.localStorage.removeItem('ordecCourse:amp_competition');")
+    assert web.driver.execute_script("""
+        return document.querySelector('#competitionSection').hidden;
+    """) is True
+
+    web.navigate('app.html#course=amp_competition')
+    web.wait_for_ready()
+    wait_for_course_marker(web, 'unsolved')
+    info = web.driver.execute_script("""
+        return {
+            prev: !!document.querySelector('.course-prev'),
+            lessonsel: !!document.querySelector('.course-lessonsel'),
+            next: !!document.querySelector('.course-next'),
+            marker: !!document.querySelector('.course-marker'),
+            export_: !!document.querySelector('.course-export'),
+            startover: !!document.querySelector('.course-startover'),
+            teamdialog: !!document.querySelector('#teamdialog'),
+            scoreboard: document.querySelector('.scoreboard').innerText,
+            score: !!document.querySelector(
+                '.report-score.report-score-ineligible'),
+        };
+    """)
+    assert info == {'prev': False, 'lessonsel': False, 'next': False,
+        'marker': True, 'export_': True, 'startover': True,
+        'teamdialog': False,
+        'scoreboard': 'The scoreboard is not available on this server.',
+        'score': True}
+
+
+# Stands in for a hub deployment with the scoreboard service: patches fetch()
+# in every new document so that api/token puts the frontend into hub mode
+# (with the real auth token and the scoreboard URL) and the scoreboard's
+# JSON API (support/hub/scoreboard.py) is served from an in-page fake that
+# records claims and pushes in window.scoreboardFake.
+SCOREBOARD_FAKE_JS = """
+    const realFetch = window.fetch;
+    const fake = {
+        team: null,
+        rows: [{team: 'Other team', score: 12.5, updated: '09:59:00'}],
+        final: null,
+        claims: [],
+        pushes: [],
+    };
+    window.scoreboardFake = fake;
+    const json = (obj, status = 200) => new Response(JSON.stringify(obj),
+        {status: status, headers: {'Content-Type': 'application/json'}});
+    const state = () => ({team: fake.team, rows: fake.rows,
+        final: fake.final});
+    window.fetch = async (url, opts) => {
+        if (url === 'api/token') {
+            return json({auth: %s, hub_logout_url: '/hub/logout',
+                scoreboard: '/services/scoreboard/'});
+        }
+        if (url === '/services/scoreboard/api/state') {
+            return json(state());
+        }
+        if (url === '/services/scoreboard/api/claim') {
+            const body = JSON.parse(opts.body);
+            fake.claims.push(body);
+            if (body.team === 'taken') {
+                return json({error: 'This team name is already taken.'}, 409);
+            }
+            if (fake.team !== null) {
+                fake.rows.find(r => r.team === fake.team).team = body.team;
+            } else {
+                fake.rows.push({team: body.team, score: null,
+                    updated: '10:00:00'});
+            }
+            fake.team = body.team;
+            return json(state());
+        }
+        if (url === '/services/scoreboard/api/push') {
+            const body = JSON.parse(opts.body);
+            const row = fake.rows.find(r => r.team === fake.team);
+            if (!row) {
+                // Like PushHandler when the entry is gone (admin deleted it).
+                return json({error: 'no team registered for this session'},
+                    404);
+            }
+            fake.pushes.push(body);
+            row.score = body.score;
+            return new Response(null, {status: 204});
+        }
+        return realFetch(url, opts);
+    };
+"""
+
+
+@pytest.mark.web
+def test_course_competition_scoreboard(web):
+    """With a scoreboard (faked in-page, see SCOREBOARD_FAKE_JS), the
+    competition course is listed on the landing page and opens with the
+    team dialog; a rejected name shows the error inline, an accepted one
+    opens the course with the Scoreboard panel polling the standings. An
+    all-checks-passing design pushes its score, and a revisit re-claims the
+    stored team without asking again."""
+    web.resize_viewport()
+    web.driver.get(web.url)
+    web.driver.execute_script("""
+        window.localStorage.removeItem('ordecCourse:amp_competition');
+        window.localStorage.removeItem('ordecTeam:amp_competition');
+    """)
+    script = web.driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument',
+        {'source': SCOREBOARD_FAKE_JS % json.dumps(web.key.token())})
+    try:
+        web.navigate('')
+        web.wait_until("""
+            return !document.querySelector('#competitionSection').hidden;
+        """)
+
+        web.navigate('app.html#course=amp_competition')
+        web.wait_until("return !!document.querySelector('#teamdialog');")
+        # The course does not open before the team has joined:
+        assert web.driver.execute_script(
+            "return !!document.querySelector('.course-marker');") is False
+
+        def join(name):
+            web.driver.execute_script("""
+                document.querySelector('.teamdialog-name').value = arguments[0];
+                document.querySelector('.teamdialog-join').click();
+            """, name)
+
+        join('taken')
+        web.wait_until("""
+            return document.querySelector('.teamdialog-error').innerText
+                === 'This team name is already taken.';
+        """)
+        join('Ohm sweet Ohm')
+        web.wait_until("return !document.querySelector('#teamdialog');")
+        web.wait_for_ready()
+        wait_for_course_marker(web, 'unsolved')
+        # The panel shares its stack with the course panel; bring it to
+        # the front (innerText of a hidden tab is empty).
+        web.driver.execute_script("""
+            [...document.querySelectorAll('.lm_tab')]
+                .find(t => t.innerText.startsWith('Scoreboard')).click();
+        """)
+        # The panel shows the standings with the own team highlighted.
+        web.wait_until("""
+            return document.querySelectorAll('.scoreboard tr').length === 3;
+        """)
+        info = web.driver.execute_script("""
+            const rows = [...document.querySelectorAll('.scoreboard tr')];
+            return {
+                rows: rows.map(tr => tr.innerText.split('\t')),
+                own: rows.map(tr => tr.classList.contains('scoreboard-own')),
+                claims: window.scoreboardFake.claims.map(c => c.team),
+                pushes: window.scoreboardFake.pushes.map(p => p.score),
+                stored: JSON.parse(window.localStorage.getItem(
+                    'ordecTeam:amp_competition')).name,
+            };
+        """)
+        assert info['rows'] == [
+            ['#', 'Team', 'Supply current', 'Updated'],
+            ['1', 'Other team', '12.50 µA', '09:59:00'],
+            ['2', 'Ohm sweet Ohm rename', 'no score', '10:00:00'],
+        ]
+        assert info['own'] == [False, False, True]
+        assert info['claims'] == ['taken', 'Ohm sweet Ohm']
+        # The skeleton's build fails the checks: pushed as "no score".
+        assert info['pushes'] == [None]
+        assert info['stored'] == 'Ohm sweet Ohm'
+
+        # Renaming keeps the entry (the fake renames its row) and the
+        # stored secret is replaced along with the name.
+        secret = web.driver.execute_script("""
+            return JSON.parse(window.localStorage.getItem(
+                'ordecTeam:amp_competition')).secret;
+        """)
+        web.driver.execute_script(
+            "document.querySelector('.scoreboard-rename').click();")
+        web.wait_until("""
+            const b = document.querySelector('.teamdialog-join');
+            return b && b.innerText === 'Rename'
+                && document.querySelector('.teamdialog-name').value
+                    === 'Ohm sweet Ohm';
+        """)
+        web.driver.execute_script(
+            "document.querySelector('.teamdialog-cancel').click();")
+        web.wait_until("return !document.querySelector('#teamdialog');")
+        web.driver.execute_script(
+            "document.querySelector('.scoreboard-rename').click();")
+        web.wait_until("return !!document.querySelector('.teamdialog-join');")
+        join('Ohm my')
+        web.wait_until("""
+            return !document.querySelector('#teamdialog')
+                && document.querySelector('.scoreboard-own td:nth-child(2)')
+                    .innerText.startsWith('Ohm my');
+        """)
+        info = web.driver.execute_script("""
+            const rows = [...document.querySelectorAll('.scoreboard tr')];
+            const stored = JSON.parse(window.localStorage.getItem(
+                'ordecTeam:amp_competition'));
+            return {
+                rows: rows.map(tr => tr.innerText.split('\t')),
+                own: rows.map(tr => tr.classList.contains('scoreboard-own')),
+                claims: window.scoreboardFake.claims.map(c => c.team),
+                stored: stored, fakeRows: window.scoreboardFake.rows.length,
+            };
+        """)
+        assert info['rows'][2][1] == 'Ohm my rename'
+        assert info['own'] == [False, False, True]
+        assert info['claims'] == ['taken', 'Ohm sweet Ohm', 'Ohm my']
+        assert info['stored']['name'] == 'Ohm my'
+        assert info['stored']['secret'] != secret
+        assert info['fakeRows'] == 2
+
+        # Solving the task pushes the score (with the source as audit trail)
+        # and the polled standings pick it up. While the rebuild runs, the
+        # own score is marked stale (spinner).
+        lessons = web.driver.execute_script(
+            "return window.courseController.course.lessons;")
+        sol = courses_testdata['amp_competition'].lessons[0].solution_src(
+            lessons[0])
+        web.driver.execute_script(
+            "window.courseController.editor.editor.setValue(arguments[0]);", sol)
+        web.wait_until("""
+            return document.querySelector('.scoreboard')
+                .classList.contains('scoreboard-stale');
+        """)
+        wait_for_course_marker(web, 'solved')
+        web.wait_until("""
+            return !document.querySelector('.scoreboard')
+                .classList.contains('scoreboard-stale');
+        """)
+        assert web.driver.execute_script("""
+            return [...document.querySelectorAll('.lm_tab')]
+                .some(t => t.innerText === 'Scoreboard');
+        """)
+        # The spinner only goes once the pushed score is on screen (the
+        # panel refreshes right after the push instead of waiting for
+        # the next poll).
+        assert web.driver.execute_script("""
+            return document.querySelector('.scoreboard-own').innerText;
+        """).split('\t')[2].endswith(' µA')
+        web.wait_until("""
+            return document.querySelectorAll('.scoreboard tr')[2]
+                .innerText.includes(' µA');
+        """)
+        push = web.driver.execute_script("""
+            const pushes = window.scoreboardFake.pushes;
+            return {count: pushes.length, score: pushes[1].score,
+                source: pushes[1].source, svg: pushes[1].svg};
+        """)
+        assert push['count'] == 2
+        assert 0 < push['score'] < 1000
+        assert push['source'] == sol
+        # The schematic travels along as a standalone SVG document.
+        assert push['svg'].startswith('<svg xmlns="http://www.w3.org/2000/svg"')
+        assert 'viewBox="' in push['svg'] and push['svg'].endswith('</svg>')
+        assert 'mn' in push['svg'] and 'mp' in push['svg']
+
+        # A build that fails a check pushes null: the board shows "no score"
+        # again instead of the earlier passing one.
+        web.driver.execute_script("""
+            const editor = window.courseController.editor.editor;
+            editor.setValue(editor.getValue().replace(arguments[0],
+                arguments[0] + arguments[1]));
+        """, '.b -- vdd; .pos=(8,10)',
+            '\n        Cap cx: .$c=1p; .p -- vout; .n -- vss; .pos=(12,4)')
+        wait_for_course_marker(web, 'unsolved')
+        web.wait_until("""
+            return !document.querySelector('.scoreboard')
+                    .classList.contains('scoreboard-stale')
+                && window.scoreboardFake.pushes.length === 3;
+        """)
+        info = web.driver.execute_script("""
+            return {
+                score: window.scoreboardFake.pushes[2].score,
+                own: document.querySelector('.scoreboard-own').innerText,
+            };
+        """)
+        assert info['score'] is None
+        assert info['own'].split('\t')[2] == 'no score'
+        web.driver.execute_script(
+            "window.courseController.editor.editor.setValue(arguments[0]);", sol)
+        wait_for_course_marker(web, 'solved')
+        web.wait_until("return window.scoreboardFake.pushes.length === 4;")
+
+        # Final scoring (admin-triggered on the service): the panel switches
+        # to the verified ranking and pushes stop while the board is
+        # frozen; back to live scores restores the standings and re-sends
+        # the build the freeze held back.
+        web.driver.execute_script("""
+            window.scoreboardFake.final = {started: '11:00:00', result: [
+                {team: 'Ohm my', verified: 30.01, fails: []},
+                {team: 'Other team', verified: null,
+                    fails: ['gain 3.00 < 20']},
+            ]};
+        """)
+        web.wait_until("""
+            return !!document.querySelector('.scoreboard-final');
+        """)
+        web.driver.execute_script("""
+            const editor = window.courseController.editor.editor;
+            editor.setValue(editor.getValue() + '\\n# frozen\\n');
+        """)
+        wait_for_course_marker(web, 'solved')
+        info = web.driver.execute_script("""
+            const rows = [...document.querySelectorAll('.scoreboard tr')];
+            return {
+                note: document.querySelector('.scoreboard-final').innerText,
+                rows: rows.map(tr => tr.innerText.split('\t')),
+                own: rows.map(tr => tr.classList.contains('scoreboard-own')),
+                pushes: window.scoreboardFake.pushes.length,
+            };
+        """)
+        assert info['note'].startswith('Final ranking')
+        assert info['rows'] == [
+            ['#', 'Team', 'Supply current', ''],
+            ['1', 'Ohm my', '30.01 µA', ''],
+            ['–', 'Other team', 'not ranked', 'gain 3.00 < 20'],
+        ]
+        assert info['own'] == [False, True, False]
+        assert info['pushes'] == 4
+        web.driver.execute_script("window.scoreboardFake.final = null;")
+        web.wait_until("""
+            return !document.querySelector('.scoreboard-final')
+                && document.querySelectorAll('.scoreboard tr').length === 3;
+        """)
+        # The build made while the board was frozen is not lost: it goes out
+        # once the board is live again.
+        web.wait_until("return window.scoreboardFake.pushes.length === 5;")
+        assert web.driver.execute_script("""
+            return window.scoreboardFake.pushes[4].source;
+        """).endswith('# frozen\n')
+
+        # An admin deleting the entry must not silently drop every later
+        # score: the session notices that it has no team any more and
+        # re-claims its stored name.
+        web.driver.execute_script("""
+            const fake = window.scoreboardFake;
+            fake.team = null;
+            fake.rows = fake.rows.filter(r => r.team !== 'Ohm my');
+        """)
+        web.wait_until("""
+            return window.scoreboardFake.claims.length === 4
+                && !!document.querySelector('.scoreboard-own');
+        """)
+        info = web.driver.execute_script("""
+            return {
+                teamdialog: !!document.querySelector('#teamdialog'),
+                claim: window.scoreboardFake.claims[3],
+                own: document.querySelector('.scoreboard-own').innerText,
+            };
+        """)
+        assert info['teamdialog'] is False
+        assert info['claim']['team'] == 'Ohm my'
+        assert info['own'].split('\t')[1].startswith('Ohm my')
+
+        # A fresh guest session (the fake forgets the team) silently
+        # re-claims the stored name with its secret instead of asking again.
+        web.navigate('app.html#course=amp_competition')
+        web.wait_for_ready()
+        wait_for_course_marker(web, 'solved')
+        info = web.driver.execute_script("""
+            return {
+                teamdialog: !!document.querySelector('#teamdialog'),
+                claims: window.scoreboardFake.claims,
+            };
+        """)
+        assert info['teamdialog'] is False
+        assert info['claims'] == [{'team': 'Ohm my',
+            'secret': json.loads(web.driver.execute_script(
+                "return window.localStorage.getItem('ordecTeam:amp_competition');"
+            ))['secret']}]
+    finally:
+        web.driver.execute_cdp_cmd('Page.removeScriptToEvaluateOnNewDocument',
+            script)
+        web.driver.execute_script(
+            "window.localStorage.removeItem('ordecTeam:amp_competition');")
 
 
 @pytest.mark.web

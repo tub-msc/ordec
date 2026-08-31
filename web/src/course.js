@@ -8,7 +8,9 @@
 // CourseController below for the navigator UI and persistence.
 
 import { zipSync, unzipSync, strToU8, strFromU8 } from 'fflate';
+import { session } from './auth.js';
 import { startCourseTour } from './tour.js';
+import { Scoreboard } from './scoreboard.js';
 
 let courseController = null;
 
@@ -68,6 +70,11 @@ export class CourseController {
         this.courseViewer = null;
         this.navElements = []; // navigator DOM roots (re-created per Editor)
         this.reportStatus = 'busy'; // 'busy' | 'unchecked' | 'pass' | 'fail' | 'error'
+        // Competition courses push scores to the hub's scoreboard service,
+        // where one runs (see scoreboard.js); main.js has the team join the
+        // scoreboard before the course opens.
+        this.scoreboard = (course.competition && session.scoreboardUrl)
+            ? new Scoreboard(session.scoreboardUrl, course) : null;
         this.suspendUistateSave = false;
         // Callout shown over the lesson report: null | 'intro' | 'success'.
         this.calloutKind = null;
@@ -348,6 +355,7 @@ export class CourseController {
     onReportResult(msg) {
         if (msg.exception) {
             this.reportStatus = 'error';
+            this.pushScore([]);
         } else if (this.welcomeFlagged() || this.epilogueFlagged()) {
             // Task-free lessons (welcome lesson, epilogue) count as solved
             // right away, unlocking the following lesson if any.
@@ -369,11 +377,33 @@ export class CourseController {
             if (passed) {
                 this.markLessonPassed();
             }
+            this.pushScore(msg.data.elements || []);
         } else {
             console.error('course: unexpected report view type', msg.type);
             this.reportStatus = 'error';
         }
         this.renderNavigators();
+    }
+
+    // Pushes the state of this build to the workshop scoreboard, where one
+    // runs: the score when all checks pass, else null (the board then shows
+    // "no score" again), plus the source and the report's schematic as
+    // audit trail.
+    pushScore(elements) {
+        // The source of this build, not the current editor content: the two
+        // differ when the user keeps typing while the simulations run, and
+        // pushing the wrong one would make the final rescoring flag a claim
+        // mismatch the team never caused.
+        const source = this.client.srcBuilt;
+        if (!this.scoreboard || !this.editor || source === null) {
+            return;
+        }
+        const score = elements.find(e => e.element_type === 'score');
+        const svg = elements.find(e => e.element_type === 'svg');
+        // The server renders the standalone document (see render.py
+        // webdata); it is passed through verbatim rather than re-assembled.
+        this.scoreboard.push((score && score.eligible) ? score.value : null,
+            source, (svg && svg.document) ? svg.document : null);
     }
 
     // -- Zip import/export ----------------------------------------------
@@ -575,6 +605,13 @@ export class CourseController {
         let text;
         if (kind === 'success' && this.welcomeFlagged()) {
             text = `<strong>Press here to proceed to lesson 2!</strong>`;
+        } else if (kind === 'success' && this.course.competition) {
+            text = this.scoreboard
+                ? `<strong>All checks pass!</strong>
+                    <p>Your score is live on the scoreboard &mdash; keep
+                    improving it.</p>`
+                : `<strong>All checks pass!</strong>
+                    <p>Now push the supply current as low as you can.</p>`;
         } else if (kind === 'success' && isLast) {
             text = `<strong>Lesson completed!</strong>
                 <p>Well done &mdash; all checks pass. This was the last lesson
@@ -669,13 +706,17 @@ export class CourseController {
     // loadLayout.
     mountNavigator(nav) {
         nav.classList.add('course-nav');
-        nav.innerHTML = `
+        // A competition course is a single task against a scoreboard: no
+        // lesson navigator, the report itself carries the title. Status
+        // marker and source management stay.
+        const lessonNav = this.course.competition ? '' : `
             <button class="toolbar-btn course-prev" title="Previous lesson"><svg class="course-arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3 L5 8 L10 13"/></svg></button>
             <span class="course-nav-sep"></span>
             <select class="toolbar-btn course-lessonsel"></select>
             <span class="course-nav-sep"></span>
             <button class="toolbar-btn course-next" title="Next lesson"><svg class="course-arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3 L11 8 L6 13"/></svg></button>
-            <span class="course-nav-sep"></span>
+            <span class="course-nav-sep"></span>`;
+        nav.innerHTML = lessonNav + `
             <span class="course-marker"></span>
             <span class="course-nav-spacer"></span>
             <span class="course-nav-sep"></span>
@@ -687,21 +728,23 @@ export class CourseController {
             <input type="file" class="course-import-file" accept=".zip" style="display:none">
         `;
 
-        nav.querySelector('.course-prev').onclick = () => {
-            const i = this.state.currentLesson - 1;
-            if (i >= 0) {
-                this.activateLesson(i);
-            }
-        };
-        nav.querySelector('.course-next').onclick = () => {
-            const i = this.state.currentLesson + 1;
-            if (i < this.course.lessons.length && this.lessonUnlocked(i)) {
-                this.activateLesson(i);
-            }
-        };
-        nav.querySelector('.course-lessonsel').onchange = (ev) => {
-            this.activateLesson(parseInt(ev.target.value, 10));
-        };
+        if (!this.course.competition) {
+            nav.querySelector('.course-prev').onclick = () => {
+                const i = this.state.currentLesson - 1;
+                if (i >= 0) {
+                    this.activateLesson(i);
+                }
+            };
+            nav.querySelector('.course-next').onclick = () => {
+                const i = this.state.currentLesson + 1;
+                if (i < this.course.lessons.length && this.lessonUnlocked(i)) {
+                    this.activateLesson(i);
+                }
+            };
+            nav.querySelector('.course-lessonsel').onchange = (ev) => {
+                this.activateLesson(parseInt(ev.target.value, 10));
+            };
+        }
         nav.querySelector('.course-export').onclick = () => this.exportZip();
         const fileInput = nav.querySelector('.course-import-file');
         nav.querySelector('.course-import').onclick = () => fileInput.click();
@@ -723,29 +766,35 @@ export class CourseController {
         this.navElements = this.navElements.filter(e => e.isConnected);
         this.navElements.forEach(nav => this.renderNavigator(nav));
         this.updateCallout();
+        // The scoreboard panel marks the own score stale while a rebuild
+        // runs (reportStatus 'busy').
+        this.scoreboard?.statusChanged();
     }
 
     renderNavigator(nav) {
         const cur = this.state.currentLesson;
 
+        // Absent on competition courses (see mountNavigator).
         const sel = nav.querySelector('.course-lessonsel');
-        sel.replaceChildren();
-        this.course.lessons.forEach((lesson, i) => {
-            const option = document.createElement('option');
-            const unlocked = this.lessonUnlocked(i);
-            option.value = i;
-            // Lesson numbering starts at 0 (the welcome lesson):
-            option.innerText = (i + 1) + ': ' + lesson.title;
-            option.title = lesson.description || '';
-            option.disabled = !unlocked;
-            option.selected = (i === cur);
-            sel.appendChild(option);
-        });
+        if (sel) {
+            sel.replaceChildren();
+            this.course.lessons.forEach((lesson, i) => {
+                const option = document.createElement('option');
+                const unlocked = this.lessonUnlocked(i);
+                option.value = i;
+                // Lesson numbering starts at 0 (the welcome lesson):
+                option.innerText = (i + 1) + ': ' + lesson.title;
+                option.title = lesson.description || '';
+                option.disabled = !unlocked;
+                option.selected = (i === cur);
+                sel.appendChild(option);
+            });
 
-        nav.querySelector('.course-prev').disabled = (cur <= 0);
-        nav.querySelector('.course-next').disabled =
-            (cur + 1 >= this.course.lessons.length)
-            || !this.lessonUnlocked(cur + 1);
+            nav.querySelector('.course-prev').disabled = (cur <= 0);
+            nav.querySelector('.course-next').disabled =
+                (cur + 1 >= this.course.lessons.length)
+                || !this.lessonUnlocked(cur + 1);
+        }
 
         const marker = nav.querySelector('.course-marker');
         marker.className = 'course-marker course-marker-' + this.reportStatus;

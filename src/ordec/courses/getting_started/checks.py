@@ -23,15 +23,11 @@ Their reports carry only instructions and no PassFail elements.
 import dis
 import inspect
 import re
-import traceback
 
 from ordec.core import *
 from ordec.lib import Res, Ind, Cap
 
-
-def exception_text() -> str:
-    """Format the current exception for display in a PassFail element."""
-    return "The check raised an exception:\n" + traceback.format_exc()
+from ..common import exception_text
 
 
 # Lesson 1: Welcome to ORDeC

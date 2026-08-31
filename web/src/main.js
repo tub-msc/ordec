@@ -28,6 +28,7 @@ import { ResultViewer, excSummary } from "./resultviewer.js";
 import { initTheme, registerAceEditor, unregisterAceEditor } from './theme.js';
 import { OrdecApp } from './app.js';
 import { initCourseMode, getCourseController, suppressCloseControls } from './course.js';
+import { ScoreboardPanel } from './scoreboard.js';
 
 initTheme();
 
@@ -242,6 +243,7 @@ layout.layoutConfig.settings.showPopoutIcon = false;
 layout.resizeWithContainerAutomatically = true;
 layout.registerComponent('editor', Editor);
 layout.registerComponent('result', ResultViewer);
+layout.registerComponent('scoreboard', ScoreboardPanel);
 
 // Owns the frontend's mutable runtime state (event bus, layout, client).
 const app = new OrdecApp({ layout, setStatus, onSessionLost: showSessionLost });
@@ -373,6 +375,11 @@ async function startCourseMode() {
         debug,
     });
 
+    // Competition courses: the team joins the scoreboard (picking its name
+    // on the first visit) before the work starts.
+    if (controller.scoreboard) {
+        await controller.scoreboard.join();
+    }
     controller.activateLesson(controller.currentLesson, { save: false });
 
     // Make the controller easy to access for automated testing & debugging:
