@@ -864,8 +864,8 @@ def test_amp_input_biased_fails_corners():
     passfails = [e for e in elements if e['element_type'] == 'passfail']
     assert [p['passed'] for p in passfails] == [True, False, False]
     for p in passfails[1:]:
-        assert 'at sf 27 °C (fail)' in p['instructions']
-        assert 'at tt 27 °C (fail)' not in p['instructions']
+        assert 'sf 27 °C' in p['instructions']
+        assert 'tt 27 °C' not in p['instructions']
     score = [e for e in elements if e['element_type'] == 'score']
     assert len(score) == 1 and not score[0]['eligible']
 
@@ -925,7 +925,7 @@ def test_amp_cascade_fails_large_signal():
         for e in run_lesson(lesson, src)['lesson']().elements()]
     passfails = [e for e in elements if e['element_type'] == 'passfail']
     assert [p['passed'] for p in passfails] == [True, True, False]
-    assert 'THD at tt 27 °C (fail)' in passfails[2]['instructions']
+    assert 'tt 27 °C' in passfails[2]['instructions']
     score = [e for e in elements if e['element_type'] == 'score']
     assert len(score) == 1 and not score[0]['eligible']
     assert score[0]['value'] < 2.5

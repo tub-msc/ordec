@@ -214,80 +214,60 @@ def gen_challenge(g):
             # Amplifier Competition
 
             Build the amplifier inside the `Amp` cell (EDIT HERE marker).
-            The `AmpTb` testbench is fixed: 1.2 V supply, input at a DC
-            level of 0.6 V with a {VIN_AMP * 1e3:g} mV, {GAIN_FREQ / 1e6:g} MHz
-            sine on it, 1 pF load on the output. Meet all specs, then
-            **minimize the current — lowest current wins**:
+            `AmpTb` is fixed: 1.2 V supply, 0.6 V DC input with a
+            {VIN_AMP * 1e3:g} mV, {GAIN_FREQ / 1e6:g} MHz sine, 1 pF load.
+            Meet all specs, then **minimize the current — lowest wins**:
 
             | Spec | Requirement |
             |---|---|
             | Gain at {GAIN_FREQ / 1e6:g} MHz | ≥ {GAIN_MIN:g} ({GAIN_MIN_DB:.0f} dB) |
-            | Output for the {VIN_AMP * 1e3:g} mV input sine | ≥ {GAIN_MIN * VIN_AMP * 1e3:g} mV amplitude, THD ≤ {THD_MAX_DB:.0f} dB |
+            | Output for the {VIN_AMP * 1e3:g} mV input sine | ≥ {GAIN_MIN * VIN_AMP * 1e3:g} mV, THD ≤ {THD_MAX_DB:.0f} dB |
 
-            All must hold at every process corner and temperature:
-            {corner_list}. The score is the current at the first (nominal)
-            corner, averaged while the amplifier drives the {VIN_AMP * 1e3:g} mV
-            sine: everything the testbench sources deliver, the supply,
-            the input source (the ideal 0.6 V input is not a free supply)
-            *and* the bias reference. The table below the checks shows
-            all corners; `sim_op` (with per-device gm, Vgs and
-            currents), `report_ac` and `report_tran` show the nominal
-            one.
+            All at every corner: {corner_list}. Score = current at the
+            nominal corner while driving the sine (supply, input source
+            and bias reference; the 0.6 V input and the 1 µA reference
+            are not free). The table below the checks shows every
+            corner; `sim_op`, `report_ac`, `report_tran` show the
+            nominal one.
 
-            The testbench feeds a constant 1 µA reference current into
-            the `ibias` pin, from an ideal source: it is exact at every
-            corner. Mirror it to bias your amplifier, or leave the
-            shipped sink in place if you do not need it; either way it
-            must keep a DC path to `vss`. Its 1 µA counts toward the
-            score whether you use it or not, so using it is free. Build
-            mirrors from identical unit devices with the `m` multiplier
-            (see the CMOS course's mirror lesson): a wide device next to
-            a narrow one does not have the same threshold, and the ratio
-            comes out far off.
+            `ibias` carries a fixed, exact 1 µA reference. Mirror it
+            (identical unit devices, `m` multiplier — a wide device next
+            to a narrow one does not share a threshold) or leave the
+            shipped sink; either way keep a DC path to `vss`. It counts
+            toward the score either way.
 
-            Only physical IHP SG13G2 devices are allowed inside `Amp`:
-            `Nmos`, `Pmos`, the resistors `Rsil`, `Rppd`, `Rhigh`
-            (low/medium/high sheet resistance) and the capacitor `Cmim`,
-            all from `ordec.lib.ihp130`. No ideal elements. Unlike the
-            ideal `Res`, the physical resistors have a substrate pin
-            `bn`, normally tied to `vss`:
+            Only physical IHP SG13G2 devices inside `Amp`: `Nmos`,
+            `Pmos`, `Rsil`/`Rppd`/`Rhigh`, `Cmim` (all from
+            `ordec.lib.ihp130`), no ideal elements. The physical
+            resistors have a substrate pin `bn` (usually tied to
+            `vss`):
 
                 Rppd r1: .$w=1u; .$l=10u; .p -- vdd; .n -- vout; .bn -- vss; .pos=(6,9)
 
-            Your score appears on the scoreboard automatically whenever
-            all checks pass.
+            Your score appears on the scoreboard once all checks pass.
         """)
 
         # Hints level the field without giving away sizings.
-        devices_hint = ("Everything inside Amp (including your own "
-            "subcells) must be an ihp130 Nmos, Pmos, Rsil, Rppd, Rhigh or "
-            "Cmim. Ideal elements are rejected: an ideal resistor would "
-            "make gain free.")
-        gain_hint = (f"A resistor-loaded common-source stage cannot reach "
-            f"{GAIN_MIN:g} here: its gain is capped by the DC drop across "
-            "the load, at about half the requirement. Two such stages in "
-            "series clear it: bias each by mirroring the ibias reference "
-            "(gain = gm times R, current = m times 1 µA), and leave gain "
-            "margin for the slow/hot corner, where gm drops in both "
-            "stages. The CMOS course's inverter lessons show loads that "
-            f"do better still. At {GAIN_FREQ / 1e6:g} MHz the 1 pF load also "
-            "sets the price of gain: it takes transconductance, and "
-            "transconductance costs current. If the gain is low at "
-            f"{GAIN_FREQ / 1e6:g} MHz but fine above, the input coupling "
-            "is the limit: a feedback resistor looks (1 + gain) times "
-            "smaller to a coupling capacitor (Miller effect). If the "
-            "gain collapses only at the skewed corners (sf/fs, hot), the "
-            "bias is the problem: a stage biased from the fixed 0.6 V "
-            "input drifts to a rail with the thresholds. Take only the "
-            "signal from vin and set the operating point from the ibias "
-            "reference, which is exact at every corner.")
-        tran_hint = (f"The {VIN_AMP * 1e3:g} mV input sine must come out "
-            f"as a sine, only {GAIN_MIN:g} times larger (see report_tran"
-            "). THD here is the whole non-fundamental residual of the "
-            "transient, not just harmonics. A chain of "
+        devices_hint = ("Everything inside Amp (subcells included) must "
+            "be an ihp130 Nmos, Pmos, Rsil, Rppd, Rhigh or Cmim. Ideal "
+            "elements are rejected: an ideal resistor would make gain "
+            "free.")
+        gain_hint = (f"One resistor-loaded common-source stage tops out "
+            f"around half of {GAIN_MIN:g}; two in series clear it (gain "
+            "= gm times R per stage, current = m times 1 µA each), with "
+            "margin for slow/hot where gm drops. The CMOS course's "
+            f"inverter lessons load better still. Low gain at "
+            f"{GAIN_FREQ / 1e6:g} MHz but fine above: the input coupling "
+            "resistor looks (1 + gain) times smaller to its capacitor "
+            "(Miller effect). Gain fails only at sf/fs or hot: bias from "
+            "ibias, not from the fixed vin DC level, which drifts to a "
+            "rail with the thresholds.")
+        tran_hint = (f"The sine must come out {GAIN_MIN:g} times larger, "
+            "still a sine (see report_tran). THD here is the whole "
+            "non-fundamental residual, not just harmonics: a chain of "
             "starved stages reaches the small-signal gain but limits "
-            "instead of amplifying: clipped internal nodes, a square-ish "
-            "output, and a bias point that drifts with the signal.")
+            "instead of amplifying, with clipped nodes, a square-ish "
+            "output and a bias point that drifts with the signal.")
 
         try:
             bad = forbidden_devices(g['Amp']().schematic)
@@ -316,24 +296,15 @@ def gen_challenge(g):
         if rows is not None:
             gain_pass = [gain_ok(row) for row in rows]
             report.passfail(gain_label, all(gain_pass), hint=gain_hint,
-                instructions=f"Gain at {GAIN_FREQ / 1e6:g} MHz: " + ", ".join(
-                    f"{gain:.2f} ({20 * math.log10(max(gain, 1e-9)):.1f} dB)"
-                    f" at {label}" + ("" if ok else " (fail)")
-                    for (label, _, gain, _, _), ok in zip(rows, gain_pass))
-                + f". Required: ≥ {GAIN_MIN:g} ({GAIN_MIN_DB:.0f} dB) at "
-                "every corner.")
+                instructions="Below requirement at: " + ", ".join(
+                    label for (label, *_), ok in zip(rows, gain_pass)
+                    if not ok) + " (see table below).")
             tran_pass = [tran_ok(row) for row in rows]
             report.passfail(tran_label, all(tran_pass), hint=tran_hint,
-                instructions=f"Output for the {VIN_AMP * 1e3:g} mV input "
-                "sine: " + ", ".join(
-                    f"{vout_amp * 1e3:.0f} mV amplitude with "
-                    f"{thd_db(thd):.0f} dB THD "
-                    f"at {label}" + ("" if ok else " (fail)")
-                    for (label, _, _, vout_amp, thd), ok
-                    in zip(rows, tran_pass))
-                + f". Required: ≥ {GAIN_MIN * VIN_AMP * 1e3:g} mV with "
-                f"THD ≤ {THD_MAX_DB:.0f} dB at every corner.")
-            report.markdown("Measurements across corners:\n\n"
+                instructions="Fails at: " + ", ".join(
+                    label for (label, *_), ok in zip(rows, tran_pass)
+                    if not ok) + " (see table below).")
+            report.markdown("Results across corners:\n\n"
                 f"| Corner | Current | Gain at "
                 f"{GAIN_FREQ / 1e6:g} MHz | Output amplitude | THD |"
                 "\n|---|---|---|---|---|\n"
