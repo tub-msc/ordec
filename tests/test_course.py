@@ -673,26 +673,33 @@ courses_testdata = {
     ]),
     'amp_competition': CourseTestdata('Amplifier Competition', [
         # Competition lesson: meet the spec gates at every corner, minimize
-        # the current. The empty skeleton passes the device whitelist
-        # (nothing forbidden yet) and fails the three measured gates. The
-        # reference solution is a ratio-centered CMOS inverter amplifier at
-        # ~30 uA, self-biased through Rhigh and AC-coupled through Cmim so
-        # its operating point survives the sf/fs and temperature corners
-        # (see test_amp_input_biased_fails_corners). The headroom below it
-        # (7-10 uA for a single stage, where the gain gate binds at the
-        # slow/hot corner) is playtested but not asserted here.
-        LessonTestdata(passfails=4,
-            skeleton_passed=[True, False, False, False],
+        # the current. The skeleton (whose only device is the shipped ibias
+        # sink) passes the device whitelist and fails the two measured
+        # gates. The reference solution is a ratio-centered CMOS inverter
+        # amplifier at ~31 uA (including the 1 uA bias reference, which it
+        # leaves in the shipped sink), self-biased through Rhigh and
+        # AC-coupled through Cmim so its operating point survives the sf/fs
+        # and temperature corners (see test_amp_input_biased_fails_corners).
+        # The headroom below it (5-10 uA for a single stage, where the gain
+        # gate binds at the slow/hot corner) is playtested but not asserted
+        # here.
+        LessonTestdata(passfails=3,
+            skeleton_passed=[True, False, False],
             solution=[
             InsertSolution("""
-            # EDIT HERE: your amplifier. Only ihp130 Nmos, Pmos, Rsil,
-            # Rppd, Rhigh and Cmim are allowed (see the course panel).
+            # The testbench feeds a 1 uA reference into ibias; it always
+            # needs a DC path to vss. Mirror the current, or keep this
+            # sink; edit or delete it if your design brings its own.
+            Nmos mbias: .$w=1u; .$l=1u; .g -- ibias; .d -- ibias; .s -- vss; .b -- vss; .pos=(2,3)
+
+            # EDIT HERE: your amplifier.
             """, """
             net g
             Cmim cc: .$w=30u; .$l=30u; .p -- vin; .n -- g; .pos=(3,7)
             Rhigh rf: .$w=0.5u; .$l=2000u; .p -- vout; .n -- g; .bn -- vss; .pos=(13,13)
             Nmos mn: .$w=1u; .$l=500n; .g -- g; .d -- vout; .s -- vss; .b -- vss; .pos=(8,4)
             Pmos mp: .$w=6.25u; .$l=500n; .$ng=2; .g -- g; .d -- vout; .s -- vdd; .b -- vdd; .pos=(8,10)
+            Nmos mbias: .$w=1u; .$l=1u; .g -- ibias; .d -- ibias; .s -- vss; .b -- vss; .pos=(3,13)
             """),
         ]),
     ]),
@@ -827,8 +834,9 @@ def test_lesson_solution(course_name, lesson_index, testdata):
 
 
 def test_amp_score_and_corner_table():
-    """The score is the nominal corner's current (~30 uA for the
-    reference), and the report tabulates every corner."""
+    """The score is the nominal corner's current (~31 uA for the
+    reference: ~30 uA supply plus the 1 uA bias reference), and the
+    report tabulates every corner."""
     from ordec.courses.amp_competition.checks import CORNERS
     lesson = course_data('amp_competition')['lessons'][0]
     src = courses_testdata['amp_competition'].lessons[0].solution_src(lesson)
@@ -836,17 +844,17 @@ def test_amp_score_and_corner_table():
         for e in run_lesson(lesson, src)['lesson']().elements()]
     score = [e for e in elements if e['element_type'] == 'score']
     assert len(score) == 1 and score[0]['eligible']
-    assert abs(score[0]['value'] - 30.0) < 1.0
+    assert abs(score[0]['value'] - 31.0) < 1.0
     table = [e for e in elements if e['element_type'] == 'markdown'
-        and 'Measurements across corners' in e['html']]
+        and 'Results across corners' in e['html']]
     assert len(table) == 1
     assert all(label in table[0]['html'] for label, _, _ in CORNERS)
 
 
 def test_amp_input_biased_fails_corners():
     """An inverter biased directly from the 0.6 V input passes at tt but
-    runs into a rail at the skewed corners: the gates fail and name the
-    corner, and no eligible score is reported."""
+    runs into a rail at the skewed corners: gain and large-signal gate
+    fail and name the corner, and no eligible score is reported."""
     lesson = course_data('amp_competition')['lessons'][0]
     src = courses_testdata['amp_competition'].lessons[0].solution_src(lesson)
     src = src.replace(".g -- g;", ".g -- vin;")
@@ -854,17 +862,17 @@ def test_amp_input_biased_fails_corners():
     elements = [e.element_webdata()
         for e in run_lesson(lesson, src)['lesson']().elements()]
     passfails = [e for e in elements if e['element_type'] == 'passfail']
-    assert [p['passed'] for p in passfails] == [True, False, False, False]
+    assert [p['passed'] for p in passfails] == [True, False, False]
     for p in passfails[1:]:
-        assert 'at sf 27 °C (fail)' in p['instructions']
-        assert 'at tt 27 °C (fail)' not in p['instructions']
+        assert 'sf 27 °C' in p['instructions']
+        assert 'tt 27 °C' not in p['instructions']
     score = [e for e in elements if e['element_type'] == 'score']
     assert len(score) == 1 and not score[0]['eligible']
 
 
 def test_amp_input_current_counts():
     """The score counts the current from the input source as well: a
-    resistor from vin to vss adds its ~18 uA to the reference's ~30 uA,
+    resistor from vin to vss adds its ~18 uA to the reference's ~31 uA,
     so the ideal 0.6 V input cannot serve as a free supply."""
     lesson = course_data('amp_competition')['lessons'][0]
     edit = courses_testdata['amp_competition'].lessons[0].solution[0]
@@ -877,14 +885,16 @@ def test_amp_input_current_counts():
     assert all(p['passed'] for p in passfails)
     score = [e for e in elements if e['element_type'] == 'score']
     assert len(score) == 1 and score[0]['eligible']
-    assert abs(score[0]['value'] - 48.4) < 1.0
+    assert abs(score[0]['value'] - 49.4) < 1.0
 
 
-# Three AC-coupled self-biased inverters in weak inversion (0.84 uA at tt):
-# the small-signal gain of the chain passes at every corner, but the
-# 10 mV input sine drives the internal nodes into limiting, so the output
-# is a distorted ~150-350 mV wave. The large-signal gate exists for this.
+# Three AC-coupled self-biased inverters in weak inversion (~1 uA at tt
+# plus the 1 uA bias reference in the shipped sink): the small-signal gain
+# of the chain passes at every corner, but the 10 mV input sine drives the
+# internal nodes into limiting, so the output is a distorted ~150-350 mV
+# wave. The large-signal gate exists for this.
 AMP_CASCADE = """
+            Nmos mbias: .$w=1u; .$l=1u; .g -- ibias; .d -- ibias; .s -- vss; .b -- vss; .pos=(42,10)
             net g1, rf1m, n1, g2, rf2m, n2, g3, rf3m
             Cmim c1: .$w=30u; .$l=30u; .p -- vin; .n -- g1; .pos=(6,4)
             Pmos rf1a: .$w=0.5u; .$l=0.13u; .g -- rf1m; .d -- rf1m; .s -- n1; .b -- n1; .pos=(12,4)
@@ -905,20 +915,20 @@ AMP_CASCADE = """
 
 
 def test_amp_cascade_fails_large_signal():
-    """A starved multi-stage cascade passes the device, gain and DC gates
-    at every corner but fails the large-signal gate (distortion), so its
-    sub-uA current is not an eligible score."""
+    """A starved multi-stage cascade passes the device and gain gates at
+    every corner but fails the large-signal gate (distortion), so its
+    ~2 uA current is not an eligible score."""
     lesson = course_data('amp_competition')['lessons'][0]
     edit = courses_testdata['amp_competition'].lessons[0].solution[0]
     src = InsertSolution(edit.skeleton, AMP_CASCADE).apply(lesson['src'])
     elements = [e.element_webdata()
         for e in run_lesson(lesson, src)['lesson']().elements()]
     passfails = [e for e in elements if e['element_type'] == 'passfail']
-    assert [p['passed'] for p in passfails] == [True, True, True, False]
-    assert 'distortion at tt 27 °C (fail)' in passfails[3]['instructions']
+    assert [p['passed'] for p in passfails] == [True, True, False]
+    assert 'tt 27 °C' in passfails[2]['instructions']
     score = [e for e in elements if e['element_type'] == 'score']
     assert len(score) == 1 and not score[0]['eligible']
-    assert score[0]['value'] < 2.0
+    assert score[0]['value'] < 2.5
 
 
 def cmos_variant_states(lesson_index, replace_from, replace_to):

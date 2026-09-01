@@ -102,10 +102,10 @@
                 "maximised": false,
                 "isClosable": true,
                 "reorderEnabled": true,
-                "title": "AmpTb().report_ac",
+                "title": "AmpTb().sim_op",
                 "componentType": "result",
                 "componentState": {
-                  "view": "AmpTb().report_ac"
+                  "view": "AmpTb().sim_op"
                 }
               }
             ],

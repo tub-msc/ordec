@@ -266,9 +266,11 @@ same checks the course runs. Since that executes participant code, the
 service runs it in a throwaway container of the user image, started through
 the docker socket with the spawner's runtime and resource caps and no
 network at all; the submissions go in and the result comes back through the
-docker API, nothing is mounted. Projector and in-app panel then show the
-verified ranking, the projector for admins with the full reasons for teams
-left out. **Back to live scores** lifts the freeze and discards the result;
+docker API, nothing is mounted. While the run lasts, projector and in-app
+panel show a progress bar (submissions rescored, read off the container
+log); afterwards they show the verified ranking. Teams left out appear as
+"not ranked"; the full reasons are on the admin's team pages only.
+**Back to live scores** lifts the freeze and discards the result;
 the run can also be repeated. The same rescoring is available from a shell,
 against a copy of the database:
 

@@ -1,54 +1,56 @@
 from ordec.core import *
-from ordec.lib import Vdc, Vsin, Cap, Gnd
-from ordec.lib.ihp130 import Nmos, Pmos, Rsil, Rppd, Rhigh, Cmim
+from ordec.lib import Vdc, Vsin, Idc, Cap, Gnd
+from ordec.lib.ihp130 import Nmos, Pmos, Rsil, Rppd, Rhigh, Cmim, Corner
 
 cell Amp:
     viewgen symbol(self) -> Symbol:
         input vin
+        input ibias
         output vout
         inout vdd: .align=North
         inout vss
 
     viewgen schematic(self) -> Schematic:
-        port vin: .pos=(1,5)
-        port vout: .pos=(19,8)
         port vdd: .align=East; .pos=(1,14)
         port vss: .align=East; .pos=(1,2)
+        port ibias: .pos=(4,9); .align=South
+        port vin: .pos=(9,7)
+        port vout: .pos=(19,7)
 
-        # EDIT HERE: your amplifier. Only ihp130 Nmos, Pmos, Rsil,
-        # Rppd, Rhigh and Cmim are allowed (see the course panel).
+        # The testbench feeds a 1 uA reference into ibias; it always
+        # needs a DC path to vss. Mirror the current, or keep this
+        # sink; edit or delete it if your design brings its own.
+        Nmos mbias: .$w=1u; .$l=1u; .g -- ibias; .d -- ibias; .s -- vss; .b -- vss; .pos=(2,3)
 
-# Fixed testbench: this is what your submission is scored against, at
-# every process corner (the sim_* views here show the nominal one).
-# Editing it only fools your own screen, not the final ranking.
+        # EDIT HERE: your amplifier.
+
+# This is the testbench against which your submission is scored.
+# The sim_* views here simulate only the nominal corner.
+# The final ranking is unaffected by modifications to your testbench.
 cell AmpTb:
     viewgen schematic(self) -> Schematic:
-        net vin, vout, vdd, vss
+        net vin, vout, vdd, vss, ibias
 
         Gnd gnd: .p -- vss; .pos=(0,0)
         Vdc vdd_src: .$dc=1.2; .n -- vss; .p -- vdd; .pos=(0,6)
         Vsin vin_src: .$dc=0.6; .$amplitude=10m; .$freq=1M; .$ac_mag=1; .n -- vss; .p -- vin; .pos=(6,6)
 
-        Amp dut: .vin -- vin; .vout -- vout; .vdd -- vdd; .vss -- vss; .pos=(12,6)
+        Idc ibias_src: .$dc=1u; .p -- vss; .n -- ibias; .pos=(6,0)
+
+        Amp dut: .vin -- vin; .ibias -- ibias; .vout -- vout; .vdd -- vdd; .vss -- vss; .pos=(12,6)
         Cap cload: .$c=1p; .p -- vout; .n -- vss; .pos=(20,6)
 
     viewgen sim_op(self) -> Simulation:
-        .simulate().op()
-
-    viewgen sim_dc(self) -> Simulation:
-        .simulate().dc_sweep(self.schematic.vin_src, 0, 1.2, 121)
+        # To simulate a corner (here and in the other sim views), pass it
+        # to simulate(), e.g. the checker's slow/hot corner:
+        # .simulate(corner=Corner(mos='ss', res='wcs', cap='bcs'), temp=80)
+        .simulate().op(save_params=True)
 
     viewgen sim_ac(self) -> Simulation:
         .simulate().ac('dec', 10, 1k, 10G)
 
     viewgen sim_tran(self) -> Simulation:
         .simulate().tran(20n, 20u, tmax=10n)
-
-    viewgen report_dc(self) -> Report:
-        sim = self.sim_dc
-        .markdown("Transfer curve (input DC operating point is 0.6 V):")
-        .plot2d(sim.vin.voltage, sim.vout,
-            xlabel="Vin (V)", ylabel="Vout (V)")
 
     viewgen report_ac(self) -> Report:
         .markdown("Gain over frequency:")
@@ -58,4 +60,4 @@ cell AmpTb:
         sim = self.sim_tran
         .markdown("Output for the 10 mV, 1 MHz input sine (the distortion "
             "check looks at the last 10 periods):")
-        .plot2d(sim.time, sim.vout, xlabel="t (s)", ylabel="Vout (V)")
+        .plot2d(sim.time, sim.vout, sim.vin)

@@ -834,9 +834,9 @@ def test_course_competition_scoreboard(web):
         """)
         assert info['note'].startswith('Final ranking')
         assert info['rows'] == [
-            ['#', 'Team', 'Supply current', ''],
-            ['1', 'Ohm my', '30.01 µA', ''],
-            ['–', 'Other team', 'not ranked', 'gain 3.00 < 20'],
+            ['#', 'Team', 'Supply current'],
+            ['1', 'Ohm my', '30.01 µA'],
+            ['–', 'Other team', 'not ranked'],
         ]
         assert info['own'] == [False, True, False]
         assert info['pushes'] == 4

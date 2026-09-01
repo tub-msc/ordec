@@ -55,7 +55,7 @@ def test_rescore_json(tmp_path):
     assert list(results) == ['honest', 'cheat', 'empty', 'lurker', 'shy']
 
     assert results['honest']['fails'] == []
-    assert abs(results['honest']['verified'] - 30.0) < 0.5
+    assert abs(results['honest']['verified'] - 31.0) < 0.5
     assert results['cheat']['fails'] == []
     assert results['cheat']['verified'] == results['honest']['verified']
     assert results['cheat']['claimed'] == 1.0
