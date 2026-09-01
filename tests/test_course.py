@@ -846,7 +846,7 @@ def test_amp_score_and_corner_table():
     assert len(score) == 1 and score[0]['eligible']
     assert abs(score[0]['value'] - 31.0) < 1.0
     table = [e for e in elements if e['element_type'] == 'markdown'
-        and 'Measurements across corners' in e['html']]
+        and 'Results across corners' in e['html']]
     assert len(table) == 1
     assert all(label in table[0]['html'] for label, _, _ in CORNERS)
 

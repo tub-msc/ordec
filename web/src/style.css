@@ -1131,6 +1131,15 @@ body:not(.show-debug) .debug {
 .report-markdown table tr:last-child td {
     border-bottom: none;
 }
+/* Per-cell pass/fail colouring for measurement tables (e.g. the amp
+   competition's per-corner results), set via inline <span> classes. */
+.report-metric-pass {
+    color: var(--color-pass-fg);
+}
+.report-metric-fail {
+    color: var(--color-fail-fg);
+    font-weight: bold;
+}
 /* Square box (matching the markdown code blocks) with a rounded pill badge. */
 .report-passfail {
     padding: 5px 8px;

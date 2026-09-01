@@ -186,6 +186,12 @@ def thd_db(thd):
     return 20 * math.log10(max(thd, 1e-9))
 
 
+def colorize(text, ok):
+    """Wrap text in a pass/fail-coloured span for a Markdown table cell
+    (see .report-metric-pass/-fail in style.css)."""
+    return f'<span class="report-metric-{"pass" if ok else "fail"}">{text}</span>'
+
+
 def tran_fail_text(row):
     label, _, _, vout_amp, thd = row
     return (f"output {vout_amp * 1e3:.0f} mV with {thd_db(thd):.0f} dB "
@@ -309,8 +315,9 @@ def gen_challenge(g):
                 f"{GAIN_FREQ / 1e6:g} MHz | Output amplitude | THD |"
                 "\n|---|---|---|---|---|\n"
                 + "\n".join(f"| {label} | {isup * 1e6:.2f} µA | "
-                    f"{gain:.2f} | {vout_amp * 1e3:.0f} mV "
-                    f"| {thd_db(thd):.0f} dB |"
+                    f"{colorize(f'{gain:.2f}', gain >= GAIN_MIN)} | "
+                    f"{colorize(f'{vout_amp * 1e3:.0f} mV', vout_amp >= GAIN_MIN * VIN_AMP)} "
+                    f"| {colorize(f'{thd_db(thd):.0f} dB', thd <= THD_MAX)} |"
                     for label, isup, gain, vout_amp, thd in rows))
             eligible = all(e.passed for e in report.elements()
                 if isinstance(e, PassFail))
