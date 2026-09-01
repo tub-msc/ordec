@@ -113,10 +113,13 @@ def measure_tran(g, corner, temp):
     """(current in A, output amplitude in V at GAIN_FREQ, distortion as a
     ratio) for the testbench's input sine, from the second half of a
     transient of TRAN_CYCLES periods. The current is the average of
-    everything the testbench sources deliver while amplifying, supply and
-    input source: the input is an ideal 0.6 V source, so powering the
-    amplifier from it would otherwise be free, and measuring under signal
-    charges class-AB bursts and switching for what they draw. The
+    everything the testbench sources deliver while amplifying: supply,
+    input source and bias reference. The input is an ideal 0.6 V source,
+    so powering the amplifier from it would otherwise be free; the 1 uA
+    bias reference is counted for the same reason (as an ideal fixed
+    current it adds the same constant to every score); and measuring
+    under signal charges class-AB bursts and switching for what they
+    draw. The
     distortion is the RMS of everything in vout that is not the
     fundamental (harmonics, drift of the bias point) relative to the RMS
     of the fundamental."""
@@ -125,8 +128,9 @@ def measure_tran(g, corner, temp):
     sim.tran(period / 50, TRAN_CYCLES * period, tmax=period / 100)
     t = [float(x) for x in h.time]
     v = [float(x) for x in h.vout.voltage]
-    i_src = [abs(float(a)) + abs(float(b)) for a, b
-        in zip(h.vdd_src.p.current, h.vin_src.p.current)]
+    i_src = [abs(float(a)) + abs(float(b)) + abs(float(c)) for a, b, c
+        in zip(h.vdd_src.p.current, h.vin_src.p.current,
+            h.ibias_src.p.current)]
     start = next(i for i, x in enumerate(t)
         if x >= TRAN_CYCLES // 2 * period)
 
@@ -233,11 +237,22 @@ def gen_challenge(g):
             All must hold at every process corner and temperature:
             {corner_list}. The score is the current at the first (nominal)
             corner, averaged while the amplifier drives the {VIN_AMP * 1e3:g} mV
-            sine: everything the testbench sources deliver, the supply
-            *and* the input source (the ideal 0.6 V input is not a free
-            supply). The table below the checks shows all corners;
-            `report_dc`, `report_ac` and `report_tran` show the nominal
-            one.
+            sine: everything the testbench sources deliver, the supply,
+            the input source (the ideal 0.6 V input is not a free supply)
+            *and* the bias reference. The table below the checks shows
+            all corners; `report_dc`, `report_ac` and `report_tran` show
+            the nominal one.
+
+            The testbench feeds a constant 1 µA reference current into
+            the `ibias` pin, from an ideal source: it is exact at every
+            corner. Mirror it to bias your amplifier, or leave the
+            shipped sink in place if you do not need it; either way it
+            must keep a DC path to `vss`. Its 1 µA counts toward the
+            score whether you use it or not, so using it is free. Build
+            mirrors from identical unit devices with the `m` multiplier
+            (see the CMOS course's mirror lesson): a wide device next to
+            a narrow one does not have the same threshold, and the ratio
+            comes out far off.
 
             Only physical IHP SG13G2 devices are allowed inside `Amp`:
             `Nmos`, `Pmos`, the resistors `Rsil`, `Rppd`, `Rhigh`
@@ -271,7 +286,9 @@ def gen_challenge(g):
             "and hot (see the corner table). A stage that sets its own "
             "operating point and only takes the signal from vin holds "
             "its level at every corner; its transfer curve in report_dc "
-            "is then flat.")
+            "is then flat. The 1 µA reference on ibias is exact at every "
+            "corner: currents mirrored from it do not move, unlike "
+            "anything derived from a resistor or a trip point.")
         tran_hint = (f"The {VIN_AMP * 1e3:g} mV input sine must come out "
             f"as a sine, only {GAIN_MIN:g} times larger (see report_tran"
             "). A chain of "
