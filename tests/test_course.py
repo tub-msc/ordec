@@ -687,11 +687,12 @@ courses_testdata = {
             skeleton_passed=[True, False, False],
             solution=[
             InsertSolution("""
-            # EDIT HERE: your amplifier. Only ihp130 Nmos, Pmos, Rsil,
-            # Rppd, Rhigh and Cmim are allowed (see the course panel).
             # The testbench feeds a 1 uA reference into ibias; it always
-            # needs a DC path to vss. Mirror it, or keep this sink:
-            Nmos mbias: .$w=1u; .$l=1u; .g -- ibias; .d -- ibias; .s -- vss; .b -- vss; .pos=(3,10)
+            # needs a DC path to vss. Mirror the current, or keep this
+            # sink; edit or delete it if your design brings its own.
+            Nmos mbias: .$w=1u; .$l=1u; .g -- ibias; .d -- ibias; .s -- vss; .b -- vss; .pos=(2,3)
+
+            # EDIT HERE: your amplifier.
             """, """
             net g
             Cmim cc: .$w=30u; .$l=30u; .p -- vin; .n -- g; .pos=(3,7)
@@ -924,7 +925,7 @@ def test_amp_cascade_fails_large_signal():
         for e in run_lesson(lesson, src)['lesson']().elements()]
     passfails = [e for e in elements if e['element_type'] == 'passfail']
     assert [p['passed'] for p in passfails] == [True, True, False]
-    assert 'distortion at tt 27 °C (fail)' in passfails[2]['instructions']
+    assert 'THD at tt 27 °C (fail)' in passfails[2]['instructions']
     score = [e for e in elements if e['element_type'] == 'score']
     assert len(score) == 1 and not score[0]['eligible']
     assert score[0]['value'] < 2.5

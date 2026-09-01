@@ -37,6 +37,7 @@ GAIN_MIN_DB = 20 * math.log10(GAIN_MIN)
 # input cannot.
 VIN_AMP = 0.01       # V
 THD_MAX = 0.05
+THD_MAX_DB = 20 * math.log10(THD_MAX)
 # Transient length in periods of the input sine. The bias networks (GΩ,
 # pF) settle during the first half; the second half is analysed.
 TRAN_CYCLES = 20
@@ -48,10 +49,10 @@ TRAN_CYCLES = 20
 # current); sf/fs move the trip point of any stage biased from the input.
 CORNERS = [
     ("tt 27 °C", ihp130.Corner.TT, 27),
-    ("ss 125 °C (R high, C low)",
-        ihp130.Corner(mos='ss', res='wcs', cap='bcs'), 125),
-    ("ff −40 °C (R low, C high)",
-        ihp130.Corner(mos='ff', res='bcs', cap='wcs'), -40),
+    ("ss 80 °C (R high, C low)",
+        ihp130.Corner(mos='ss', res='wcs', cap='bcs'), 80),
+    ("ff 0 °C (R low, C high)",
+        ihp130.Corner(mos='ff', res='bcs', cap='wcs'), 0),
     ("sf 27 °C", ihp130.Corner.SF, 27),
     ("fs 27 °C", ihp130.Corner.FS, 27),
 ]
@@ -111,9 +112,10 @@ def measure_tran(g, corner, temp):
     current it adds the same constant to every score); and measuring
     under signal charges class-AB bursts and switching for what they
     draw. The
-    distortion is the RMS of everything in vout that is not the
-    fundamental (harmonics, drift of the bias point) relative to the RMS
-    of the fundamental."""
+    THD is the RMS of everything in vout that is not the fundamental,
+    relative to the RMS of the fundamental; it is deliberately broader
+    than a harmonics-only sum, so drift of the bias point and any
+    internal oscillation count as distortion too."""
     h, sim = testbench(g, corner, temp)
     period = 1 / GAIN_FREQ
     sim.tran(period / 50, TRAN_CYCLES * period, tmax=period / 100)
@@ -135,11 +137,15 @@ def measure_tran(g, corner, temp):
     dc = mean(v)
     ac = [x - dc for x in v]
     w = 2 * math.pi * GAIN_FREQ
-    amp = 2 * math.hypot(
-        mean([x * math.cos(w * tt) for x, tt in zip(ac, t)]),
-        mean([x * math.sin(w * tt) for x, tt in zip(ac, t)]))
-    rms = math.sqrt(mean([x * x for x in ac]))
-    rest = math.sqrt(max(rms ** 2 - amp ** 2 / 2, 0))
+    a = 2 * mean([x * math.cos(w * tt) for x, tt in zip(ac, t)])
+    b = 2 * mean([x * math.sin(w * tt) for x, tt in zip(ac, t)])
+    amp = math.hypot(a, b)
+    # The residual is measured pointwise against the reconstructed
+    # fundamental. The energy-subtraction shortcut sqrt(rms² - amp²/2)
+    # cancels almost completely for clean outputs; its quadrature error
+    # then dominates and clamps the distortion to a meaningless 0.0 %.
+    rest = math.sqrt(mean([(x - a * math.cos(w * tt)
+        - b * math.sin(w * tt)) ** 2 for x, tt in zip(ac, t)]))
     return mean(i_src), amp, rest / max(amp / math.sqrt(2), 1e-12)
 
 
@@ -175,11 +181,17 @@ def tran_ok(row):
     return vout_amp >= GAIN_MIN * VIN_AMP and thd <= THD_MAX
 
 
+def thd_db(thd):
+    """THD as dB below the fundamental (clamped for thd = 0)."""
+    return 20 * math.log10(max(thd, 1e-9))
+
+
 def tran_fail_text(row):
     label, _, _, vout_amp, thd = row
-    return (f"output {vout_amp * 1e3:.0f} mV with {thd:.1%} distortion for "
-        f"the {VIN_AMP * 1e3:g} mV input (required "
-        f"≥ {GAIN_MIN * VIN_AMP * 1e3:g} mV, ≤ {THD_MAX:.0%}) at {label}")
+    return (f"output {vout_amp * 1e3:.0f} mV with {thd_db(thd):.0f} dB "
+        f"THD for the {VIN_AMP * 1e3:g} mV input (required "
+        f"≥ {GAIN_MIN * VIN_AMP * 1e3:g} mV, ≤ {THD_MAX_DB:.0f} dB) "
+        f"at {label}")
 
 
 GATES = ((gain_ok, gain_fail_text), (tran_ok, tran_fail_text))
@@ -210,7 +222,7 @@ def gen_challenge(g):
             | Spec | Requirement |
             |---|---|
             | Gain at {GAIN_FREQ / 1e6:g} MHz | ≥ {GAIN_MIN:g} ({GAIN_MIN_DB:.0f} dB) |
-            | Output for the {VIN_AMP * 1e3:g} mV input sine | ≥ {GAIN_MIN * VIN_AMP * 1e3:g} mV amplitude, ≤ {THD_MAX:.0%} distortion |
+            | Output for the {VIN_AMP * 1e3:g} mV input sine | ≥ {GAIN_MIN * VIN_AMP * 1e3:g} mV amplitude, THD ≤ {THD_MAX_DB:.0f} dB |
 
             All must hold at every process corner and temperature:
             {corner_list}. The score is the current at the first (nominal)
@@ -218,8 +230,9 @@ def gen_challenge(g):
             sine: everything the testbench sources deliver, the supply,
             the input source (the ideal 0.6 V input is not a free supply)
             *and* the bias reference. The table below the checks shows
-            all corners; `report_dc`, `report_ac` and `report_tran` show
-            the nominal one.
+            all corners; `sim_op` (with per-device gm, Vgs and
+            currents), `report_ac` and `report_tran` show the nominal
+            one.
 
             The testbench feeds a constant 1 µA reference current into
             the `ibias` pin, from an ideal source: it is exact at every
@@ -270,7 +283,8 @@ def gen_challenge(g):
             "reference, which is exact at every corner.")
         tran_hint = (f"The {VIN_AMP * 1e3:g} mV input sine must come out "
             f"as a sine, only {GAIN_MIN:g} times larger (see report_tran"
-            "). A chain of "
+            "). THD here is the whole non-fundamental residual of the "
+            "transient, not just harmonics. A chain of "
             "starved stages reaches the small-signal gain but limits "
             "instead of amplifying: clipped internal nodes, a square-ish "
             "output, and a bias point that drifts with the signal.")
@@ -288,7 +302,8 @@ def gen_challenge(g):
 
         gain_label = f"Gain at {GAIN_FREQ / 1e6:g} MHz ≥ {GAIN_MIN:g}"
         tran_label = (f"Output for the {VIN_AMP * 1e3:g} mV input sine "
-            f"≥ {GAIN_MIN * VIN_AMP * 1e3:g} mV, distortion ≤ {THD_MAX:.0%}")
+            f"≥ {GAIN_MIN * VIN_AMP * 1e3:g} mV, THD ≤ {THD_MAX_DB:.0f} "
+            "dB")
         try:
             rows = measure_corners(g)
         except Exception:
@@ -311,19 +326,20 @@ def gen_challenge(g):
             report.passfail(tran_label, all(tran_pass), hint=tran_hint,
                 instructions=f"Output for the {VIN_AMP * 1e3:g} mV input "
                 "sine: " + ", ".join(
-                    f"{vout_amp * 1e3:.0f} mV amplitude with {thd:.1%} "
-                    f"distortion at {label}" + ("" if ok else " (fail)")
+                    f"{vout_amp * 1e3:.0f} mV amplitude with "
+                    f"{thd_db(thd):.0f} dB THD "
+                    f"at {label}" + ("" if ok else " (fail)")
                     for (label, _, _, vout_amp, thd), ok
                     in zip(rows, tran_pass))
                 + f". Required: ≥ {GAIN_MIN * VIN_AMP * 1e3:g} mV with "
-                f"distortion ≤ {THD_MAX:.0%} at every corner.")
+                f"THD ≤ {THD_MAX_DB:.0f} dB at every corner.")
             report.markdown("Measurements across corners:\n\n"
                 f"| Corner | Current | Gain at "
-                f"{GAIN_FREQ / 1e6:g} MHz | Output amplitude | Distortion |"
+                f"{GAIN_FREQ / 1e6:g} MHz | Output amplitude | THD |"
                 "\n|---|---|---|---|---|\n"
                 + "\n".join(f"| {label} | {isup * 1e6:.2f} µA | "
                     f"{gain:.2f} | {vout_amp * 1e3:.0f} mV "
-                    f"| {thd:.1%} |"
+                    f"| {thd_db(thd):.0f} dB |"
                     for label, isup, gain, vout_amp, thd in rows))
             eligible = all(e.passed for e in report.elements()
                 if isinstance(e, PassFail))
