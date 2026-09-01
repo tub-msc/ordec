@@ -30,8 +30,6 @@ from ..common import blocked_passfails, exception_text, sim_failure_text
 GAIN_MIN = 20.0      # V/V at GAIN_FREQ
 GAIN_FREQ = 1e6      # Hz; into the 1 pF load, this prices gm (and current)
 GAIN_MIN_DB = 20 * math.log10(GAIN_MIN)
-VOUT_DC_MIN = 0.35   # V
-VOUT_DC_MAX = 0.85   # V
 # Large-signal gate: the testbench's input sine (VIN_AMP at GAIN_FREQ, see
 # vin_src in challenge.ord) must come out GAIN_MIN times larger with at
 # most THD_MAX distortion. The small-signal gain can be faked by a chain
@@ -94,13 +92,6 @@ def testbench(g, corner, temp):
     return h, h.simulate(corner=corner, temp=temp)
 
 
-def measure_op(g, corner, temp):
-    """Output DC voltage in V at the operating point."""
-    h, sim = testbench(g, corner, temp)
-    sim.op()
-    return float(h.vout.voltage[0])
-
-
 def measure_ac(g, corner, temp):
     """Gain in V/V at GAIN_FREQ. The testbench drives vin with ac_mag=1,
     so |v(vout)| is the gain; a single-point AC analysis measures it."""
@@ -153,13 +144,13 @@ def measure_tran(g, corner, temp):
 
 
 def measure_corners(g):
-    """[(label, current in A, output DC in V, gain, output amplitude in V,
-    distortion)] over CORNERS."""
+    """[(label, current in A, gain, output amplitude in V, distortion)]
+    over CORNERS."""
     rows = []
     for label, corner, temp in CORNERS:
         isup, vout_amp, thd = measure_tran(g, corner, temp)
-        rows.append((label, isup, measure_op(g, corner, temp),
-            measure_ac(g, corner, temp), vout_amp, thd))
+        rows.append((label, isup, measure_ac(g, corner, temp),
+            vout_amp, thd))
     return rows
 
 
@@ -170,40 +161,28 @@ def measure_corners(g):
 # the live check and the final ranking cannot apply different rules.
 
 def gain_ok(row):
-    _, _, _, gain, _, _ = row
+    _, _, gain, _, _ = row
     return gain >= GAIN_MIN
 
 
 def gain_fail_text(row):
-    label, _, _, gain, _, _ = row
+    label, _, gain, _, _ = row
     return f"gain {gain:.2f} < {GAIN_MIN:g} at {label}"
 
 
-def dc_ok(row):
-    _, _, vout_dc, _, _, _ = row
-    return VOUT_DC_MIN <= vout_dc <= VOUT_DC_MAX
-
-
-def dc_fail_text(row):
-    label, _, vout_dc, _, _, _ = row
-    return (f"output DC level {vout_dc:.3f} V outside "
-        f"{VOUT_DC_MIN:g}...{VOUT_DC_MAX:g} V at {label}")
-
-
 def tran_ok(row):
-    _, _, _, _, vout_amp, thd = row
+    _, _, _, vout_amp, thd = row
     return vout_amp >= GAIN_MIN * VIN_AMP and thd <= THD_MAX
 
 
 def tran_fail_text(row):
-    label, _, _, _, vout_amp, thd = row
+    label, _, _, vout_amp, thd = row
     return (f"output {vout_amp * 1e3:.0f} mV with {thd:.1%} distortion for "
         f"the {VIN_AMP * 1e3:g} mV input (required "
         f"≥ {GAIN_MIN * VIN_AMP * 1e3:g} mV, ≤ {THD_MAX:.0%}) at {label}")
 
 
-GATES = ((gain_ok, gain_fail_text), (dc_ok, dc_fail_text),
-    (tran_ok, tran_fail_text))
+GATES = ((gain_ok, gain_fail_text), (tran_ok, tran_fail_text))
 
 
 def gate_failures(rows):
@@ -231,7 +210,6 @@ def gen_challenge(g):
             | Spec | Requirement |
             |---|---|
             | Gain at {GAIN_FREQ / 1e6:g} MHz | ≥ {GAIN_MIN:g} ({GAIN_MIN_DB:.0f} dB) |
-            | Output DC level | {VOUT_DC_MIN:g} V … {VOUT_DC_MAX:g} V |
             | Output for the {VIN_AMP * 1e3:g} mV input sine | ≥ {GAIN_MIN * VIN_AMP * 1e3:g} mV amplitude, ≤ {THD_MAX:.0%} distortion |
 
             All must hold at every process corner and temperature:
@@ -274,21 +252,22 @@ def gen_challenge(g):
             "make gain free.")
         gain_hint = (f"A resistor-loaded common-source stage cannot reach "
             f"{GAIN_MIN:g} here: its gain is capped by the DC drop across "
-            "the load. The CMOS course's inverter lessons show loads that "
-            f"do better. At {GAIN_FREQ / 1e6:g} MHz the 1 pF load also "
+            "the load, at about half the requirement. Two such stages in "
+            "series clear it: bias each by mirroring the ibias reference "
+            "(gain = gm times R, current = m times 1 µA), and leave gain "
+            "margin for the slow/hot corner, where gm drops in both "
+            "stages. The CMOS course's inverter lessons show loads that "
+            f"do better still. At {GAIN_FREQ / 1e6:g} MHz the 1 pF load also "
             "sets the price of gain: it takes transconductance, and "
             "transconductance costs current. If the gain is low at "
             f"{GAIN_FREQ / 1e6:g} MHz but fine above, the input coupling "
             "is the limit: a feedback resistor looks (1 + gain) times "
-            "smaller to a coupling capacitor (Miller effect).")
-        dc_hint = ("The input sits fixed at 0.6 V. A stage biased from it "
-            "moves with the thresholds: fine at tt, at the rails at sf/fs "
-            "and hot (see the corner table). A stage that sets its own "
-            "operating point and only takes the signal from vin holds "
-            "its level at every corner; its transfer curve in report_dc "
-            "is then flat. The 1 µA reference on ibias is exact at every "
-            "corner: currents mirrored from it do not move, unlike "
-            "anything derived from a resistor or a trip point.")
+            "smaller to a coupling capacitor (Miller effect). If the "
+            "gain collapses only at the skewed corners (sf/fs, hot), the "
+            "bias is the problem: a stage biased from the fixed 0.6 V "
+            "input drifts to a rail with the thresholds. Take only the "
+            "signal from vin and set the operating point from the ibias "
+            "reference, which is exact at every corner.")
         tran_hint = (f"The {VIN_AMP * 1e3:g} mV input sine must come out "
             f"as a sine, only {GAIN_MIN:g} times larger (see report_tran"
             "). A chain of "
@@ -308,15 +287,13 @@ def gen_challenge(g):
             structure_ok = False
 
         gain_label = f"Gain at {GAIN_FREQ / 1e6:g} MHz ≥ {GAIN_MIN:g}"
-        dc_label = (f"Output DC level {VOUT_DC_MIN:g} V … "
-            f"{VOUT_DC_MAX:g} V")
         tran_label = (f"Output for the {VIN_AMP * 1e3:g} mV input sine "
             f"≥ {GAIN_MIN * VIN_AMP * 1e3:g} mV, distortion ≤ {THD_MAX:.0%}")
         try:
             rows = measure_corners(g)
         except Exception:
-            blocked_passfails(report, (gain_label, dc_label, tran_label),
-                (gain_hint, dc_hint, tran_hint),
+            blocked_passfails(report, (gain_label, tran_label),
+                (gain_hint, tran_hint),
                 sim_failure_text(structure_ok, "the amplifier",
                     structure_check="device check"))
             rows = None
@@ -327,35 +304,27 @@ def gen_challenge(g):
                 instructions=f"Gain at {GAIN_FREQ / 1e6:g} MHz: " + ", ".join(
                     f"{gain:.2f} ({20 * math.log10(max(gain, 1e-9)):.1f} dB)"
                     f" at {label}" + ("" if ok else " (fail)")
-                    for (label, _, _, gain, _, _), ok in zip(rows, gain_pass))
+                    for (label, _, gain, _, _), ok in zip(rows, gain_pass))
                 + f". Required: ≥ {GAIN_MIN:g} ({GAIN_MIN_DB:.0f} dB) at "
                 "every corner.")
-            dc_pass = [dc_ok(row) for row in rows]
-            report.passfail(dc_label, all(dc_pass), hint=dc_hint,
-                instructions="Output DC level: " + ", ".join(
-                    f"{vout_dc:.3f} V at {label}" + ("" if ok else " (fail)")
-                    for (label, _, vout_dc, _, _, _), ok in zip(rows, dc_pass))
-                + f". Required: {VOUT_DC_MIN:g} V … {VOUT_DC_MAX:g} V at "
-                "every corner. The input sits at 0.6 V; your amplifier "
-                "must place its own operating point.")
             tran_pass = [tran_ok(row) for row in rows]
             report.passfail(tran_label, all(tran_pass), hint=tran_hint,
                 instructions=f"Output for the {VIN_AMP * 1e3:g} mV input "
                 "sine: " + ", ".join(
                     f"{vout_amp * 1e3:.0f} mV amplitude with {thd:.1%} "
                     f"distortion at {label}" + ("" if ok else " (fail)")
-                    for (label, _, _, _, vout_amp, thd), ok
+                    for (label, _, _, vout_amp, thd), ok
                     in zip(rows, tran_pass))
                 + f". Required: ≥ {GAIN_MIN * VIN_AMP * 1e3:g} mV with "
                 f"distortion ≤ {THD_MAX:.0%} at every corner.")
             report.markdown("Measurements across corners:\n\n"
-                f"| Corner | Current | Output DC | Gain at "
+                f"| Corner | Current | Gain at "
                 f"{GAIN_FREQ / 1e6:g} MHz | Output amplitude | Distortion |"
-                "\n|---|---|---|---|---|---|\n"
+                "\n|---|---|---|---|---|\n"
                 + "\n".join(f"| {label} | {isup * 1e6:.2f} µA | "
-                    f"{vout_dc:.3f} V | {gain:.2f} | {vout_amp * 1e3:.0f} mV "
+                    f"{gain:.2f} | {vout_amp * 1e3:.0f} mV "
                     f"| {thd:.1%} |"
-                    for label, isup, vout_dc, gain, vout_amp, thd in rows))
+                    for label, isup, gain, vout_amp, thd in rows))
             eligible = all(e.passed for e in report.elements()
                 if isinstance(e, PassFail))
             # In competition course mode, the frontend pushes eligible

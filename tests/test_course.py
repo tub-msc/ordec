@@ -674,7 +674,7 @@ courses_testdata = {
     'amp_competition': CourseTestdata('Amplifier Competition', [
         # Competition lesson: meet the spec gates at every corner, minimize
         # the current. The skeleton (whose only device is the shipped ibias
-        # sink) passes the device whitelist and fails the three measured
+        # sink) passes the device whitelist and fails the two measured
         # gates. The reference solution is a ratio-centered CMOS inverter
         # amplifier at ~31 uA (including the 1 uA bias reference, which it
         # leaves in the shipped sink), self-biased through Rhigh and
@@ -683,8 +683,8 @@ courses_testdata = {
         # The headroom below it (5-10 uA for a single stage, where the gain
         # gate binds at the slow/hot corner) is playtested but not asserted
         # here.
-        LessonTestdata(passfails=4,
-            skeleton_passed=[True, False, False, False],
+        LessonTestdata(passfails=3,
+            skeleton_passed=[True, False, False],
             solution=[
             InsertSolution("""
             # EDIT HERE: your amplifier. Only ihp130 Nmos, Pmos, Rsil,
@@ -852,8 +852,8 @@ def test_amp_score_and_corner_table():
 
 def test_amp_input_biased_fails_corners():
     """An inverter biased directly from the 0.6 V input passes at tt but
-    runs into a rail at the skewed corners: the gates fail and name the
-    corner, and no eligible score is reported."""
+    runs into a rail at the skewed corners: gain and large-signal gate
+    fail and name the corner, and no eligible score is reported."""
     lesson = course_data('amp_competition')['lessons'][0]
     src = courses_testdata['amp_competition'].lessons[0].solution_src(lesson)
     src = src.replace(".g -- g;", ".g -- vin;")
@@ -861,7 +861,7 @@ def test_amp_input_biased_fails_corners():
     elements = [e.element_webdata()
         for e in run_lesson(lesson, src)['lesson']().elements()]
     passfails = [e for e in elements if e['element_type'] == 'passfail']
-    assert [p['passed'] for p in passfails] == [True, False, False, False]
+    assert [p['passed'] for p in passfails] == [True, False, False]
     for p in passfails[1:]:
         assert 'at sf 27 °C (fail)' in p['instructions']
         assert 'at tt 27 °C (fail)' not in p['instructions']
@@ -914,8 +914,8 @@ AMP_CASCADE = """
 
 
 def test_amp_cascade_fails_large_signal():
-    """A starved multi-stage cascade passes the device, gain and DC gates
-    at every corner but fails the large-signal gate (distortion), so its
+    """A starved multi-stage cascade passes the device and gain gates at
+    every corner but fails the large-signal gate (distortion), so its
     ~2 uA current is not an eligible score."""
     lesson = course_data('amp_competition')['lessons'][0]
     edit = courses_testdata['amp_competition'].lessons[0].solution[0]
@@ -923,8 +923,8 @@ def test_amp_cascade_fails_large_signal():
     elements = [e.element_webdata()
         for e in run_lesson(lesson, src)['lesson']().elements()]
     passfails = [e for e in elements if e['element_type'] == 'passfail']
-    assert [p['passed'] for p in passfails] == [True, True, True, False]
-    assert 'distortion at tt 27 °C (fail)' in passfails[3]['instructions']
+    assert [p['passed'] for p in passfails] == [True, True, False]
+    assert 'distortion at tt 27 °C (fail)' in passfails[2]['instructions']
     score = [e for e in elements if e['element_type'] == 'score']
     assert len(score) == 1 and not score[0]['eligible']
     assert score[0]['value'] < 2.5
