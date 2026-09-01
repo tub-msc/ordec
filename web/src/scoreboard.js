@@ -100,8 +100,9 @@ export class Scoreboard {
 
     // {team, rows, final}: the team bound to this session (or null), the
     // standings (ranked first) and the final scoring state: null while the
-    // board is live, else {started, result} with result null while it runs,
-    // a list of {team, verified, fails} when done, or {error}.
+    // board is live, else {started, result} with result null while it runs
+    // (then with {done, total} rescoring progress), a list of
+    // {team, verified} when done, or {error}.
     async fetchState() {
         const state = await this.request('api/state');
         const wasFrozen = this.frozen;
@@ -364,12 +365,25 @@ export class ScoreboardPanel {
             p.textContent = finalDone
                 ? 'Final ranking, verified against the pristine testbench.'
                 : 'Scores are frozen for final scoring.';
+            if (state.final.result === null && state.final.progress) {
+                // Rescoring progress; done stays 0 (indeterminate bar)
+                // while the scoring container is still starting up.
+                const prog = state.final.progress;
+                const bar = document.createElement('progress');
+                bar.max = prog.total;
+                if (prog.done > 0) {
+                    bar.value = prog.done;
+                    p.append(' ', bar, ' ' + prog.done + '/' + prog.total);
+                } else {
+                    p.append(' ', bar);
+                }
+            }
             children.push(p);
         }
         const table = document.createElement('table');
         table.innerHTML = finalDone
             ? '<tr><th class="num">#</th><th>Team</th>'
-                + '<th class="num">Supply current</th><th></th></tr>'
+                + '<th class="num">Supply current</th></tr>'
             : '<tr><th class="num">#</th><th>Team</th>'
                 + '<th class="num">Supply current</th><th>Updated</th></tr>';
         const rows = finalDone ? state.final.result : state.rows;
@@ -378,12 +392,12 @@ export class ScoreboardPanel {
             if (row.team === state.team) {
                 tr.className = 'scoreboard-own';
             }
-            // Final rows carry verified/fails, live rows score/updated.
+            // Final rows carry verified (null = not ranked; the reasons
+            // are not public), live rows score/updated.
             const score = finalDone ? row.verified : row.score;
             const cells = finalDone
-                ? [row.fails.length ? '–' : String(i + 1), row.team,
-                    (score === null) ? 'not ranked' : score.toFixed(2) + ' µA',
-                    row.fails.join('; ')]
+                ? [(score === null) ? '–' : String(i + 1), row.team,
+                    (score === null) ? 'not ranked' : score.toFixed(2) + ' µA']
                 : [String(i + 1), row.team,
                     (score === null) ? 'no score' : score.toFixed(2) + ' µA',
                     row.updated];

@@ -75,10 +75,12 @@ def rescore_all(entries):
     """
     signal.signal(signal.SIGALRM, timed_out)
     results = []
-    for team, claimed, source in entries:
-        # Progress on stderr: when the run dies without a traceback (killed),
-        # the log still shows which submission it was on.
-        print(f"rescoring {team} ...", file=sys.stderr, flush=True)
+    for i, (team, claimed, source) in enumerate(entries, 1):
+        # Progress marker on stderr: the scoreboard polls the container log
+        # for these lines to show a progress bar, and when the run dies
+        # without a traceback (killed), the log shows where it was.
+        print(f"rescoring {i}/{len(entries)}: {team} ...",
+            file=sys.stderr, flush=True)
         if source is None:
             isup, fails = None, ["registered, but never pushed a build"]
         else:

@@ -8,6 +8,7 @@ same-origin check of the JSON API.
 """
 
 import importlib.util
+import json
 import sys
 import types
 from pathlib import Path
@@ -88,38 +89,61 @@ def test_team_page_follows_the_pushed_source(sb):
     # A failed check pushes source and schematic with a NULL score; final
     # scoring ranks that source, so the audit view must show it.
     page = sb.TEAM_PAGE.generate(id=1, team='shy', score=None,
-        source='cell Amp {}', svg='<svg/>', updated='10:00:00').decode()
+        source='cell Amp {}', svg='<svg/>', updated='10:00:00',
+        fails=None).decode()
     assert 'cell Amp {}' in page
     assert 'schematic?id=1' in page
     assert 'failed a check' in page
 
     page = sb.TEAM_PAGE.generate(id=2, team='ranked', score=12.5,
-        source='cell Amp {}', svg='<svg/>', updated='10:00:00').decode()
+        source='cell Amp {}', svg='<svg/>', updated='10:00:00',
+        fails=None).decode()
     assert 'cell Amp {}' in page
     assert 'Supply current 12.50' in page
 
     # A team that registered but never pushed has nothing to show.
     page = sb.TEAM_PAGE.generate(id=3, team='lurker', score=None,
-        source=None, svg=None, updated='10:00:00').decode()
+        source=None, svg=None, updated='10:00:00', fails=None).decode()
     assert 'No build pushed yet' in page
     assert 'schematic?id=' not in page
 
 
-def test_projector_not_ranked_outside_the_table(sb):
-    # <p> elements inside a <table> are foster-parented above it by the
-    # browser, which would detach the notices from the leaderboard.
-    final = {'started': '11:00:00', 'result': [
-        {'team': 'a', 'verified': 30.0, 'fails': []},
-        {'team': 'b', 'verified': None, 'fails': ['gain 3.00 < 20 at tt']}]}
-    page = sb.PROJECTOR_PAGE.generate(rows=[], final=final, admin=False,
-        ids={}, delete=None, xsrf='').decode()
-    assert page.index('</table>') < page.index('Not ranked: b')
+def test_final_reasons_only_on_team_page(sb):
+    # Neither the projector (admin or not) nor the public API carry the
+    # reasons a team is not ranked; they show on the team page only.
+    result = [
+        {'team': 'a', 'claimed': 30.0, 'verified': 30.0, 'fails': []},
+        {'team': 'b', 'claimed': 5.0, 'verified': None,
+            'fails': ['gain 3.00 < 20 at tt']}]
+    final = {'started': '11:00:00', 'result': result}
+    for admin in (False, True):
+        page = sb.PROJECTOR_PAGE.generate(rows=[], final=final, admin=admin,
+            ids={'a': 1, 'b': 2}, delete=None, xsrf='').decode()
+        assert 'not ranked' in page
+        assert 'gain 3.00' not in page
 
-    # The admin variant lists them as table rows instead.
-    page = sb.PROJECTOR_PAGE.generate(rows=[], final=final, admin=True,
-        ids={'a': 1, 'b': 2}, delete=None, xsrf='').decode()
-    assert 'Not ranked:' not in page
-    assert page.index('gain 3.00 &lt; 20 at tt') < page.index('</table>')
+    freeze(sb, json.dumps(result))
+    assert sb.final_public()['result'] == [
+        {'team': 'a', 'verified': 30.0}, {'team': 'b', 'verified': None}]
+
+    page = sb.TEAM_PAGE.generate(id=2, team='b', score=5.0,
+        source='cell Amp {}', svg=None, updated='10:00:00',
+        fails=['gain 3.00 < 20 at tt']).decode()
+    assert 'gain 3.00 &lt; 20 at tt' in page
+
+
+def test_final_progress(sb):
+    # While the run is live, the state carries the rescoring progress and
+    # the projector renders it as a bar.
+    freeze(sb)
+    sb.rescore_progress = {'done': 2, 'total': 5}
+    state = sb.final()
+    assert state['progress'] == {'done': 2, 'total': 5}
+    assert sb.final_public()['progress'] == {'done': 2, 'total': 5}
+    page = sb.PROJECTOR_PAGE.generate(rows=[], final=state, admin=False,
+        ids={}, delete=None, xsrf='').decode()
+    assert '2 of\n5 submissions' in page
+    assert '<progress' in page
 
 
 def check_xsrf(sb, headers, host='hub.example'):

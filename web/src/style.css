@@ -2053,6 +2053,11 @@ body.theme-dark .lm_content {
     margin: 0 0 6px;
     font-weight: bold;
 }
+/* Rescoring progress while final scoring runs (indeterminate at first). */
+.scoreboard-final progress {
+    width: 100px;
+    vertical-align: middle;
+}
 /* Spinner next to the own score while it is out of date (rebuild or push
    in progress); only shown while the panel carries .scoreboard-stale. */
 .scoreboard-spinner {

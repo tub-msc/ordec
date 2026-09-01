@@ -21,9 +21,11 @@ and schematic), shows the time of the last push and offers to delete
 entries, and controls for final scoring appear below it. "Final scoring"
 freezes the board and re-runs every submission against the pristine
 harness (rescore.py) in a throwaway container of the user image, started
-through the docker socket with the spawner's isolation settings; the
-projector then shows the verified ranking until "Back to live scores"
-lifts the freeze.
+through the docker socket with the spawner's isolation settings; while the
+run lasts, the pages show its progress (submissions rescored, read off the
+container log). The projector then shows the verified ranking, without the
+reasons teams are left out (those go to the admin's team pages), until
+"Back to live scores" lifts the freeze.
 
 Entries are keyed by an integer id: the team name is a display name that
 the team can change, and the guest identity is rebound on every re-claim.
@@ -36,6 +38,7 @@ CSP below are security boundaries, not cosmetics.
 import io
 import json
 import os
+import re
 import secrets
 import sqlite3
 import tarfile
@@ -70,6 +73,7 @@ RESCORE_SRC = Path(__file__).with_name('rescore.py').read_bytes()
 WORKDIR = '/home/app'   # the user image's working directory (inputs go here)
 RESCORE_TIMEOUT = 120   # per submission, must match rescore.py TIMEOUT
 RESCORE_SETUP = 600     # plus image start (Kata boot, PDK load)
+RESCORE_POLL = 5        # seconds between progress checks on the container
 
 db = sqlite3.connect(os.environ.get('ORDEC_SCOREBOARD_DB', 'scoreboard.sqlite'))
 # The secret is stored in plain text: it is a per-browser re-claim token for
@@ -187,17 +191,28 @@ def valid_svg(svg):
     return root.tag == '{http://www.w3.org/2000/svg}svg'
 
 
+# Progress of the running final scoring, {'done': submissions rescored,
+# 'total': submissions}: set by start_final, advanced by the worker thread
+# from the container log. Meaningful only while the final row's result is
+# NULL; done stays 0 while the container is still starting up.
+rescore_progress = {'done': 0, 'total': 0}
+
+
 def final():
     """
     Final scoring state: None while the board is live, else a dict with
     'started' and 'result' (None = running, list = verified results as
-    rescore.py returns them, dict = {'error': text}).
+    rescore.py returns them, dict = {'error': text}); while running, also
+    'progress' (see rescore_progress).
     """
     row = db.execute("SELECT started, result FROM final").fetchone()
     if row is None:
         return None
-    return {'started': row[0],
+    state = {'started': row[0],
         'result': None if row[1] is None else json.loads(row[1])}
+    if state['result'] is None:
+        state['progress'] = rescore_progress
+    return state
 
 
 def ranking(result):
@@ -209,8 +224,8 @@ def ranking(result):
 def final_public():
     """
     The final scoring state for participants (API and non-admin projector):
-    the verified ranking with each failure cut to its first line. Full
-    reasons (tracebacks may quote a submission) are for the admin view only.
+    the verified ranking, without the failure reasons. Those (tracebacks
+    may quote a submission) appear on the admin's team pages only.
     """
     state = final()
     if state is None or state['result'] is None:
@@ -219,8 +234,7 @@ def final_public():
         # The error text is for the admin (it describes the hub side).
         return {'started': state['started'], 'result': {'error': True}}
     return {'started': state['started'], 'result': [
-        {'team': r['team'], 'verified': r['verified'],
-            'fails': [f.splitlines()[0] for f in r['fails']]}
+        {'team': r['team'], 'verified': r['verified']}
         for r in ranking(state['result'])]}
 
 
@@ -255,15 +269,22 @@ def run_rescore(entries):
     try:
         container.put_archive(WORKDIR, tar.getvalue())
         container.start()
-        try:
-            status = container.wait(
-                timeout=RESCORE_SETUP + RESCORE_TIMEOUT * len(entries))
-        except (requests.exceptions.ReadTimeout,
-                requests.exceptions.ConnectionError):
-            # docker-py reports the timeout of the streaming wait as
-            # either, depending on the version.
-            container.kill()
-            raise TimeoutError("final scoring container timed out")
+        deadline = (time.monotonic() + RESCORE_SETUP
+            + RESCORE_TIMEOUT * len(entries))
+        while True:
+            try:
+                status = container.wait(timeout=RESCORE_POLL)
+                break
+            except (requests.exceptions.ReadTimeout,
+                    requests.exceptions.ConnectionError):
+                # docker-py reports the timeout of the streaming wait as
+                # either, depending on the version. Still running: check
+                # the deadline and update the progress from the container
+                # log (a genuinely broken docker socket surfaces there).
+                if time.monotonic() >= deadline:
+                    container.kill()
+                    raise TimeoutError("final scoring container timed out")
+                update_progress(container, len(entries))
         if status['StatusCode'] != 0:
             # A traceback on stderr is rescore.py's own failure; an empty
             # log means the process was killed (OOMKilled: the 2G memory
@@ -286,6 +307,21 @@ def run_rescore(entries):
         container.remove(force=True)
 
 
+def update_progress(container, total):
+    """
+    Advances rescore_progress from the "rescoring i/n:" marker lines that
+    rescore.py prints to stderr. The log tail suffices (markers only move
+    forward); a submission forging a marker line can at worst garble the
+    progress bar, done is clamped to the real total.
+    """
+    global rescore_progress
+    log = container.logs(stdout=False, stderr=True, tail=50)
+    marks = re.findall(rb'^rescoring (\d+)/\d+:', log, re.M)
+    if marks:
+        rescore_progress = {'done': min(int(marks[-1]) - 1, total),
+            'total': total}
+
+
 def start_final():
     """
     Freezes the board and starts final scoring of the current entries in
@@ -293,10 +329,12 @@ def start_final():
     the final row when the run ends, unless the row was deleted meanwhile
     (admin went back to live scores: the run's result is then dropped).
     """
+    global rescore_progress
     state = final()
     if state is not None and state['result'] is None:
         return
     entries = db.execute("SELECT team, score, source FROM entries").fetchall()
+    rescore_progress = {'done': 0, 'total': len(entries)}
     started = time.strftime('%H:%M:%S')
     db.execute("INSERT OR REPLACE INTO final VALUES (1, ?, NULL)", (started,))
     db.commit()
@@ -343,7 +381,10 @@ SCORE_CELL = """{% if score is None %}
 <td class="num noscore">no score</td>
 {% else %}<td class="num">{{ '%.2f' % score }} µA</td>{% end %}"""
 
-# One team's audit trail: the source and schematic pushed with its score.
+# One team's audit trail: the source and schematic pushed with its score,
+# and (once final scoring ran) the full reasons the team is not ranked;
+# they show up nowhere else (tracebacks may quote the submission, and the
+# projector should not put every team's failures on the beamer).
 # The audit view follows the pushed source, not the score: a build that
 # failed a check stores source and schematic with a NULL score, and final
 # scoring ranks such a team from that source (see rescore.py).
@@ -357,13 +398,17 @@ TEAM_PAGE = Template("""<!DOCTYPE html>
 <h1>{{ team }}</h1>
 {% if source is None %}
 <p class="meta noscore">No build pushed yet.</p>
-{% else %}
-{% if score is None %}
+{% elif score is None %}
 <p class="meta noscore">No score: the latest build failed a check. Pushed
 {{ updated }}.</p>
 {% else %}
 <p class="meta">Supply current {{ '%.2f' % score }} µA, pushed {{ updated }}</p>
 {% end %}
+{% if fails %}
+<section class="card"><h2>Not ranked in final scoring</h2>
+<pre>{{ '\\n\\n'.join(fails) }}</pre></section>
+{% end %}
+{% if source is not None %}
 {% if svg %}<section class="card"><h2>Schematic</h2>
 <img src="schematic?id={{ id }}" alt="schematic"></section>{% end %}
 <section class="card"><h2>Source</h2>
@@ -403,7 +448,9 @@ PROJECTOR_PAGE = Template("""<!DOCTYPE html>
     a { color: #06c; }
     a.delete { color: #c00; text-decoration: none; font-size: 2.5vh; }
     a.delete:hover { color: #f00; }
-    td pre { margin: 0; font-size: 2vh; white-space: pre-wrap; }
+    .scoring { color: #555; font-size: 2.5vh; margin: 0 0 3vh; }
+    .scoring progress { width: 40vh; height: 2vh; vertical-align: middle;
+        margin-left: 1vh; }
     button { font: inherit; font-size: 2.2vh; padding: 1.2vh 3vh;
         border-radius: 0.8vh; border: 0.25vh solid #06c; background: #06c;
         color: #fff; cursor: pointer; }
@@ -430,37 +477,39 @@ PROJECTOR_PAGE = Template("""<!DOCTYPE html>
 </style></head>
 <body>
 {% if final is not None and isinstance(final['result'], list) %}
+{% comment The reasons a team is not ranked are deliberately absent here
+(even for admins): they live on the team pages only. %}
 <h1>Final ranking</h1>
 <table><tr><th>#</th><th>Team</th><th class="num">Supply current</th>
-{% if admin %}<th>Claimed</th><th>Not ranked because</th><th></th>{% end %}</tr>
+{% if admin %}<th class="num">Claimed</th><th></th>{% end %}</tr>
 {% for i, r in enumerate(final['result']) %}
-{% if not r['fails'] %}
-{% set score = r['verified'] %}{% set team = r['team'] %}
-<tr><td class="num">{{ i + 1 }}</td>
-""" + TEAM_CELL + SCORE_CELL + """
-{% if admin %}{% set score = r.get('claimed') %}""" + SCORE_CELL + """
-<td></td>""" + DELETE_CELL + """{% end %}
-</tr>
-{% end %}{% end %}
-{% if admin %}{% for r in final['result'] %}{% if r['fails'] %}
-{% set score = r.get('claimed') %}{% set team = r['team'] %}
+{% set team = r['team'] %}
+{% if r['verified'] is None %}
 <tr><td class="num">&ndash;</td>
 """ + TEAM_CELL + """
 <td class="num noscore">not ranked</td>
-""" + SCORE_CELL + """
-<td><pre>{{ '\\n'.join(r['fails']) }}</pre></td>
-""" + DELETE_CELL + """</tr>
-{% end %}{% end %}{% end %}
+{% else %}
+<tr><td class="num">{{ i + 1 }}</td>
+{% set score = r['verified'] %}
+""" + TEAM_CELL + SCORE_CELL + """
+{% end %}
+{% if admin %}{% set score = r.get('claimed') %}""" + SCORE_CELL
+    + DELETE_CELL + """{% end %}
+</tr>
+{% end %}
 </table>
-{% if not admin %}{% for r in final['result'] %}{% if r['fails'] %}
-{% comment Outside the table: a <p> inside one would be foster-parented
-above the leaderboard by the browser. %}
-<p class="noscore">Not ranked: {{ r['team'] }} &ndash;
-{{ '; '.join(r['fails']) }}</p>
-{% end %}{% end %}{% end %}
 {% else %}
 <h1>Leaderboard{% if final is not None %}
 <span class="noscore">(frozen for final scoring)</span>{% end %}</h1>
+{% if final is not None and final['result'] is None %}
+<p class="scoring">Final scoring is running:
+{% if final['progress']['done'] %}{{ final['progress']['done'] }} of
+{{ final['progress']['total'] }} submissions rescored{% else %}starting the
+scoring container{% end %}
+<progress{% if final['progress']['done'] %}
+ value="{{ final['progress']['done'] }}"{% end %}
+ max="{{ final['progress']['total'] }}"></progress></p>
+{% end %}
 <table><tr><th>#</th><th>Team</th><th class="num">Supply current</th>
 {% if admin %}<th>Updated</th><th></th>{% end %}</tr>
 {% for i, (id, team, score, updated) in enumerate(rows) %}
@@ -694,8 +743,16 @@ class TeamHandler(BaseHandler):
         if row is None:
             raise web.HTTPError(404)
         team, score, source, svg, updated = row
+        # Once final scoring ran, this page carries the full reasons the
+        # team is not ranked. Matched by name, which the results are keyed
+        # by (renames are refused while the board is frozen).
+        state = final()
+        fails = None
+        if state is not None and isinstance(state['result'], list):
+            fails = next((r['fails'] for r in state['result']
+                if r['team'] == team), None)
         self.finish(TEAM_PAGE.generate(id=id, team=team, score=score,
-            source=source, svg=svg, updated=updated))
+            source=source, svg=svg, updated=updated, fails=fails))
 
 
 class SchematicHandler(BaseHandler):
