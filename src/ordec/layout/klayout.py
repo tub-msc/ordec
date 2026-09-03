@@ -7,6 +7,7 @@ import subprocess
 import xml.etree.ElementTree as ET
 import re
 import warnings
+from pathlib import Path
 
 from lark import Lark, Transformer, v_args
 
@@ -15,15 +16,25 @@ from ..core import *
 logger = logging.getLogger(__name__)
 
 
-def run(script, cwd, **kwargs):
+def run(script, cwd, capture=None, **kwargs):
     """
     Run KLayout script 'script' in directory 'cwd' with provided keyword args.
+
+    Args:
+        capture: Optional file name (relative to cwd) to which stdout and
+            stderr are redirected, for decks that log to stdout instead of
+            taking a log file variable.
     """
     cmdline = ['klayout', '-b', '-r', str(script)]
     for k, v in kwargs.items():
         cmdline += ['-rd', f'{k}={v}']
     logger.debug("%s %s", cwd, shlex.join(cmdline))
-    subprocess.check_call(cmdline, cwd=cwd)
+    if capture is None:
+        subprocess.check_call(cmdline, cwd=cwd)
+    else:
+        with open(Path(cwd) / capture, 'w') as f:
+            subprocess.check_call(cmdline, cwd=cwd, stdout=f,
+                stderr=subprocess.STDOUT)
 
 
 def unquote(tok) -> str:
