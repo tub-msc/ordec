@@ -10,7 +10,7 @@ import functools
 from ..core import *
 from ..schematic import spice_params, Netlister
 from . import generic_mos
-from .pdk_common import PdkDict, check_dir, check_file, rundir
+from .pdk_common import PdkDict, check_dir, check_file, rundir, format_si, OHM
 from ..layout import makevias, write_gds
 from ..layout import klayout
 
@@ -673,6 +673,25 @@ class Rpoly(SimLeafCell):
     ps = Parameter(R, default=R("0.48u"))
     m = Parameter(int, default=1)
 
+    # Typical-corner model constants (rp1 sheet resistance and the fitted
+    # effective width offset of the dw correction):
+    display_rsh = 48.2
+    display_dw = 0.005e-6
+
+    def effective_length(self) -> R:
+        """Electrical length of the body: each bend counts as the stripe
+        gap plus two corner squares at the usual 0.56 corner factor."""
+        return (self.b + 1) * self.l + self.b * (self.ps + R("1.12")*self.w)
+
+    def display_resistance(self) -> float:
+        """Nominal typical-corner resistance for the schematic display."""
+        w = float(self.w)
+        leff = float(self.effective_length())
+        return self.display_rsh*leff/(w + self.display_dw) / self.m
+
+    def display_params(self):
+        return self.params_list() + [f"R≈{format_si(self.display_resistance())}{OHM}"]
+
     def ngspice_current_pins(self):
         return {"i": "p"}
 
@@ -714,13 +733,10 @@ class Rpoly(SimLeafCell):
             params = {"w": self.w, "l": l_lvs}
         else:
             # ngspice semiconductor resistor with the PDK's R model; with
-            # ".option scale=1.0u" the dimensions are given in um. The
-            # electrical length counts each bend as the stripe gap plus two
-            # corner squares at the usual 0.56 corner factor.
-            l_eff = (self.b + 1) * self.l + self.b * (self.ps + R("1.12")*self.w)
+            # ".option scale=1.0u" the dimensions are given in um.
             params = {
                 "w": self.w * R("1e6"),
-                "l": l_eff * R("1e6"),
+                "l": self.effective_length() * R("1e6"),
                 "m": self.m,
             }
         netlister.add(
@@ -794,6 +810,21 @@ class Cmim(SimLeafCell):
     l = Parameter(R, default=R("5u"))
     w = Parameter(R, default=R("5u"))
     m = Parameter(int, default=1)
+
+    # Typical-corner constants fitted to the ngspice model: 2 fF/um^2 area
+    # capacitance plus 164 aF/um perimeter capacitance.
+    display_ca = 2.0e-3
+    display_cp = 1.64e-10
+
+    def display_capacitance(self) -> float:
+        """Nominal typical-corner capacitance (area plus perimeter term),
+        for the schematic display."""
+        w = float(self.w)
+        l = float(self.l)
+        return (self.display_ca*w*l + self.display_cp*2*(w + l)) * self.m
+
+    def display_params(self):
+        return self.params_list() + [f"C≈{format_si(self.display_capacitance())}F"]
 
     def ngspice_current_pins(self):
         return {"i": "p"}

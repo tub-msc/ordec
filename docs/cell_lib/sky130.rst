@@ -25,6 +25,30 @@ those rules from the published SkyWater periphery rule values. This does not
 reach the coverage of a magic-based sign-off; for tapeouts, an additional
 independent DRC run is advisable.
 
+Displayed device values
+-----------------------
+
+Schematic instances of ``Rpoly`` and ``Cmim`` show their nominal value
+(``R≈`` and ``C≈``) next to the raw parameters. It is derived from the drawn
+geometry with the typical-corner constants of the ngspice models:
+
+.. code-block:: none
+
+    R = 48.2 Ω/sq * leff / (w + 0.005 µm)
+    leff = (b + 1) * l + (ps + 1.12 * w) * b
+
+where each bend contributes the stripe gap plus two corner squares at the
+usual 0.56 corner factor, and
+
+.. code-block:: none
+
+    C = 2 fF/µm² * l * w + 164 aF/µm * 2 * (l + w)
+
+for ``Cmim``. The value is rounded to three significant digits and marked
+with ``≈`` because secondary model effects are not included: it matches the
+simulated typical-corner value within about 1 %. The labels are display-only
+and do not affect netlists or simulation.
+
 Cells
 -----
 

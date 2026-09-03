@@ -369,8 +369,7 @@ class SchematicRenderer(Renderer):
             x=str(lx), y=str(ly), width=str(ux-lx), height=str(uy-ly))
         outline.attrib['class'] = 'symbolOutline'
 
-        #params_str = cell.params_str()
-        params_str = "\n".join(s.cell.params_list())
+        params_str = "\n".join(s.cell.display_params())
 
         self.draw_label(type(s.cell).__name__,
             rect.northeast.transl() * R90, svg_class="cellName")

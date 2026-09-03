@@ -14,7 +14,7 @@ from ..core import *
 from ..schematic import spice_params, Netlister
 from ..sim.ngspice import NgspiceSetup
 from . import generic_mos
-from .pdk_common import PdkDict, check_dir, check_file, rundir
+from .pdk_common import PdkDict, check_dir, check_file, rundir, format_si, OHM
 from ..layout import makevias, write_gds
 from ..layout import klayout
 from ..layout.pnr import GridConfig
@@ -963,6 +963,24 @@ class Res(SimLeafCell):
     ps = Parameter(R, default=R("0.18u"))
     m = Parameter(int, default=1)
 
+    #: Bend length factor of the resistor models (resistors_mod.lib).
+    display_kappa = 1.85
+
+    def display_resistance(self) -> float:
+        """
+        Nominal typical-corner resistance, following the geometry formula of
+        the ngspice models (resistors_mod.lib): sheet resistance over the
+        effective length and width plus the end resistance. Display only.
+        """
+        w = float(self.w)
+        weff = w + self.display_dw
+        leff = ((self.b + 1)*float(self.l)
+            + (2/self.display_kappa*weff + float(self.ps))*self.b)
+        return (self.display_rsh*leff/weff + 2*self.display_rz/w) / self.m
+
+    def display_params(self):
+        return self.params_list() + [f"R≈{format_si(self.display_resistance())}{OHM}"]
+
     def ngspice_current_pins(self):
         return {"i": "p"}
 
@@ -1031,6 +1049,11 @@ class Rsil(Res):
     l = Parameter(R, default=R("0.50u"))
     w = Parameter(R, default=R("0.50u"))
 
+    # Typical-corner model constants (rsh_rsil, weff, rzspec):
+    display_rsh = 7.0
+    display_dw = 0.01e-6
+    display_rz = 4.5e-6
+
     @viewgen_noctx
     def layout(self) -> Layout:
         return _layoutgen_resistor(self, "rsil", add_res=True)
@@ -1050,6 +1073,11 @@ class Rppd(Res):
     model_name = "rppd"
     l = Parameter(R, default=R("0.50u"))
     w = Parameter(R, default=R("0.50u"))
+
+    # Typical-corner model constants (rsh_rppd, weff, rzspec):
+    display_rsh = 260.0
+    display_dw = 0.006e-6
+    display_rz = 35e-6
 
     @viewgen_noctx
     def layout(self) -> Layout:
@@ -1071,6 +1099,11 @@ class Rhigh(Res):
     l = Parameter(R, default=R("0.96u"))
     w = Parameter(R, default=R("0.50u"))
 
+    # Typical-corner model constants (rsh_rhigh, weff, rzspec):
+    display_rsh = 1360.0
+    display_dw = -0.04e-6
+    display_rz = 80e-6
+
     @viewgen_noctx
     def layout(self) -> Layout:
         return _layoutgen_resistor(self, "rhigh", add_psd=True, add_nsd=True)
@@ -1087,6 +1120,21 @@ class Cmim(SimLeafCell):
     w = Parameter(R, default=R("6.99u"))
     m = Parameter(int, default=1)
     ic = Parameter(R, optional=True)
+
+    # Typical-corner model constants: cap_carea (1.5 fF/um^2) and the
+    # perimeter capacitance matching the ngspice model (40 aF/um).
+    display_ca = 1.5e-3
+    display_cp = 4.0e-11
+
+    def display_capacitance(self) -> float:
+        """Nominal typical-corner capacitance (area plus perimeter term),
+        for the schematic display."""
+        w = float(self.w)
+        l = float(self.l)
+        return (self.display_ca*w*l + self.display_cp*2*(w + l)) * self.m
+
+    def display_params(self):
+        return self.params_list() + [f"C≈{format_si(self.display_capacitance())}F"]
 
     def ngspice_current_pins(self):
         return {"i": "p"}

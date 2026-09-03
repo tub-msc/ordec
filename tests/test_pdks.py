@@ -194,6 +194,9 @@ def test_resistor_op(cell, expected_r):
     # SimPin, so read the 1 V source's branch current instead.
     r = 1.0 / abs(float(h.i_vdc.p.current[0]))
     assert r == pytest.approx(expected_r, rel=0.02)
+    # The schematic display estimate tracks the simulated value (meanders
+    # are the least accurate case).
+    assert cell.display_resistance() == pytest.approx(r, rel=0.1)
 
 
 # Two sizes for the MiM capacitors. A capacitor passes no DC current, so it is
@@ -242,3 +245,5 @@ def test_cmim_ac(cell, expected_c):
     i = complex(h.i_vac.p.current[0])
     c = abs(i) / (2 * math.pi * freq)
     assert c == pytest.approx(expected_c, rel=0.02)
+    # The schematic display estimate tracks the simulated value.
+    assert cell.display_capacitance() == pytest.approx(c, rel=0.02)

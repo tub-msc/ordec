@@ -22,6 +22,33 @@ Approaches that do **not** work:
 * A pin label directly on the substrate region: the deck's connectivity setup attaches no text/pin layer to the substrate, so such labels are ignored and the top-level substrate pin remains unnamed.
 * Netlisting ``bn`` as a global net (``.global sub!``) instead of explicit ``sub`` ports: the subcells then match, but the top-level pin comparison fails because the layout's implicit substrate pin has no name to match against ``SUB!``.
 
+Displayed device values
+-----------------------
+
+Schematic instances of the resistors and of ``Cmim`` show their nominal value
+(``R≈`` and ``C≈``) next to the raw parameters. It is derived from the drawn
+geometry with the typical-corner constants of the ngspice models
+(``resistors_mod.lib``, ``cornerRES.lib``, ``cornerCAP.lib``):
+
+.. code-block:: none
+
+    R = rsh * leff / weff + 2 * rz / w
+    weff = w + dw
+    leff = (b + 1) * l + (2 / 1.85 * weff + ps) * b
+
+with rsh = 7 / 260 / 1360 Ω/sq, dw = +0.01 / +0.006 / −0.04 µm and
+rz = 4.5 / 35 / 80 Ω·µm for ``Rsil`` / ``Rppd`` / ``Rhigh``, and
+
+.. code-block:: none
+
+    C = 1.5 fF/µm² * l * w + 40 aF/µm * 2 * (l + w)
+
+for ``Cmim``. The value is rounded to three significant digits and marked
+with ``≈`` because secondary model effects are not included: straight
+resistors match the simulated typical-corner value within about 1 %,
+meanders within about 10 %. The labels are display-only and do not affect
+netlists or simulation.
+
 Cells
 -----
 

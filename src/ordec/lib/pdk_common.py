@@ -5,6 +5,16 @@ from pathlib import Path
 from contextlib import contextmanager
 import tempfile
 
+from ..core.rational import R
+
+#: U+2126 OHM SIGN for value labels. The web UI's Inconsolata font covers it,
+#: unlike the Greek capital omega, which would render in a fallback font.
+OHM = '\u2126'
+
+def format_si(value: float) -> str:
+    """Format a number at 3 significant digits with an SI suffix."""
+    return str(R(f"{value:.3g}"))
+
 def check_dir(path: Path) -> Path:
     if not path.is_dir():
         raise Exception(f"Directory {path} not found.")
