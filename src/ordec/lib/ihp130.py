@@ -49,15 +49,15 @@ def tech_params() -> dict:
     data = json.loads(pdk().klayout_drc_mod_json.read_text())
     return data["techParams"] | data["drc_rules"] | data["pcells"]
 
-def _tech_dist(name: str) -> R:
+def tech_dist(name: str) -> R:
     """Read a distance-like tech parameter as a Rational."""
     value = tech_params()[name]
     if isinstance(value, str):
         return R(value)
     return R(f"{value}u")
 
-def _tech_nm(name: str) -> int:
-    return int(_tech_dist(name) / R("1n"))
+def tech_nm(name: str) -> int:
+    return int(tech_dist(name) / R("1n"))
 
 def ngspice_setup():
     """Return ngspice setup commands and environment variables."""
@@ -647,7 +647,7 @@ class Ptap(Cell):
         return [cls(l=R("0.7u"), w=R("0.7u"))]
 
 
-def _layoutgen_resistor(
+def layoutgen_resistor(
         cell: Cell,
         kind: str,
         *,
@@ -673,35 +673,35 @@ def _layoutgen_resistor(
     ps = int(cell.ps / R("1n"))
     bends = cell.b
 
-    if width < _tech_nm(f"{kind}_minW"):
+    if width < tech_nm(f"{kind}_minW"):
         raise ParameterError(f"w below {kind} minimum width.")
-    if length < _tech_nm(f"{kind}_minL"):
+    if length < tech_nm(f"{kind}_minL"):
         raise ParameterError(f"l below {kind} minimum length.")
-    if width > _tech_nm(f"{kind}_maxW"):
+    if width > tech_nm(f"{kind}_maxW"):
         raise ParameterError(f"w above {kind} maximum width ({kind}_maxW).")
-    if length > _tech_nm(f"{kind}_maxL"):
+    if length > tech_nm(f"{kind}_maxL"):
         raise ParameterError(
             f"l above {kind} maximum length ({kind}_maxL). Use series segments.")
-    if bends != 0 and ps < _tech_nm(f"{kind}_minPS"):
+    if bends != 0 and ps < tech_nm(f"{kind}_minPS"):
         raise ParameterError(f"ps below {kind} minimum spacing.")
     add_salblock = kind in ("rhigh", "rppd")
     if bends >= 2 and add_salblock:
         # Keep the SalBlock covers legal next to the salicided terminal
         # heads, where the foundry PCell would push the contacts out instead.
-        ps_floor = _tech_nm("Sal_c") + _tech_nm("Sal_d")
+        ps_floor = tech_nm("Sal_c") + tech_nm("Sal_d")
         if ps < ps_floor:
             raise ParameterError(
                 f"bent {kind} with b >= 2 needs ps >= {ps_floor} nm "
                 "(SalBlock enclosure plus spacing next to the terminal "
                 "contacts); set ps on the instance.")
 
-    cont_size = _tech_nm("Cnt_a")
-    poly_over_cont = _tech_nm("Cnt_d")
-    contbar_poly_over = _tech_nm("CntB_d")
-    contbar_min_len = _tech_nm("CntB_a1")
-    metal_x_enc = _tech_nm("M1_c1")
-    metal_y_enc = max(_tech_nm("M1_c1"), _tech_nm(f"{kind}_met_over_cont"))
-    cont_to_body = _tech_nm(f"{kind}_cont_to_body")
+    cont_size = tech_nm("Cnt_a")
+    poly_over_cont = tech_nm("Cnt_d")
+    contbar_poly_over = tech_nm("CntB_d")
+    contbar_min_len = tech_nm("CntB_a1")
+    metal_x_enc = tech_nm("M1_c1")
+    metal_y_enc = max(tech_nm("M1_c1"), tech_nm(f"{kind}_met_over_cont"))
+    cont_to_body = tech_nm(f"{kind}_cont_to_body")
     head_len = cont_to_body + cont_size + poly_over_cont
 
     if width - 2 * contbar_poly_over < contbar_min_len:
@@ -740,7 +740,7 @@ def _layoutgen_resistor(
     # LVS measures a bent body as its shortest port-adjacent edge plus w,
     # so each stripe is drawn l - w long to restore the l parameter.
     stripe_len = length if bends == 0 else length - width
-    if bends and stripe_len < _tech_nm(f"{kind}_minL"):
+    if bends and stripe_len < tech_nm(f"{kind}_minL"):
         raise ParameterError(
             f"bent {kind} stripes are drawn l - w long; l = {length} nm "
             f"with w = {width} nm leaves less than {kind} minimum length.")
@@ -796,8 +796,8 @@ def _layoutgen_resistor(
     total_y_hi = max(body_y_hi, l.poly_head_n.uy, l.poly_head_p.uy)
 
     if add_psd or add_nsd:
-        sd_enc = _tech_nm("Rhi_c" if add_nsd else "Rppd_b")
-        sal_enc = _tech_nm("Sal_c")
+        sd_enc = tech_nm("Rhi_c" if add_nsd else "Rppd_b")
+        sal_enc = tech_nm("Sal_c")
 
         if add_psd:
             l.psd = LayoutRect(
@@ -845,7 +845,7 @@ def _layoutgen_resistor(
             rect=(total_x_lo - sal_enc, total_y_lo - sal_enc, total_x_hi + sal_enc, total_y_hi + sal_enc),
         )
     else:
-        ext_enc = _tech_nm("Rsil_e")
+        ext_enc = tech_nm("Rsil_e")
         l.extblock = LayoutRect(
             layer=layers.EXTBlock,
             rect=(total_x_lo - ext_enc, total_y_lo - ext_enc, total_x_hi + ext_enc, total_y_hi + ext_enc),
@@ -857,7 +857,7 @@ def _layoutgen_resistor(
     return l
 
 
-def _layoutgen_cmim(cell: Cell) -> Layout:
+def layoutgen_cmim(cell: Cell) -> Layout:
     """Generate the fixed SG13G2 MiM capacitor layout."""
     if cell.m != 1:
         raise ParameterError("m != 1 not supported for layout.")
@@ -867,25 +867,25 @@ def _layoutgen_cmim(cell: Cell) -> Layout:
 
     width = int(cell.w / R("1n"))
     length = int(cell.l / R("1n"))
-    min_lw = _tech_nm("cmim_minLW")
+    min_lw = tech_nm("cmim_minLW")
     if width < min_lw or length < min_lw:
         raise ParameterError("w and l must be at least cmim_minLW.")
-    max_lw = _tech_nm("cmim_maxLW")
+    max_lw = tech_nm("cmim_maxLW")
     if width > max_lw or length > max_lw:
         raise ParameterError("w and l must be at most cmim_maxLW.")
 
-    mim_c = _tech_nm("Mim_c")
-    mim_d = _tech_nm("Mim_d")
-    tv1_size = _tech_nm("TV1_a")
-    tv1_space = _tech_nm("TV1_a") + _tech_nm("TV1_b")
-    tv1_enc = _tech_nm("TV1_d")
+    mim_c = tech_nm("Mim_c")
+    mim_d = tech_nm("Mim_d")
+    tv1_size = tech_nm("TV1_a")
+    tv1_space = tech_nm("TV1_a") + tech_nm("TV1_b")
+    tv1_enc = tech_nm("TV1_d")
 
     # The TopMetal1 plate (via array plus enclosure) must meet TM1.a. At
     # cmim_minLW only one via fits and the plate is too narrow.
-    tm1_min = _tech_nm("TM1_a")
+    tm1_min = tech_nm("TM1_a")
     for side, name in ((width, "w"), (length, "l")):
-        if _cmim_plate_span(side, mim_d, tv1_size, tv1_space, tv1_enc) < tm1_min:
-            needed = _cmim_min_side_for_tm1(mim_d, tv1_size, tv1_space, tv1_enc, tm1_min)
+        if cmim_plate_span(side, mim_d, tv1_size, tv1_space, tv1_enc) < tm1_min:
+            needed = cmim_min_side_for_tm1(mim_d, tv1_size, tv1_space, tv1_enc, tm1_min)
             raise ParameterError(
                 f"{name} = {side} nm gives a TopMetal1 plate narrower than "
                 f"TM1.a ({tm1_min} nm). Cmim needs w and l >= {needed} nm.")
@@ -927,7 +927,7 @@ def _layoutgen_cmim(cell: Cell) -> Layout:
     return l
 
 
-def _cmim_plate_span(side: int, mim_d: int, tv1_size: int, tv1_gap: int,
+def cmim_plate_span(side: int, mim_d: int, tv1_size: int, tv1_gap: int,
                      tv1_enc: int) -> int:
     """TopMetal1 plate width along one side of a Cmim: the TopVia1 array
     (same arithmetic as makevias) plus the TV1.d enclosure on both ends."""
@@ -937,13 +937,13 @@ def _cmim_plate_span(side: int, mim_d: int, tv1_size: int, tv1_gap: int,
     return count * tv1_size + (count - 1) * tv1_gap + 2 * tv1_enc
 
 
-def _cmim_min_side_for_tm1(mim_d: int, tv1_size: int, tv1_gap: int,
+def cmim_min_side_for_tm1(mim_d: int, tv1_size: int, tv1_gap: int,
                            tv1_enc: int, tm1_min: int) -> int:
     """Smallest Cmim side (10 nm steps) whose top plate meets TM1.a."""
-    side = _tech_nm("cmim_minLW")
-    while _cmim_plate_span(side, mim_d, tv1_size, tv1_gap, tv1_enc) < tm1_min:
+    side = tech_nm("cmim_minLW")
+    while cmim_plate_span(side, mim_d, tv1_size, tv1_gap, tv1_enc) < tm1_min:
         side += 10
-        if side > _tech_nm("cmim_maxLW"):
+        if side > tech_nm("cmim_maxLW"):
             break
     return side
 
@@ -1065,7 +1065,7 @@ class Rsil(Res):
 
     @viewgen_noctx
     def layout(self) -> Layout:
-        return _layoutgen_resistor(self, "rsil", add_res=True)
+        return layoutgen_resistor(self, "rsil", add_res=True)
 
     @classmethod
     def discoverable_instances(cls):
@@ -1090,7 +1090,7 @@ class Rppd(Res):
 
     @viewgen_noctx
     def layout(self) -> Layout:
-        return _layoutgen_resistor(self, "rppd", add_psd=True)
+        return layoutgen_resistor(self, "rppd", add_psd=True)
 
     @classmethod
     def discoverable_instances(cls):
@@ -1115,7 +1115,7 @@ class Rhigh(Res):
 
     @viewgen_noctx
     def layout(self) -> Layout:
-        return _layoutgen_resistor(self, "rhigh", add_psd=True, add_nsd=True)
+        return layoutgen_resistor(self, "rhigh", add_psd=True, add_nsd=True)
 
     @classmethod
     def discoverable_instances(cls):
@@ -1188,7 +1188,7 @@ class Cmim(SimLeafCell):
 
     @viewgen_noctx
     def layout(self) -> Layout:
-        return _layoutgen_cmim(self)
+        return layoutgen_cmim(self)
 
     @classmethod
     def discoverable_instances(cls):
