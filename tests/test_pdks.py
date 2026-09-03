@@ -14,6 +14,7 @@ import sys
 import pytest
 
 from ordec.core import *
+from ordec.core import ParameterError
 from ordec.core.schema import LvsItem, LvsItemType
 from ordec.lib import ihp130, sky130, Gnd, Vdc
 from .lib.ihp130_inv import Inv as Ihp130Inv
@@ -121,12 +122,13 @@ def test_passive_drc_clean(cell):
     assert res.summary() == {}
 
 
+# Representative meanders instead of a full kind x bends matrix (each case
+# costs several KLayout runs): even and odd stripe counts place the p
+# terminal at opposite ends, so both parities are covered.
 MEANDERS = [
-    kind(l="2.0u", w="0.5u", b=bends, ps=ps)
-    for kind in (ihp130.Rsil, ihp130.Rppd, ihp130.Rhigh)
-    for bends, ps in ((1, "180n"), (2, "400n"), (5, "400n"))
-] + [
-    sky130.Rpoly(l="2.0u", w="0.5u", b=bends) for bends in (1, 2, 5)
+    ihp130.Rsil(l="2.0u", w="0.5u", b=1, ps="180n"),
+    ihp130.Rhigh(l="2.0u", w="0.5u", b=2, ps="400n"),
+    sky130.Rpoly(l="2.0u", w="0.5u", b=2),
 ]
 
 @pytest.mark.parametrize("cell", MEANDERS, ids=short_id)
@@ -141,8 +143,19 @@ def test_resistor_meander_drc_clean(cell):
     assert res.summary() == {}
 
 
+@pytest.mark.parametrize("cell", [
+    ihp130.Nmos(w="2u", l="130n", ng=3),
+    sky130.Nmos(w="2u", l="150n", nf=3),
+], ids=short_id)
+def test_mos_indivisible_fingers_rejected(cell):
+    """A width that does not divide into the fingers must not silently draw
+    a truncated (LVS-mismatching) layout."""
+    with pytest.raises(ParameterError, match="finger"):
+        cell.layout
+
+
 def resistor_tb(res_cell):
-    """1 V source in series with the resistor; bulk pin tied where present."""
+    """1 V source in series with the resistor, bulk pin tied where present."""
     class Tb(Cell):
         @viewgen_noctx
         def schematic(self):

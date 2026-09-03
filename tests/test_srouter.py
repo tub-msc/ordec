@@ -138,3 +138,26 @@ def test_path_after_layer_change_raises_with_the_idiom():
     # layer() ends the path.
     with pytest.raises(SRouterException, match="right after the last wire"):
         sr.path
+
+@viewgen_noctx
+def layout_top_metal():
+    l = Layout(ref_layers=layers)
+    s = Solver(l)
+    sr = SRouter(rs, layout=l, solver=s)
+    sr.move(layers.TopMetal1, (0, 0))
+    sr.wire((5000, 0))
+    sr.layer(layers.TopMetal2)
+    sr.wire((5000, 5000))
+    s.solve()
+    return l
+
+def test_top_via2_pad_enclosure():
+    # TV2.c/d demand 500 nm TopMetal1 enclosure of the 900 nm TopVia2 cut on
+    # both sides, which the wire endcap cannot supply sideways, so even the
+    # stack-end pad must be route_pad = 1900 nm.
+    l = layout_top_metal()
+    cut = next(r.rect for r in l.all(LayoutRect) if r.layer == layers.TopVia2)
+    pad = next(r.rect for r in l.all(LayoutRect) if r.layer == layers.TopMetal1)
+    assert (cut.ux - cut.lx, cut.uy - cut.ly) == (900, 900)
+    assert min(cut.lx - pad.lx, cut.ly - pad.ly,
+        pad.ux - cut.ux, pad.uy - cut.uy) >= 500

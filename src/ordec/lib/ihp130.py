@@ -353,15 +353,17 @@ class SG13G2(Cell):
         addvia(layers.Via4)
         # The top of the stack has its own, much larger rules. TopVia1 is an
         # exact 420 nm cut (TV1.a) that Metal5 must enclose by 100 nm (TV1.c)
-        # and TopMetal1 by 420 nm (TV1.d); TopMetal1 is 1640 nm wide at least
+        # and TopMetal1 by 420 nm (TV1.d). TopMetal1 is 1640 nm wide at least
         # (TM1.a). TopVia2 is 900 nm (TV2.a), enclosed by 500 nm on both
         # sides (TV2.c/d), and TopMetal2 is 2000 nm wide at least (TM2.a).
         # A Metal5 pad of 620 nm serves both the Via4 below and the TopVia1
-        # above; a TopMetal1 pad between TopVia1 and TopVia2 needs 1900 nm.
+        # above. A TopMetal1 pad with a TopVia2 on it needs 1900 nm even at
+        # stack ends, since the wire endcap cannot supply the 500 nm TV2.c/d
+        # enclosure sideways.
         addmetal(layers.Metal5, route_via=(620, 620), route_pad=(620, 620))
         addvia(layers.TopVia1, route_via=(420, 420))
         addmetal(layers.TopMetal1, route_width=1640, route_via=(1900, 1900),
-            route_pad=(1640, 1640))
+            route_pad=(1900, 1900))
         addvia(layers.TopVia2, route_via=(900, 900))
         addmetal(layers.TopMetal2, route_width=2000, route_via=(2000, 2000),
             route_pad=(2000, 2000))
@@ -389,6 +391,9 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool,
     s = Solver(l)
 
     L = int(length/R("1n"))
+    if int(width/R("1n")) % num_gates != 0:
+        raise ParameterError("w must divide evenly into the finger count,"
+            " otherwise drawn and netlisted width diverge.")
     W = int(width/R("1n") / num_gates)
 
     l.poly = PathNode()
@@ -682,7 +687,7 @@ def _layoutgen_resistor(
     add_salblock = kind in ("rhigh", "rppd")
     if bends >= 2 and add_salblock:
         # Keep the SalBlock covers legal next to the salicided terminal
-        # heads; the foundry PCell would push the contacts out instead.
+        # heads, where the foundry PCell would push the contacts out instead.
         ps_floor = _tech_nm("Sal_c") + _tech_nm("Sal_d")
         if ps < ps_floor:
             raise ParameterError(
@@ -744,7 +749,7 @@ def _layoutgen_resistor(
         return i * pitch
 
     # Connector j joins stripes j and j+1, at the top for even j, at the
-    # bottom for odd j; n sits below stripe 0, p at the last free end.
+    # bottom for odd j. n sits below stripe 0, p at the last free end.
     body_rects = [
         Rect4I(stripe_x(i), 0, stripe_x(i) + width, stripe_len)
         for i in range(stripes)
@@ -979,6 +984,10 @@ class Res(SimLeafCell):
         return (self.display_rsh*leff/weff + 2*self.display_rz/w) / self.m
 
     def display_params(self):
+        # Out-of-range parameters (caught later by layout/netlist checks)
+        # must not break the schematic display:
+        if float(self.w) <= 0 or float(self.w) + self.display_dw <= 0 or self.m < 1:
+            return self.params_list()
         return self.params_list() + [f"R≈{format_si(self.display_resistance())}{OHM}"]
 
     def ngspice_current_pins(self):

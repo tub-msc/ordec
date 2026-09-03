@@ -31,8 +31,18 @@ def pdk() -> PdkDict:
     return pdk
 
 #: FEOL enclosure/spacing checks missing from the PDK's KLayout deck,
-#: shipped with ORDeC (see run_drc).
+#: shipped with ORDeC (see run_drc). The deck reads the values of these
+#: tech_rules entries as -rd variables, in um.
 supplement_drc_deck = Path(__file__).parent / "sky130_supplement.drc"
+supplement_drc_rules = [
+    'licon_space', 'licon_encl_diff_min', 'licon_encl_diff',
+    'licon_encl_tap', 'licon_encl_poly_min', 'licon_encl_poly',
+    'licon_psdm_space', 'licon_gate_space', 'licon_poly_diff_space',
+    'licon_encl_npc', 'npc_gate_space', 'res_poly_space',
+    'diff_ext_poly', 'poly_endcap', 'implant_encl',
+    'implant_space_opposite', 'nwell_encl', 'ndiff_nwell_space',
+    'ptap_nwell_space',
+]
 
 def netlist_setup(netlister):
     if netlister.lvs:
@@ -50,9 +60,11 @@ def netlist_setup(netlister):
 tech_rules = {
     'licon_size': 170,          # licon.1
     'licon_space': 170,         # licon.2
-    'licon_encl_diff': 60,      # licon.5a/5c (0.06 used on all sides)
+    'licon_encl_diff_min': 40,  # licon.5a
+    'licon_encl_diff': 60,      # licon.5c (used on all sides by the generators)
     'licon_encl_tap': 120,      # licon.7
-    'licon_encl_poly': 80,      # licon.8/8a (0.08 used on all sides)
+    'licon_encl_poly_min': 50,  # licon.8
+    'licon_encl_poly': 80,      # licon.8a (used on all sides by the generators)
     'licon_encl_npc': 100,      # licon.15
     'licon_gate_space': 55,     # licon.11
     'licon_poly_diff_space': 190, # licon.14
@@ -69,7 +81,10 @@ tech_rules = {
     'diff_ext_poly': 250,       # poly.7
     'channel_width_min': 420,   # difftap.2
     'implant_encl': 125,        # nsd.5a/psd.5a
+    'implant_space_opposite': 130, # nsd.7/psd.7
     'nwell_encl': 180,          # difftap.8/difftap.10
+    'ndiff_nwell_space': 340,   # difftap.9
+    'ptap_nwell_space': 130,    # difftap.11
     'nwell_width': 840,         # nwell.1
     'npc_gate_space': 90,       # npc.4
     'npc_space': 270,           # npc.2
@@ -236,6 +251,9 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool) 
 
     tr = tech_rules
     L = int(length/R("1n"))
+    if int(width/R("1n")) % num_gates != 0:
+        raise ParameterError("w must divide evenly into the finger count,"
+            " otherwise drawn and netlisted width diverge.")
     W = int(width/R("1n") / num_gates)
 
     if cell.m != 1:
@@ -251,7 +269,6 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool) 
     l.sd = PathNode()
     l.li = PathNode()
 
-    # Source/drain column pitch elements (all one licon wide):
     sd_width = tr['licon_size']
     m1_width = sd_width + 2*tr['met1_encl_mcon']
 
@@ -392,6 +409,7 @@ class Mos(SimLeafCell):
                 *spice_params({
                     'l': self.l,
                     'w': self.w,
+                    'm': self.m,
                 }))
             return
         # sky130 uses ".option scale=1.0u", so ngspice scales:
@@ -403,7 +421,7 @@ class Mos(SimLeafCell):
             'l': self.l * R('1e6'),
             'w': self.w * R('1e6'),
             'nf': self.nf,
-            # m is ngspice's parallel-device multiplier on the instance;
+            # m is ngspice's parallel-device multiplier on the instance,
             # mult only scales the model's Monte-Carlo mismatch sigma.
             'm': self.m,
             'mult': self.m,
@@ -507,7 +525,7 @@ def layoutgen_tap(cell: Cell, length: R, width: R, nwell: bool):
             tr['nwell_width']))
 
     # l.li.rect/l.m1.rect are assigned after solve() from the contact stack,
-    # which needs the solved geometry; defer the undefined-attribute check.
+    # which needs the solved geometry, so the undefined-attribute check is deferred.
     l.li = LayoutRect(layer=layers.li1)
     l.m1 = LayoutRect(layer=layers.met1)
     s.solve(allow_undefined=True)
@@ -590,7 +608,7 @@ def layoutgen_res_poly(cell: Cell) -> Layout:
 
     # b bends fold the body into b+1 stripes of length l, ps apart, joined
     # at alternating ends. Connector j joins stripes j and j+1, at the top
-    # for even j, at the bottom for odd j; n sits below stripe 0, p at the
+    # for even j, at the bottom for odd j. n sits below stripe 0, p at the
     # last stripe's free end.
     stripes = bends + 1
     pitch = width + ps
@@ -690,6 +708,10 @@ class Rpoly(SimLeafCell):
         return self.display_rsh*leff/(w + self.display_dw) / self.m
 
     def display_params(self):
+        # Out-of-range parameters (caught later by layout/netlist checks)
+        # must not break the schematic display:
+        if float(self.w) + self.display_dw <= 0 or self.m < 1:
+            return self.params_list()
         return self.params_list() + [f"R≈{format_si(self.display_resistance())}{OHM}"]
 
     def ngspice_current_pins(self):
@@ -732,7 +754,7 @@ class Rpoly(SimLeafCell):
             l_lvs = (self.b + 1) * self.l + self.b * (2*self.w + self.ps)
             params = {"w": self.w, "l": l_lvs}
         else:
-            # ngspice semiconductor resistor with the PDK's R model; with
+            # ngspice semiconductor resistor with the PDK's R model. With
             # ".option scale=1.0u" the dimensions are given in um.
             params = {
                 "w": self.w * R("1e6"),
@@ -769,7 +791,6 @@ def layoutgen_cmim(cell: Cell) -> Layout:
     if width < tr['capm_width'] or length < tr['capm_width']:
         raise ParameterError("w and l must be at least capm.1 minimum width.")
 
-    # Bottom plate (met3), capm plate, via3 array to the top plate (met4):
     l.capm = LayoutRect(layer=layers.capm, rect=(0, 0, width, length))
     l.term_n = LayoutRect(
         layer=layers.met3,
@@ -1075,6 +1096,7 @@ def run_drc(l: Layout, use_tempdir: bool=True, feol: bool=True,
         klayout.run(supplement_drc_deck, cwd,
             capture="supplement.log",
             report="supplement.lyrdb",
+            **{name: f"{tech_rules[name]/1000:g}" for name in supplement_drc_rules},
             **klayout_shared_opts
             )
         klayout.parse_rdb(cwd / "supplement.lyrdb", report, directory)
@@ -1109,6 +1131,9 @@ def run_lvs(layout: Layout, symbol: Symbol, use_tempdir: bool=True,
         with open(cwd / 'layout.gds', "wb") as f:
             write_gds(layout, f, directory=directory)
 
+        # Remove any report of a previous run in this directory, so a tool
+        # failure below cannot be mistaken for a fresh result:
+        (cwd / 'out.lvsdb').unlink(missing_ok=True)
         try:
             klayout.run(
                 pdk().klayout_lvs_deck,
@@ -1132,9 +1157,12 @@ def run_lvs(layout: Layout, symbol: Symbol, use_tempdir: bool=True,
                 input='layout.gds',
                 schematic='schematic.cir',
                 )
-        except subprocess.CalledProcessError:
-            # The deck exits nonzero on a netlist mismatch. That is a valid
-            # LVS result, reported through the lvsdb parsed below.
-            pass
+        except subprocess.CalledProcessError as e:
+            # The deck exits nonzero on a netlist mismatch, which is a valid
+            # LVS result reported through the lvsdb parsed below. Without an
+            # lvsdb, klayout itself failed.
+            if not (cwd / 'out.lvsdb').is_file():
+                log = (cwd / 'out.log').read_text(errors='replace')
+                raise Exception(f"KLayout LVS run failed:\n{log}") from e
 
         return klayout.parse_lvsdb(cwd / 'out.lvsdb', layout, schematic, directory)

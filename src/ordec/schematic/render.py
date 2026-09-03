@@ -369,7 +369,11 @@ class SchematicRenderer(Renderer):
             x=str(lx), y=str(ly), width=str(ux-lx), height=str(uy-ly))
         outline.attrib['class'] = 'symbolOutline'
 
-        params_str = "\n".join(s.cell.display_params())
+        # A failing display hook must not take down the whole schematic view:
+        try:
+            params_str = "\n".join(s.cell.display_params())
+        except Exception:
+            params_str = "\n".join(s.cell.params_list())
 
         self.draw_label(type(s.cell).__name__,
             rect.northeast.transl() * R90, svg_class="cellName")

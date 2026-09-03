@@ -75,7 +75,7 @@ class Mos2f(Cell):
             # directly on the strap.
             l.gstrap % LayoutPin(pin=self.symbol.g)
         else:
-            # SG13G2 has no poly text layer; contact the gate up to Metal1.
+            # SG13G2 has no poly text layer, so the gate is contacted up to Metal1.
             l.gpad = LayoutRect(layer=poly_layer)
             s.constrain(l.gpad.size == (500, 500))
             s.constrain(l.gpad.south == l.gstrap.north)
@@ -103,8 +103,8 @@ class Mos2f(Cell):
         s.constrain(l.sstrap.height == 170)
         l.sstrap % LayoutPin(pin=self.symbol.s)
 
-        # The drain pin extends past the sd column, as an onward route would;
-        # the bare column alone is below Metal1 minimum area at this size.
+        # The drain pin extends past the sd column, as an onward route would.
+        # The bare column alone is below Metal1 minimum area at this size.
         l.dpin = LayoutRect(layer=m1_layer)
         s.constrain(l.dpin.x_extent == l.m.sd[1].x_extent)
         s.constrain(l.dpin.ly == l.m.sd[1].ly)

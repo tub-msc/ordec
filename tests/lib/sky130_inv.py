@@ -119,7 +119,6 @@ class Inv(Cell):
         s.constrain(l.npc.size == (370, 370))
         s.constrain(l.npc.center == l.polycont.center)
 
-        # li1 landing for the mcon, stacked over the licon:
         l.li_a = LayoutRect(layer=layers.li1)
         s.constrain(l.li_a.x_extent == l.polycont.x_extent)
         s.constrain(l.li_a.cy == l.polycont.cy)
