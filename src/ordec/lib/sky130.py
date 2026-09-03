@@ -405,7 +405,14 @@ class Mos(SimLeafCell):
         }
 
     def ngspice_save_params(self):
-        return ["gm", "gds", "vth", "vdsat", "region"]
+        # BSIM4 operating-point outputs:
+        return ["gm", "gds", "vth", "vdsat", "id", "vgs", "vds"]
+
+    def ngspice_internal_device(self):
+        # The PDK netlists a model subcircuit around a single BSIM4 device
+        # named m<model_name>; needed to save/read device parameters (see
+        # Simulator._param_save_directives).
+        return f"m{self.model_name}"
 
     def ngspice_netlist(self, netlister, inst):
         netlister.require_netlist_setup(netlist_setup)
