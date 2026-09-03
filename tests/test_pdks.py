@@ -154,6 +154,22 @@ def test_mos_indivisible_fingers_rejected(cell):
         cell.layout
 
 
+@pytest.mark.parametrize("build", [
+    lambda: ihp130.Nmos(w="1u", l="100n"),
+    lambda: ihp130.Nmos(w="100n", l="130n"),
+    lambda: ihp130.Nmos(w="1u", l="20u"),
+    lambda: sky130.Nmos(w="1u", l="100n"),
+    lambda: sky130.Nmos(w="300n", l="150n"),
+    lambda: sky130.Nmos(w="1u", l="150n", nf=4),
+], ids=["ihp-short-l", "ihp-narrow-w", "ihp-long-l", "sky-short-l",
+    "sky-narrow-w", "sky-narrow-finger"])
+def test_mos_dimension_limits(build):
+    """Out-of-range dimensions are rejected at cell construction, before
+    they can silently reach simulation or layout."""
+    with pytest.raises(ParameterError):
+        build()
+
+
 def resistor_tb(res_cell):
     """1 V source in series with the resistor, bulk pin tied where present."""
     class Tb(Cell):

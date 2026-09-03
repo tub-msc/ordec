@@ -510,6 +510,32 @@ class Mos(SimLeafCell):
     #: Contact even-numbered source/drain regions (Cont + Metal1)
     contact_sd_even = Parameter(bool, default=True)
 
+    # Dimension limits of the LV devices, hardcoded so that constructing a
+    # cell does not require the PDK environment. They match the PDK's PCell
+    # bounds (tech_params nmos_minW/minL/maxW/maxL/maxNG, identical for pmos,
+    # with the width limits applying per finger).
+    min_l = R("0.13u")
+    max_l = R("10u")
+    min_w = R("0.15u")
+    max_w = R("10u")
+    max_ng = 100
+
+    @classmethod
+    def params_check(cls, params):
+        l, w, ng, m = params['l'], params['w'], params['ng'], params['m']
+        if l is None or w is None:
+            return
+        if ng < 1 or ng > cls.max_ng:
+            raise ParameterError(f"ng must be between 1 and {cls.max_ng}.")
+        if m < 1:
+            raise ParameterError("m must be at least 1.")
+        if not cls.min_l <= l <= cls.max_l:
+            raise ParameterError(
+                f"l = {l} outside the allowed range [{cls.min_l}, {cls.max_l}].")
+        if not cls.min_w <= w/ng <= cls.max_w:
+            raise ParameterError(f"w/ng = {w/ng} outside the allowed range"
+                f" [{cls.min_w}, {cls.max_w}] per finger.")
+
     def ngspice_save_params(self):
         # PSP103 (OSDI) operating-point outputs:
         return ["gm", "gds", "vth", "vgs", "vds", "ids"]

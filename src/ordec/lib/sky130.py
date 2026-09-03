@@ -258,12 +258,6 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool) 
 
     if cell.m != 1:
         raise ParameterError("m != 1 not supported for layout.")
-    if W < tr['channel_width_min']:
-        raise ParameterError(f"Channel width below difftap.2 minimum of"
-            f" {tr['channel_width_min']} nm per finger.")
-    if L < tr['poly_width']:
-        raise ParameterError(f"Channel length below poly.1a minimum of"
-            f" {tr['poly_width']} nm.")
 
     l.poly = PathNode()
     l.sd = PathNode()
@@ -365,6 +359,23 @@ class Mos(SimLeafCell):
     sa = Parameter(R, optional=True) #: OD-to-poly distance, one side (stress model)
     sb = Parameter(R, optional=True) #: OD-to-poly distance, other side (stress model)
     sd = Parameter(R, optional=True) #: Poly-to-poly distance for multi-finger (stress model)
+
+    @classmethod
+    def params_check(cls, params):
+        l, w, nf, m = params['l'], params['w'], params['nf'], params['m']
+        if l is None or w is None:
+            return
+        if nf < 1:
+            raise ParameterError("nf must be at least 1.")
+        if m < 1:
+            raise ParameterError("m must be at least 1.")
+        min_l = R(f"{tech_rules['poly_width']}n")
+        min_w = R(f"{tech_rules['channel_width_min']}n")
+        if l < min_l:
+            raise ParameterError(f"l = {l} below the poly.1a minimum of {min_l}.")
+        if w/nf < min_w:
+            raise ParameterError(f"w/nf = {w/nf} below the difftap.2 minimum"
+                f" channel width of {min_w} per finger.")
 
     def diffusion_params(self) -> dict:
         """ad/as/pd/ps for an interdigitated S-G-D-G-S-... layout, taking
