@@ -1,0 +1,133 @@
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+#
+# Supplementary SKY130 FEOL checks for rules that the PDK's KLayout deck
+# (sky130A_mr.drc) does not implement. Rule ids and values follow the
+# SkyWater periphery rules (skywater-pdk.readthedocs.io/en/main/rules).
+#
+# Two idioms deviate from a literal reading of the rules:
+# - "one of two adjacent sides" enclosures (licon.5c, licon.7, licon.8a) use
+#   the corner construction from sky130A_mr.drc's li.5 check: a contact is
+#   flagged when two adjacent edges are both under-enclosed.
+# - poly.7/poly.8 (directed extension of diff/poly past the gate) are
+#   approximated as minimum-width checks of the diff/poly pieces adjacent to
+#   a gate, which is exact for rectangular fingers.
+
+if $input
+  source($input, $top_cell)
+end
+
+report("ORDeC SKY130 supplement", $report)
+
+if $thr
+  threads($thr)
+else
+  threads(1)
+end
+
+deep
+
+nwell = polygons(64, 20)
+diff  = polygons(65, 20)
+tap   = polygons(65, 44)
+poly  = polygons(66, 20)
+licon = polygons(66, 44)
+npc   = polygons(95, 20)
+nsdm  = polygons(93, 44)
+psdm  = polygons(94, 20)
+
+gate = poly & diff
+licon_poly = licon & poly
+licon_diff = licon & diff
+licon_tap  = licon & tap
+
+ndiff = diff - psdm
+pdiff = diff & psdm
+ptap  = tap - nsdm
+ntap  = tap & nsdm
+
+# licon
+licon.space(0.17, euclidian).output("licon.2",
+  "licon.2 : min. licon spacing : 0.17um")
+diff.enclosing(licon_diff, 0.04, euclidian).output("licon.5a",
+  "licon.5a : min. diff enclosure of licon : 0.04um")
+
+le5c = diff.enclosing(licon_diff, 0.06, projection).second_edges
+le5c_corners = le5c.width(angle_limit(100.0), 1.dbu)
+licon_diff.interacting(le5c_corners.polygons(1.dbu)).output("licon.5c",
+  "licon.5c : min. diff enclosure of licon on one of two adjacent sides : 0.06um")
+
+le7 = tap.enclosing(licon_tap, 0.12, projection).second_edges
+le7_corners = le7.width(angle_limit(100.0), 1.dbu)
+licon_tap.interacting(le7_corners.polygons(1.dbu)).output("licon.7",
+  "licon.7 : min. tap enclosure of licon on one of two adjacent sides : 0.12um")
+
+poly.enclosing(licon_poly, 0.05, euclidian).output("licon.8",
+  "licon.8 : min. poly enclosure of licon : 0.05um")
+
+le8a = poly.enclosing(licon_poly, 0.08, projection).second_edges
+le8a_corners = le8a.width(angle_limit(100.0), 1.dbu)
+licon_poly.interacting(le8a_corners.polygons(1.dbu)).output("licon.8a",
+  "licon.8a : min. poly enclosure of licon on one of two adjacent sides : 0.08um")
+
+licon_poly.separation(psdm, 0.11, euclidian).output("licon.9",
+  "licon.9 : min. poly licon spacing to psdm : 0.11um")
+(licon_diff + licon_tap).separation(gate, 0.055, euclidian).output("licon.11",
+  "licon.11 : min. diff/tap licon spacing to gate : 0.055um")
+licon_poly.separation(diff + tap, 0.19, euclidian).output("licon.14",
+  "licon.14 : min. poly licon spacing to diff/tap : 0.19um")
+npc.enclosing(licon_poly, 0.10, euclidian).output("licon.15",
+  "licon.15 : min. npc enclosure of poly licon : 0.10um")
+licon_poly.not_inside(npc).output("licon.18",
+  "licon.18 : poly licon must be covered by npc")
+
+# npc
+npc.separation(gate, 0.09, euclidian).output("npc.4",
+  "npc.4 : min. npc spacing to gate : 0.09um")
+
+# poly resistor spacing (self/notch spacing of the marked body, catching
+# meander stripes drawn too close; the full poly.9 also covers unrelated
+# poly and diff/tap)
+polyres = poly & polygons(66, 13)
+polyres.space(0.48, euclidian).output("poly.9",
+  "poly.9 : min. poly resistor spacing : 0.48um")
+
+# poly/diff extensions past the gate (approximated, see header)
+(diff - poly).interacting(gate).width(0.25, euclidian).output("poly.7",
+  "poly.7 : min. extension of diff beyond gate : 0.25um")
+(poly - diff).interacting(gate).width(0.13, euclidian).output("poly.8",
+  "poly.8 : min. extension of poly beyond diff (endcap) : 0.13um")
+
+# implants
+nsdm.enclosing(ndiff, 0.125, euclidian).output("nsd.5a",
+  "nsd.5a : min. nsdm enclosure of diff : 0.125um")
+ndiff.not_inside(nsdm).output("nsd.9",
+  "nsd.9 : n+ diff must be covered by nsdm")
+nsdm.enclosing(ntap, 0.125, euclidian).output("nsd.5b",
+  "nsd.5b : min. nsdm enclosure of tap : 0.125um")
+ntap.not_inside(nsdm).output("nsd.9b",
+  "nsd.9 : n+ tap must be covered by nsdm")
+psdm.enclosing(pdiff, 0.125, euclidian).output("psd.5a",
+  "psd.5a : min. psdm enclosure of diff : 0.125um")
+psdm.enclosing(ptap, 0.125, euclidian).output("psd.5b",
+  "psd.5b : min. psdm enclosure of tap : 0.125um")
+ptap.not_inside(psdm).output("psd.9",
+  "psd.9 : p+ tap must be covered by psdm")
+nsdm.separation(pdiff + ptap, 0.13, euclidian).output("nsd.7",
+  "nsd.7 : min. nsdm spacing to opposite implant diff/tap : 0.13um")
+psdm.separation(ndiff + ntap, 0.13, euclidian).output("psd.7",
+  "psd.7 : min. psdm spacing to opposite implant diff/tap : 0.13um")
+
+# nwell
+nwell.enclosing(pdiff, 0.18, euclidian).output("difftap.8",
+  "difftap.8 : min. nwell enclosure of p+ diff : 0.18um")
+pdiff.not_inside(nwell).output("difftap.8a",
+  "difftap.8 : p+ diff must be inside nwell")
+ndiff.separation(nwell, 0.34, euclidian).output("difftap.9",
+  "difftap.9 : min. n+ diff spacing to nwell : 0.34um")
+nwell.enclosing(ntap, 0.18, euclidian).output("difftap.10",
+  "difftap.10 : min. nwell enclosure of n+ tap : 0.18um")
+ntap.not_inside(nwell).output("difftap.10a",
+  "difftap.10 : n+ tap must be inside nwell")
+ptap.separation(nwell, 0.13, euclidian).output("difftap.11",
+  "difftap.11 : min. p+ tap spacing to nwell : 0.13um")
