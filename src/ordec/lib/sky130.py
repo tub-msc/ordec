@@ -237,6 +237,58 @@ class SKY130(Cell):
 
         return s
 
+    @viewgen_noctx
+    def default_routing_spec(self):
+        """
+        SRouter parameters for the met1..met3 stack. Wire widths sit above
+        the m1.1/m2.1/m3.1 minima, via cuts are the exact via.1a/via2.1a
+        sizes, run-in pads cover the all-sides via enclosures (via.4a/b 55,
+        via2.4 40, met3 over via2 65) with the wire supplying the endcap
+        enclosure (via.5a/b, via2.5: 85), and standalone pads cover the
+        endcap on all sides plus the m1.6/m3.6 minimum metal areas.
+        """
+        layers = self.layers
+        rs = RoutingSpec(ref_layers=layers)
+
+        route_id = 0
+
+        def addmetal(layer, route_width, route_ext, route_via, route_pad):
+            nonlocal route_id
+            rs % RoutingSpecLayer(
+                layer=layer,
+                route_id=route_id,
+                route_wire_width=route_width,
+                route_wire_ext=route_ext,
+                route_via_width=route_via[0],
+                route_via_height=route_via[1],
+                route_pad_width=route_pad[0],
+                route_pad_height=route_pad[1],
+            )
+            route_id += 1
+
+        def addvia(layer, route_via):
+            nonlocal route_id
+            rs % RoutingSpecLayer(
+                layer=layer,
+                route_id=route_id,
+                route_via_width=route_via[0],
+                route_via_height=route_via[1],
+            )
+            route_id += 1
+
+        addmetal(layers.met1, 170, 160, (330, 270), (260, 260))
+        addvia(layers.via, (150, 150))
+        # The met2 run-in pad covers via2's 40 all-sides enclosure and
+        # via1's 55; the 85 endcap comes from the wire. At a met2/met3
+        # turn via SRouter does not extend the met2 wire past the cut, so
+        # such junctions need an explicit 370 met2 pad in the layout.
+        addmetal(layers.met2, 170, 200, (370, 300), (280, 280))
+        addvia(layers.via2, (200, 200))
+        addmetal(layers.met3, 300, 200, (500, 500), (330, 330))
+
+        return rs
+
+
 def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool) -> Layout:
     """
     Layout generation function shared for Nmos and Pmos cells.
