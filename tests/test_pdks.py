@@ -276,3 +276,38 @@ def test_cmim_ac(cell, expected_c):
     assert c == pytest.approx(expected_c, rel=0.02)
     # The schematic display estimate tracks the simulated value.
     assert cell.display_capacitance() == pytest.approx(c, rel=0.02)
+
+
+# PDK description protocol
+# ------------------------
+
+# Per PDK: layer stack cell and a sample tech_nm rule name.
+PROTO_PDKS = {
+    'ihp130': (ihp130, ihp130.SG13G2, 'cmim_minLW'),
+    'sky130': (sky130, sky130.SKY130, 'capm_width'),
+}
+
+@pytest.mark.parametrize("proto", PROTO_PDKS.values(), ids=PROTO_PDKS.keys())
+def test_pdk_protocol(proto):
+    """Uniform per-module queries that cross-PDK tools rely on: tech_nm,
+    the TechInfo profile, and the device description attributes on the MOS
+    classes."""
+    lib, stack_cell, rule = proto
+    assert lib.tech_nm(rule) > 0
+    assert lib.tech.manufacturing_grid == 5
+    assert float(lib.tech.nominal_vdd) > 0
+    # Conduction tables name real layers of the stack, and cut layers
+    # connect only declared conductors.
+    stack = stack_cell().layers
+    for name in lib.tech.conductors:
+        getattr(stack, name)
+    for cut, conns in lib.tech.via_connects.items():
+        getattr(stack, cut)
+        for name in conns:
+            assert name in lib.tech.conductors
+    assert set(lib.tech.device_bodies) <= set(lib.tech.conductors)
+    # Device description attributes are usable for generic construction
+    # and operating-point queries.
+    mos = lib.Nmos(l=lib.Nmos.min_l, w=lib.Nmos.min_w * 2,
+        **{lib.Nmos.fingers_param: 2})
+    assert mos.drain_current_param in mos.ngspice_save_params()

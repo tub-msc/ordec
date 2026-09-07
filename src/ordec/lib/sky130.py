@@ -10,7 +10,7 @@ import functools
 from ..core import *
 from ..schematic import spice_params, Netlister
 from . import generic_mos
-from .pdk_common import PdkDict, check_dir, check_file, rundir, format_si, OHM
+from .pdk_common import PdkDict, TechInfo, check_dir, check_file, rundir, format_si, OHM
 from ..layout import makevias, write_gds
 from ..layout import klayout
 
@@ -98,7 +98,65 @@ tech_rules = {
     'via3_size': 200,           # via3.1_a
     'via3_space': 200,          # via3.2
     'met4_encl_via3': 100,      # via3.6 style top enclosure, chosen generous
+    # Metal stack widths, spacings, cut sizes and minimum areas, from the
+    # sky130A_mr.drc deck (met3 and li have no min-area rule there):
+    'poly_space': 210,          # poly.2
+    'li_space': 170,            # li.3
+    'met1_width': 140,          # m1.1
+    'met1_space': 140,          # m1.2
+    'met2_width': 140,          # m2.1
+    'met2_space': 140,          # m2.2
+    'met2_min_area': 67600,     # m2.6 (nm^2, 0.0676 um^2)
+    'met3_width': 300,          # m3.1
+    'met3_space': 300,          # m3.2
+    'met4_width': 300,          # m4.1
+    'met4_space': 300,          # m4.2
+    'met4_min_area': 240000,    # m4.4a (nm^2, 0.24 um^2)
+    'met5_width': 1600,         # m5.1
+    'met5_space': 1600,         # m5.2
+    'met5_min_area': 4000000,   # m5.4 (nm^2, 4.0 um^2)
+    'via_size': 150,            # via.1a
+    'via_space': 170,           # via.2
+    'via2_size': 200,           # via2.1a
+    'via2_space': 200,          # via2.2
+    'via4_size': 800,           # via4.1_a
+    'via4_space': 800,          # via4.2
+    # Metal enclosures of the cut levels (all-side minimum, _end for the
+    # larger two-adjacent-edges rule):
+    'met1_encl_via': 55,        # via.4a
+    'met1_encl_via_end': 85,    # via.5a
+    'met2_encl_via': 55,        # m2.4
+    'met2_encl_via_end': 85,    # m2.5
+    'met2_encl_via2': 40,       # via2.4
+    'met2_encl_via2_end': 85,   # via2.5 (the deck text says m3, its code checks m2)
+    'met3_encl_via2': 65,       # m3.4
+    'met3_encl_via2_end': 85,   # via2.5
+    'met3_encl_via3': 60,       # via3.4
+    'met3_encl_via3_end': 90,   # via3.5
+    'met4_encl_via4': 190,      # via4.4
+    'met5_encl_via4': 310,      # m5.3
 }
+
+def tech_nm(name: str) -> int:
+    """Rule value from tech_rules in nm (areas nm^2), mirroring
+    ihp130.tech_nm."""
+    return tech_rules[name]
+
+public(tech = TechInfo(
+    manufacturing_grid=5,
+    nominal_vdd=R("1.8"), # standard 1.8 V devices
+    conductors=("diff", "tap", "poly", "li1", "met1", "met2", "met3",
+        "met4", "met5", "capm", "cap2m"),
+    via_connects={
+        "licon1": ("diff", "tap", "poly", "li1"),
+        "mcon": ("li1", "met1"),
+        "via": ("met1", "met2"),
+        "via2": ("met2", "met3"),
+        "via3": ("met3", "met4", "capm"),
+        "via4": ("met4", "met5", "cap2m"),
+    },
+    device_bodies=("diff", "tap", "capm", "cap2m"),
+))
 
 @public
 class SKY130(Cell):
@@ -412,6 +470,13 @@ class Mos(SimLeafCell):
     sb = Parameter(R, optional=True) #: OD-to-poly distance, other side (stress model)
     sd = Parameter(R, optional=True) #: Poly-to-poly distance for multi-finger (stress model)
 
+    # Dimension minimums (poly.1a, difftap.2 per finger), from tech_rules.
+    min_l = R(f"{tech_rules['poly_width']}n")
+    min_w = R(f"{tech_rules['channel_width_min']}n")
+
+    fingers_param = 'nf' #: Gate-finger count parameter name
+    drain_current_param = 'id' #: Drain current in ngspice_save_params
+
     @classmethod
     def params_check(cls, params):
         l, w, nf, m = params['l'], params['w'], params['nf'], params['m']
@@ -421,13 +486,11 @@ class Mos(SimLeafCell):
             raise ParameterError("nf must be at least 1.")
         if m < 1:
             raise ParameterError("m must be at least 1.")
-        min_l = R(f"{tech_rules['poly_width']}n")
-        min_w = R(f"{tech_rules['channel_width_min']}n")
-        if l < min_l:
-            raise ParameterError(f"l = {l} below the poly.1a minimum of {min_l}.")
-        if w/nf < min_w:
+        if l < cls.min_l:
+            raise ParameterError(f"l = {l} below the poly.1a minimum of {cls.min_l}.")
+        if w/nf < cls.min_w:
             raise ParameterError(f"w/nf = {w/nf} below the difftap.2 minimum"
-                f" channel width of {min_w} per finger.")
+                f" channel width of {cls.min_w} per finger.")
 
     def diffusion_params(self) -> dict:
         """ad/as/pd/ps for an interdigitated S-G-D-G-S-... layout, taking
@@ -546,9 +609,11 @@ class Pmos(Mos):
 def met1_min_area_rect(mcon_rect: Rect4I, grow_axis: str) -> tuple:
     """
     met1 rect over an mcon array with m1.4/m1.5 enclosures, stretched along
-    grow_axis (on the 5 nm grid) if needed to reach the m1.6 minimum area.
+    grow_axis (on the manufacturing grid) if needed to reach the m1.6
+    minimum area.
     """
     tr = tech_rules
+    mg = tech.manufacturing_grid
     if grow_axis == 'y':
         fix_lo = mcon_rect.lx - tr['met1_encl_mcon']
         fix_hi = mcon_rect.ux + tr['met1_encl_mcon']
@@ -559,8 +624,8 @@ def met1_min_area_rect(mcon_rect: Rect4I, grow_axis: str) -> tuple:
         grow_lo, grow_hi = mcon_rect.lx, mcon_rect.ux
     span = grow_hi - grow_lo + 2*tr['met1_encl_mcon_end']
     min_span = -(-tr['met1_min_area'] // (fix_hi - fix_lo))
-    span = max(span, -(-min_span // 5) * 5)
-    grow = (span - (grow_hi - grow_lo)) // 2 // 5 * 5
+    span = max(span, -(-min_span // mg) * mg)
+    grow = (span - (grow_hi - grow_lo)) // 2 // mg * mg
     if grow_axis == 'y':
         return (fix_lo, grow_lo - grow, fix_hi, grow_lo - grow + span)
     else:

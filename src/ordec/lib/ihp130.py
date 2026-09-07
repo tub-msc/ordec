@@ -14,7 +14,7 @@ from ..core import *
 from ..schematic import spice_params, Netlister
 from ..sim.ngspice import NgspiceSetup
 from . import generic_mos
-from .pdk_common import PdkDict, check_dir, check_file, rundir, format_si, OHM
+from .pdk_common import PdkDict, TechInfo, check_dir, check_file, rundir, format_si, OHM
 from ..layout import makevias, write_gds
 from ..layout import klayout
 from ..layout.pnr import GridConfig
@@ -58,6 +58,24 @@ def tech_dist(name: str) -> R:
 
 def tech_nm(name: str) -> int:
     return int(tech_dist(name) / R("1n"))
+
+public(tech = TechInfo(
+    manufacturing_grid=5, # sg13g2 layout quantum (MANUFACTURINGGRID)
+    nominal_vdd=R("1.5"), # LV core devices
+    conductors=("Activ", "GatPoly", "Metal1", "Metal2", "Metal3", "Metal4",
+        "Metal5", "TopMetal1", "TopMetal2", "MIM"),
+    via_connects={
+        "Cont": ("Activ", "GatPoly", "Metal1"),
+        "Via1": ("Metal1", "Metal2"),
+        "Via2": ("Metal2", "Metal3"),
+        "Via3": ("Metal3", "Metal4"),
+        "Via4": ("Metal4", "Metal5"),
+        "TopVia1": ("Metal5", "TopMetal1"),
+        "TopVia2": ("TopMetal1", "TopMetal2"),
+        "Vmim": ("MIM", "TopMetal1"),
+    },
+    device_bodies=("Activ", "MIM"),
+))
 
 def ngspice_setup():
     """Return ngspice setup commands and environment variables."""
@@ -473,7 +491,7 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool,
         s.constrain(l.nwell.uy == max_activ.uy + 310)
 
     # l.sd[i].rect/l.m1 are assigned after solve() via makevias, which needs
-    # the solved geometry; defer the undefined-attribute check until then.
+    # the solved geometry, so defer the undefined-attribute check until then.
     s.solve(allow_undefined=True)
 
     # Cnt.c requires 0.07 um Activ enclosure of Cont, which the two sd
@@ -519,6 +537,9 @@ class Mos(SimLeafCell):
     min_w = R("0.15u")
     max_w = R("10u")
     max_ng = 100
+
+    fingers_param = 'ng' #: Gate-finger count parameter name
+    drain_current_param = 'ids' #: Drain current in ngspice_save_params
 
     @classmethod
     def params_check(cls, params):
@@ -628,7 +649,7 @@ def layoutgen_tap(cell: Cell, length: R, width: R, nwell: bool):
         s.constrain(l.psd.size == l.activ.size + Vec2I(60, 60))
 
     # l.m1.rect is assigned after solve() from the via stack, which needs the
-    # solved geometry; defer the undefined-attribute check until then.
+    # solved geometry, so defer the undefined-attribute check until then.
     s.solve(allow_undefined=True)
 
     vias_rect = makevias(l, l.activ.rect, layers.Cont,
@@ -1384,7 +1405,7 @@ public(grid = GridConfig(
     via_half=95,
     encl=10,
     encl_endcap=50,
-    manufacturing_grid=5, # sg13g2 layout quantum (MANUFACTURINGGRID)
+    manufacturing_grid=tech.manufacturing_grid,
     # Supply naming (sg13g2 stdcell library pins + ORDeC net conventions):
     vdd_pin="VDD",
     vss_pin="VSS",
@@ -1399,7 +1420,7 @@ public(grid = GridConfig(
     min_area_tracks=2,    # 2 * pitch * 210 nm wire >= 0.144 um^2 Mn min area
     port_pad_inner=600,   # from the edge rail into the block
     port_pad_outer=360,   # from the edge rail into the parent's channel
-    strap_vdd_x=-520,     # left margin; right strap mirrors to die_w + 520
+    strap_vdd_x=-520,     # left margin (the right strap mirrors to die_w + 520)
     strap_vss_x=-1080,    # just outside VDD
     rail_ext=150,
     mesh_half_w=210,      # 420 nm Metal5 mesh straps (2x wire width)
