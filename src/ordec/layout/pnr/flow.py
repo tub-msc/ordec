@@ -167,9 +167,13 @@ class GridConfig:
     sub_via_half: int = None  # half the sub-via cut size
     sub_encl: int = 0         # sub-layer enclosure of the sub-via, all sides
     sub_encl_endcap: int = 0  # sub-layer enclosure on a pair of sides
-    # Min sub-via distance from a row boundary, keeping clear of the cells'
-    # own rail sub-vias (their cut half + spacing + our cut half).
-    sub_rail_clear: int = 0
+    # The Metal1 landing over a sub-via is thin in y (just enclosing the
+    # sub-via, so it clears the rails that near-rail pins sit close to) and
+    # grows along x within the pin to meet Metal1 min area.
+    sub_land_half_h: int = 0  # half the landing's y extent (encloses the
+                              # sub-via below and the Via1 above, all sides)
+    sub_land_half_w_min: int = 0  # min half-width (Via1 endcap enclosure)
+    sub_land_min_area: int = 0  # Metal1 min area the landing must reach
     # Pins connected by well abutment rather than metal (sky130's VNB/VPB).
     # Their terminals are dropped from routing.
     abut_pins: tuple = ()
@@ -667,15 +671,14 @@ def emit_net_direct(layout, stack, edges, term_m2, cfg,
     via1_half = cfg.via_half[0]
     m2_half_w, m2_land_half = cfg.wire_width[0] // 2, cfg.land_half_h[0]
 
-    def sub_via(via_x, via_y):
+    def sub_via(via_x, via_y, land):
         # Sub-access stack rung: the sub-via cut on the sub-layer pin plus
-        # the Metal1 landing it shares with the Via1 above.
+        # the Metal1 landing it shares with the Via1 above. The landing
+        # (from the router, grown along x for min area) is the Metal1 here.
         half = cfg.sub_via_half
         layout % LayoutRect(layer=sub_via_layer, rect=Rect4I(
             via_x - half, via_y - half, via_x + half, via_y + half))
-        layout % LayoutRect(layer=stack.m1, rect=Rect4I(
-            via_x - cfg.m1_land_half_w, via_y - cfg.m1_land_half_h,
-            via_x + cfg.m1_land_half_w, via_y + cfg.m1_land_half_h))
+        layout % LayoutRect(layer=stack.m1, rect=Rect4I(*land))
 
     def term_m2_pad(via_x, via_y):
         # Metal2 pad over a terminal Via1 whose wire is too narrow to
@@ -700,7 +703,7 @@ def emit_net_direct(layout, stack, edges, term_m2, cfg,
             # there is no Metal1 pin to notch.
             via_x, via_y = term_via[node]
             if sub_via_layer is not None:
-                sub_via(via_x, via_y)
+                sub_via(via_x, via_y, (term_land or {})[node])
             term_m2_pad(via_x, via_y)
             layout % LayoutRect(layer=stack.via1, rect=Rect4I(
                 via_x - via1_half, via_y - via1_half,
@@ -712,7 +715,7 @@ def emit_net_direct(layout, stack, edges, term_m2, cfg,
         else:
             via_x, via_y = xi * x_pitch, yi * y_pitch
             if sub_via_layer is not None:
-                sub_via(via_x, via_y)
+                sub_via(via_x, via_y, (term_land or {})[node])
             term_m2_pad(via_x, via_y)
             layout % LayoutRect(layer=stack.via1, rect=Rect4I(
                 via_x - via1_half, via_y - via1_half,

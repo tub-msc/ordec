@@ -1464,9 +1464,14 @@ public(grid = GridConfig(
     sub_via_half=tech_nm('mcon_size') // 2,
     sub_encl=0,
     sub_encl_endcap=0,
-    sub_rail_clear=540,   # the met1 landing must clear the rails (rail half
-                          # 240 + m1.2 + landing half 160), which also clears
-                          # the cells' rail mcons on the row boundaries
+    # The met1 landing over an mcon encloses the mcon below and the via1
+    # above: thin in y (Via1 all-side enclosure via.4a, which also covers
+    # the mcon) so near-rail pins clear the rails, grown along x to the
+    # m1.6 min area with at least the via.5a endcap enclosure there.
+    sub_land_half_h=tech_nm('via_size') // 2 + tech_nm('met1_encl_via'),
+    sub_land_half_w_min=tech_nm('via_size') // 2
+        + tech_nm('met1_encl_via_end'),
+    sub_land_min_area=tech_nm('met1_min_area'),
     abut_pins=("VNB", "VPB"),     # well pins, connected by abutment
     well_tap_dist=10000,          # max un-tapped row run (tapvpwrvgnd cells)
     use_m5=False,                 # met5 wires cannot fit the base y grid

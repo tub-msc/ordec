@@ -179,12 +179,25 @@ def tap_m2_land(cfg):
     return half_w, half_h
 
 
-def sub_row_clear(cfg, y, rail):
-    """Whether a sub-via at ``y`` keeps clear of the cells' rail sub-vias."""
-    if rail or cfg.sub_via_half is None or cfg.sub_rail_clear == 0:
-        return True
-    d = y % cfg.row_height
-    return min(d, cfg.row_height - d) >= cfg.sub_rail_clear
+def sub_land_rect(cfg, via_x, via_y, pin_rects):
+    """Metal1 landing over a sub-via at (via_x, via_y), grown along x.
+
+    Thin in y (``sub_land_half_h``, just the sub-via enclosure) so a landing
+    near a rail clears it, and wide enough in x to meet Metal1 min area,
+    clamped to the pin's x-extent so it never protrudes past the cell's own
+    metal. Returns None when the pin is too narrow to hold a min-area
+    landing at this via.
+    """
+    half_h = cfg.sub_land_half_h
+    mg = cfg.manufacturing_grid
+    # Min total width for the area, at least the sub-via enclosure. Metal1
+    # may extend past the li1 pin (a different layer), so the landing is
+    # centered on the via and grown symmetrically; land_clear rejects it if
+    # it actually reaches foreign metal or a rail.
+    need_w = -(-cfg.sub_land_min_area // (2 * half_h))
+    half_w = max(-(-need_w // 2), cfg.sub_land_half_w_min)
+    half_w = -(-half_w // mg) * mg
+    return (via_x - half_w, via_y - half_h, via_x + half_w, via_y + half_h)
 
 
 def access_nodes(rects, cfg, allow_rail=False):
@@ -229,8 +242,6 @@ def access_nodes(rects, cfg, allow_rail=False):
                 if not allow_rail and not cfg.is_signal_track(yi):
                     continue
                 track_y = yi * y_pitch
-                if not sub_row_clear(cfg, track_y, allow_rail):
-                    continue
                 # y via enclosures (metal margin below/above the via):
                 bottom, top = track_y - via_half - y0, y1 - (track_y + via_half)
                 if bottom < encl or top < encl:
@@ -300,8 +311,6 @@ def offtrack_access(rects, cfg):
             if not cfg.is_signal_track(yi):
                 continue
             track_y = yi * y_pitch
-            if not sub_row_clear(cfg, track_y, False):
-                continue
             # y enclosures (metal margin below/above the via):
             bottom, top = track_y - via_half - y0, y1 - (track_y + via_half)
             if bottom < encl or top < encl:
@@ -386,8 +395,6 @@ def union_access(rects, cfg):
             if not cfg.is_signal_track(yi) or not covered(track_x, yi * y_pitch):
                 continue
             track_y = yi * y_pitch
-            if not sub_row_clear(cfg, track_y, False):
-                continue
             left = reach(track_x, track_y, -1, 0) - via_half
             right = reach(track_x, track_y, 1, 0) - via_half
             bottom = reach(track_x, track_y, 0, -1) - via_half
@@ -1132,15 +1139,25 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
                         yi * y_pitch)
                     if off_track and not bridge_clear(xi, via_x, via_y):
                         continue
-                    if off_track and cfg.sub_via_half is not None:
-                        # The sub-access stack emits a Metal1 landing at the
-                        # via even off track.
-                        land_rect = (via_x - cfg.m1_land_half_w,
-                            via_y - cfg.m1_land_half_h,
-                            via_x + cfg.m1_land_half_w,
-                            via_y + cfg.m1_land_half_h)
-                        if not land_clear(own_nets, land_rect):
+                    if cfg.sub_via_half is not None:
+                        # The sub-access stack emits a Metal1 landing over
+                        # the sub-via, on or off track. It is grown along x
+                        # for min area and must clear foreign metal and the
+                        # rails (which near-rail pins sit close to).
+                        land_rect = sub_land_rect(cfg, via_x, via_y,
+                            pins[iname][pname])
+                        if land_rect is None or not land_clear(own_nets,
+                                land_rect):
                             continue
+                        if node in term:
+                            continue
+                        term.append(node)
+                        term_land[(net_name, ti, node)] = land_rect
+                        if off_track:
+                            term_via[(net_name, ti, node)] = (via_x, via_y)
+                            foot_rects[(net_name, ti, node)] = \
+                                bridge_footprint(cfg, xi, via_x, via_y)
+                        continue
                     if not off_track and cfg.sub_via_half is None:
                         # A landing inside its own pin adds no metal and
                         # needs no clearance: the LEF obstruction covers are
@@ -1612,10 +1629,11 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
             seen[node] = ti
             if via is not None:
                 tv[node] = via
-            else:
-                land = term_land.get((net_name, ti, node))
-                if land is not None:
-                    tl[node] = land
+            # A sub-access terminal carries both an off-track via and its
+            # Metal1 landing, so the landing is recorded regardless of via.
+            land = term_land.get((net_name, ti, node))
+            if land is not None:
+                tl[node] = land
     return RoutingResult(nets=routing, port_escape=port_escape,
         term_via=net_via, term_land=net_land, reserved=frozenset(reserved))
 
