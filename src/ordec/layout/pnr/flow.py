@@ -294,10 +294,11 @@ class PinRects(dict):
     looked up: a library LEF holds macros a given design never places, so
     reading the file must not fail over one of them.
     """
-    def __init__(self, rects, off_layer, pin_layer):
+    def __init__(self, rects, off_layer, pin_layer, obs=None):
         super().__init__(rects)
         self.off_layer = off_layer   # {macro: [layer, ...]} of the rejects
         self.pin_layer = pin_layer
+        self.obs = obs or {}         # {macro: [(x0, y0, x1, y1), ...]}
 
     def __missing__(self, macro):
         if macro not in self.off_layer:
@@ -344,8 +345,10 @@ def lef_pin_rects(lef_path, pin_layer: str, rail_layer: str = None,
 
     rects = {}
     off_layer = {}
+    obs_rects = {}
     for macro_name, macro in sc_leflib.parse(str(lef_path))["macros"].items():
         macro_rects = {}
+        macro_obs = []
         off = set()   # layers outside the accepted set in the PIN or OBS geometry
         for pin, pin_data in macro["pins"].items():
             want = rail_layer if pin in rail_pins else pin_layer
@@ -366,15 +369,28 @@ def lef_pin_rects(lef_path, pin_layer: str, rail_layer: str = None,
                             continue
                         x0, y0, x1, y1 = (round(v * 1000) for v in shape["rect"])
                         macro_rects[pin].append((x0, y0, x1, y1))
+        m1_layer = rail_layer or pin_layer
         for port in macro.get("obs") or []:
             for geom in port:
-                if geom["layer"] != pin_layer and geom["layer"] not in obs_ok:
+                if geom["layer"] == m1_layer:
+                    # Cell-internal metal on the engine's Metal1: the
+                    # landings must keep clear of it. Sub-layer obstructions
+                    # (sky130's li1) sit below the engine's metal and are
+                    # covered by obs_ok instead.
+                    for shape in geom["shapes"]:
+                        if "rect" in shape:
+                            macro_obs.append(tuple(round(v * 1000)
+                                for v in shape["rect"]))
+                elif geom["layer"] != pin_layer \
+                        and geom["layer"] not in obs_ok \
+                        and geom["layer"] not in ignore_layers:
                     off.add(geom["layer"])
         if off:
             off_layer[macro_name] = sorted(off)
         else:
             rects[macro_name] = macro_rects
-    return PinRects(rects, off_layer, pin_layer)
+            obs_rects[macro_name] = macro_obs
+    return PinRects(rects, off_layer, pin_layer, obs_rects)
 
 
 @dataclass
@@ -387,7 +403,7 @@ class NetInfo:
 
 
 # One leaf cell before placement: the Cell, its Metal1 pin rects, and its width.
-LeafCell = namedtuple('LeafCell', 'cell pins width')
+LeafCell = namedtuple('LeafCell', 'cell pins width obs', defaults=((),))
 
 
 def leaf_name(node):
@@ -510,15 +526,17 @@ def extract(schematic, pin_rects, is_leaf, cfg):
             for net, terms in net_terminals.items()}
 
     cells = {}
+    obs_lookup = getattr(pin_rects, 'obs', {})
     for name, leaf in leaf_insts.items():
         # Wrap the lookup's raw nm tuples as Rect4I, so the rest of the engine
         # works with named geometry (rect.lx / .cx / .width, vertex-in-rect) rather
         # than positional indexing.
         rects = {pin: [Rect4I(*r) for r in raw]
             for pin, raw in pin_rects[leaf.name].items()}
+        obs = [Rect4I(*r) for r in obs_lookup.get(leaf.name, ())]
         # Cell pitch = power-rail width (the rail rect spans the whole cell).
         width = max(r.width for r in rects[cfg.vdd_pin])
-        cells[name] = LeafCell(leaf, rects, width)
+        cells[name] = LeafCell(leaf, rects, width, obs)
 
     nets = {net_name: NetInfo(net_name, list(terms))
         for net_name, terms in net_terminals.items()}
@@ -1016,6 +1034,13 @@ def place_and_route(schematic, layout, *, grid, routing_spec, pin_rects,
     port_nets = {net_name for net_name, net in signal_nets.items()
         if net.port_pin is not None}
 
+    # Which net each terminal drives, for the access-landing clearance
+    # checks. Supply pins map to their rails' net.
+    term_net = {}
+    for net_name, net in nets.items():
+        for iname, pname in net.terminals:
+            term_net[(iname, pname)] = net_name
+
     # The layout's LayoutInstances are the engine's placement representation:
     # one node per leaf, created here, its position and orientation updated on
     # every floorplan attempt below.
@@ -1076,6 +1101,23 @@ def place_and_route(schematic, layout, *, grid, routing_spec, pin_rects,
         pins = {name: place.transform_pins(cells[name].pins,
             (node.pos.x, node.pos.y), node.orientation)
             for name, node in insts.items()}
+        # Every placed Metal1 rect with its net, plus the cells'
+        # obstruction metal, for the access-landing clearance checks. With a
+        # pin-access sub-layer the signal pins live below Metal1 and only
+        # the rails count.
+        m1_shapes = []
+        for name, node in insts.items():
+            for pname, rects in pins[name].items():
+                if (cfg.sub_via_half is not None
+                        and pname not in cfg.supply_pin_names):
+                    continue
+                snet = term_net.get((name, pname))
+                for rect in rects:
+                    m1_shapes.append((rect, snet))
+            obs = place.transform_pins({'o': cells[name].obs},
+                (node.pos.x, node.pos.y), node.orientation)['o']
+            for rect in obs:
+                m1_shapes.append((rect, None))
         while True:
             # Die width: the floorplan target, the widest packed row, or
             # (like a pad-limited chip) the port pads, one escape column
@@ -1094,7 +1136,7 @@ def place_and_route(schematic, layout, *, grid, routing_spec, pin_rects,
                 plan = plan_pdn(cfg, die_w, pins, avoid)
                 routing = route.route_nets(
                     signal_nets, pins, cfg, xmax, port_nets, plan.blocked,
-                    plan.tap_landings, port_edges)
+                    plan.tap_landings, port_edges, m1_shapes)
                 converged = True
                 break
             except route.EscapeCapacityError as e:

@@ -288,9 +288,8 @@ def offtrack_access(rects, cfg):
         ``[(xi, yi, via_x, via_y), ...]``, the nearest vertical track and signal
         y-track, and the on-pin Via1 position in nm.
     """
-    via_half, encl, _encl_endcap = access_via_dims(cfg, False)
+    via_half, encl, encl_endcap = access_via_dims(cfg, False)
     mgrid = cfg.manufacturing_grid
-    encl_endcap = cfg.encl_endcap
     x_pitch, y_pitch = cfg.x_pitch, cfg.y_pitch
     out = []
     for (x0, y0, x1, y1) in rects:
@@ -318,15 +317,27 @@ def offtrack_access(rects, cfg):
                 + m2_off
             other = near - m2_mult if near * x_pitch >= mid \
                 else near + m2_mult
+            # The pin's own metal must give the via its endcap enclosure
+            # on a pair of opposite sides, since off-track vias add no
+            # Metal1 landing. If the rows cannot give the vertical pair,
+            # the via shifts within the pin until the horizontal one holds.
+            pair_y = bottom >= encl_endcap and top >= encl_endcap
             for xi in (near, other):
                 if xi < m2_off:
                     continue
                 via_x = max(xlo, min(xhi, round(xi * x_pitch / mgrid) * mgrid))
+                if not pair_y:
+                    lo_x = x0 + via_half + encl_endcap
+                    hi_x = x1 - via_half - encl_endcap
+                    if hi_x < lo_x:
+                        continue
+                    via_x = max(lo_x, min(hi_x,
+                        -(-via_x // mgrid) * mgrid))
+                    via_x = min(hi_x // mgrid * mgrid,
+                        max(-(-lo_x // mgrid) * mgrid, via_x))
                 left, right = via_x - via_half - x0, x1 - (via_x + via_half)
-                # The pin's own metal must give the Via1 its endcap
-                # (>= encl_endcap on one side), since off-track vias add no
-                # Metal1 landing.
-                if max(left, right, bottom, top) < encl_endcap:
+                if not (pair_y or (left >= encl_endcap
+                        and right >= encl_endcap)):
                     continue
                 out.append((xi, yi, via_x, track_y))
     return out
@@ -967,7 +978,7 @@ class Congestion:
 
 
 def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
-        tap_landings=(), port_edges=None):
+        tap_landings=(), port_edges=None, m1_shapes=()):
     """Route the signal nets with negotiated-congestion maze routing.
 
     Each net is decomposed into 2-pin *segments* along an MST over its
@@ -991,6 +1002,10 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
         tap_landings: ``(x, y)`` centers of the taps' Metal2 landings behind
             ``blocked``, which off-track access bridges must keep metal
             spacing from.
+        m1_shapes: ``((rect, net or None), ...)`` die-coordinate pin-layer
+            metal of the placed cells (every pin rect with its net, and the
+            cells' obstruction rects), which access landings must merge
+            with or keep metal spacing from.
         port_edges: ``{port net: edge}`` naming the die edge ('top',
             'bottom', 'left' or 'right') each port leaves by, which is
             normally the parent's decision. A net left out falls back to its
@@ -1051,6 +1066,35 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
     m2_half_w, m2_land_half = cfg.wire_width[0] // 2, cfg.land_half_h[0]
     tap_half_w, tap_half_h = tap_m2_land(cfg)
 
+    # Cell metal on the pin layer, bucketed by x so a landing checks only
+    # its neighborhood.
+    m1_buckets = {}
+    for rect, snet in m1_shapes:
+        for bx in range(rect.lx // 10000, rect.ux // 10000 + 1):
+            m1_buckets.setdefault(bx, []).append((rect, snet))
+
+    def land_clear(own_nets, land):
+        # The landing must keep metal spacing from foreign metal, and from
+        # same-net metal too unless it merges into it, since two disjoint
+        # same-net pieces within spacing are a notch. A same-net pin is a
+        # merged group of rects, so overlapping any of them counts as
+        # merging with all. Cell-internal geometry is DRC-clean on its own,
+        # so only the landing is checked.
+        x0, y0, x1, y1 = land
+        merged = False
+        near_own = False
+        for bx in range((x0 - spacing) // 10000, (x1 + spacing) // 10000 + 1):
+            for rect, snet in m1_buckets.get(bx, ()):
+                if (x0 - spacing < rect.ux and x1 + spacing > rect.lx
+                        and y0 - spacing < rect.uy and y1 + spacing > rect.ly):
+                    if snet not in own_nets:
+                        return False
+                    near_own = True
+                    if (x0 <= rect.ux and x1 >= rect.lx
+                            and y0 <= rect.uy and y1 >= rect.ly):
+                        merged = True
+        return merged or not near_own
+
     def bridge_clear(xi, via_x, via_y):
         x_lo = min(via_x, xi * x_pitch) - m2_half_w - spacing
         x_hi = max(via_x, xi * x_pitch) + m2_half_w + spacing
@@ -1069,24 +1113,76 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
         cands = []
         for ti, (iname, pname) in enumerate(net.terminals):
             term = []
-            for (xi, yi, via_x, via_y, land) in access_nodes(
-                    pins[iname][pname], cfg,
-                    pname in cfg.supply_pin_names):
-                node = (xi, yi, M2)
-                if node in blocked:   # reserved for a stripe's rail tap
-                    continue
-                if not 0 <= xi <= xmax:   # an alternative beyond the die
-                    continue
-                off_track = (via_x, via_y) != (xi * x_pitch, yi * y_pitch)
-                if off_track and not bridge_clear(xi, via_x, via_y):
-                    continue
-                term.append(node)
-                if off_track:
-                    term_via[(net_name, ti, node)] = (via_x, via_y)
-                    foot_rects[(net_name, ti, node)] = bridge_footprint(
-                        cfg, xi, via_x, via_y)
-                elif land is not None:
-                    term_land[(net_name, ti, node)] = land
+            # A tie net reaches a supply pin, whose metal is tagged with
+            # the rail's net, so both names count as this terminal's own.
+            own_nets = {net_name}
+            if pname == cfg.vdd_pin:
+                own_nets.add(cfg.vdd_net)
+            elif pname == cfg.vss_pin:
+                own_nets.add(cfg.vss_net)
+
+            def try_candidates(candidates):
+                for (xi, yi, via_x, via_y, land) in candidates:
+                    node = (xi, yi, M2)
+                    if node in blocked:   # reserved for a stripe's rail tap
+                        continue
+                    if not 0 <= xi <= xmax:   # an alternative beyond the die
+                        continue
+                    off_track = (via_x, via_y) != (xi * x_pitch,
+                        yi * y_pitch)
+                    if off_track and not bridge_clear(xi, via_x, via_y):
+                        continue
+                    if off_track and cfg.sub_via_half is not None:
+                        # The sub-access stack emits a Metal1 landing at the
+                        # via even off track.
+                        land_rect = (via_x - cfg.m1_land_half_w,
+                            via_y - cfg.m1_land_half_h,
+                            via_x + cfg.m1_land_half_w,
+                            via_y + cfg.m1_land_half_h)
+                        if not land_clear(own_nets, land_rect):
+                            continue
+                    if not off_track and cfg.sub_via_half is None:
+                        # A landing inside its own pin adds no metal and
+                        # needs no clearance: the LEF obstruction covers are
+                        # coarse, so only protruding landings are checked.
+                        land_rect = land if land is not None else (
+                            xi * x_pitch - cfg.m1_land_half_w,
+                            yi * y_pitch - cfg.m1_land_half_h,
+                            xi * x_pitch + cfg.m1_land_half_w,
+                            yi * y_pitch + cfg.m1_land_half_h)
+                        x0, y0, x1, y1 = land_rect
+                        inside = any(r.lx <= x0 and r.ly <= y0
+                                and r.ux >= x1 and r.uy >= y1
+                            for r in pins[iname][pname])
+                        if not inside and not land_clear(own_nets,
+                                land_rect):
+                            continue
+                    elif not off_track:
+                        land_rect = land if land is not None else (
+                            xi * x_pitch - cfg.m1_land_half_w,
+                            yi * y_pitch - cfg.m1_land_half_h,
+                            xi * x_pitch + cfg.m1_land_half_w,
+                            yi * y_pitch + cfg.m1_land_half_h)
+                        if not land_clear(own_nets, land_rect):
+                            continue
+                    if node in term:
+                        continue
+                    term.append(node)
+                    if off_track:
+                        term_via[(net_name, ti, node)] = (via_x, via_y)
+                        foot_rects[(net_name, ti, node)] = bridge_footprint(
+                            cfg, xi, via_x, via_y)
+                    elif land is not None:
+                        term_land[(net_name, ti, node)] = land
+
+            try_candidates(access_nodes(pins[iname][pname], cfg,
+                pname in cfg.supply_pin_names))
+            if not term and pname not in cfg.supply_pin_names:
+                # Every on-track landing collided with cell metal, but an
+                # off-track via takes its enclosure from the pin itself.
+                try_candidates((xi, yi, via_x, via_y, None)
+                    for (xi, yi, via_x, via_y)
+                    in offtrack_access(pins[iname][pname], cfg))
             if not term:
                 raise PinAccessError(f"pin {iname}.{pname} (net {net_name!r}) "
                     "has no routable access point on or off the track grid")
