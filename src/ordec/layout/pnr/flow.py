@@ -298,11 +298,12 @@ class PinRects(dict):
     looked up: a library LEF holds macros a given design never places, so
     reading the file must not fail over one of them.
     """
-    def __init__(self, rects, off_layer, pin_layer, obs=None):
+    def __init__(self, rects, off_layer, pin_layer, obs=None, direct=None):
         super().__init__(rects)
         self.off_layer = off_layer   # {macro: [layer, ...]} of the rejects
         self.pin_layer = pin_layer
         self.obs = obs or {}         # {macro: [(x0, y0, x1, y1), ...]}
+        self.direct = direct or {}   # {macro: frozenset(rail-layer pin names)}
 
     def __missing__(self, macro):
         if macro not in self.off_layer:
@@ -350,20 +351,23 @@ def lef_pin_rects(lef_path, pin_layer: str, rail_layer: str = None,
     rects = {}
     off_layer = {}
     obs_rects = {}
+    direct = {}   # macro -> pins accessed on rail_layer (Metal1) not pin_layer
     for macro_name, macro in sc_leflib.parse(str(lef_path))["macros"].items():
         macro_rects = {}
         macro_obs = []
+        macro_direct = set()
         off = set()   # layers outside the accepted set in the PIN or OBS geometry
+        allowed = {pin_layer, rail_layer} | set(ignore_layers)
         for pin, pin_data in macro["pins"].items():
-            want = rail_layer if pin in rail_pins else pin_layer
-            allowed = {pin_layer, rail_layer} | set(ignore_layers)
-            macro_rects[pin] = []
+            # Group the pin's rects by layer, so its access layer can be
+            # chosen: a rail pin on rail_layer, otherwise pin_layer, else
+            # rail_layer for a signal pin the library routed up to Metal1
+            # (sky130's larger cells), which is then accessed directly.
+            by_layer = {}
             for port in pin_data["ports"]:
                 for geom in port["layer_geometries"]:
                     if geom["layer"] not in allowed:
                         off.add(geom["layer"])
-                        continue
-                    if geom["layer"] != want:
                         continue
                     for shape in geom["shapes"]:
                         # LEF also allows POLYGON here. The known PDKs' pins are
@@ -372,7 +376,18 @@ def lef_pin_rects(lef_path, pin_layer: str, rail_layer: str = None,
                         if "rect" not in shape:
                             continue
                         x0, y0, x1, y1 = (round(v * 1000) for v in shape["rect"])
-                        macro_rects[pin].append((x0, y0, x1, y1))
+                        by_layer.setdefault(geom["layer"], []).append(
+                            (x0, y0, x1, y1))
+            if pin in rail_pins:
+                want = rail_layer
+            elif by_layer.get(pin_layer):
+                want = pin_layer
+            elif rail_layer and by_layer.get(rail_layer):
+                want = rail_layer
+                macro_direct.add(pin)
+            else:
+                want = pin_layer
+            macro_rects[pin] = by_layer.get(want, [])
         m1_layer = rail_layer or pin_layer
         for port in macro.get("obs") or []:
             for geom in port:
@@ -394,7 +409,8 @@ def lef_pin_rects(lef_path, pin_layer: str, rail_layer: str = None,
         else:
             rects[macro_name] = macro_rects
             obs_rects[macro_name] = macro_obs
-    return PinRects(rects, off_layer, pin_layer, obs_rects)
+            direct[macro_name] = frozenset(macro_direct)
+    return PinRects(rects, off_layer, pin_layer, obs_rects, direct)
 
 
 @dataclass
@@ -558,7 +574,7 @@ def extract(schematic, pin_rects, is_leaf, cfg):
 # --- geometry emission + top-level orchestration --------------------------
 
 def emit_net_direct(layout, stack, edges, term_m2, cfg,
-        term_via=None, term_land=None, sub_via_layer=None):
+        term_via=None, term_land=None, sub_via_layer=None, sub_set=()):
     """Emit one routed net's geometry directly with concrete coordinates.
 
     No constraint solver is used, since ORDeC's general solver is fast per cell
@@ -702,7 +718,7 @@ def emit_net_direct(layout, stack, edges, term_m2, cfg,
             # layer the pin is below Metal1 and the landing is emitted, since
             # there is no Metal1 pin to notch.
             via_x, via_y = term_via[node]
-            if sub_via_layer is not None:
+            if node in sub_set:
                 sub_via(via_x, via_y, (term_land or {})[node])
             term_m2_pad(via_x, via_y)
             layout % LayoutRect(layer=stack.via1, rect=Rect4I(
@@ -714,7 +730,7 @@ def emit_net_direct(layout, stack, edges, term_m2, cfg,
                 hi + m2_half_w, via_y + m2_land_half))
         else:
             via_x, via_y = xi * x_pitch, yi * y_pitch
-            if sub_via_layer is not None:
+            if node in sub_set:
                 sub_via(via_x, via_y, (term_land or {})[node])
             term_m2_pad(via_x, via_y)
             layout % LayoutRect(layer=stack.via1, rect=Rect4I(
@@ -1044,6 +1060,13 @@ def place_and_route(schematic, layout, *, grid, routing_spec, pin_rects,
         for iname, pname in net.terminals:
             term_net[(iname, pname)] = net_name
 
+    # Pins the library routed up to Metal1 (accessed directly, not through
+    # the sub-via), by flat instance name.
+    pin_direct = getattr(pin_rects, 'direct', {})
+    direct_pins = {(iname, pname)
+        for iname, leaf in cells.items()
+        for pname in pin_direct.get(leaf.cell.name, ())}
+
     # The layout's LayoutInstances are the engine's placement representation:
     # one node per leaf, created here, its position and orientation updated on
     # every floorplan attempt below.
@@ -1106,13 +1129,14 @@ def place_and_route(schematic, layout, *, grid, routing_spec, pin_rects,
             for name, node in insts.items()}
         # Every placed Metal1 rect with its net, plus the cells'
         # obstruction metal, for the access-landing clearance checks. With a
-        # pin-access sub-layer the signal pins live below Metal1 and only
-        # the rails count.
+        # pin-access sub-layer the signal pins live below Metal1, so only the
+        # rails and the pins the library routed up to Metal1 count.
         m1_shapes = []
         for name, node in insts.items():
             for pname, rects in pins[name].items():
                 if (cfg.sub_via_half is not None
-                        and pname not in cfg.supply_pin_names):
+                        and pname not in cfg.supply_pin_names
+                        and (name, pname) not in direct_pins):
                     continue
                 snet = term_net.get((name, pname))
                 for rect in rects:
@@ -1139,7 +1163,7 @@ def place_and_route(schematic, layout, *, grid, routing_spec, pin_rects,
                 plan = plan_pdn(cfg, die_w, pins, avoid)
                 routing = route.route_nets(
                     signal_nets, pins, cfg, xmax, port_nets, plan.blocked,
-                    plan.tap_landings, port_edges, m1_shapes)
+                    plan.tap_landings, port_edges, m1_shapes, direct_pins)
                 converged = True
                 break
             except route.EscapeCapacityError as e:
@@ -1170,7 +1194,7 @@ def place_and_route(schematic, layout, *, grid, routing_spec, pin_rects,
     for net_name, (edges, term_m2) in routing.nets.items():
         emit_net_direct(layout, stack, edges, term_m2, cfg,
             routing.term_via.get(net_name), routing.term_land.get(net_name),
-            sub_via_layer)
+            sub_via_layer, routing.sub_nodes.get(net_name, ()))
 
     # The converged floorplan's well taps become instances like any leaf,
     # and their rails join the pin map so the rail padding sees them.

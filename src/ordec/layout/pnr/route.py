@@ -88,12 +88,16 @@ class RoutingResult:
             short pin needs under its Via1.
         reserved: nodes shadowed by an off-track access bridge. No later wire
             growth may take them, not even the bridge's own net.
+        sub_nodes: ``{net: {node}}`` reached through a pin-access sub-via, so
+            the emitter drops the sub-via cut there (an ordinary Via1
+            terminal elsewhere).
     """
     nets: dict
     port_escape: dict
     term_via: dict
     term_land: dict
     reserved: frozenset
+    sub_nodes: dict
 
 
 def escape_row(cfg, edge):
@@ -133,14 +137,15 @@ def escape_col(xmax, edge):
 PORT_EDGES = ('top', 'bottom', 'left', 'right')
 
 
-def access_via_dims(cfg, rail):
+def access_via_dims(cfg, rail, direct=False):
     """Via and enclosure dims for pin access.
 
     A stack with a pin-access sub-layer (``cfg.sub_via_half``) reaches signal
-    pins through the sub-via, while supply rails stay on Metal1 and use Via1.
-    Without a sub-layer every pin uses Via1.
+    pins through the sub-via. Supply rails and pins the library routed up to
+    Metal1 (``direct``) stay on Metal1 and use Via1, as does every pin
+    without a sub-layer.
     """
-    if rail or cfg.sub_via_half is None:
+    if rail or direct or cfg.sub_via_half is None:
         return cfg.via_half[0], cfg.encl, cfg.encl_endcap
     return cfg.sub_via_half, cfg.sub_encl, cfg.sub_encl_endcap
 
@@ -179,6 +184,58 @@ def tap_m2_land(cfg):
     return half_w, half_h
 
 
+def landing_access(rects, cfg):
+    """Via positions for a pin accessed by an emitted landing.
+
+    A pin on the sub-layer (li1) or a thin Metal1 routing strip cannot
+    enclose a via on its own; the access emits a landing
+    (:func:`sub_land_rect`) that provides the enclosure and merges with the
+    pin, so a via position only has to be *covered* by the pin metal. On-grid
+    intersections come first (no Metal2 jog), then off-grid via positions on
+    the Metal2 lattice columns.
+
+    Args:
+        rects: the pin's rectangles ``[Rect4I, ...]`` in nm.
+        cfg: the routing grid + DRC geometry (:class:`GridConfig`).
+
+    Returns:
+        ``[(xi, yi, via_x, via_y), ...]``, the access track node and the via
+        position (on the node for on-grid, beside it otherwise).
+    """
+    if not rects:
+        return []
+    x_pitch, y_pitch = cfg.x_pitch, cfg.y_pitch
+    m2_mult, m2_off = cfg.track_mult[LIDX[M2]], cfg.track_off[LIDX[M2]]
+    mg = cfg.manufacturing_grid
+
+    def covered(px, py):
+        return any(r.lx <= px <= r.ux and r.ly <= py <= r.uy for r in rects)
+
+    xlo = min(r.lx for r in rects); xhi = max(r.ux for r in rects)
+    on, off = [], []
+    for yi in range(1, cfg.y_track_max):
+        if not cfg.is_signal_track(yi):
+            continue
+        ty = yi * y_pitch
+        for xi in range(xlo // x_pitch, xhi // x_pitch + 2):
+            if (xi - m2_off) % m2_mult:
+                continue
+            tx = xi * x_pitch
+            if covered(tx, ty):
+                on.append((xi, yi, tx, ty))
+                continue
+            # Off-grid: a via on the pin at the mfg-grid x nearest this
+            # column, bridged back to the column on Metal2.
+            row = [r for r in rects if r.ly <= ty <= r.uy]
+            if not row:
+                continue
+            lo = min(r.lx for r in row); hi = max(r.ux for r in row)
+            vx = max(lo, min(hi, round(tx / mg) * mg))
+            if covered(vx, ty):
+                off.append((xi, yi, vx, ty))
+    return on + off
+
+
 def sub_land_rect(cfg, via_x, via_y, pin_rects):
     """Metal1 landing over a sub-via at (via_x, via_y), grown along x.
 
@@ -200,7 +257,7 @@ def sub_land_rect(cfg, via_x, via_y, pin_rects):
     return (via_x - half_w, via_y - half_h, via_x + half_w, via_y + half_h)
 
 
-def access_nodes(rects, cfg, allow_rail=False):
+def access_nodes(rects, cfg, allow_rail=False, direct=False):
     """Find candidate Via1 access points for a pin from its Metal1 rectangles.
 
     A pin is reached at the intersection of a vertical track inside its Metal1
@@ -223,7 +280,9 @@ def access_nodes(rects, cfg, allow_rail=False):
         the pin's metal, and is ``None`` for an off-track via, which takes its
         endcap from the pin itself.
     """
-    via_half, encl, encl_endcap = access_via_dims(cfg, allow_rail)
+    if not rects:
+        return []
+    via_half, encl, encl_endcap = access_via_dims(cfg, allow_rail, direct)
     half_w, endcap = cfg.m1_land_half_w, cfg.m1_land_half_h
     x_pitch, y_pitch = cfg.x_pitch, cfg.y_pitch
     m2_mult, m2_off = cfg.track_mult[LIDX[M2]], cfg.track_off[LIDX[M2]]
@@ -275,15 +334,15 @@ def access_nodes(rects, cfg, allow_rail=False):
         return []
     # Per-rect found nothing. Try an on-track via enclosed by the *union* of the
     # pin's rects (a staircase pin), then fall back to an off-track via.
-    union = union_access(rects, cfg)
+    union = union_access(rects, cfg, direct)
     if union:
         return union
     return [(xi, yi, via_x, via_y, None)
-        for (xi, yi, via_x, via_y) in offtrack_access(rects, cfg)]
+        for (xi, yi, via_x, via_y) in offtrack_access(rects, cfg, direct)]
 
 
 
-def offtrack_access(rects, cfg):
+def offtrack_access(rects, cfg, direct=False):
     """Access a pin with no on-track via point, dropping the Via1 on the pin.
 
     The via goes on the pin at a manufacturing-grid x on a signal y-track, and
@@ -299,7 +358,9 @@ def offtrack_access(rects, cfg):
         ``[(xi, yi, via_x, via_y), ...]``, the nearest vertical track and signal
         y-track, and the on-pin Via1 position in nm.
     """
-    via_half, encl, encl_endcap = access_via_dims(cfg, False)
+    if not rects:
+        return []
+    via_half, encl, encl_endcap = access_via_dims(cfg, False, direct)
     mgrid = cfg.manufacturing_grid
     x_pitch, y_pitch = cfg.x_pitch, cfg.y_pitch
     out = []
@@ -353,7 +414,7 @@ def offtrack_access(rects, cfg):
 
 
 
-def union_access(rects, cfg):
+def union_access(rects, cfg, direct=False):
     """On-track access for a staircase pin, enclosed only by its merged rects.
 
     A pin like nand4's A is enclosed by no single LEF rect, so
@@ -369,7 +430,9 @@ def union_access(rects, cfg):
         Candidates in the same form as the on-track branch of
         :func:`access_nodes`.
     """
-    via_half, encl, encl_endcap = access_via_dims(cfg, False)
+    if not rects:
+        return []
+    via_half, encl, encl_endcap = access_via_dims(cfg, False, direct)
     half_w, endcap = cfg.m1_land_half_w, cfg.m1_land_half_h
     x_pitch, y_pitch = cfg.x_pitch, cfg.y_pitch
     m2_mult, m2_off = cfg.track_mult[LIDX[M2]], cfg.track_off[LIDX[M2]]
@@ -985,7 +1048,7 @@ class Congestion:
 
 
 def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
-        tap_landings=(), port_edges=None, m1_shapes=()):
+        tap_landings=(), port_edges=None, m1_shapes=(), direct_pins=frozenset()):
     """Route the signal nets with negotiated-congestion maze routing.
 
     Each net is decomposed into 2-pin *segments* along an MST over its
@@ -1062,6 +1125,7 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
     term_via = {}
     term_land = {}
     foot_rects = {}   # (net, ti, node) -> off-grid Metal2 footprint
+    sub_nodes = set()  # (net, node) reached through a pin-access sub-via
     sole = {}   # node -> (net, inst, pin) for terminals with a single candidate
     x_pitch, y_pitch = cfg.x_pitch, cfg.y_pitch
 
@@ -1127,6 +1191,15 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
                 own_nets.add(cfg.vdd_net)
             elif pname == cfg.vss_pin:
                 own_nets.add(cfg.vss_net)
+            rail = pname in cfg.supply_pin_names
+            # On a stack with an access sub-layer, every signal pin (whether
+            # on the sub-layer or a thin Metal1 strip the library routed to)
+            # is reached by an emitted landing that encloses the via and
+            # merges with the pin. A sub-layer pin additionally gets the
+            # sub-via rung; a Metal1 pin (direct_pins) does not.
+            direct = (iname, pname) in direct_pins
+            landing_based = cfg.sub_via_half is not None and not rail
+            is_sub = landing_based and not direct
 
             def try_candidates(candidates):
                 for (xi, yi, via_x, via_y, land) in candidates:
@@ -1139,11 +1212,11 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
                         yi * y_pitch)
                     if off_track and not bridge_clear(xi, via_x, via_y):
                         continue
-                    if cfg.sub_via_half is not None:
-                        # The sub-access stack emits a Metal1 landing over
-                        # the sub-via, on or off track. It is grown along x
-                        # for min area and must clear foreign metal and the
-                        # rails (which near-rail pins sit close to).
+                    if landing_based:
+                        # The access emits a Metal1 landing enclosing the
+                        # via, grown along x for min area, clearing foreign
+                        # metal and the rails (which near-rail pins sit
+                        # close to). A sub-layer pin adds the sub-via rung.
                         land_rect = sub_land_rect(cfg, via_x, via_y,
                             pins[iname][pname])
                         if land_rect is None or not land_clear(own_nets,
@@ -1152,16 +1225,18 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
                         if node in term:
                             continue
                         term.append(node)
+                        if is_sub:
+                            sub_nodes.add((net_name, node))
                         term_land[(net_name, ti, node)] = land_rect
                         if off_track:
                             term_via[(net_name, ti, node)] = (via_x, via_y)
                             foot_rects[(net_name, ti, node)] = \
                                 bridge_footprint(cfg, xi, via_x, via_y)
                         continue
-                    if not off_track and cfg.sub_via_half is None:
-                        # A landing inside its own pin adds no metal and
-                        # needs no clearance: the LEF obstruction covers are
-                        # coarse, so only protruding landings are checked.
+                    if not off_track:
+                        # Via1 lands on the pin's own Metal1. A landing
+                        # inside its pin adds no metal and needs no
+                        # clearance; a protruding one is checked.
                         land_rect = land if land is not None else (
                             xi * x_pitch - cfg.m1_land_half_w,
                             yi * y_pitch - cfg.m1_land_half_h,
@@ -1174,14 +1249,6 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
                         if not inside and not land_clear(own_nets,
                                 land_rect):
                             continue
-                    elif not off_track:
-                        land_rect = land if land is not None else (
-                            xi * x_pitch - cfg.m1_land_half_w,
-                            yi * y_pitch - cfg.m1_land_half_h,
-                            xi * x_pitch + cfg.m1_land_half_w,
-                            yi * y_pitch + cfg.m1_land_half_h)
-                        if not land_clear(own_nets, land_rect):
-                            continue
                     if node in term:
                         continue
                     term.append(node)
@@ -1192,14 +1259,24 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
                     elif land is not None:
                         term_land[(net_name, ti, node)] = land
 
-            try_candidates(access_nodes(pins[iname][pname], cfg,
-                pname in cfg.supply_pin_names))
-            if not term and pname not in cfg.supply_pin_names:
-                # Every on-track landing collided with cell metal, but an
-                # off-track via takes its enclosure from the pin itself.
+            if direct:
+                # A thin Metal1 strip cannot enclose the via, so the via
+                # only has to be covered by the pin; the landing encloses it.
                 try_candidates((xi, yi, via_x, via_y, None)
                     for (xi, yi, via_x, via_y)
-                    in offtrack_access(pins[iname][pname], cfg))
+                    in landing_access(pins[iname][pname], cfg))
+            else:
+                # A sub-layer pin must enclose the sub-via itself
+                # (li1 enclosure of the mcon), so the enclosure-based
+                # candidates apply, with the landing added above them.
+                try_candidates(access_nodes(pins[iname][pname], cfg, rail,
+                    False))
+                if not term and not rail:
+                    # Every on-track landing collided with cell metal, but
+                    # an off-track via takes its enclosure from the pin.
+                    try_candidates((xi, yi, via_x, via_y, None)
+                        for (xi, yi, via_x, via_y)
+                        in offtrack_access(pins[iname][pname], cfg))
             if not term:
                 raise PinAccessError(f"pin {iname}.{pname} (net {net_name!r}) "
                     "has no routable access point on or off the track grid")
@@ -1634,8 +1711,12 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
             land = term_land.get((net_name, ti, node))
             if land is not None:
                 tl[node] = land
+    net_sub = {}
+    for net_name, node in sub_nodes:
+        net_sub.setdefault(net_name, set()).add(node)
     return RoutingResult(nets=routing, port_escape=port_escape,
-        term_via=net_via, term_land=net_land, reserved=frozenset(reserved))
+        term_via=net_via, term_land=net_land, reserved=frozenset(reserved),
+        sub_nodes=net_sub)
 
 
 
