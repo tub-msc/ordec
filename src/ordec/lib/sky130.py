@@ -696,6 +696,45 @@ class PmosHvt(Pmos):
         return []
 
 
+class SpecialNmos(Nmos):
+    """Low-leakage NMOS variant used inside sequential standard cells.
+
+    Netlisting-only (spice_in / LVS), like :class:`PmosHvt`. The LVS deck
+    extracts its geometry as the standard nfet, so it netlists on the same
+    model. The standard channel-width check is skipped, since these cells
+    legitimately use sub-minimum fingers and ORDeC never lays them out.
+    """
+    model_name = "sky130_fd_pr__special_nfet_01v8"
+
+    @classmethod
+    def params_check(cls, params):
+        pass
+
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        raise NotImplementedError("special devices have no layout generator")
+
+    @classmethod
+    def discoverable_instances(cls):
+        return []
+
+
+class SpecialPmosHvt(PmosHvt):
+    """Low-leakage high-Vt PMOS variant used inside sequential cells.
+
+    Netlisting-only, the PMOS counterpart of :class:`SpecialNmos`.
+    """
+    model_name = "sky130_fd_pr__pfet_01v8_hvt"
+
+    @classmethod
+    def params_check(cls, params):
+        pass
+
+    @classmethod
+    def discoverable_instances(cls):
+        return []
+
+
 def met1_min_area_rect(mcon_rect: Rect4I, grow_axis: str) -> tuple:
     """
     met1 rect over an mcon array with m1.4/m1.5 enclosures, stretched along
@@ -1410,6 +1449,13 @@ device_map = {
         real_params=("l", "w"), real_scale=R("1u")),
     "sky130_fd_pr__pfet_01v8_hvt": DeviceMapping(PmosHvt, ("d", "g", "s", "b"),
         real_params=("l", "w"), real_scale=R("1u")),
+    # The "special" low-leakage variants the sequential cells use share the
+    # standard device electrically, and the LVS deck extracts their geometry
+    # as the plain nfet/pfet, so both sides compare as the standard device.
+    "sky130_fd_pr__special_nfet_01v8": DeviceMapping(SpecialNmos,
+        ("d", "g", "s", "b"), real_params=("l", "w"), real_scale=R("1u")),
+    "sky130_fd_pr__special_pfet_01v8_hvt": DeviceMapping(SpecialPmosHvt,
+        ("d", "g", "s", "b"), real_params=("l", "w"), real_scale=R("1u")),
 }
 
 
