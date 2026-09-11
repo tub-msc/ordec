@@ -164,6 +164,21 @@ def bridge_footprint(cfg, xi, via_x, via_y):
         via_y + max(land_half, pad_along))
 
 
+def tap_m2_land(cfg):
+    """Half-extents of a rail tap's Metal2 landing.
+
+    Matches the emitted landing, which grows past the wire width where the
+    via landing pads (``cfg.via_land``) demand it, so the off-track access
+    clearance tests measure against the real geometry.
+    """
+    half_w = cfg.wire_width[0] // 2
+    half_h = cfg.land_half_h[0]
+    if cfg.via_land is not None:
+        half_w = max(half_w, cfg.via_land[0][1][0], cfg.via_land[1][0][0])
+        half_h = max(half_h, cfg.via_land[0][1][1], cfg.via_land[1][0][1])
+    return half_w, half_h
+
+
 def sub_row_clear(cfg, y, rail):
     """Whether a sub-via at ``y`` keeps clear of the cells' rail sub-vias."""
     if rail or cfg.sub_via_half is None or cfg.sub_rail_clear == 0:
@@ -1034,6 +1049,7 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
     # spacing of a tap landing (rects mutually expanded, so conservative).
     spacing = cfg.wire_space[0]
     m2_half_w, m2_land_half = cfg.wire_width[0] // 2, cfg.land_half_h[0]
+    tap_half_w, tap_half_h = tap_m2_land(cfg)
 
     def bridge_clear(xi, via_x, via_y):
         x_lo = min(via_x, xi * x_pitch) - m2_half_w - spacing
@@ -1041,9 +1057,9 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
         y_lo = via_y - m2_land_half - spacing
         y_hi = via_y + m2_land_half + spacing
         for tap_x, tap_y in tap_landings:
-            if (x_lo < tap_x + m2_half_w and x_hi > tap_x - m2_half_w
-                    and y_lo < tap_y + m2_land_half
-                    and y_hi > tap_y - m2_land_half):
+            if (x_lo < tap_x + tap_half_w and x_hi > tap_x - tap_half_w
+                    and y_lo < tap_y + tap_half_h
+                    and y_hi > tap_y - tap_half_h):
                 return False
         return True
 
@@ -1538,6 +1554,7 @@ def tap_avoid_columns(routed_nets, pins, cfg):
     """
     x_pitch, y_pitch = cfg.x_pitch, cfg.y_pitch
     mat, half_w, land_half = cfg.min_area_tracks[0], cfg.wire_width[0] // 2, cfg.land_half_h[0]
+    tap_half_w, tap_half_h = tap_m2_land(cfg)
     spacing = cfg.wire_space[0]
     # Taps sit on every rail of a stripe's net, the edge rails included.
     rail_zones = [(r * cfg.tracks_per_row - 1, r * cfg.tracks_per_row + 1)
@@ -1553,11 +1570,13 @@ def tap_avoid_columns(routed_nets, pins, cfg):
             x_lo = min(via_x, xi * x_pitch) - half_w - spacing
             x_hi = max(via_x, xi * x_pitch) + half_w + spacing
             near_rail = any(
-                abs(via_y - r * cfg.row_height) < 2 * land_half + spacing
+                abs(via_y - r * cfg.row_height) < land_half + tap_half_h
+                    + spacing
                 for r in range(cfg.n_rows + 1))
             if near_rail:
                 for xc in range(max(x_lo // x_pitch, 0), x_hi // x_pitch + 2):
-                    if x_lo < xc * x_pitch + half_w and x_hi > xc * x_pitch - half_w:
+                    if (x_lo < xc * x_pitch + tap_half_w
+                            and x_hi > xc * x_pitch - tap_half_w):
                         cols.add(xc)
         return cols
 

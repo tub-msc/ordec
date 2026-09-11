@@ -1510,22 +1510,30 @@ def plan_pdn(cfg, die_w, pins, avoid):
         reach_x = (land_half_x + spacing + cfg.wire_ext[li] - 1) // x_pitch
         reach_y = -(-(land_half_y + spacing + cfg.wire_width[li] // 2)
             // cfg.y_pitch) - 1
-        # A tap landing on a vertical window layer can be wider than a wire
-        # (its via pads), so columns within metal spacing of it are blocked
-        # around the rail rows too.
+        # A tap landing on a vertical window layer can be bigger than a
+        # wire (its via pads), so nodes whose wire or wire end would come
+        # within metal spacing of it are blocked: columns beside the tap
+        # column and, along it, the rows whose end extension reaches the
+        # landing.
         vert_reach = {}
         for lvl in range(1, first.spec.level):
             code = window_codes[lvl - 1]
             if code not in (M2, M4):
                 continue
-            half_w = cfg.wire_width[LIDX[code]] // 2
+            i = LIDX[code]
+            half_w = cfg.wire_width[i] // 2
+            half_h = cfg.land_half_h[i]
             if cfg.via_land is not None:
                 half_w = max(half_w, cfg.via_land[lvl - 1][1][0])
+                half_h = max(half_h, cfg.via_land[lvl - 1][1][1])
                 if lvl < first.spec.level - 1:
                     half_w = max(half_w, cfg.via_land[lvl][0][0])
-            i = LIDX[code]
-            vert_reach[code] = (half_w + cfg.wire_space[i]
-                + cfg.wire_width[i] // 2) // x_pitch
+                    half_h = max(half_h, cfg.via_land[lvl][0][1])
+            vert_reach[code] = (
+                (half_w + cfg.wire_space[i] + cfg.wire_width[i] // 2)
+                    // x_pitch,
+                (half_h + cfg.wire_space[i] + cfg.wire_ext[i])
+                    // cfg.y_pitch)
         rails = rail_rows(pins, cfg)
         for pname, xc in first.stripes:
             xi = xc // x_pitch
@@ -1534,9 +1542,9 @@ def plan_pdn(cfg, die_w, pins, avoid):
                     continue
                 landings.append((xc, row * cfg.row_height))
                 yi = row * cfg.tracks_per_row
-                for code, rc in vert_reach.items():
-                    for dx in range(-rc, rc + 1):
-                        for dy in (-1, 0, 1):
+                for code, (rcx, rcy) in vert_reach.items():
+                    for dx in range(-rcx, rcx + 1):
+                        for dy in range(-rcy, rcy + 1):
                             if (0 <= xi + dx <= xmax
                                     and 0 <= yi + dy <= cfg.y_track_max):
                                 blocked.add((xi + dx, yi + dy, code))
