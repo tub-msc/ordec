@@ -28,6 +28,27 @@ M2, M3, M1, M4, M5 = 0, 1, 2, 3, 4
 VERT = (M2, M4)        # vertical routing layers (move in y)
 HORIZ = (M3, M5)       # horizontal routing layers (move in x)
 
+# Index of a routing layer / via in GridConfig's per-layer geometry tuples,
+# which run (Metal2, Metal3, Metal4, Metal5) and (Via1, Via2, Via3, Via4).
+LIDX = {M2: 0, M3: 1, M4: 2, M5: 3}
+VIDX = {frozenset((M1, M2)): 0, frozenset((M2, M3)): 1,
+    frozenset((M3, M4)): 2, frozenset((M4, M5)): 3}
+
+
+@public
+class EscapeCapacityError(RuntimeError):
+    """An edge has fewer free escape columns than ports to place.
+
+    Unlike a pin-access failure this is not permanent: a wider die frees
+    more columns, so :func:`~.flow.place_and_route` widens and retries.
+    """
+
+    def __init__(self, message, deficit, edge):
+        super().__init__(message)
+        self.deficit = deficit   # missing escape tracks on that edge
+        self.edge = edge         # more width frees columns, more rows frees
+                                 # side rows
+
 
 @public
 class PinAccessError(RuntimeError):
@@ -57,9 +78,10 @@ class RoutingResult:
     Args:
         nets: ``{net: (edges, term_m2)}``, the routed edges and the Via1 access
             nodes where the net meets its terminals.
-        port_escape: ``{net: (x_track, edge)}``, the reserved column and the
-            edge ('top' or 'bottom') of each escaped port net's Metal4 pad, or
-            ``None`` when the escape fell back to an interior pad.
+        port_escape: ``{net: (track, edge)}`` for each escaped port net's
+            edge pad: the reserved x-track and 'top' or 'bottom' for a
+            Metal4 pad, or the reserved y-track and 'left' or 'right' for a
+            Metal3 one.
         term_via: ``{net: {node: (via_x, via_y)}}`` for off-track terminals,
             whose Via1 sits beside the access node rather than on it.
         term_land: ``{net: {node: rect}}``, the Metal1 landing an off-track or
@@ -91,6 +113,65 @@ def escape_row(cfg, edge):
     raise ValueError(f"port edge must be 'top' or 'bottom', not {edge!r}")
 
 
+def escape_col(xmax, edge):
+    """The x-track a port escapes on, just inside the given side edge.
+
+    Args:
+        xmax: the maximum x track index.
+        edge: ``'left'`` or ``'right'``.
+
+    Returns:
+        The x-track index.
+    """
+    if edge == 'left':
+        return 1
+    if edge == 'right':
+        return xmax - 1
+    raise ValueError(f"port edge must be 'left' or 'right', not {edge!r}")
+
+
+PORT_EDGES = ('top', 'bottom', 'left', 'right')
+
+
+def access_via_dims(cfg, rail):
+    """Via and enclosure dims for pin access.
+
+    A stack with a pin-access sub-layer (``cfg.sub_via_half``) reaches signal
+    pins through the sub-via, while supply rails stay on Metal1 and use Via1.
+    Without a sub-layer every pin uses Via1.
+    """
+    if rail or cfg.sub_via_half is None:
+        return cfg.via_half[0], cfg.encl, cfg.encl_endcap
+    return cfg.sub_via_half, cfg.sub_encl, cfg.sub_encl_endcap
+
+
+def bridge_footprint(cfg, xi, via_x, via_y):
+    """The off-grid Metal2 rect an off-track access occupies.
+
+    The union of the bridge to the track, the landing at the via and the
+    via pad, which the node-based conflict model cannot see. Footprints of
+    different nets closer than the metal spacing are a conflict
+    (:class:`Congestion`).
+    """
+    m2_half = cfg.wire_width[0] // 2
+    land_half = cfg.land_half_h[0]
+    pad_cross, pad_along = (cfg.via_land[0][1]
+        if cfg.via_land is not None else (0, 0))
+    tx = xi * cfg.x_pitch
+    return (min(via_x - pad_cross, min(via_x, tx) - m2_half),
+        via_y - max(land_half, pad_along),
+        max(via_x + pad_cross, max(via_x, tx) + m2_half),
+        via_y + max(land_half, pad_along))
+
+
+def sub_row_clear(cfg, y, rail):
+    """Whether a sub-via at ``y`` keeps clear of the cells' rail sub-vias."""
+    if rail or cfg.sub_via_half is None or cfg.sub_rail_clear == 0:
+        return True
+    d = y % cfg.row_height
+    return min(d, cfg.row_height - d) >= cfg.sub_rail_clear
+
+
 def access_nodes(rects, cfg, allow_rail=False):
     """Find candidate Via1 access points for a pin from its Metal1 rectangles.
 
@@ -114,12 +195,15 @@ def access_nodes(rects, cfg, allow_rail=False):
         the pin's metal, and is ``None`` for an off-track via, which takes its
         endcap from the pin itself.
     """
-    via_half, encl, encl_endcap = cfg.via_half, cfg.encl, cfg.encl_endcap
-    half_w, endcap = cfg.strap_half_w, cfg.m1_land_half_h
+    via_half, encl, encl_endcap = access_via_dims(cfg, allow_rail)
+    half_w, endcap = cfg.m1_land_half_w, cfg.m1_land_half_h
     x_pitch, y_pitch = cfg.x_pitch, cfg.y_pitch
+    m2_mult, m2_off = cfg.track_mult[LIDX[M2]], cfg.track_off[LIDX[M2]]
     found = {}   # (xi, yi) -> (track_x, track_y, land, tier); tier 0 = pair-of-sides endcap
     for (x0, y0, x1, y1) in rects:
         for xi in range(x0 // x_pitch, x1 // x_pitch + 2):
+            if (xi - m2_off) % m2_mult:
+                continue
             track_x = xi * x_pitch
             # x via enclosures (metal margin left/right of the via):
             left, right = track_x - via_half - x0, x1 - (track_x + via_half)
@@ -130,6 +214,8 @@ def access_nodes(rects, cfg, allow_rail=False):
                 if not allow_rail and not cfg.is_signal_track(yi):
                     continue
                 track_y = yi * y_pitch
+                if not sub_row_clear(cfg, track_y, allow_rail):
+                    continue
                 # y via enclosures (metal margin below/above the via):
                 bottom, top = track_y - via_half - y0, y1 - (track_y + via_half)
                 if bottom < encl or top < encl:
@@ -187,7 +273,8 @@ def offtrack_access(rects, cfg):
         ``[(xi, yi, via_x, via_y), ...]``, the nearest vertical track and signal
         y-track, and the on-pin Via1 position in nm.
     """
-    via_half, encl, mgrid = cfg.via_half, cfg.encl, cfg.manufacturing_grid
+    via_half, encl, _encl_endcap = access_via_dims(cfg, False)
+    mgrid = cfg.manufacturing_grid
     encl_endcap = cfg.encl_endcap
     x_pitch, y_pitch = cfg.x_pitch, cfg.y_pitch
     out = []
@@ -199,19 +286,34 @@ def offtrack_access(rects, cfg):
             if not cfg.is_signal_track(yi):
                 continue
             track_y = yi * y_pitch
+            if not sub_row_clear(cfg, track_y, False):
+                continue
             # y enclosures (metal margin below/above the via):
             bottom, top = track_y - via_half - y0, y1 - (track_y + via_half)
             if bottom < encl or top < encl:
                 continue
-            # Snap to the in-rect manufacturing-grid x nearest a track (short jog).
-            xi = round(((xlo + xhi) / 2) / x_pitch)
-            via_x = max(xlo, min(xhi, round(xi * x_pitch / mgrid) * mgrid))
-            left, right = via_x - via_half - x0, x1 - (via_x + via_half)
-            # The pin's own metal must give the Via1 its endcap (>= encl_endcap on
-            # one side), since off-track vias add no Metal1 landing.
-            if max(left, right, bottom, top) < encl_endcap:
-                continue
-            out.append((xi, yi, via_x, track_y))
+            # Snap to the in-rect manufacturing-grid x nearest a Metal2
+            # track (short jog). The next track on the other side is a
+            # second candidate, so the negotiation can bridge away from a
+            # crowded neighborhood.
+            m2_mult = cfg.track_mult[LIDX[M2]]
+            m2_off = cfg.track_off[LIDX[M2]]
+            mid = (xlo + xhi) / 2
+            near = round((mid / x_pitch - m2_off) / m2_mult) * m2_mult \
+                + m2_off
+            other = near - m2_mult if near * x_pitch >= mid \
+                else near + m2_mult
+            for xi in (near, other):
+                if xi < m2_off:
+                    continue
+                via_x = max(xlo, min(xhi, round(xi * x_pitch / mgrid) * mgrid))
+                left, right = via_x - via_half - x0, x1 - (via_x + via_half)
+                # The pin's own metal must give the Via1 its endcap
+                # (>= encl_endcap on one side), since off-track vias add no
+                # Metal1 landing.
+                if max(left, right, bottom, top) < encl_endcap:
+                    continue
+                out.append((xi, yi, via_x, track_y))
     return out
 
 
@@ -232,9 +334,10 @@ def union_access(rects, cfg):
         Candidates in the same form as the on-track branch of
         :func:`access_nodes`.
     """
-    via_half, encl, encl_endcap = cfg.via_half, cfg.encl, cfg.encl_endcap
-    half_w, endcap = cfg.strap_half_w, cfg.m1_land_half_h
+    via_half, encl, encl_endcap = access_via_dims(cfg, False)
+    half_w, endcap = cfg.m1_land_half_w, cfg.m1_land_half_h
     x_pitch, y_pitch = cfg.x_pitch, cfg.y_pitch
+    m2_mult, m2_off = cfg.track_mult[LIDX[M2]], cfg.track_off[LIDX[M2]]
     mgrid = cfg.manufacturing_grid
 
     def covered(px, py):
@@ -250,11 +353,15 @@ def union_access(rects, cfg):
     xlo, xhi = min(r.lx for r in rects), max(r.ux for r in rects)
     out = {}
     for xi in range(xlo // x_pitch, xhi // x_pitch + 2):
+        if (xi - m2_off) % m2_mult:
+            continue
         track_x = xi * x_pitch
         for yi in range(1, cfg.y_track_max):
             if not cfg.is_signal_track(yi) or not covered(track_x, yi * y_pitch):
                 continue
             track_y = yi * y_pitch
+            if not sub_row_clear(cfg, track_y, False):
+                continue
             left = reach(track_x, track_y, -1, 0) - via_half
             right = reach(track_x, track_y, 1, 0) - via_half
             bottom = reach(track_x, track_y, 0, -1) - via_half
@@ -291,28 +398,38 @@ def grid_moves(node, cfg, xmax):
     xi, yi, layer = node
     on_signal = cfg.is_signal_track(yi)
     via_cost = cfg.via_cost
+    # A layer with a track multiple exists only on every mult-th track of its
+    # own axis, so a layer change must land on such a track. Wire moves along
+    # the run axis stay at base-grid granularity on every layer.
+    mult, off = cfg.track_mult, cfg.track_off
+
+    def on_layer(to_layer):
+        i = LIDX[to_layer]
+        c = xi if to_layer in VERT else yi
+        return (c - off[i]) % mult[i] == 0
     # Vertical moves span the full track range 0..y_track_max INCLUSIVE: the
     # outermost tracks sit on the die-edge rails, and a terminal on such a rail
     # (a tie-off to a rail-only supply pin) must be reachable as a goal.
     if layer == M2:                      # vertical (move in y, rails pass through)
         if yi + 1 <= cfg.y_track_max: yield (xi, yi + 1, M2), 1.0
         if yi - 1 >= 0:               yield (xi, yi - 1, M2), 1.0
-        if on_signal:                 yield (xi, yi, M3), via_cost
+        if on_signal and on_layer(M3): yield (xi, yi, M3), via_cost
     elif layer == M3:                    # horizontal (move in x); via down to M2, up to M4
         if xi + 1 <= xmax: yield (xi + 1, yi, M3), 1.0
         if xi - 1 >= 0:    yield (xi - 1, yi, M3), 1.0
-        yield (xi, yi, M2), via_cost
-        if on_signal and cfg.use_upper: yield (xi, yi, M4), via_cost
+        if on_layer(M2): yield (xi, yi, M2), via_cost
+        if on_signal and cfg.use_upper and on_layer(M4):
+            yield (xi, yi, M4), via_cost
     elif layer == M4:                    # vertical (second vertical layer)
         if yi + 1 <= cfg.y_track_max: yield (xi, yi + 1, M4), 1.0
         if yi - 1 >= 0:               yield (xi, yi - 1, M4), 1.0
         if on_signal:
-            yield (xi, yi, M3), via_cost
-            yield (xi, yi, M5), via_cost
+            if on_layer(M3): yield (xi, yi, M3), via_cost
+            if cfg.use_m5 and on_layer(M5): yield (xi, yi, M5), via_cost
     elif layer == M5:                    # horizontal (second horizontal layer)
         if xi + 1 <= xmax: yield (xi + 1, yi, M5), 1.0
         if xi - 1 >= 0:    yield (xi - 1, yi, M5), 1.0
-        yield (xi, yi, M4), via_cost
+        if on_layer(M4): yield (xi, yi, M4), via_cost
 
 
 
@@ -328,7 +445,7 @@ class GridAdjacency(dict):
     of the grid, so eagerly tabulating every node (grids run to hundreds of
     thousands of nodes) costs more than all the lookups it serves.
 
-    Nodes in ``blocked`` (reserved for the power mesh) are dropped from every
+    Nodes in ``blocked`` (reserved for the stripes' rail taps) are dropped from every
     move list, so the maze router can never enter them. They are a hard
     blockage rather than a congestion penalty.
     """
@@ -614,27 +731,54 @@ def mst_edges(points):
 
 
 
-def spacing_neighbors(node):
+def spacing_reach(cfg):
+    """Facing-end conflict reach per layer, in run-axis grid steps.
+
+    Two same-track wire ends ``d`` steps apart conflict while
+    ``d * step < 2 * wire_ext + wire_space``. A uniform stack yields 1 on
+    every layer.
+
+    Args:
+        cfg: the routing grid + geometry (:class:`GridConfig`).
+
+    Returns:
+        ``{layer code: reach}`` for the four routing layers.
+    """
+    reach = {}
+    for layer in (M2, M3, M4, M5):
+        i = LIDX[layer]
+        step = cfg.y_pitch if layer in VERT else cfg.x_pitch
+        reach[layer] = max(1,
+            -(-(2 * cfg.wire_ext[i] + cfg.wire_space[i]) // step) - 1)
+    return reach
+
+
+def spacing_neighbors(node, reach):
     """Same-layer grid nodes that would violate metal spacing against ``node`` if
     used by a *different* net.
 
     Only the same-track, facing-ends case matters. The wire-end overhang
-    (``cfg.wire_ext``) puts two facing ends one grid step apart, closer than the
-    min metal spacing. Adjacent-track parallels are a full pitch apart and legal,
-    and must not be flagged, since doing so rejects legal routing and stalls
-    convergence. One step is along x for horizontal layers, along y for vertical.
+    (``cfg.wire_ext``) puts two facing ends within ``reach`` grid steps closer
+    than the min metal spacing. Adjacent-track parallels are a full pitch
+    apart and legal, and must not be flagged, since doing so rejects legal
+    routing and stalls convergence. Steps run along x for horizontal layers,
+    along y for vertical.
 
     Args:
         node: the grid node ``(xi, yi, layer)`` to check around.
+        reach: ``{layer code: steps}`` from :func:`spacing_reach`.
 
     Returns:
         The conflicting same-layer neighbors, possibly empty.
     """
     xi, yi, layer = node
+    r = reach[layer]
     if layer in HORIZ:
-        return ((xi + 1, yi, layer), (xi - 1, yi, layer))
+        return tuple((xi + d, yi, layer)
+            for d in range(-r, r + 1) if d)
     if layer in VERT:
-        return ((xi, yi + 1, layer), (xi, yi - 1, layer))
+        return tuple((xi, yi + d, layer)
+            for d in range(-r, r + 1) if d)
     return ()
 
 
@@ -655,7 +799,12 @@ class Congestion:
     since a shadow moves with its terminal.
     """
 
-    def __init__(self):
+    def __init__(self, reach, foot_rects=None, foot_space=0):
+        self.reach = reach    # spacing_reach(cfg), for update_spacing
+        self.foot_rects = foot_rects or {}   # (net, ti, node) -> off-grid rect
+        self.foot_space = foot_space
+        self.foot = {}        # (net, ti, node) -> refcount of chosen accesses
+        self.foot_bad = set() # frozenset of two conflicting foot keys
         self.history = {}     # node -> accumulated historical-congestion cost
         self.occupancy = {}   # node -> number of owners currently using it
         self.node_nets = {}   # node -> set(owner)
@@ -665,14 +814,42 @@ class Congestion:
         self.spacing_bad = set()   # canonical (lower, upper) node pairs
 
     def update_spacing(self, node):
-        here = self.node_nets.get(node)
-        for neighbor in spacing_neighbors(node):
-            there = self.node_nets.get(neighbor)
-            pair = (node, neighbor) if node < neighbor else (neighbor, node)
-            if here and there and here != there:
-                self.spacing_bad.add(pair)
-            else:
-                self.spacing_bad.discard(pair)
+        # Re-evaluate every same-track pair whose status this node can
+        # change: the pairs it is a member of and, beyond one step, the
+        # pairs it lies between (a same-net pair with an unowned gap is a
+        # notch: two disjoint pieces of one net closer than the metal
+        # spacing, which merging cannot fix).
+        xi, yi, layer = node
+        r = self.reach.get(layer)
+        if r is None:
+            return
+        if layer in HORIZ:
+            line = [(xi + d, yi, layer) for d in range(-r, r + 1)]
+        else:
+            line = [(xi, yi + d, layer) for d in range(-r, r + 1)]
+        occ = [self.node_nets.get(n) and {o for o in self.node_nets[n]
+            if not isinstance(o, tuple)} for n in line]
+        for i in range(len(line)):
+            for j in range(i + 1, min(i + r + 1, len(line))):
+                if not i <= r <= j:
+                    continue
+                a, b = line[i], line[j]
+                pair = (a, b) if a < b else (b, a)
+                here, there = occ[i], occ[j]
+                bad = False
+                if here and there:
+                    shared = here & there
+                    if not shared:
+                        bad = True
+                    elif j - i >= 2:
+                        bad = not any(
+                            all(k_occ and o in k_occ
+                                for k_occ in occ[i + 1:j])
+                            for o in shared)
+                if bad:
+                    self.spacing_bad.add(pair)
+                else:
+                    self.spacing_bad.discard(pair)
 
     def add_nodes(self, owner, nodes):
         use = self.net_use.setdefault(owner, {})
@@ -680,11 +857,9 @@ class Congestion:
             count = use.get(node, 0)
             use[node] = count + 1
             if count == 0:   # first segment of this owner on the node
-                occ = self.occupancy.get(node, 0) + 1
-                self.occupancy[node] = occ
-                if occ > 1:
-                    self.overused.add(node)
+                self.occupancy[node] = self.occupancy.get(node, 0) + 1
                 self.node_nets.setdefault(node, set()).add(owner)
+                self.update_overuse(node)
                 self.update_spacing(node)
 
     def remove_nodes(self, owner, nodes):
@@ -695,24 +870,66 @@ class Congestion:
                 use[node] = count
             else:
                 del use[node]
-                occ = self.occupancy[node] - 1
-                self.occupancy[node] = occ
-                if occ <= 1:
-                    self.overused.discard(node)
+                self.occupancy[node] = self.occupancy[node] - 1
                 self.node_nets[node].discard(owner)
+                self.update_overuse(node)
                 self.update_spacing(node)
+
+    def update_overuse(self, node):
+        # Sharing among shadows alone is no conflict: two footprints near
+        # one track are legal as long as the footprints themselves keep
+        # their spacing, which the footprint pairs check. A node is overused
+        # once a real net shares it with anyone.
+        owners = self.node_nets.get(node, ())
+        real = sum(1 for o in owners if not isinstance(o, tuple))
+        if real >= 1 and len(owners) >= 2 or real >= 2:
+            self.overused.add(node)
+        else:
+            self.overused.discard(node)
 
     def add_seg(self, net_name, key, seg):
         self.routes[net_name][key] = seg
         self.add_nodes(net_name, seg.nodes)
         if seg.shadows:
             self.add_nodes(('bridge', net_name), seg.shadows)
+        for ti, node in seg.pairs:
+            self.add_foot((net_name, ti, node))
 
     def remove_seg(self, net_name, key):
         seg = self.routes[net_name].pop(key)
         self.remove_nodes(net_name, seg.nodes)
         if seg.shadows:
             self.remove_nodes(('bridge', net_name), seg.shadows)
+        for ti, node in seg.pairs:
+            self.remove_foot((net_name, ti, node))
+
+    def add_foot(self, key):
+        rect = self.foot_rects.get(key)
+        if rect is None:
+            return
+        count = self.foot.get(key, 0)
+        self.foot[key] = count + 1
+        if count:
+            return
+        x0, y0, x1, y1 = rect
+        sp = self.foot_space
+        for other in self.foot:
+            if other is key or other[0] == key[0]:
+                continue
+            ox0, oy0, ox1, oy1 = self.foot_rects[other]
+            if (x0 - sp < ox1 and x1 + sp > ox0
+                    and y0 - sp < oy1 and y1 + sp > oy0):
+                self.foot_bad.add(frozenset((key, other)))
+
+    def remove_foot(self, key):
+        if key not in self.foot:
+            return
+        count = self.foot[key] - 1
+        if count:
+            self.foot[key] = count
+            return
+        del self.foot[key]
+        self.foot_bad = {pair for pair in self.foot_bad if key not in pair}
 
     def conflicts(self):
         """The contested nodes and the real nets to rip up, as a pair."""
@@ -721,12 +938,21 @@ class Congestion:
             nodes.update(pair)
         owners = set()
         for node in nodes:
-            owners.update(self.node_nets.get(node, ()))
+            for owner in self.node_nets.get(node, ()):
+                owners.add(owner)
+                if isinstance(owner, tuple):
+                    # A shadow conflict can also resolve by moving the
+                    # shadowing terminal, so its net negotiates too.
+                    owners.add(owner[1])
+        for pair in self.foot_bad:
+            for net, _ti, node in pair:
+                nodes.add(node)
+                owners.add(net)
         return nodes, {net for net in owners if net in self.routes}
 
 
 def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
-        taps=(), port_edges=None):
+        tap_landings=(), port_edges=None):
     """Route the signal nets with negotiated-congestion maze routing.
 
     Each net is decomposed into 2-pin *segments* along an MST over its
@@ -744,17 +970,19 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
         cfg: the routing grid + DRC geometry (:class:`GridConfig`).
         xmax: the maximum x track index, the right die edge.
         port_nets: the nets needing a Metal4 escape to an edge.
-        blocked: nodes reserved for the power mesh
-            (:func:`mesh_blocked_nodes`). No route, terminal access or escape
+        blocked: nodes reserved for the power stripes' rail taps
+            (:func:`~.flow.plan_pdn`). No route, terminal access or escape
             column may use them.
-        taps: the tap columns behind ``blocked`` (:func:`mesh_tap_columns`),
-            whose rail landings stay clear of off-track access bridges.
-        port_edges: ``{port net: 'top' or 'bottom'}`` naming the edge each port
-            leaves by, which is normally the parent's decision. A net left out
-            falls back to whichever edge its own terminals sit nearer, which is
-            blind to the parent's connectivity. A key naming no port of this
-            block is rejected rather than ignored. Supply names are accepted
-            and ignored, since the supplies leave on the side straps.
+        tap_landings: ``(x, y)`` centers of the taps' Metal2 landings behind
+            ``blocked``, which off-track access bridges must keep metal
+            spacing from.
+        port_edges: ``{port net: edge}`` naming the die edge ('top',
+            'bottom', 'left' or 'right') each port leaves by, which is
+            normally the parent's decision. A net left out falls back to its
+            nearest edge, which is blind to the parent's connectivity. A key
+            naming no port of this block is rejected rather than ignored.
+            Supply names are accepted and ignored, since the supplies leave
+            on their stripes.
 
     Returns:
         The :class:`RoutingResult` for the whole block.
@@ -769,17 +997,24 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
         # A key that names nothing is a typo or a stale port name, and left
         # unchecked it would silently fall back to the nearest edge. Supply
         # names are accepted and ignored, since the natural thing to pass is
-        # every pin of the symbol and the supplies leave on the side straps.
+        # every pin of the symbol and the supplies leave on their stripes.
         known = set(port_nets) | set(cfg.supply_net_names)
         unknown = sorted(set(port_edges) - known)
         if unknown:
             raise ValueError(
                 f"port_edges names {unknown}, which are no escaped ports of "
                 f"this block. Its ports are {sorted(port_nets)}")
-        bad = sorted(set(port_edges.values()) - {'top', 'bottom'})
+        bad = sorted(set(port_edges.values()) - set(PORT_EDGES))
         if bad:
             raise ValueError(
-                f"port_edges values must be 'top' or 'bottom', not {bad}")
+                f"port_edges values must be one of {PORT_EDGES}, not {bad}")
+        if not cfg.use_upper:
+            vertical = sorted(name for name, edge in port_edges.items()
+                if edge in ('top', 'bottom'))
+            if vertical:
+                raise ValueError(
+                    f"ports {vertical} name a top or bottom edge, whose "
+                    "Metal4 pads are unreachable with use_upper disabled")
 
     # term_access[net] holds each terminal's candidate (xi, yi, M2) access
     # nodes. term_via and term_land hold the off-track Via1 positions and the
@@ -789,28 +1024,26 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
     term_access = {}
     term_via = {}
     term_land = {}
+    foot_rects = {}   # (net, ti, node) -> off-grid Metal2 footprint
     sole = {}   # node -> (net, inst, pin) for terminals with a single candidate
     x_pitch, y_pitch = cfg.x_pitch, cfg.y_pitch
 
     # An off-track terminal's Metal2 bridge is an off-grid rect the node-based
-    # conflict model cannot see, and the power-mesh tap landings are off-grid
-    # too.
+    # conflict model cannot see, and the rail-tap landings are off-grid too.
     # Reject any off-track candidate whose bridge would come within the metal
     # spacing of a tap landing (rects mutually expanded, so conservative).
-    spacing = cfg.y_pitch - cfg.wire_width
-    tap_landings = [(tap_xi * x_pitch, rail_row * cfg.row_height)
-        for tap_xi in taps
-        for rail_row in range(cfg.n_rows + 1)]
+    spacing = cfg.wire_space[0]
+    m2_half_w, m2_land_half = cfg.wire_width[0] // 2, cfg.land_half_h[0]
 
     def bridge_clear(xi, via_x, via_y):
-        x_lo = min(via_x, xi * x_pitch) - cfg.strap_half_w - spacing
-        x_hi = max(via_x, xi * x_pitch) + cfg.strap_half_w + spacing
-        y_lo = via_y - cfg.land_half_h - spacing
-        y_hi = via_y + cfg.land_half_h + spacing
+        x_lo = min(via_x, xi * x_pitch) - m2_half_w - spacing
+        x_hi = max(via_x, xi * x_pitch) + m2_half_w + spacing
+        y_lo = via_y - m2_land_half - spacing
+        y_hi = via_y + m2_land_half + spacing
         for tap_x, tap_y in tap_landings:
-            if (x_lo < tap_x + cfg.strap_half_w and x_hi > tap_x - cfg.strap_half_w
-                    and y_lo < tap_y + cfg.land_half_h
-                    and y_hi > tap_y - cfg.land_half_h):
+            if (x_lo < tap_x + m2_half_w and x_hi > tap_x - m2_half_w
+                    and y_lo < tap_y + m2_land_half
+                    and y_hi > tap_y - m2_land_half):
                 return False
         return True
 
@@ -824,7 +1057,9 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
                     pins[iname][pname], cfg,
                     pname in cfg.supply_pin_names):
                 node = (xi, yi, M2)
-                if node in blocked:   # reserved for the power mesh
+                if node in blocked:   # reserved for a stripe's rail tap
+                    continue
+                if not 0 <= xi <= xmax:   # an alternative beyond the die
                     continue
                 off_track = (via_x, via_y) != (xi * x_pitch, yi * y_pitch)
                 if off_track and not bridge_clear(xi, via_x, via_y):
@@ -832,6 +1067,8 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
                 term.append(node)
                 if off_track:
                     term_via[(net_name, ti, node)] = (via_x, via_y)
+                    foot_rects[(net_name, ti, node)] = bridge_footprint(
+                        cfg, xi, via_x, via_y)
                 elif land is not None:
                     term_land[(net_name, ti, node)] = land
             if not term:
@@ -856,46 +1093,66 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
     # whole grid only if a net can't be realized there.
     corridors = global_route(routed_nets, term_access, cfg, xmax)
 
-    # Every port net gets a unique escape column on its edge, near the mean x
-    # of its pin candidates. Uniqueness removes pad contention by construction
-    # and keeps each escape a directed single-goal search. A shared full-width
-    # goal row converges too but pays a fan-out search per escape, and per-net
-    # goal windows do not converge at all. The two edges allocate
-    # independently, since a top and a bottom pad in one column never meet.
-    # Columns whose edge-row Metal4 node is blocked by a mesh tap cannot host
-    # a pad.
-    def mean_x(port_name):
-        xs = [n[0] for term in term_access[port_name] for n in term]
-        return sum(xs) / len(xs)
+    # Every port net gets a unique escape track on its edge, near the mean
+    # position of its pin candidates: a Metal4 column for the top and bottom
+    # edges, a Metal3 row for the left and right ones. Uniqueness removes pad
+    # contention by construction and keeps each escape a directed single-goal
+    # search. A shared full-edge goal line converges too but pays a fan-out
+    # search per escape, and per-net goal windows do not converge at all. The
+    # edges allocate independently. Tracks whose edge node is blocked by a
+    # stripe's rail tap cannot host a pad.
+    def mean_pos(port_name, axis):
+        cs = [n[axis] for term in term_access[port_name] for n in term]
+        return sum(cs) / len(cs)
 
     def chosen_edge(port_name):
         if port_edges and port_name in port_edges:
             return port_edges[port_name]
-        # Escape to whichever edge the net's terminals sit nearer, so a port
-        # driven from the bottom row does not climb the whole block to leave
-        # it and come straight back down at the parent.
-        ys = [n[1] for term in term_access[port_name] for n in term]
-        mean_y = sum(ys) / len(ys)
-        return 'top' if 2 * mean_y >= cfg.y_track_max else 'bottom'
+        # Escape to the nearest edge, so a port driven from deep inside the
+        # block does not cross it, only for the parent to bring the wire
+        # straight back.
+        x = mean_pos(port_name, 0) * x_pitch
+        y = mean_pos(port_name, 1) * y_pitch
+        dists = {'left': x, 'right': xmax * x_pitch - x,
+            'bottom': y, 'top': cfg.y_track_max * y_pitch - y}
+        if not cfg.use_upper:
+            # Top and bottom pads sit on Metal4, which is off limits.
+            dists.pop('top'), dists.pop('bottom')
+        return min(dists, key=dists.get)
 
-    escape_col = {}   # port net -> (x track, edge)
+    escape_at = {}   # port net -> (track index, edge)
     by_edge = {}
     for port_name in sorted(port_nets):
         by_edge.setdefault(chosen_edge(port_name), []).append(port_name)
+    m4_mult = cfg.track_mult[LIDX[M4]]
+    m4_off = cfg.track_off[LIDX[M4]]
+    m3_mult_e = cfg.track_mult[LIDX[M3]]
+    m3_off_e = cfg.track_off[LIDX[M3]]
     for edge, names in by_edge.items():
-        yrow = escape_row(cfg, edge)
-        usable = [x for x in range(xmax + 1) if (x, yrow, M4) not in blocked]
+        if edge in ('top', 'bottom'):
+            yrow = escape_row(cfg, edge)
+            usable = [x for x in range(m4_off, xmax + 1, m4_mult)
+                if (x, yrow, M4) not in blocked]
+            axis = 0
+        else:
+            xcol = escape_col(xmax, edge)
+            usable = [y for y in range(m3_off_e, cfg.y_track_max + 1,
+                    m3_mult_e)
+                if cfg.is_signal_track(y) and (xcol, y, M3) not in blocked]
+            axis = 1
         if len(names) > len(usable):
-            raise PinAccessError(f"{len(names)} {edge}-edge port escapes need "
-                f"more columns than the die has free ({len(usable)})")
-        prefs = sorted((mean_x(name), name) for name in names)
+            raise EscapeCapacityError(f"{len(names)} {edge}-edge port "
+                f"escapes need more tracks than the die has free "
+                f"({len(usable)})", len(names) - len(usable), edge)
+        prefs = sorted((mean_pos(name, axis), name) for name in names)
         prev = -1
         for k, (pref, port_name) in enumerate(prefs):
-            hi = len(usable) - (len(prefs) - k)   # room for the ports right of us
+            hi = len(usable) - (len(prefs) - k)   # room for the ports after us
             prev = min(max(prev + 1, bisect.bisect_left(usable, round(pref))), hi)
-            escape_col[port_name] = (usable[prev], edge)
+            escape_at[port_name] = (usable[prev], edge)
 
-    cong = Congestion()
+    reach = spacing_reach(cfg)
+    cong = Congestion(reach, foot_rects, cfg.wire_space[0])
     # Local aliases for the read-only lookups in the routing closures below.
     history, occupancy = cong.history, cong.occupancy
     node_nets, routes, net_use = cong.node_nets, cong.routes, cong.net_use
@@ -924,22 +1181,36 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
             return base + penalty[0] * _occ(node, 0)
         return node_cost
 
+    m2_mult = cfg.track_mult[LIDX[M2]]
+    m2_half_w = cfg.wire_width[0] // 2
+    m2_ext = cfg.wire_ext[0]
+
     def jog_reserved(net_name, ti, node):
-        # An off-track terminal's Metal2 bridge (emit_net_direct) reaches from
-        # the on-pin via to its track, ending closer to the neighboring track
-        # than the metal spacing allows. Reserving that neighbor node for the
-        # net keeps every other net (and this net's own min-area growth) off
-        # the bridge's shadow.
-        via = term_via.get((net_name, ti, node))
-        if via is None:
+        # An off-track terminal's footprint (bridge, pads and landing,
+        # bridge_footprint) is off-grid metal the node model cannot see.
+        # Reserve the neighboring-track nodes on the footprint's rows where
+        # a wire would come within the metal spacing of it, for this net
+        # too, so wires detour around the footprint instead of grazing it.
+        key = (net_name, ti, node)
+        if key not in term_via:
             return ()
+        rect = foot_rects[key]
         xi, yi, _layer = node
-        track_x = xi * x_pitch
-        if via[0] > track_x and xi + 1 <= xmax:
-            return ((xi + 1, yi, M2),)
-        if via[0] < track_x and xi - 1 >= 0:
-            return ((xi - 1, yi, M2),)
-        return ()
+        # A node's metal can protrude past it by its wire ext or a landing
+        # half, so the shadow rows cover the footprint plus that margin.
+        margin = max(m2_ext, cfg.land_half_h[0]) + spacing
+        shadows = []
+        for nxi in (xi - m2_mult, xi + m2_mult):
+            if not 0 <= nxi <= xmax:
+                continue
+            tx = nxi * x_pitch
+            if (rect[0] - spacing >= tx + m2_half_w
+                    or rect[2] + spacing <= tx - m2_half_w):
+                continue
+            for nyi in range(max(0, (rect[1] - margin) // y_pitch + 1),
+                    min(cfg.y_track_max, (rect[3] + margin) // y_pitch) + 1):
+                shadows.append((nxi, nyi, M2))
+        return tuple(shadows)
 
     def pattern_route(net_name, starts, goals):
         # Pattern-routing fast path: try the 1-bend L shapes, then the 2-bend
@@ -956,11 +1227,19 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
             here = node_nets.get(node)
             if here and here != own:
                 return False
-            for neighbor in spacing_neighbors(node):
+            for neighbor in spacing_neighbors(node, reach):
                 there = node_nets.get(neighbor)
                 if there and there - own:
                     return False
             return True
+
+        m3_mult = cfg.track_mult[LIDX[M3]]
+        m3_off = cfg.track_off[LIDX[M3]]
+
+        def bendable(y):
+            # A bend is a via between M2 and M3, so the row must be a signal
+            # track that exists on M3.
+            return cfg.is_signal_track(y) and (y - m3_off) % m3_mult == 0
 
         def m2_run(xi, y0, y1):
             step = 1 if y1 >= y0 else -1
@@ -984,10 +1263,10 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
             else:
                 # Vias sit on the bend tracks, so both must allow a layer
                 # change.
-                if cfg.is_signal_track(y2):
+                if bendable(y2):
                     cands.append(m2_run(x1, y1, y2)
                         + m3_run(y2, x1, x2) + [(x2, y2, M2)])
-                if cfg.is_signal_track(y1):
+                if bendable(y1):
                     cands.append([(x1, y1, M2)] + m3_run(y1, x1, x2)
                         + m2_run(x2, y1, y2))
             for path in cands:
@@ -1004,7 +1283,7 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
                 continue
             y_lo, y_hi = sorted((y1, y2))
             for y_bend in range(y_lo + 1, y_hi):
-                if not cfg.is_signal_track(y_bend):
+                if not bendable(y_bend):
                     continue
                 path = (m2_run(x1, y1, y_bend) + m3_run(y_bend, x1, x2)
                     + m2_run(x2, y_bend, y2))
@@ -1012,9 +1291,13 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
                     return path
             # Horizontal-vertical-horizontal Z, which costs two more vias.
             # Sample the bend columns so a die-wide net stays a bounded check.
-            if cfg.is_signal_track(y1) and cfg.is_signal_track(y2):
+            if bendable(y1) and bendable(y2):
+                m2_mult = cfg.track_mult[LIDX[M2]]
+                m2_off = cfg.track_off[LIDX[M2]]
                 x_lo, x_hi = sorted((x1, x2))
                 for x_bend in range(x_lo + 1, x_hi, max((x_hi - x_lo) // 16, 1)):
+                    if (x_bend - m2_off) % m2_mult:
+                        continue
                     path = ([(x1, y1, M2)] + m3_run(y1, x1, x_bend)
                         + m2_run(x_bend, y1, y2) + m3_run(y2, x_bend, x2)
                         + [(x2, y2, M2)])
@@ -1051,32 +1334,53 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
                 ((ti, path[0]), (tj, path[-1])), shadows)
 
         if key == 'esc':
-            # Port escape: lift the net to its reserved Metal4 column on its
-            # edge, so its pin sits in the channel outside the rows. The parent
-            # then connects there, never over the interior. That edge interface
-            # is what keeps the block composable (a placement change can't drop
-            # a parent wire onto an internal net). vdd/vss go to the side
-            # straps.
+            # Port escape: lift the net to its reserved edge track (a Metal4
+            # column on the top and bottom edges, a Metal3 row on the sides),
+            # so its pin sits flush at the die edge. The parent then connects
+            # there, never over the interior. That edge interface is what
+            # keeps the block composable (a placement change can't drop a
+            # parent wire onto an internal net). vdd/vss go to their stripes.
             tree = set(own_use)
-            path = None
-            if cfg.use_upper:   # without Metal4 the edge pad is unreachable
-                col, edge = escape_col[net_name]
+            track, edge = escape_at[net_name]
+            if edge in ('top', 'bottom'):
                 yrow = escape_row(cfg, edge)
-                path = astar(tree, [(col, yrow, M4)],
-                    cfg, xmax, history, occupancy, own_use, penalty[0], None, adj)
-                if path is None:   # blocked column: any node on that row will do
-                    path = astar(tree, [(x, yrow, M4) for x in range(xmax + 1)],
-                        cfg, xmax, history, occupancy, own_use, penalty[0],
-                        None, adj)
-            if path is None:   # last resort: interior pad on the first terminal
-                _ti, node = next(p for seg in routes[net_name].values()
-                    for p in seg.pairs)
-                xi, yi, _layer = node
-                stack = ((xi, yi, M2), (xi, yi, M3), (xi, yi, M4))
-                port_escape[net_name] = None
-                return RouteSeg(tuple(zip(stack, stack[1:])), frozenset(stack), ())
-            port_escape[net_name] = (path[-1][0], edge)
-            return RouteSeg(tuple(zip(path, path[1:])), frozenset(path), ())
+                goal = [(track, yrow, M4)]
+                fallback = [(x, yrow, M4)
+                    for x in range(m4_off, xmax + 1, m4_mult)]
+            else:
+                xcol = escape_col(xmax, edge)
+                goal = [(xcol, track, M3)]
+                fallback = [(xcol, y, M3)
+                    for y in range(m3_off_e, cfg.y_track_max + 1, m3_mult_e)
+                    if cfg.is_signal_track(y)]
+            path = astar(tree, goal, cfg, xmax, history, occupancy, own_use,
+                penalty[0], None, adj)
+            if path is None:   # blocked track: any node on that edge will do
+                path = astar(tree, fallback, cfg, xmax, history, occupancy,
+                    own_use, penalty[0], None, adj)
+            if path is None:
+                # The full grid is connected, so an unreachable edge is
+                # permanent, and a port without its edge pad would leave the
+                # parent to route over the block interior.
+                raise PinAccessError(
+                    f"port {net_name!r} cannot reach its {edge} edge")
+            axis = 0 if edge in ('top', 'bottom') else 1
+            port_escape[net_name] = (path[-1][axis], edge)
+            shadows = ()
+            if edge in ('left', 'right'):
+                # The side pad reaches port_pad_inner into the block along
+                # its Metal3 row, over columns the path does not occupy, so
+                # those nodes are reserved like a bridge's shadow.
+                row = path[-1][1]
+                reach = (cfg.port_pad_inner + cfg.wire_space[LIDX[M3]]
+                    + cfg.wire_ext[LIDX[M3]]) // x_pitch
+                cols = (range(0, reach + 1) if edge == 'left'
+                    else range(xmax - reach, xmax + 1))
+                on_path = frozenset(path)
+                shadows = tuple((x, row, M3) for x in cols
+                    if 0 <= x <= xmax and (x, row, M3) not in on_path)
+            return RouteSeg(tuple(zip(path, path[1:])), frozenset(path), (),
+                shadows)
 
         # key == 'ext': grow each per-track run of the net to the min-area
         # span (the escape, routed after this, is covered by the
@@ -1089,9 +1393,9 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
             elif layer in HORIZ: horiz_runs.setdefault((layer, yi), set()).add(xi)
         ext_edges, ext_nodes = [], set()
 
-        def grow(coords, make_node, lo_b, hi_b):
+        def grow(coords, make_node, lo_b, hi_b, mat):
             run = sorted(coords)
-            while run[-1] - run[0] < cfg.min_area_tracks:
+            while run[-1] - run[0] < mat:
                 hi, lo = run[-1] + 1, run[0] - 1
                 hi_ok = hi <= hi_b and make_node(hi) not in blocked
                 lo_ok = lo >= lo_b and make_node(lo) not in blocked
@@ -1110,9 +1414,11 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
 
         # Default-arg capture (X/Y/L) freezes the loop vars into each lambda.
         for (layer, xi), y_tracks in vert_runs.items():
-            grow(y_tracks, lambda p, X=xi, L=layer: (X, p, L), 1, cfg.y_track_max - 1)
+            grow(y_tracks, lambda p, X=xi, L=layer: (X, p, L), 1,
+                cfg.y_track_max - 1, cfg.min_area_tracks[LIDX[layer]])
         for (layer, yi), x_tracks in horiz_runs.items():
-            grow(x_tracks, lambda p, Y=yi, L=layer: (p, Y, L), 0, xmax)
+            grow(x_tracks, lambda p, Y=yi, L=layer: (p, Y, L), 0, xmax,
+                cfg.min_area_tracks[LIDX[layer]])
         return RouteSeg(tuple(ext_edges), frozenset(ext_nodes), ())
 
     add_seg, remove_seg, conflicts = cong.add_seg, cong.remove_seg, cong.conflicts
@@ -1204,7 +1510,8 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
 
 
 def tap_avoid_columns(routed_nets, pins, cfg):
-    """Find the track columns where a power-mesh tap could strand a pin access.
+    """Find the track columns where a stripe's rail tap could strand a pin
+    access.
 
     A terminal negotiates congestion by retreating to another of its access
     candidates. A terminal all of whose candidates one tap column would
@@ -1230,10 +1537,11 @@ def tap_avoid_columns(routed_nets, pins, cfg):
         The tap-hostile column indices as a set.
     """
     x_pitch, y_pitch = cfg.x_pitch, cfg.y_pitch
-    mat, half_w, land_half = cfg.min_area_tracks, cfg.strap_half_w, cfg.land_half_h
-    spacing = y_pitch - cfg.wire_width
+    mat, half_w, land_half = cfg.min_area_tracks[0], cfg.wire_width[0] // 2, cfg.land_half_h[0]
+    spacing = cfg.wire_space[0]
+    # Taps sit on every rail of a stripe's net, the edge rails included.
     rail_zones = [(r * cfg.tracks_per_row - 1, r * cfg.tracks_per_row + 1)
-        for r in range(1, cfg.n_rows)]
+        for r in range(cfg.n_rows + 1)]
 
     def killer_columns(xi, yi, via_x, via_y):
         # The columns whose tap would invalidate this one candidate.
@@ -1270,89 +1578,18 @@ def tap_avoid_columns(routed_nets, pins, cfg):
 
 
 
-def mesh_tap_columns(cfg, xmax, avoid=frozenset()):
-    """Track columns where the power mesh stitches down to the rails.
-
-    Nominally every ``cfg.mesh_tap_pitch`` tracks. A nominal column in ``avoid``
-    is nudged to the nearest free one, so no tap blocks a pin access that cannot
-    negotiate away. The die-edge columns are excluded, since the mesh ends
-    stitch into the side straps right there and an edge landing would sit closer
-    to the ring-end via stack than the metal spacing allows. A tap with no free
-    column in reach is dropped, since the strap still stitches at every other
-    tap while a hostile column can deadlock the router.
-
-    Args:
-        cfg: the routing grid (:class:`GridConfig`).
-        xmax: the maximum x track index.
-        avoid: columns no tap may use (:func:`tap_avoid_columns`).
-
-    Returns:
-        The tap column indices, in increasing order.
-    """
-    reach = cfg.mesh_tap_pitch // 2   # stay closer to this tap than its neighbors
-    taps = []
-    for nominal in range(reach, xmax, cfg.mesh_tap_pitch):
-        prev = taps[-1] if taps else 0
-        for delta in sorted(range(1 - reach, reach), key=abs):
-            xc = nominal + delta
-            if prev < xc < xmax and xc not in avoid:
-                taps.append(xc)
-                break
-    return taps
-
-
-
-def mesh_blocked_nodes(cfg, xmax, taps):
-    """Grid nodes the power mesh (:func:`emit_power_mesh`) makes unusable.
-
-    Only the *interior* rails carry straps, so only their surroundings are
-    reserved, in two kinds:
-
-    * At each tap column, the via stack down to the rail occupies the vertical
-      layers where they cross the rail track. Its min-area landings reach one
-      track beyond the rail on either side, so those neighbors are unusable too,
-      since a wire end there would violate metal spacing.
-    * The strap is wider than a routing wire, so the horizontal top-metal tracks
-      adjacent to a strapped rail sit closer to it than the metal spacing allows
-      and are blocked across the whole die width.
-
-    Metal3 and Metal5 *on* a rail track need no entry here, since a layer change
-    is never allowed on rail tracks and the router cannot reach them.
-
-    Args:
-        cfg: the routing grid (:class:`GridConfig`).
-        xmax: the maximum x track index.
-        taps: the tap column indices (:func:`mesh_tap_columns`).
-
-    Returns:
-        The blocked nodes as a frozenset.
-    """
-    blocked = set()
-    for rail_row in range(1, cfg.n_rows):
-        rail_yi = rail_row * cfg.tracks_per_row
-        for xi in taps:
-            for yi in (rail_yi - 1, rail_yi, rail_yi + 1):
-                blocked.add((xi, yi, M2))
-                blocked.add((xi, yi, M4))
-        for yi in (rail_yi - 1, rail_yi + 1):
-            for xi in range(xmax + 1):
-                blocked.add((xi, yi, M5))
-    return frozenset(blocked)
-
-
-
 def extend_min_area(result, cfg, xmax, keepout=frozenset()):
     """Post-pass: lengthen any too-short wire so it meets the metal min-area rule.
 
     A min-width wire must span enough tracks to meet min area and give its
     end-via the required endcap, so each per-net, per-track run grows into free
-    tracks until it spans ``cfg.min_area_tracks`` steps.
+    tracks until it spans its layer's ``cfg.min_area_tracks`` steps.
 
     Args:
         result: the routing ``{net: (edges, term_m2)}`` to extend in place.
         cfg: the routing grid + geometry (:class:`GridConfig`).
         xmax: the maximum x track index.
-        keepout: nodes no extension may grow into, the power-mesh blockages and
+        keepout: nodes no extension may grow into, the rail-tap blockages and
             the off-track access-bridge shadows.
 
     Returns:
@@ -1363,6 +1600,8 @@ def extend_min_area(result, cfg, xmax, keepout=frozenset()):
         for a, b in edges:
             node_net[a] = net_name; node_net[b] = net_name
 
+    reach = spacing_reach(cfg)
+
     def free(node, net_name):
         if node in keepout:
             return False
@@ -1370,7 +1609,7 @@ def extend_min_area(result, cfg, xmax, keepout=frozenset()):
         if owner is not None and owner != net_name:
             return False
         # Don't grow into a same-layer spacing conflict with another net.
-        for adj in spacing_neighbors(node):
+        for adj in spacing_neighbors(node, reach):
             adj_owner = node_net.get(adj)
             if adj_owner is not None and adj_owner != net_name:
                 return False
@@ -1386,10 +1625,10 @@ def extend_min_area(result, cfg, xmax, keepout=frozenset()):
             if layer in VERT: vert.setdefault((layer, xi), set()).add(yi)
             elif layer in HORIZ: horiz.setdefault((layer, yi), set()).add(xi)
 
-        def grow(fixed, coords, lo, hi, make_node):
-            """Extend a 1-D run of ``coords`` to span ``cfg.min_area_tracks`` steps."""
+        def grow(fixed, coords, lo, hi, make_node, mat):
+            """Extend a 1-D run of ``coords`` to span ``mat`` grid steps."""
             run = sorted(coords)
-            need = cfg.min_area_tracks - (run[-1] - run[0])
+            need = mat - (run[-1] - run[0])
             while need > 0:
                 lo_ok = run[0] - 1 >= lo and free(make_node(fixed, run[0] - 1), net_name)
                 hi_ok = run[-1] + 1 <= hi and free(make_node(fixed, run[-1] + 1), net_name)
@@ -1407,8 +1646,10 @@ def extend_min_area(result, cfg, xmax, keepout=frozenset()):
 
         for (layer, xi), y_tracks in vert.items():
             grow(xi, y_tracks, 1, cfg.y_track_max - 1,
-                lambda xi, yi, L=layer: (xi, yi, L))
+                lambda xi, yi, L=layer: (xi, yi, L),
+                cfg.min_area_tracks[LIDX[layer]])
         for (layer, yi), x_tracks in horiz.items():
             grow(yi, x_tracks, 0, xmax,
-                lambda yi, xi, L=layer: (xi, yi, L))
+                lambda yi, xi, L=layer: (xi, yi, L),
+                cfg.min_area_tracks[LIDX[layer]])
     return result

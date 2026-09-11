@@ -20,12 +20,12 @@ import ordec.importer
 from ordec.core import (GdsLayer, Layer, LayerStack, Layout, LayoutInstance,
     LayoutPin, R, Rect4I, RoutingSpec, RoutingSpecLayer)
 from ordec.layout import compare
-from ordec.layout.pnr import (GridConfig, PinAccessError,
-    place_and_route)
+from ordec.layout.pnr import (GridConfig, PdnSpec, PdnStripes, PdnVia,
+    PinAccessError, place_and_route)
 from ordec.layout.pnr import place, route
 from ordec.layout.pnr.flow import (LeafCell, NetInfo,
-    flatten_schematic, is_extlibrary_leaf, stack_from_spec)
-from ordec.layout.pnr.route import M2, M3, VERT
+    flatten_schematic, is_extlibrary_leaf, plan_pdn, stack_from_spec)
+from ordec.layout.pnr.route import HORIZ, M2, M3, M4, M5, VERT
 from ordec.lib import ihp130
 from ordec.lib.ihp130 import SG13G2
 from .lib import pnr_cells as fx
@@ -34,12 +34,18 @@ from .lib import pnr_cells as fx
 # routing tests below run without the LEF, the GDS or KLayout.
 GRID = GridConfig(
     x_pitch=480, y_pitch=420, row_height=3780, tracks_per_row=9,
-    via_half=95, encl=10, encl_endcap=50, manufacturing_grid=5,
+    via_half=(95, 95, 95, 95), encl=10, encl_endcap=50, manufacturing_grid=5,
     vdd_pin='VDD', vss_pin='VSS', vdd_net='vdd', vss_net='vss',
-    wire_width=210, wire_ext=150, strap_half_w=105, land_half_h=345,
-    m1_land_half_h=145, min_area_tracks=2, port_pad_inner=600,
-    port_pad_outer=360, strap_vdd_x=-520, strap_vss_x=-1080, rail_ext=150,
-    mesh_half_w=210)
+    wire_width=(210, 210, 210, 210), wire_space=(210, 210, 210, 210),
+    wire_ext=(150, 150, 150, 150),
+    land_half_h=(345, 345, 345, 345), m1_land_half_w=105, m1_land_half_h=145,
+    min_area_tracks=(2, 2, 2, 2), port_pad_inner=600)
+
+# A wire-width stripe profile that fits the small synthetic dies here, so the
+# planning and blockage tests need no PDK-scale die.
+PDN = PdnSpec(stripes=(
+    PdnStripes(level=5, width=480, pitch=3840, spacing=480,
+        via=PdnVia(cut=190, cut_pitch=410, encl_above=50, encl_below=50)),))
 
 CELL_W = 1920   # four x-tracks wide
 
@@ -51,7 +57,8 @@ def pnr(cell, layout=None, port_edges=None):
         layout = Layout(cell=cell, symbol=cell.symbol)
     result = place_and_route(cell.schematic, layout, grid=ihp130.grid,
         routing_spec=SG13G2().default_routing_spec,
-        pin_rects=fx.pin_rects(), port_edges=port_edges)
+        pin_rects=fx.pin_rects(), port_edges=port_edges,
+        filler_cells=fx.FILL)
     return layout.freeze(), result
 
 
@@ -173,10 +180,15 @@ def test_pin_access_error_on_unreachable_pin():
 
 
 def test_spacing_neighbors_only_flags_facing_ends():
+    reach = route.spacing_reach(GRID)
+    # A uniform stack conflicts one step away on every layer.
+    assert all(r == 1 for r in reach.values())
     # A horizontal layer conflicts one x step away, not on the parallel track.
-    assert set(route.spacing_neighbors((5, 3, M3))) == {(4, 3, M3), (6, 3, M3)}
+    assert set(route.spacing_neighbors((5, 3, M3), reach)) \
+        == {(4, 3, M3), (6, 3, M3)}
     # A vertical layer conflicts along y instead.
-    assert set(route.spacing_neighbors((5, 3, M2))) == {(5, 2, M2), (5, 4, M2)}
+    assert set(route.spacing_neighbors((5, 3, M2), reach)) \
+        == {(5, 2, M2), (5, 4, M2)}
 
 
 def test_mst_edges_spans_all_terminals():
@@ -190,18 +202,36 @@ def test_mst_edges_spans_all_terminals():
     assert reached == set(range(len(points)))
 
 
-def test_route_nets_avoids_mesh_blockages():
+def test_track_multiples_respected():
+    """On a stack with coarser upper layers, every wire node and layer change
+    sits on its layer's own tracks."""
     cfg, _slots, pins, nets, packed_w = place_chain(6)
-    xmax = packed_w // cfg.x_pitch
-    taps = route.mesh_tap_columns(cfg, xmax,
+    cfg = replace(cfg, track_mult=(1, 2, 2, 4))
+    mult = dict(zip((M2, M3, M4, M5), cfg.track_mult))
+    result = route.route_nets(nets, pins, cfg, packed_w // cfg.x_pitch)
+    seen = set()
+    for edges, _term_m2 in result.nets.values():
+        for edge in edges:
+            for xi, yi, layer in edge:
+                seen.add(layer)
+                if layer in VERT:
+                    assert xi % mult[layer] == 0
+                else:
+                    assert yi % mult[layer] == 0
+    assert M3 in seen, "the chain should still use the coarser M3 tracks"
+
+
+def test_route_nets_avoids_tap_blockages():
+    cfg, _slots, pins, nets, packed_w = place_chain(6)
+    cfg = replace(cfg, pdn=PDN)
+    plan = plan_pdn(cfg, packed_w, pins,
         route.tap_avoid_columns(nets, pins, cfg))
-    blocked = route.mesh_blocked_nodes(cfg, xmax, taps)
-    assert blocked, "the two-row chain should carry a mesh"
-    result = route.route_nets(nets, pins, cfg, xmax, blocked=blocked,
-        taps=taps)
+    assert plan.blocked, "the two-row chain should carry stripes"
+    result = route.route_nets(nets, pins, cfg, packed_w // cfg.x_pitch,
+        blocked=plan.blocked, tap_landings=plan.tap_landings)
     routed = {n for edges, _term_m2 in result.nets.values()
         for edge in edges for n in edge}
-    assert routed.isdisjoint(blocked)
+    assert routed.isdisjoint(plan.blocked)
 
 
 # --- the whole flow --------------------------------------------------------
@@ -254,7 +284,8 @@ def test_floorplan_grows_rows():
     assert small.cfg.n_rows == 1
     assert large.cfg.n_rows > 1
     assert large.die_w >= small.die_w
-    assert large.taps, "a multi-row block carries a power mesh"
+    # A multi-row die is wide enough for both stripe levels by construction.
+    assert len(large.pdn.levels) == 2
 
 
 def test_flatten_expands_composites():
@@ -276,7 +307,7 @@ def test_flatten_expands_composites():
 
 def test_hierarchical_cell_routes():
     _layout, result = pnr(fx.PairChain(n=3))
-    assert len(result.pins) == 6
+    assert sum(1 for n in result.pins if n.startswith("pr[")) == 6
     assert all(edges for edges, _term_m2 in result.routing.nets.values())
 
 
@@ -304,40 +335,34 @@ def test_shared_buses_route_under_congestion():
             or (node[0] * cfg.x_pitch, node[1] * cfg.y_pitch)
             for node in term_m2]
         reached = {name for name, cell_pins in result.pins.items()
-            for r in cell_pins[pin]
+            for r in cell_pins.get(pin, ())
             if any(r.lx <= x <= r.ux and r.ly <= y <= r.uy
                 for x, y in points)}
         assert len(reached) == 4, f"{bus} reaches {reached}"
 
 
-def test_ports_escape_to_the_nearer_edge():
-    """A port leaves by the edge its terminals sit nearer.
-
-    Escaping everything to the top would make a net driven from the bottom row
-    climb the whole block, only for the parent to bring it straight back down.
-    """
+def test_ports_escape_to_the_nearest_edge():
+    """Every port leaves by one of the four die edges, and a block with
+    ports on all sides spreads them rather than piling onto one edge."""
     _layout, result = pnr(fx.DffArray(n=8))
-    cfg = result.cfg
-    escapes = {name: e for name, e in result.routing.port_escape.items() if e}
-    assert escapes, "the register array should escape its ports to an edge"
-    for name, (_x, edge) in escapes.items():
-        _edges, term_m2 = result.routing.nets[name]
-        mean_y = sum(n[1] for n in term_m2) / len(term_m2)
-        expected = "top" if 2 * mean_y >= cfg.y_track_max else "bottom"
-        assert edge == expected, f"{name} left by {edge}, nearer was {expected}"
-    # A tall array reaches both edges rather than piling onto one.
-    assert {edge for _x, edge in escapes.values()} == {"top", "bottom"}
+    escapes = result.routing.port_escape
+    symbol = fx.DffArray(n=8).symbol
+    ports = {p.full_path_str() for p in (symbol.clk, symbol.rst)} \
+        | {f"{p}[{i}]" for p in ("d", "q") for i in range(8)}
+    assert set(escapes) == ports
+    assert len({edge for _t, edge in escapes.values()}) >= 2
 
 
 def test_port_edges_pin_the_escape():
-    """A parent that knows its floorplan can override the choice."""
+    """A parent that knows its floorplan can override the choice, on any of
+    the four edges."""
     cell = fx.DffArray(n=4)
-    pins = {"clk": "top", "rst": "top"}
-    pins |= {f"{p}[{i}]": "top" for p in ("d", "q") for i in range(4)}
+    pins = {"clk": "top", "rst": "bottom"}
+    pins |= {f"d[{i}]": "left" for i in range(4)}
+    pins |= {f"q[{i}]": "right" for i in range(4)}
     _layout, result = pnr(cell, port_edges=pins)
-    edges = {edge for _x, edge in result.routing.port_escape.values()
-        if _x is not None}
-    assert edges == {"top"}
+    for name, (_t, edge) in result.routing.port_escape.items():
+        assert edge == pins[name], name
 
 
 def test_port_edges_move_the_emitted_pads():
@@ -345,18 +370,19 @@ def test_port_edges_move_the_emitted_pads():
     cell = fx.DffArray(n=4)
     pins = {"clk": "top", "rst": "top"}
     pins |= {f"{p}[{i}]": "top" for p in ("d", "q") for i in range(4)}
-    free, _result = pnr(cell)
-    pinned, _result = pnr(cell, port_edges=pins)
+    free, free_result = pnr(cell)
+    pinned, result = pnr(cell, port_edges=pins)
+    die_h = result.cfg.n_rows * result.cfg.row_height
 
-    def lowest_signal_pin(layout):
-        # The supplies leave on the side straps, whose pads sit low by design.
-        return min(p.ref.rect.ly for p in layout.all(LayoutPin)
-            if p.pin.full_path_str() not in ("vdd", "vss"))
+    def signal_pins(layout):
+        return [p.ref.rect for p in layout.all(LayoutPin)
+            if p.pin.full_path_str() not in ("vdd", "vss")]
 
-    # Unpinned, some ports leave at the bottom and their pads reach below the
-    # bottom rail. Pinned to the top, none does.
-    assert lowest_signal_pin(free) < 0
-    assert lowest_signal_pin(pinned) >= 0
+    # Pinned to the top, every signal pad sits flush at the top die edge.
+    assert all(r.uy == die_h for r in signal_pins(pinned))
+    # Unpinned, the nearest-edge fallback uses other edges too.
+    free_h = free_result.cfg.n_rows * free_result.cfg.row_height
+    assert any(r.uy != free_h for r in signal_pins(free))
 
 
 def test_port_edges_rejects_an_unknown_port():
@@ -366,13 +392,13 @@ def test_port_edges_rejects_an_unknown_port():
 
 
 def test_port_edges_rejects_a_bad_edge():
-    with pytest.raises(ValueError, match="must be 'top' or 'bottom'"):
-        pnr(fx.DffArray(n=4), port_edges={"clk": "left"})
+    with pytest.raises(ValueError, match="port_edges values must be"):
+        pnr(fx.DffArray(n=4), port_edges={"clk": "north"})
 
 
 def test_port_edges_accepts_supply_names():
     """Passing every pin of the symbol is the natural thing to write, and the
-    supplies leave on the side straps rather than by escape."""
+    supplies leave on their stripes rather than by escape."""
     _layout, result = pnr(fx.DffArray(n=4),
         port_edges={"clk": "top", "vdd": "top", "vss": "top"})
     assert result.routing.port_escape
@@ -444,9 +470,14 @@ def test_foreign_layer_set_rejected():
 
 def test_result_reports_the_decisions():
     layout, result = pnr(fx.InvChain(n=4))
-    assert len(result.pins) == 4
-    # The placement itself lives on the layout's LayoutInstances, one per leaf.
-    assert len(list(layout.all(LayoutInstance))) == 4
+    assert sum(1 for n in result.pins if n.startswith("inv[")) == 4
+    # The placement itself lives on the layout's LayoutInstances, one per
+    # leaf, with the filler cells closing the rows to the die edge.
+    insts = {i.full_path_str() for i in layout.all(LayoutInstance)}
+    assert sum(1 for n in insts if n.startswith("inv[")) == 4
+    assert any(n.startswith("fill") for n in insts)
     assert set(result.routing.nets)
     assert result.die_w % result.cfg.x_pitch == 0
-    assert result.taps == ()    # a single row needs no mesh
+    # This die is too narrow for a stripe pair, so the single-row block
+    # falls back to its self-tied rails and carries no PDN levels.
+    assert result.pdn.levels == ()

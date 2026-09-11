@@ -13,6 +13,8 @@ from . import generic_mos
 from .pdk_common import PdkDict, TechInfo, check_dir, check_file, rundir, format_si, OHM
 from ..layout import makevias, write_gds
 from ..layout import klayout
+from ..layout.pnr import GridConfig, PdnSpec, PdnStripes, PdnVia
+from ..schematic.spice_in import DeviceMapping
 
 @functools.cache
 def pdk() -> PdkDict:
@@ -29,6 +31,19 @@ def pdk() -> PdkDict:
     pdk.klayout_lvs_deck = check_file(pdk.root / "libs.tech/klayout/lvs/sky130.lvs")
 
     return pdk
+
+@functools.cache
+def stdcell_pdk() -> PdkDict:
+    """Paths of the sky130_fd_sc_hd standard-cell library.
+
+    Separate from pdk() because a primitives-only sky130A install has no
+    libs.ref, and only the P&R flow needs the standard cells.
+    """
+    lib = PdkDict(root=check_dir(pdk().root / "libs.ref/sky130_fd_sc_hd"))
+    lib.lef = check_file(lib.root / "lef/sky130_fd_sc_hd.lef")
+    lib.gds = check_file(lib.root / "gds/sky130_fd_sc_hd.gds")
+    lib.spice = check_file(lib.root / "spice/sky130_fd_sc_hd.spice")
+    return lib
 
 #: FEOL enclosure/spacing checks missing from the PDK's KLayout deck,
 #: shipped with ORDeC (see run_drc). The deck reads the values of these
@@ -273,6 +288,43 @@ class SKY130(Cell):
         # Other layers
         # ------------
 
+        # Marker and pin-marker layers of the standard-cell GDS. The pwell
+        # has no drawing layer (the p-substrate is implicit), only its pin
+        # and label markers.
+        s.nwell.pin = Layer(
+            gdslayer_shapes=GdsLayer(layer=64, data_type=16),
+            gdslayer_text=GdsLayer(layer=64, data_type=5),
+            style_fill=rgb_color("#268c6b"),
+            is_pinlayer=True,
+            )
+        s.pwell = Layer()
+        s.pwell.pin = Layer(
+            gdslayer_shapes=GdsLayer(layer=122, data_type=16),
+            gdslayer_text=GdsLayer(layer=64, data_type=59),
+            style_fill=rgb_color("#8c8ca6"),
+            is_pinlayer=True,
+            )
+        s.poly.short = Layer(
+            gdslayer_shapes=GdsLayer(layer=66, data_type=15),
+            style_fill=rgb_color("#bf4026"),
+            )
+        s.met5.short = Layer(
+            gdslayer_shapes=GdsLayer(layer=72, data_type=15),
+            style_fill=rgb_color("#dcd146"),
+            )
+        s.areaid_standardc = Layer(
+            gdslayer_shapes=GdsLayer(layer=81, data_type=4),
+            style_stroke=rgb_color("#808080"),
+            )
+        s.areaid_diode = Layer(
+            gdslayer_shapes=GdsLayer(layer=81, data_type=23),
+            style_stroke=rgb_color("#808080"),
+            )
+        s.outline = Layer(
+            gdslayer_shapes=GdsLayer(layer=236, data_type=0),
+            style_stroke=rgb_color("#808080"),
+            )
+
         s.capm = Layer(
             gdslayer_shapes=GdsLayer(layer=89, data_type=44),
             style_fill=rgb_color("#26a68b"),
@@ -298,12 +350,17 @@ class SKY130(Cell):
     @viewgen_noctx
     def default_routing_spec(self):
         """
-        SRouter parameters for the met1..met3 stack. Wire widths sit above
+        SRouter parameters for the met1..met5 stack. Wire widths sit above
         the m1.1/m2.1/m3.1 minima, via cuts are the exact via.1a/via2.1a
         sizes, run-in pads cover the all-sides via enclosures (via.4a/b 55,
         via2.4 40, met3 over via2 65) with the wire supplying the endcap
         enclosure (via.5a/b, via2.5: 85), and standalone pads cover the
         endcap on all sides plus the m1.6/m3.6 minimum metal areas.
+
+        met4 and met5 carry via stacks and power stripes rather than dense
+        routing, so their pads are sized for the coarse via4 in one step:
+        the via4.4 and m5.3 enclosures have no smaller endcap variant, so
+        run-in and standalone pads coincide on both layers.
         """
         layers = self.layers
         rs = RoutingSpec(ref_layers=layers)
@@ -343,6 +400,18 @@ class SKY130(Cell):
         addmetal(layers.met2, 170, 200, (370, 300), (280, 280))
         addvia(layers.via2, (200, 200))
         addmetal(layers.met3, 300, 200, (500, 500), (330, 330))
+        addvia(layers.via3, (tech_nm('via3_size'), tech_nm('via3_size')))
+        # met4 pads must enclose via4 (800) by 190 on all sides (via4.4),
+        # which also covers via3's 100 (met4 over via3) by a wide margin.
+        m4_pad = tech_nm('via4_size') + 2 * tech_nm('met4_encl_via4')
+        addmetal(layers.met4, tech_nm('met4_width'),
+            tech_nm('via4_size') // 2 + tech_nm('met4_encl_via4'),
+            (m4_pad, m4_pad), (m4_pad, m4_pad))
+        addvia(layers.via4, (tech_nm('via4_size'), tech_nm('via4_size')))
+        m5_pad = tech_nm('via4_size') + 2 * tech_nm('met5_encl_via4')
+        addmetal(layers.met5, tech_nm('met5_width'),
+            tech_nm('via4_size') // 2 + tech_nm('met5_encl_via4'),
+            (m5_pad, m5_pad), (m5_pad, m5_pad))
 
         return rs
 
@@ -607,6 +676,25 @@ class Pmos(Mos):
     @classmethod
     def discoverable_instances(cls):
         return [cls(w=R("1u"), l=R("150n"))]
+
+@public
+class PmosHvt(Pmos):
+    """High-Vt PMOS, the flavor the sky130hd standard cells use.
+
+    Exists for netlisting standard-cell schematics (spice_in / LVS). No
+    layout generator, since layoutgen_mos does not draw the hvtp implant.
+    """
+    model_name = "sky130_fd_pr__pfet_01v8_hvt"
+
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        raise NotImplementedError(
+            "layoutgen_mos does not draw the hvtp implant")
+
+    @classmethod
+    def discoverable_instances(cls):
+        return []
+
 
 def met1_min_area_rect(mcon_rect: Rect4I, grow_axis: str) -> tuple:
     """
@@ -1238,12 +1326,14 @@ def run_drc(l: Layout, use_tempdir: bool=True, feol: bool=True,
         report = DrcReport(ref_layout=l, top_cell_name=directory.name_subgraph(l))
         klayout.parse_rdb(cwd / "main.lyrdb", report, directory)
 
-        run_deck(supplement_drc_deck, "supplement.log",
-            report="supplement.lyrdb",
-            **{name: f"{tech_rules[name]/1000:g}" for name in supplement_drc_rules},
-            **klayout_shared_opts
-            )
-        klayout.parse_rdb(cwd / "supplement.lyrdb", report, directory)
+        if feol:
+            run_deck(supplement_drc_deck, "supplement.log",
+                report="supplement.lyrdb",
+                **{name: f"{tech_rules[name]/1000:g}"
+                    for name in supplement_drc_rules},
+                **klayout_shared_opts
+                )
+            klayout.parse_rdb(cwd / "supplement.lyrdb", report, directory)
 
         return report
 
@@ -1310,3 +1400,96 @@ def run_lvs(layout: Layout, symbol: Symbol, use_tempdir: bool=True,
                 raise Exception(f"KLayout LVS run failed:\n{log}") from e
 
         return klayout.parse_lvsdb(cwd / 'out.lvsdb', layout, schematic, directory)
+
+
+#: Device map for spice_in. The standard-cell netlists are written against
+#: the ngspice scale option of 1 um, so their real parameters carry that
+#: scale.
+device_map = {
+    "sky130_fd_pr__nfet_01v8": DeviceMapping(Nmos, ("d", "g", "s", "b"),
+        real_params=("l", "w"), real_scale=R("1u")),
+    "sky130_fd_pr__pfet_01v8_hvt": DeviceMapping(PmosHvt, ("d", "g", "s", "b"),
+        real_params=("l", "w"), real_scale=R("1u")),
+}
+
+
+# The sky130hd routing-grid and emitted-geometry profile the P&R engine works
+# from. Track pitches and row height come from the standard-cell tech LEF,
+# the wire, via, landing, stripe and rail dimensions from the sign-off DRC
+# rules (tech_rules). The stack is non-uniform: met3 and met4 run on every
+# 2nd base track and met5 on every 10th, met5 carries no signal routing at
+# all, and signal pins sit on li1 below the met1 rails.
+public(grid = GridConfig(
+    # Routing grid (sky130hd tech LEF). Every layer's tracks sit at half its
+    # pitch plus multiples of it, so the base grids are the met2/met1 half
+    # pitches and each layer runs at an offset of half its multiple. The
+    # supply rails lie between tracks, on the row boundaries.
+    x_pitch=230,
+    y_pitch=170,
+    row_height=2720,
+    tracks_per_row=16,
+    via_half=(tech_nm('via_size') // 2, tech_nm('via2_size') // 2,
+        tech_nm('via3_size') // 2, tech_nm('via4_size') // 2),
+    encl=tech_nm('met1_encl_via'),
+    encl_endcap=tech_nm('met1_encl_via_end'),
+    manufacturing_grid=tech.manufacturing_grid,
+    # Supply naming (sky130_fd_sc_hd pins + ORDeC net conventions):
+    vdd_pin="VPWR",
+    vss_pin="VGND",
+    vdd_net="vdd",
+    vss_net="vss",
+    # Emitted geometry (sign-off DRC rules). met2 wires run at 170 nm,
+    # above the m2.1 minimum so a via1 fits their width. met5 is unrouted.
+    wire_width=(170, tech_nm('met3_width'), tech_nm('met4_width'),
+        tech_nm('met5_width')),
+    wire_space=(tech_nm('met2_space'), tech_nm('met3_space'),
+        tech_nm('met4_space'), tech_nm('met5_space')),
+    wire_ext=(200, 200, 200, 710),
+    land_half_h=(200, 200, 400, 1250),   # min-area landings (m2.6, m4.4a, m5.4)
+    m1_land_half_w=130,   # (via 150 + 2 * 55) / 2 (via.4a)
+    m1_land_half_h=160,   # (via 150 + 2 * 85) / 2 (via.5a)
+    min_area_tracks=(2, 1, 3, 5),
+    port_pad_inner=800,   # met4 port pad reaches the m4.4a minimum area
+    track_mult=(2, 4, 4, 20),
+    track_off=(1, 2, 2, 10),
+    # Via landing pads: these wires are narrower than cut + 2 * enclosure,
+    # so every via carries explicit pads on both metals.
+    via_land=(
+        ((0, 0), (130, 160)),      # met1 side unused, met2 (via.4a, via.5a)
+        ((140, 185), (165, 185)),  # met2 (via2.4, via2.5), met3 (m3.4)
+        ((160, 190), (200, 200)),  # met3 (via3.4, via3.5), met4 (via3.6)
+        ((590, 590), (710, 710)),  # met4 (via4.4), met5 (m5.3)
+    ),
+    # Signal pins are on li1, reached through an mcon under the met1 landing.
+    sub_via_half=tech_nm('mcon_size') // 2,
+    sub_encl=0,
+    sub_encl_endcap=0,
+    sub_rail_clear=540,   # the met1 landing must clear the rails (rail half
+                          # 240 + m1.2 + landing half 160), which also clears
+                          # the cells' rail mcons on the row boundaries
+    abut_pins=("VNB", "VPB"),     # well pins, connected by abutment
+    well_tap_dist=10000,          # max un-tapped row run (tapvpwrvgnd cells)
+    use_m5=False,                 # met5 wires cannot fit the base y grid
+    # Power distribution: met4 stripes (vertical, tapping the rails through
+    # via1..via3 stacks) crossed by met5 stripes (horizontal, connected by
+    # via4). Both are routing-window layers, so the stripes reserve their
+    # tracks as hard blockages.
+    pdn=PdnSpec(stripes=(
+        PdnStripes(level=3,       # met4
+            width=1200,           # >= via4 + 2 * via4.4, for the met5 crossing
+            pitch=27600,          # one supply pair per pitch as the die grows
+            spacing=tech_nm('met4_space'),
+            via=PdnVia(cut=tech_nm('via3_size'),
+                cut_pitch=tech_nm('via3_size') + tech_nm('via3_space'),
+                encl_above=tech_nm('met4_encl_via3'),
+                encl_below=tech_nm('met3_encl_via3_end'))),  # via3.5 pair
+        PdnStripes(level=4,       # met5
+            width=tech_nm('met5_width'),
+            pitch=27200,
+            spacing=tech_nm('met5_space'),
+            via=PdnVia(cut=tech_nm('via4_size'),
+                cut_pitch=tech_nm('via4_size') + tech_nm('via4_space'),
+                encl_above=tech_nm('met5_encl_via4'),
+                encl_below=tech_nm('met4_encl_via4'))),
+        )),
+    ))

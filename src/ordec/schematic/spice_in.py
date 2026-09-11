@@ -69,8 +69,12 @@ class DeviceMapping:
         cell: The Cell subclass to instantiate.
         pin_order: Symbol pin names in the order the SPICE nodes appear, e.g.
             ``("d", "g", "s", "b")`` for a MOSFET.
-        real_params: SPICE parameter names converted via ``R(...)`` (e.g. l, w).
+        real_params: SPICE parameter names converted via ``R(...)`` and
+            multiplied by ``real_scale`` (e.g. l, w).
         int_params: SPICE parameter names converted to ``int`` (e.g. ng, m).
+        real_scale: factor applied to every real parameter, for netlists
+            written against a spice ``scale`` option (e.g. ``R('1u')`` for
+            the sky130 standard cells, whose values are in scale units).
 
     SPICE parameters not listed in real_params/int_params are dropped (e.g. the
     geometric ad/as/pd/ps parasitics that the target cell does not model).
@@ -79,6 +83,7 @@ class DeviceMapping:
     pin_order: tuple
     real_params: tuple = ()
     int_params: tuple = ()
+    real_scale: object = None
 
 
 # Stage A: line preprocessing (comments + continuations)
@@ -265,6 +270,32 @@ def safe_name(name: str) -> str:
     return safe
 
 
+SI_SUFFIX = {'t': R('1e12'), 'g': R('1e9'), 'meg': R('1e6'), 'k': R('1e3'),
+    'm': R('1e-3'), 'u': R('1e-6'), 'n': R('1e-9'), 'p': R('1e-12'),
+    'f': R('1e-15')}
+
+
+def spice_real(value: str) -> R:
+    """Parse a SPICE numeric literal, with its SI suffix if present.
+
+    Handled separately from ``R(...)`` because SPICE combines scientific
+    notation with a suffix (``1e+06u``), which a single substitution parse
+    cannot express.
+    """
+    m = re.fullmatch(r'([+-]?[0-9.]+(?:[eE][+-]?[0-9]+)?)\s*([a-zA-Z]*)',
+        value.strip())
+    if m is None:
+        return R(value)
+    num, suffix = m.groups()
+    suffix = suffix.lower()
+    if suffix.startswith('meg'):
+        suffix = 'meg'
+    elif suffix:
+        suffix = suffix[0]
+    factor = SI_SUFFIX.get(suffix, R(1))
+    return R(num) * factor
+
+
 def to_int_with_si_support(value: str) -> int:
     """Supports SI prefixes u/m/k etc. using conditional R() detour."""
     try:
@@ -364,7 +395,9 @@ def resolve_instance(extlib, deck, device_map, subckt_name, inst, node_to_net):
             raise SpiceImportError(
                 f"Instance {inst.name!r} in {subckt_name!r}: device {model!r} expects "
                 f"{len(mapping.pin_order)} nodes, got {len(inst.nodes)}.")
-        kwargs = {p: R(inst.params[p]) for p in mapping.real_params if p in inst.params}
+        scale = R(1) if mapping.real_scale is None else mapping.real_scale
+        kwargs = {p: spice_real(inst.params[p]) * scale
+            for p in mapping.real_params if p in inst.params}
         kwargs |= {p: to_int_with_si_support(inst.params[p]) for p in mapping.int_params if p in inst.params}
         child = mapping.cell(**kwargs)
         child_sym = child.symbol

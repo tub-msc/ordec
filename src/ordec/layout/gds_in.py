@@ -35,7 +35,9 @@ def gds_to_d4(angle: float|None, strans: int|None) -> D4:
     return orientation
 
 def gds_pathtype_to_endtype(path_type: int) -> PathEndType:
-    if path_type == 0:
+    # The PATHTYPE record is optional and defaults to flush ends (the sky130
+    # standard-cell GDS omits it).
+    if path_type == 0 or path_type is None:
         return PathEndType.Flush
     elif path_type == 2:
         return PathEndType.Square
@@ -97,12 +99,16 @@ def read_gds_structure(structure: Structure, layers: LayerStack, unit: R, extlib
                 raise GdsReaderException(f"Invalid GDS data: Path {elem} has less than 2 vertices!")
             vertices=[conv_xy(xy) for xy in elem.xy]
             endtype = gds_pathtype_to_endtype(elem.path_type)
+            # The WIDTH record is optional and defaults to 0.
+            width = 0 if elem.width is None else elem.width
             if endtype == PathEndType.Custom:
-                layout % LayoutPath(layer=layer, vertices=vertices, endtype=endtype,
+                layout % LayoutPath(layer=layer, vertices=vertices,
+                    width=width, endtype=endtype,
                     ext_bgn=0 if elem.bgn_extn is None else elem.bgn_extn,
                     ext_end=0 if elem.end_extn is None else elem.end_extn)
             else:
-                layout % LayoutPath(layer=layer, vertices=vertices, endtype=endtype)
+                layout % LayoutPath(layer=layer, vertices=vertices,
+                    width=width, endtype=endtype)
         elif isinstance(elem, elements.SRef):
             if elem.mag not in (1.0, None):
                 raise GdsReaderException("SRef with magnification != 1.0 not supported.")

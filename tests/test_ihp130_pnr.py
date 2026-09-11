@@ -54,7 +54,7 @@ def test_lef_pin_rects_are_per_pin():
 def test_upper_metal_leaf_rejected():
     """The engine routes the metals above the leaf cells, so a leaf with its
     own geometry up there is rejected instead of being silently shorted."""
-    with pytest.raises(ValueError, match="Metal1-only leaf cells"):
+    with pytest.raises(ValueError, match="pins on Metal1 only"):
         fx.pin_rects()["sg13g2_sdfbbp_1"]
 
 
@@ -69,8 +69,8 @@ def test_misnamed_supply_rejected():
 
 
 @pytest.mark.parametrize("cell", [
-    fx.RippleAdder(n=2),    # single row, off-track pin access from xor2's Y
-    fx.DffArray(n=4),       # multi-row, so straps, mesh and shared rails
+    fx.RippleAdder(n=2),    # off-track pin access from xor2's Y
+    fx.DffArray(n=4),       # multi-row, so stripes, rail taps and shared rails
 ], ids=["ripple_adder", "dff_array"])
 def test_drc_lvs_clean(cell):
     assert ihp130.run_drc(cell.layout).summary() == {}
