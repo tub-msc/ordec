@@ -61,6 +61,27 @@ class PdnStripes:
 
 @public
 @dataclass(frozen=True)
+class PdnRing:
+    """A core ring: two concentric supply loops around the placement rows.
+
+    The ring sits in a margin outside the core on two adjacent top layers, one
+    carrying its horizontal (top and bottom) segments and the other its
+    vertical (left and right) segments, joined at the four corners by via
+    arrays. Each supply gets its own loop, one inside the other. The vertical
+    stripes tie into the horizontal segments and the horizontal stripes into
+    the vertical ones, and the block's supply ports move onto the ring. All
+    lengths are in nm.
+    """
+    h_level: int     # metal level of the horizontal (top/bottom) segments
+    v_level: int     # metal level of the vertical (left/right) segments
+    width: int       # ring conductor width
+    spacing: int     # min spacing between the loops and from the core
+    offset: int      # gap from the core edge to the inner loop, >= spacing
+    via: PdnVia      # cut geometry joining the two layers at the corners
+
+
+@public
+@dataclass(frozen=True)
 class PdnSpec:
     """The PDK's power-distribution profile: stripe layers, ascending.
 
@@ -68,8 +89,12 @@ class PdnSpec:
     further level connects to the one before it at their crossings. Levels
     that do not fit a given die (two stripes plus spacing) are left out from
     that level upward, so a small block simply carries fewer levels.
+
+    An optional :class:`PdnRing` wraps the core in supply loops the stripes
+    tie into. ``None`` leaves the stripes exposed at the die edges as before.
     """
     stripes: tuple            # PdnStripes, ascending level
+    ring: 'PdnRing' = None    # optional core ring, None = stripes only
 
 
 PdnLevel = namedtuple('PdnLevel', 'spec stripes')
@@ -1225,6 +1250,12 @@ def place_and_route(schematic, layout, *, grid, routing_spec, pin_rects,
     pad_rails(layout, stack, pins, rows, die_w, cfg.supply_pin_names)
     supply_ports = emit_pdn(layout, stack, routing_spec, plan, pins, cfg,
         die_w)
+    if cfg.pdn and cfg.pdn.ring:
+        # A ring moves the supply ports onto its outer loop. Stripe-end ports
+        # stand in when the die is too small to carry the ring levels.
+        ring_ports = emit_ring(layout, routing_spec, cfg.pdn.ring, plan, cfg,
+            die_w)
+        supply_ports = ring_ports or supply_ports
 
     emit_ports(layout, stack, nets, pins, routing, cfg, supply_ports,
         die_w)
@@ -1514,6 +1545,28 @@ def plan_pdn(cfg, die_w, pins, avoid):
         if sp.level != prev.level + 1:
             raise ValueError("PDN stripe levels must be consecutive, since "
                 "each level connects down to the one before it")
+    ring = cfg.pdn.ring
+    if ring is not None:
+        if ring.v_level % 2 != 1 or ring.h_level % 2 != 0:
+            raise ValueError("the PDN ring needs an odd (vertical) v_level and "
+                "an even (horizontal) h_level")
+        if abs(ring.h_level - ring.v_level) != 1:
+            raise ValueError("the PDN ring's two layers must be adjacent, one "
+                "via joins them at the corners")
+        levels = {sp.level for sp in cfg.pdn.stripes}
+        if not levels.issuperset({ring.v_level, ring.h_level}):
+            raise ValueError("the PDN ring reuses stripe layers, so both ring "
+                "levels must carry stripes to tie into")
+        if ring.offset < ring.spacing:
+            raise ValueError("the PDN ring's offset must be at least its "
+                "spacing, so the inner loop clears the core")
+        min_span = ring.via.cut + 2 * max(ring.via.encl_above,
+            ring.via.encl_below)
+        spans = [ring.width] + [sp.width for sp in cfg.pdn.stripes
+            if sp.level in (ring.v_level, ring.h_level)]
+        if min(spans) < min_span:
+            raise ValueError("the PDN ring and its stripe levels must be wide "
+                "enough for the corner via to keep its enclosure")
 
     x_pitch, die_h = cfg.x_pitch, cfg.n_rows * cfg.row_height
     xmax = die_w // x_pitch
@@ -1786,3 +1839,103 @@ def emit_pdn(layout, stack, routing_spec, plan, pins, cfg, die_w):
                                 cx + via.cut // 2, cy + via.cut // 2))
         prev_level = level
     return port_rects
+
+
+def emit_via_array(layout, via_layer, via, x0, y0, x1, y1):
+    """Fill an overlap region with a centered cut array the metals enclose.
+
+    The cut count on each axis is what fits the region with via enclosure to
+    spare on both sides, so the array never pokes past the enclosing metal.
+    """
+    encl = max(via.encl_above, via.encl_below)
+    nx = fit_cuts(x1 - x0, encl, via)
+    ny = fit_cuts(y1 - y0, encl, via)
+    cx0 = (x0 + x1) // 2 - (via.cut + (nx - 1) * via.cut_pitch) // 2
+    cy0 = (y0 + y1) // 2 - (via.cut + (ny - 1) * via.cut_pitch) // 2
+    for i in range(nx):
+        for j in range(ny):
+            cx = cx0 + i * via.cut_pitch
+            cy = cy0 + j * via.cut_pitch
+            layout % LayoutRect(layer=via_layer,
+                rect=Rect4I(cx, cy, cx + via.cut, cy + via.cut))
+
+
+def emit_ring(layout, routing_spec, ring, plan, cfg, die_w):
+    """Emit the core power ring and tie the stripes into it.
+
+    Two concentric loops, one per supply, in the margin outside the core: the
+    horizontal segments on ``h_level``, the vertical ones on ``v_level``, met
+    at the corners by via arrays. Each stripe of a ring level runs a short
+    riser out to its supply's segment and connects with a via array there,
+    crossing the other supply's segment on the far layer without touching it.
+
+    Args:
+        layout: the mutable :class:`Layout` to emit into.
+        routing_spec: the :class:`RoutingSpec` naming the PDK's layer stack.
+        ring: the :class:`PdnRing` profile.
+        plan: the :class:`PdnPlan` fixed before routing.
+        cfg: the routing grid + geometry (:class:`GridConfig`).
+        die_w: the die width in nm.
+
+    Returns:
+        ``{supply pin name: ring segment node}`` for the block's supply ports,
+        or ``{}`` when the die is too small to carry the ring's stripe levels.
+    """
+    # The vertical stripes feed the top and bottom segments and the corners
+    # carry that around to the sides, so the ring needs only its vertical
+    # level present. A die too narrow even for that carries no ring.
+    present = {level.spec.level for level in plan.levels}
+    if ring.v_level not in present:
+        return {}
+    die_h = cfg.n_rows * cfg.row_height
+    h_metal, _ = pdn_level_layers(routing_spec, ring.h_level)
+    v_metal, _ = pdn_level_layers(routing_spec, ring.v_level)
+    _, via_layer = pdn_level_layers(routing_spec, max(ring.h_level, ring.v_level))
+    via = ring.via
+
+    loops = {}
+    supply_ports = {}
+    for k, pname in enumerate(cfg.supply_pin_names):
+        d_lo = ring.offset + k * (ring.width + ring.spacing)
+        d_hi = d_lo + ring.width
+        loops[pname] = (d_lo, d_hi)
+        top = layout % LayoutRect(layer=h_metal, rect=Rect4I(
+            -d_hi, die_h + d_lo, die_w + d_hi, die_h + d_hi))
+        layout % LayoutRect(layer=h_metal, rect=Rect4I(
+            -d_hi, -d_hi, die_w + d_hi, -d_lo))
+        layout % LayoutRect(layer=v_metal, rect=Rect4I(
+            -d_hi, -d_hi, -d_lo, die_h + d_hi))
+        layout % LayoutRect(layer=v_metal, rect=Rect4I(
+            die_w + d_lo, -d_hi, die_w + d_hi, die_h + d_hi))
+        supply_ports[pname] = top
+        for x0, y0 in ((-d_hi, die_h + d_lo), (die_w + d_lo, die_h + d_lo),
+                (-d_hi, -d_hi), (die_w + d_lo, -d_hi)):
+            emit_via_array(layout, via_layer, via,
+                x0, y0, x0 + ring.width, y0 + ring.width)
+
+    for level in plan.levels:
+        sp = level.spec
+        half = min(sp.width, ring.width) // 2
+        if sp.level == ring.v_level:   # vertical stripes reach the h segments
+            for pname, xc in level.stripes:
+                d_lo, d_hi = loops[pname]
+                layout % LayoutRect(layer=v_metal, rect=Rect4I(
+                    xc - sp.width // 2, die_h, xc + sp.width // 2, die_h + d_hi))
+                layout % LayoutRect(layer=v_metal, rect=Rect4I(
+                    xc - sp.width // 2, -d_hi, xc + sp.width // 2, 0))
+                emit_via_array(layout, via_layer, via,
+                    xc - half, die_h + d_lo, xc + half, die_h + d_hi)
+                emit_via_array(layout, via_layer, via,
+                    xc - half, -d_hi, xc + half, -d_lo)
+        elif sp.level == ring.h_level:  # horizontal stripes reach the v segments
+            for pname, yc in level.stripes:
+                d_lo, d_hi = loops[pname]
+                layout % LayoutRect(layer=h_metal, rect=Rect4I(
+                    die_w, yc - sp.width // 2, die_w + d_hi, yc + sp.width // 2))
+                layout % LayoutRect(layer=h_metal, rect=Rect4I(
+                    -d_hi, yc - sp.width // 2, 0, yc + sp.width // 2))
+                emit_via_array(layout, via_layer, via,
+                    die_w + d_lo, yc - half, die_w + d_hi, yc + half)
+                emit_via_array(layout, via_layer, via,
+                    -d_hi, yc - half, -d_lo, yc + half)
+    return supply_ports

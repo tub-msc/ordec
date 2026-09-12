@@ -5,11 +5,13 @@
 Tests place-and-route using ihp130; runs DRC+LVS on a small result.
 """
 
+from dataclasses import replace
+
 import pytest
 import ordec.importer
 
-from ordec.core import Layout
-from ordec.layout.pnr import place_and_route
+from ordec.core import Layout, LayoutRect
+from ordec.layout.pnr import place_and_route, PdnRing, PdnVia
 from ordec.lib import ihp130
 from .lib import pnr_cells as fx
 
@@ -75,3 +77,25 @@ def test_misnamed_supply_rejected():
 def test_drc_lvs_clean(cell):
     assert ihp130.run_drc(cell.layout).summary() == {}
     assert ihp130.run_lvs(cell.layout, cell.symbol).clean()
+
+
+def test_ring_drc_lvs_clean():
+    """A core power ring in the die margin stays DRC and LVS clean.
+
+    The ring is opt-in through PdnSpec.ring, so the other oracles keep the
+    stripes-only PDN. sg13g2 carries it on the two top metals, TopMetal2 for
+    the horizontal segments and TopMetal1 for the vertical ones.
+    """
+    ring = PdnRing(h_level=6, v_level=5, width=2200, spacing=2000, offset=3000,
+        via=PdnVia(cut=900, cut_pitch=1960, encl_above=500, encl_below=500))
+    grid = replace(ihp130.grid, pdn=replace(ihp130.grid.pdn, ring=ring))
+    cell = fx.DffArray(n=4)
+    layout = Layout(cell=cell, symbol=cell.symbol)
+    place_and_route(cell.schematic, layout, grid=grid,
+        routing_spec=ihp130.SG13G2().default_routing_spec,
+        pin_rects=fx.pin_rects(), filler_cells=fx.FILL)
+    layout = layout.freeze()
+    # The ring emits into the negative margin outside the core.
+    assert min(r.rect.ly for r in layout.all(LayoutRect)) < 0
+    assert ihp130.run_drc(layout).summary() == {}
+    assert ihp130.run_lvs(layout, cell.symbol).clean()
