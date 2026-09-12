@@ -69,7 +69,7 @@ class PdnSpec:
     that do not fit a given die (two stripes plus spacing) are left out from
     that level upward, so a small block simply carries fewer levels.
     """
-    stripes: tuple   # PdnStripes, ascending level
+    stripes: tuple            # PdnStripes, ascending level
 
 
 PdnLevel = namedtuple('PdnLevel', 'spec stripes')
@@ -124,7 +124,7 @@ class GridConfig:
     via_half: tuple          # half the Via1..Via4 cut sizes, per via
     encl: int                # min metal enclosure of via on every side (V1.c)
     encl_endcap: int         # min metal enclosure on >= 1 side (V1.c1)
-    manufacturing_grid: int  # layout quantum; off-track vias snap to it (MANUFACTURINGGRID)
+    manufacturing_grid: int  # layout quantum, off-track vias snap to it (MANUFACTURINGGRID)
     # Supply naming, from the cell library / netlist conventions of the PDK
     # binding. Rail abutment shorts all like-named rails, so the engine supports
     # exactly one net per supply pin and validates these names loudly.
@@ -145,7 +145,7 @@ class GridConfig:
     via1_space: int          # Via1 cut min spacing, for access-cut conflicts
     min_area_tracks: tuple   # min wire span in run-axis grid steps, per layer
     port_pad_inner: int      # port-pad depth from the die edge into the block
-    # --- fields with defaults ------------------------------------------------
+    # Fields with defaults follow.
     # PDK grid data continued: track-pitch multiple of each layer on its own
     # axis (Metal2, Metal3, Metal4, Metal5), 1 for a uniform stack. The base
     # grids are defined by Metal2 (x) and the pin-access rows (y), so the
@@ -574,8 +574,6 @@ def extract(schematic, pin_rects, is_leaf, cfg):
     return cells, nets
 
 
-# --- geometry emission + top-level orchestration --------------------------
-
 def emit_net_direct(layout, stack, edges, term_m2, cfg,
         term_via=None, term_land=None, sub_via_layer=None, sub_set=()):
     """Emit one routed net's geometry directly with concrete coordinates.
@@ -714,12 +712,11 @@ def emit_net_direct(layout, stack, edges, term_m2, cfg,
     for node in dict.fromkeys(term_m2):   # Via1 from the Metal1 pin up to Metal2
         xi, yi, _layer = node
         if node in term_via:
-            # Off-track pin (no track lands inside it): drop the via on the pin at
-            # via_x and jog to track xi with a short Metal2 segment. The pin's own
-            # metal gives the Via1 endcap, so no Metal1 landing is added (it would
-            # notch the pin and break Metal1 spacing). With a sub-access
-            # layer the pin is below Metal1 and the landing is emitted, since
-            # there is no Metal1 pin to notch.
+            # Off-track pin (no track lands inside it): drop the via on the pin
+            # at via_x and jog to track xi with a short Metal2 segment. The pin's
+            # own metal gives the Via1 endcap, so no Metal1 landing is added (it
+            # would notch the pin and break Metal1 spacing). A sub-access pin sits
+            # below Metal1, so its landing is emitted (no Metal1 pin to notch).
             via_x, via_y = term_via[node]
             if node in sub_set:
                 sub_via(via_x, via_y, (term_land or {})[node])
@@ -748,12 +745,10 @@ def emit_net_direct(layout, stack, edges, term_m2, cfg,
                 via_x + cfg.m1_land_half_w, via_y + cfg.m1_land_half_h))
             layout % LayoutRect(layer=stack.m1, rect=Rect4I(*land))
 
-    # Two disjoint pieces of one net closer than the metal spacing form a
-    # notch, which no rerouting of other nets can fix, so heal each such gap
-    # with a filler overlapping both pieces. Nothing foreign fits between
-    # shapes closer than the spacing, so the filler shorts nothing, and it
-    # is widened to the wire width within the pieces' union so it does not
-    # itself violate the width rule.
+    # Two disjoint pieces of one net closer than the metal spacing form a notch
+    # no rerouting can fix, so heal each gap with a filler overlapping both
+    # pieces. Nothing foreign fits inside the spacing so it shorts nothing, and
+    # it is widened to the wire width within their union to meet min width.
     mgrid = cfg.manufacturing_grid
 
     def filler_span(lo, hi, a_lo, a_hi, b_lo, b_hi, wmin):

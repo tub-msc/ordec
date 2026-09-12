@@ -311,7 +311,7 @@ def spice_subckt_discover(path, extlib, device_map: dict):
     Returns ``(symbol_funcs, schematic_funcs)`` like
     :func:`ordec.schematic.verilog_in.yosys_json_discover`. The symbol functions
     auto-generate a symbol from the subckt port list and are intended as a
-    fallback only (a symbol from e.g. ``read_lef`` should win — see
+    fallback only (a symbol from e.g. ``read_lef`` should win, see
     :meth:`ExtLibrary.read_spice`).
     """
     with open(path) as f:

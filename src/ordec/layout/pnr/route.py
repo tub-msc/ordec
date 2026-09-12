@@ -188,7 +188,7 @@ def landing_access(rects, cfg):
     """Via positions for a pin accessed by an emitted landing.
 
     A pin on the sub-layer (li1) or a thin Metal1 routing strip cannot
-    enclose a via on its own; the access emits a landing
+    enclose a via on its own. The access emits a landing
     (:func:`sub_land_rect`) that provides the enclosure and merges with the
     pin, so a via position only has to be *covered* by the pin metal. On-grid
     intersections come first (no Metal2 jog), then off-grid via positions on
@@ -249,8 +249,8 @@ def sub_land_rect(cfg, via_x, via_y, pin_rects):
     mg = cfg.manufacturing_grid
     # Min total width for the area, at least the sub-via enclosure. Metal1
     # may extend past the li1 pin (a different layer), so the landing is
-    # centered on the via and grown symmetrically; land_clear rejects it if
-    # it actually reaches foreign metal or a rail.
+    # centered on the via and grown symmetrically. land_clear rejects it
+    # if it actually reaches foreign metal or a rail.
     need_w = -(-cfg.sub_land_min_area // (2 * half_h))
     half_w = max(-(-need_w // 2), cfg.sub_land_half_w_min)
     half_w = -(-half_w // mg) * mg
@@ -286,7 +286,7 @@ def access_nodes(rects, cfg, allow_rail=False, direct=False):
     half_w, endcap = cfg.m1_land_half_w, cfg.m1_land_half_h
     x_pitch, y_pitch = cfg.x_pitch, cfg.y_pitch
     m2_mult, m2_off = cfg.track_mult[LIDX[M2]], cfg.track_off[LIDX[M2]]
-    found = {}   # (xi, yi) -> (track_x, track_y, land, tier); tier 0 = pair-of-sides endcap
+    found = {}   # (xi, yi) -> (track_x, track_y, land, tier). tier 0 = paired endcap
     for (x0, y0, x1, y1) in rects:
         for xi in range(x0 // x_pitch, x1 // x_pitch + 2):
             if (xi - m2_off) % m2_mult:
@@ -510,7 +510,7 @@ def grid_moves(node, cfg, xmax):
         if yi + 1 <= cfg.y_track_max: yield (xi, yi + 1, M2), 1.0
         if yi - 1 >= 0:               yield (xi, yi - 1, M2), 1.0
         if on_signal and on_layer(M3): yield (xi, yi, M3), via_cost
-    elif layer == M3:                    # horizontal (move in x); via down to M2, up to M4
+    elif layer == M3:                    # horizontal (move in x), via down to M2, up to M4
         if xi + 1 <= xmax: yield (xi + 1, yi, M3), 1.0
         if xi - 1 >= 0:    yield (xi - 1, yi, M3), 1.0
         if on_layer(M2): yield (xi, yi, M2), via_cost
@@ -1021,7 +1021,7 @@ class Congestion:
             if not (x0 - sp < ox1 and x1 + sp > ox0
                     and y0 - sp < oy1 and y1 + sp > oy0):
                 continue
-            # A same-net landing that overlaps merges cleanly; one that only
+            # A same-net landing that overlaps merges cleanly. One that only
             # comes within spacing without touching is a notch. Cut layers
             # never merge, so any two distinct cuts within spacing conflict.
             if kind == 'm1' and other[0] == key[0]:
@@ -1209,7 +1209,7 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
             # on the sub-layer or a thin Metal1 strip the library routed to)
             # is reached by an emitted landing that encloses the via and
             # merges with the pin. A sub-layer pin additionally gets the
-            # sub-via rung; a Metal1 pin (direct_pins) does not.
+            # sub-via rung, a Metal1 pin (direct_pins) does not.
             direct = (iname, pname) in direct_pins
             landing_based = cfg.sub_via_half is not None and not rail
             is_sub = landing_based and not direct
@@ -1266,7 +1266,7 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
                     if not off_track:
                         # Via1 lands on the pin's own Metal1. A landing
                         # inside its pin adds no metal and needs no
-                        # clearance; a protruding one is checked.
+                        # clearance, a protruding one is checked.
                         land_rect = land if land is not None else (
                             xi * x_pitch - cfg.m1_land_half_w,
                             yi * y_pitch - cfg.m1_land_half_h,
@@ -1296,7 +1296,7 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
 
             if direct:
                 # A thin Metal1 strip cannot enclose the via, so the via
-                # only has to be covered by the pin; the landing encloses it.
+                # only has to be covered by the pin. The landing encloses it.
                 try_candidates((xi, yi, via_x, via_y, None)
                     for (xi, yi, via_x, via_y)
                     in landing_access(pins[iname][pname], cfg))
@@ -1335,13 +1335,11 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
     corridors = global_route(routed_nets, term_access, cfg, xmax)
 
     # Every port net gets a unique escape track on its edge, near the mean
-    # position of its pin candidates: a Metal4 column for the top and bottom
-    # edges, a Metal3 row for the left and right ones. Uniqueness removes pad
-    # contention by construction and keeps each escape a directed single-goal
-    # search. A shared full-edge goal line converges too but pays a fan-out
-    # search per escape, and per-net goal windows do not converge at all. The
-    # edges allocate independently. Tracks whose edge node is blocked by a
-    # stripe's rail tap cannot host a pad.
+    # of its pin candidates (a Metal4 column for top/bottom, a Metal3 row
+    # for left/right). Unique tracks avoid pad contention and keep each
+    # escape a directed single-goal search (a shared goal line pays a
+    # fan-out search per escape, per-net windows do not converge). Edges
+    # allocate independently, skipping tracks blocked by a stripe's rail tap.
     def mean_pos(port_name, axis):
         cs = [n[axis] for term in term_access[port_name] for n in term]
         return sum(cs) / len(cs)

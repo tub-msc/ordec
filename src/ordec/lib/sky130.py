@@ -361,10 +361,10 @@ class SKY130(Cell):
         enclosure (via.5a/b, via2.5: 85), and standalone pads cover the
         endcap on all sides plus the m1.6/m3.6 minimum metal areas.
 
-        met4 and met5 carry via stacks and power stripes rather than dense
-        routing, so their pads are sized for the coarse via4 in one step:
-        the via4.4 and m5.3 enclosures have no smaller endcap variant, so
-        run-in and standalone pads coincide on both layers.
+        met4 and met5 carry via stacks and power stripes, not dense routing,
+        so their pads are sized for the coarse via4. The via4.4 and m5.3
+        enclosures have no endcap variant, so run-in and standalone pads
+        coincide.
         """
         layers = self.layers
         rs = RoutingSpec(ref_layers=layers)
@@ -398,8 +398,8 @@ class SKY130(Cell):
         addmetal(layers.met1, 170, 160, (330, 270), (260, 260))
         addvia(layers.via, (150, 150))
         # The met2 run-in pad covers via2's 40 all-sides enclosure and
-        # via1's 55; the 85 endcap comes from the wire. At a met2/met3
-        # turn via SRouter does not extend the met2 wire past the cut, so
+        # via1's 55. The 85 endcap comes from the wire. At a met2/met3
+        # turn via, SRouter does not extend the met2 wire past the cut, so
         # such junctions need an explicit 370 met2 pad in the layout.
         addmetal(layers.met2, 170, 200, (370, 300), (280, 280))
         addvia(layers.via2, (200, 200))
@@ -600,7 +600,7 @@ class Mos(SimLeafCell):
 
     def ngspice_internal_device(self):
         # The PDK netlists a model subcircuit around a single BSIM4 device
-        # named m<model_name>; needed to save/read device parameters (see
+        # named m<model_name>, needed to save/read device parameters (see
         # Simulator._param_save_directives).
         return f"m{self.model_name}"
 
@@ -1465,9 +1465,9 @@ device_map = {
 
 #: Device map for reading the standard-cell CDL (the LVS reference netlist).
 #: The CDL uses bare model names and folds parallel fingers into one device
-#: with a multiplicity ``m``, which the LVS deck's device combining matches;
-#: ``m`` is captured so the schematic device compares equal to the combined
-#: extracted one. Widths are in um like the .spice.
+#: with a multiplicity ``m``, matching the LVS deck's device combining, so
+#: ``m`` is captured to compare equal to the combined extracted device.
+#: Widths are in um like the .spice.
 device_map_cdl = {
     "nfet_01v8": DeviceMapping(Nmos, ("d", "g", "s", "b"),
         real_params=("l", "w"), int_params=("m",), real_scale=R("1u")),

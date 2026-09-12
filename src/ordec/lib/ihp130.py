@@ -821,7 +821,7 @@ def layoutgen_resistor(
             l.poly_bend[j] = LayoutRect(layer=layers.PolyRes, rect=rect)
         if add_res:
             # RES must match the body exactly (rsil core = PolyRes AND
-            # RES); covering the heads would grow the extracted body.
+            # RES). Covering the heads would grow the extracted body.
             l.res = PathNode()
             for i, rect in enumerate(body_rects + bend_rects):
                 l.res[i] = LayoutRect(layer=layers.RES, rect=rect)
