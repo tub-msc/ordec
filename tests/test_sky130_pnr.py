@@ -43,7 +43,8 @@ def test_lef_pin_rects_inverter(fx):
 @pytest.mark.parametrize("cell_name,n", [
     ("InvChain", 8),        # single cell type, li1 access
     ("RippleAdder", 4),     # multi-row, met4/met5 stripes, carry-chain fanout
-], ids=["inv_chain", "ripple_adder"])
+    ("DffChain", 2),        # sequential cells: special devices, CDL combining
+], ids=["inv_chain", "ripple_adder", "dff_chain"])
 def test_drc_lvs_clean(fx, cell_name, n):
     from ordec.lib import sky130
     cell = getattr(fx, cell_name)(n=n)

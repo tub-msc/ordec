@@ -43,6 +43,10 @@ def stdcell_pdk() -> PdkDict:
     lib.lef = check_file(lib.root / "lef/sky130_fd_sc_hd.lef")
     lib.gds = check_file(lib.root / "gds/sky130_fd_sc_hd.gds")
     lib.spice = check_file(lib.root / "spice/sky130_fd_sc_hd.spice")
+    # The CDL is the LVS-intended netlist: parallel fingers are folded into
+    # one device with a multiplicity, matching the combined devices the LVS
+    # deck extracts from the GDS. The simulation .spice splits them instead.
+    lib.cdl = check_file(lib.root / "cdl/sky130_fd_sc_hd.cdl")
     return lib
 
 #: FEOL enclosure/spacing checks missing from the PDK's KLayout deck,
@@ -700,11 +704,12 @@ class SpecialNmos(Nmos):
     """Low-leakage NMOS variant used inside sequential standard cells.
 
     Netlisting-only (spice_in / LVS), like :class:`PmosHvt`. The LVS deck
-    extracts its geometry as the standard nfet, so it netlists on the same
-    model. The standard channel-width check is skipped, since these cells
-    legitimately use sub-minimum fingers and ORDeC never lays them out.
+    extracts its geometry as the standard nfet, so it netlists on that model
+    to compare equal. The standard channel-width check is skipped, since
+    these cells legitimately use sub-minimum fingers and ORDeC never lays
+    them out.
     """
-    model_name = "sky130_fd_pr__special_nfet_01v8"
+    model_name = "sky130_fd_pr__nfet_01v8"
 
     @classmethod
     def params_check(cls, params):
@@ -1456,6 +1461,23 @@ device_map = {
         ("d", "g", "s", "b"), real_params=("l", "w"), real_scale=R("1u")),
     "sky130_fd_pr__special_pfet_01v8_hvt": DeviceMapping(SpecialPmosHvt,
         ("d", "g", "s", "b"), real_params=("l", "w"), real_scale=R("1u")),
+}
+
+#: Device map for reading the standard-cell CDL (the LVS reference netlist).
+#: The CDL uses bare model names and folds parallel fingers into one device
+#: with a multiplicity ``m``, which the LVS deck's device combining matches;
+#: ``m`` is captured so the schematic device compares equal to the combined
+#: extracted one. Widths are in um like the .spice.
+device_map_cdl = {
+    "nfet_01v8": DeviceMapping(Nmos, ("d", "g", "s", "b"),
+        real_params=("l", "w"), int_params=("m",), real_scale=R("1u")),
+    "pfet_01v8_hvt": DeviceMapping(PmosHvt, ("d", "g", "s", "b"),
+        real_params=("l", "w"), int_params=("m",), real_scale=R("1u")),
+    "special_nfet_01v8": DeviceMapping(SpecialNmos, ("d", "g", "s", "b"),
+        real_params=("l", "w"), int_params=("m",), real_scale=R("1u")),
+    "special_pfet_01v8_hvt": DeviceMapping(SpecialPmosHvt,
+        ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("m",),
+        real_scale=R("1u")),
 }
 
 

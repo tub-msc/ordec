@@ -19,7 +19,7 @@ from ordec.layout.pnr import lef_pin_rects, place_and_route
 stdcells = ExtLibrary()
 stdcells.read_lef(sky130.stdcell_pdk().lef)
 stdcells.read_gds(sky130.stdcell_pdk().gds, SKY130().layers)
-stdcells.read_spice(sky130.stdcell_pdk().spice, device_map=sky130.device_map)
+stdcells.read_spice(sky130.stdcell_pdk().cdl, device_map=sky130.device_map_cdl)
 
 @functools.cache
 def pin_rects():
@@ -34,6 +34,44 @@ Inv = stdcells["sky130_fd_sc_hd__inv_1"]
 Xor = stdcells["sky130_fd_sc_hd__xor2_1"]
 And = stdcells["sky130_fd_sc_hd__and2_1"]
 Or  = stdcells["sky130_fd_sc_hd__or2_1"]
+Dff = stdcells["sky130_fd_sc_hd__dfxtp_1"]
+
+cell DffChain:
+    """n flip-flops in series on a shared clock, exercising the sequential
+    cells' special low-leakage devices and their CDL device combining."""
+    n = Parameter(int, default=2)
+
+    viewgen symbol(self) -> Symbol:
+        input d:   .align=West
+        input clk: .align=West
+        output q:  .align=East
+        inout vdd: .align=North
+        inout vss: .align=South
+
+    viewgen schematic(self) -> Schematic:
+        port d:   .align=East; .pos=(0, 0)
+        port clk: .align=East; .pos=(0, 4)
+        port q:   .align=West; .pos=(20 + 8 * self.n, 0)
+        port vdd: .align=East; .pos=(0, 8)
+        port vss: .align=East; .pos=(0, 12)
+
+        path ff, nd
+        for i in range(self.n - 1):
+            net nd[i]
+        for i in range(self.n):
+            src = d if i == 0 else nd[i - 1]
+            dst = q if i == self.n - 1 else nd[i]
+            Dff ff[i]:
+                .pos = (10 + 8 * i, 4)
+                .D -- src; .CLK -- clk; .Q -- dst
+                .VPWR -- vdd; .VGND -- vss
+                .VPB -- vdd; .VNB -- vss
+
+    viewgen layout(self) -> Layout:
+        place_and_route(self.schematic, ., grid=sky130.grid,
+            routing_spec=SKY130().default_routing_spec,
+            pin_rects=pin_rects(), sub_via_layer=SKY130().layers.mcon,
+            well_tap_cell=WellTap, filler_cells=FILL)
 
 cell InvChain:
     """n inverters in series: a -> inv0 -> inv1 -> ... -> y."""
