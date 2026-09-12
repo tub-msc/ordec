@@ -895,11 +895,13 @@ class Congestion:
     since a shadow moves with its terminal.
     """
 
-    def __init__(self, reach, foot_rects=None, foot_space=0):
+    def __init__(self, reach, foot_rects=None):
         self.reach = reach    # spacing_reach(cfg), for update_spacing
-        self.foot_rects = foot_rects or {}   # (net, ti, node) -> off-grid rect
-        self.foot_space = foot_space
-        self.foot = {}        # (net, ti, node) -> refcount of chosen accesses
+        # key -> (rect, kind, spacing): off-grid access shapes the node model
+        # cannot see (Metal2 bridges, Metal1 access landings). Two shapes of
+        # different nets, the SAME kind, within their spacing are a conflict.
+        self.foot_rects = foot_rects or {}
+        self.foot = {}        # key -> refcount of chosen accesses
         self.foot_bad = set() # frozenset of two conflicting foot keys
         self.history = {}     # node -> accumulated historical-congestion cost
         self.occupancy = {}   # node -> number of owners currently using it
@@ -989,7 +991,8 @@ class Congestion:
         if seg.shadows:
             self.add_nodes(('bridge', net_name), seg.shadows)
         for ti, node in seg.pairs:
-            self.add_foot((net_name, ti, node))
+            for kind in ('m2', 'm1', 'via', 'mcon'):
+                self.add_foot((net_name, ti, node, kind))
 
     def remove_seg(self, net_name, key):
         seg = self.routes[net_name].pop(key)
@@ -997,25 +1000,35 @@ class Congestion:
         if seg.shadows:
             self.remove_nodes(('bridge', net_name), seg.shadows)
         for ti, node in seg.pairs:
-            self.remove_foot((net_name, ti, node))
+            for kind in ('m2', 'm1', 'via', 'mcon'):
+                self.remove_foot((net_name, ti, node, kind))
 
     def add_foot(self, key):
-        rect = self.foot_rects.get(key)
-        if rect is None:
+        entry = self.foot_rects.get(key)
+        if entry is None:
             return
         count = self.foot.get(key, 0)
         self.foot[key] = count + 1
         if count:
             return
-        x0, y0, x1, y1 = rect
-        sp = self.foot_space
+        (x0, y0, x1, y1), kind, sp = entry
         for other in self.foot:
-            if other is key or other[0] == key[0]:
+            if other is key:
                 continue
-            ox0, oy0, ox1, oy1 = self.foot_rects[other]
-            if (x0 - sp < ox1 and x1 + sp > ox0
+            (ox0, oy0, ox1, oy1), okind, _ = self.foot_rects[other]
+            if okind != kind:   # different layers do not conflict
+                continue
+            if not (x0 - sp < ox1 and x1 + sp > ox0
                     and y0 - sp < oy1 and y1 + sp > oy0):
-                self.foot_bad.add(frozenset((key, other)))
+                continue
+            # A same-net landing that overlaps merges cleanly; one that only
+            # comes within spacing without touching is a notch. Cut layers
+            # never merge, so any two distinct cuts within spacing conflict.
+            if kind == 'm1' and other[0] == key[0]:
+                overlap = (x0 < ox1 and x1 > ox0 and y0 < oy1 and y1 > oy0)
+                if overlap:
+                    continue
+            self.foot_bad.add(frozenset((key, other)))
 
     def remove_foot(self, key):
         if key not in self.foot:
@@ -1041,9 +1054,9 @@ class Congestion:
                     # shadowing terminal, so its net negotiates too.
                     owners.add(owner[1])
         for pair in self.foot_bad:
-            for net, _ti, node in pair:
-                nodes.add(node)
-                owners.add(net)
+            for key in pair:
+                owners.add(key[0])
+                nodes.add(key[2])
         return nodes, {net for net in owners if net in self.routes}
 
 
@@ -1228,10 +1241,27 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
                         if is_sub:
                             sub_nodes.add((net_name, node))
                         term_land[(net_name, ti, node)] = land_rect
+                        # The Metal1 access landing extends past the pin, so
+                        # a different net's landing within Metal1 spacing is
+                        # a conflict the node model cannot see, as are the
+                        # via cuts under it against any other distinct cut.
+                        foot_rects[(net_name, ti, node, 'm1')] = (
+                            land_rect, 'm1', cfg.m1_space)
+                        vh = cfg.via_half[0]
+                        foot_rects[(net_name, ti, node, 'via')] = (
+                            (via_x - vh, via_y - vh, via_x + vh, via_y + vh),
+                            'via', cfg.via1_space)
+                        if is_sub:
+                            sh = cfg.sub_via_half
+                            foot_rects[(net_name, ti, node, 'mcon')] = (
+                                (via_x - sh, via_y - sh,
+                                    via_x + sh, via_y + sh),
+                                'mcon', cfg.sub_via_space)
                         if off_track:
                             term_via[(net_name, ti, node)] = (via_x, via_y)
-                            foot_rects[(net_name, ti, node)] = \
-                                bridge_footprint(cfg, xi, via_x, via_y)
+                            foot_rects[(net_name, ti, node, 'm2')] = (
+                                bridge_footprint(cfg, xi, via_x, via_y),
+                                'm2', cfg.wire_space[0])
                         continue
                     if not off_track:
                         # Via1 lands on the pin's own Metal1. A landing
@@ -1252,10 +1282,15 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
                     if node in term:
                         continue
                     term.append(node)
+                    vh = cfg.via_half[0]
+                    foot_rects[(net_name, ti, node, 'via')] = (
+                        (via_x - vh, via_y - vh, via_x + vh, via_y + vh),
+                        'via', cfg.via1_space)
                     if off_track:
                         term_via[(net_name, ti, node)] = (via_x, via_y)
-                        foot_rects[(net_name, ti, node)] = bridge_footprint(
-                            cfg, xi, via_x, via_y)
+                        foot_rects[(net_name, ti, node, 'm2')] = (
+                            bridge_footprint(cfg, xi, via_x, via_y),
+                            'm2', cfg.wire_space[0])
                     elif land is not None:
                         term_land[(net_name, ti, node)] = land
 
@@ -1358,7 +1393,7 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
             escape_at[port_name] = (usable[prev], edge)
 
     reach = spacing_reach(cfg)
-    cong = Congestion(reach, foot_rects, cfg.wire_space[0])
+    cong = Congestion(reach, foot_rects)
     # Local aliases for the read-only lookups in the routing closures below.
     history, occupancy = cong.history, cong.occupancy
     node_nets, routes, net_use = cong.node_nets, cong.routes, cong.net_use
@@ -1397,10 +1432,9 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
         # Reserve the neighboring-track nodes on the footprint's rows where
         # a wire would come within the metal spacing of it, for this net
         # too, so wires detour around the footprint instead of grazing it.
-        key = (net_name, ti, node)
-        if key not in term_via:
+        if (net_name, ti, node) not in term_via:
             return ()
-        rect = foot_rects[key]
+        rect = foot_rects[(net_name, ti, node, 'm2')][0]
         xi, yi, _layer = node
         # A node's metal can protrude past it by its wire ext or a landing
         # half, so the shadow rows cover the footprint plus that margin.

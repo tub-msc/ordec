@@ -141,6 +141,8 @@ class GridConfig:
     land_half_h: tuple       # half the long side of a min-area via landing
     m1_land_half_w: int      # half-width of the Metal1 landing under a Via1
     m1_land_half_h: int      # half-height of the Metal1 endcap landing under a Via1
+    m1_space: int            # Metal1 min spacing, for access-landing conflicts
+    via1_space: int          # Via1 cut min spacing, for access-cut conflicts
     min_area_tracks: tuple   # min wire span in run-axis grid steps, per layer
     port_pad_inner: int      # port-pad depth from the die edge into the block
     # --- fields with defaults ------------------------------------------------
@@ -165,6 +167,7 @@ class GridConfig:
     # the Metal1 landing, while supply rails stay on Metal1. None when
     # signal pins sit on Metal1 itself.
     sub_via_half: int = None  # half the sub-via cut size
+    sub_via_space: int = 0    # sub-via cut min spacing, for access-cut conflicts
     sub_encl: int = 0         # sub-layer enclosure of the sub-via, all sides
     sub_encl_endcap: int = 0  # sub-layer enclosure on a pair of sides
     # The Metal1 landing over a sub-via is thin in y (just enclosing the

@@ -39,6 +39,7 @@ GRID = GridConfig(
     wire_width=(210, 210, 210, 210), wire_space=(210, 210, 210, 210),
     wire_ext=(150, 150, 150, 150),
     land_half_h=(345, 345, 345, 345), m1_land_half_w=105, m1_land_half_h=145,
+    m1_space=210, via1_space=190,
     min_area_tracks=(2, 2, 2, 2), port_pad_inner=600)
 
 # A wire-width stripe profile that fits the small synthetic dies here, so the

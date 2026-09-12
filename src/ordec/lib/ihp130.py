@@ -1418,6 +1418,8 @@ public(grid = GridConfig(
     land_half_h=(345, 345, 345, 345),  # 690 nm landing -> Mn min area
     m1_land_half_w=105,   # half the Metal1 landing width under a Via1
     m1_land_half_h=145,   # Metal1 endcap landing under a Via1 (V1.c1)
+    m1_space=210,         # Metal1 min spacing (M1.b)
+    via1_space=190,       # Via1 cut min spacing (V1.b)
     min_area_tracks=(2, 2, 2, 2),  # 2 * pitch * 210 nm wire >= 0.144 um^2 Mn min area
     port_pad_inner=600,   # port-pad depth from the die edge
     # Power distribution: TopMetal1 stripes (vertical, tapping the rails
