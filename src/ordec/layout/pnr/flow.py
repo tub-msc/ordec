@@ -1148,6 +1148,7 @@ def place_and_route(schematic, layout, *, grid, routing_spec, pin_rects,
                 (node.pos.x, node.pos.y), node.orientation)['o']
             for rect in obs:
                 m1_shapes.append((rect, None))
+        width_tries = 0
         while True:
             # Die width: the floorplan target, the widest packed row, or
             # (like a pad-limited chip) the port pads, one escape column
@@ -1182,6 +1183,15 @@ def place_and_route(schematic, layout, *, grid, routing_spec, pin_rects,
             except PinAccessError:
                 raise   # permanent: more rows cannot make a pin reachable
             except RuntimeError:
+                # Congestion. Adding rows relieves it for a multi-row block,
+                # but a pin-dense block in little area (few cells, many
+                # ports) needs routing room that only more width gives, so
+                # widen and retry the same row count a bounded number of
+                # times before advancing.
+                if width_tries < 2:
+                    extra_w = max(extra_w, die_w // 3) + die_w // 3
+                    width_tries += 1
+                    continue
                 if i == 4:
                     raise
                 converged = False
