@@ -1,8 +1,4 @@
 {
-  "spdx": [
-    "SPDX-FileCopyrightText: 2026 ORDeC contributors",
-    "SPDX-License-Identifier: Apache-2.0"
-  ],
   "scopeName": "source.ord",
   "name": "ORD",
   "fileTypes": ["ord"],

@@ -1,9 +1,4 @@
 {
-  "spdx": [
-    "SPDX-FileCopyrightText: 2015-present MagicStack Inc.",
-    "SPDX-FileCopyrightText: 2026 ORDeC contributors",
-    "SPDX-License-Identifier: MIT AND Apache-2.0"
-  ],
   "scopeName": "source.ord.injection",
   "injectionSelector": "L:source.ord -string -comment",
   "comment": "ORD-specific rules injected with higher priority (L:) into the ORD base grammar, which delegates to Python. This mirrors the Sublime Text approach where ORD extends Python syntax. Scope names must stay within the standard TextMate buckets that stock themes style, with an .ord-specific tail for per-user overrides.",

@@ -6,10 +6,6 @@
   "publisher": "tub-msc",
   "icon": "ordec.png",
   "license": "Apache-2.0 AND MIT",
-  "spdx": [
-    "SPDX-FileCopyrightText: 2026 ORDeC contributors",
-    "SPDX-License-Identifier: Apache-2.0"
-  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/tub-msc/ordec.git",

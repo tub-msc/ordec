@@ -4,10 +4,6 @@
   "description": "ORD grammar for tree-sitter",
   "repository": "github:tub-msc/ordec",
   "license": "MIT AND Apache-2.0",
-  "spdx": [
-    "SPDX-FileCopyrightText: 2026 ORDeC contributors",
-    "SPDX-License-Identifier: Apache-2.0"
-  ],
   "devDependencies": {
     "tree-sitter-cli": "^0.25.10",
     "tree-sitter-python": "^0.25.0"

@@ -134,7 +134,12 @@ SPDX-License-Identifier = "Apache-2.0"
 # -------
 
 [[annotations]]
+# JSON files (no comments possible) and VS Code extension icon:
 path = [
+    "support/editors/tree-sitter-ord/package.json",
+    "support/editors/tree-sitter-ord/tree-sitter.json",
+    "support/editors/vscode/ord/package.json",
+    "support/editors/vscode/ord/syntaxes/ord.tmLanguage.json",
     "support/editors/vscode/ord/ordec.png",
 ]
 SPDX-FileCopyrightText = "2026 ORDeC contributors"
