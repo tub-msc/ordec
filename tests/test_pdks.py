@@ -170,6 +170,15 @@ def test_mos_dimension_limits(build):
         build()
 
 
+def test_mos_diffusion_per_finger():
+    """ad/as/pd/ps derive from the per-finger width, since each diffusion
+    region is w/nf wide."""
+    d1 = sky130.Nmos(w="500n", l="150n").diffusion_params()
+    d4 = sky130.Nmos(w="2u", l="150n", nf=4).diffusion_params()
+    assert d4['ad'] == 2 * d1['ad']   # two drain regions of the same width
+    assert d4['as_'] == 3 * d1['as_']
+
+
 def resistor_tb(res_cell):
     """1 V source in series with the resistor, bulk pin tied where present."""
     class Tb(Cell):

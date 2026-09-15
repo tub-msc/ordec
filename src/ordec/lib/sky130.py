@@ -496,6 +496,8 @@ class Mos(SimLeafCell):
         """ad/as/pd/ps for an interdigitated S-G-D-G-S-... layout, taking
         explicitly set parameters over the derived values."""
         diff_ext = self.diff_ext if self.diff_ext is not None else R("0.265u")
+        # w is the total width, each finger (and diffusion region) is w/nf wide.
+        wf = self.w / self.nf
 
         # Number of drain/source diffusion regions:
         # nf=1: S-G-D (1 drain, 1 source)
@@ -504,19 +506,19 @@ class Mos(SimLeafCell):
         n_drain = (self.nf + 1) // 2
         n_source = (self.nf + 2) // 2
 
-        # Perimeter: 2×diff_ext per region (sides facing isolation), plus W
-        # contribution from edge diffusions only. Edge diffusion count:
+        # Perimeter: 2×diff_ext per region (sides facing isolation), plus a
+        # wf contribution from edge diffusions only. Edge diffusion count:
         # - odd nf: 1 drain edge, 1 source edge
         # - even nf: 0 drain edges (internal), 2 source edges
         n_edge_drain = 1 if self.nf % 2 == 1 else 0
         n_edge_source = 1 if self.nf % 2 == 1 else 2
 
         return {
-            # Area: each diffusion region is w × diff_ext
-            'ad': self.ad if self.ad is not None else n_drain * self.w * diff_ext,
-            'as_': self.as_ if self.as_ is not None else n_source * self.w * diff_ext,
-            'pd': self.pd if self.pd is not None else 2 * n_drain * diff_ext + n_edge_drain * self.w,
-            'ps': self.ps if self.ps is not None else 2 * n_source * diff_ext + n_edge_source * self.w,
+            # Area: each diffusion region is wf × diff_ext
+            'ad': self.ad if self.ad is not None else n_drain * wf * diff_ext,
+            'as_': self.as_ if self.as_ is not None else n_source * wf * diff_ext,
+            'pd': self.pd if self.pd is not None else 2 * n_drain * diff_ext + n_edge_drain * wf,
+            'ps': self.ps if self.ps is not None else 2 * n_source * diff_ext + n_edge_source * wf,
         }
 
     def ngspice_save_params(self):
@@ -1215,8 +1217,16 @@ def run_drc(l: Layout, use_tempdir: bool=True, feol: bool=True,
             input="layout.gds",
         )
 
-        klayout.run(pdk().klayout_drc_deck, cwd,
-            capture="main.log",
+        def run_deck(deck, log, **opts):
+            # The decks log to stdout (captured to a file), so a failure must
+            # re-raise with the log before the tempdir removes it.
+            try:
+                klayout.run(deck, cwd, capture=log, **opts)
+            except subprocess.CalledProcessError as e:
+                text = (cwd / log).read_text(errors='replace')
+                raise Exception(f"KLayout DRC run failed:\n{text}") from e
+
+        run_deck(pdk().klayout_drc_deck, "main.log",
             report="main.lyrdb",
             feol=flag(feol),
             beol=flag(beol),
@@ -1228,8 +1238,7 @@ def run_drc(l: Layout, use_tempdir: bool=True, feol: bool=True,
         report = DrcReport(ref_layout=l, top_cell_name=directory.name_subgraph(l))
         klayout.parse_rdb(cwd / "main.lyrdb", report, directory)
 
-        klayout.run(supplement_drc_deck, cwd,
-            capture="supplement.log",
+        run_deck(supplement_drc_deck, "supplement.log",
             report="supplement.lyrdb",
             **{name: f"{tech_rules[name]/1000:g}" for name in supplement_drc_rules},
             **klayout_shared_opts
