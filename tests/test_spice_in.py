@@ -9,12 +9,19 @@ import pytest
 from ordec.core import *
 from ordec.extlibrary import ExtLibrary
 from ordec.lib import ihp130
-from ordec.schematic.spice_in import clean_cards, tokenize, parse_deck, SpiceImportError
+from ordec.schematic.spice_in import (clean_cards, tokenize, parse_deck,
+    spice_real, SpiceImportError)
 from textwrap import dedent
 
 stdcell_root = ihp130.pdk().root / "libs.ref/sg13g2_stdcell"
 stdcell_spice = stdcell_root / "spice/sg13g2_stdcell.spice"
 stdcell_lef = stdcell_root / "lef/sg13g2_stdcell.lef"
+
+
+def test_spice_real_suffixes():
+    assert spice_real('1e+06u') == R(1)
+    assert spice_real('1mil') == R('25.4e-6')   # not the 'm' factor
+    assert spice_real('10pF') == R('10e-12')    # unit letters are ignored
 
 
 # Stage A: preprocessing (comments + continuations)

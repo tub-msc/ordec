@@ -220,6 +220,8 @@ class GridConfig:
     # PDK-specific like the geometry above, but defaulted so an engine-level
     # profile without a PDK behind it can leave the PDN out entirely.
     pdn: PdnSpec = None      # power stripe profile, or None for no PDN
+                             # (single-row blocks only, inner rails float
+                             # without stripes)
     # Floorplan: size a die from cell_area / utilization, shaped to the target
     # aspect, then legalize cells into it. Utilization is the area lever and
     # should stay high, since this router runs over the cells and the routing
@@ -1002,8 +1004,8 @@ def place_and_route(schematic, layout, *, grid, routing_spec, pin_rects,
             no retry is attempted.
         ValueError: the layout already holds geometry, an instance is no
             standard cell, or the netlist breaks a supply assumption.
-        RuntimeError: the routing did not converge at the largest floorplan
-            tried.
+        CongestionError: the routing did not converge at the largest
+            floorplan tried.
     """
     cfg = grid
     stack = stack_from_spec(routing_spec)
@@ -1135,6 +1137,10 @@ def place_and_route(schematic, layout, *, grid, routing_spec, pin_rects,
     site = x_pitch * cfg.track_mult[LIDX[M2]]
     extra_w = 0
     for i, nrows in enumerate(range(base, base + 5)):
+        if nrows >= 2 and not (cfg.pdn and cfg.pdn.stripes):
+            raise ValueError("a multi-row block needs a PDN stripe profile "
+                "(GridConfig.pdn): without stripes the boustrophedon's inner "
+                "rails would float")
         cfg = replace(cfg, n_rows=nrows)
         order = place.order_cells_sa(cells, nets, cfg)
         slots, packed_w = place.place_rows(cells, order, cfg)
@@ -1169,20 +1175,21 @@ def place_and_route(schematic, layout, *, grid, routing_spec, pin_rects,
             for rect in obs:
                 m1_shapes.append((rect, None))
         width_tries = 0
+        min_w = 0   # congestion-widening floor, per row count
         while True:
             # Die width: the floorplan target, the widest packed row, or
             # (like a pad-limited chip) the port pads, one escape column
             # each.
             die_w = -(-max(round(core_area / (nrows * row_height)), packed_w,
                 (escape_cols - 1) * x_pitch + extra_w, stripe_floor,
-                pdn_min_w if nrows >= 2 else 0) // site) * site
+                pdn_min_w if nrows >= 2 else 0, min_w) // site) * site
             xmax = die_w // x_pitch
             # Stripe columns are chosen around the pin accesses this
             # placement forces: a tap that invalidates a terminal's every
             # access candidate deadlocks the rip-up loop (the terminal
             # cannot negotiate away).
-            avoid = (route.tap_avoid_columns(signal_nets, pins, cfg)
-                if cfg.pdn else frozenset())
+            avoid = (route.tap_avoid_columns(signal_nets, pins, cfg,
+                direct_pins) if cfg.pdn else frozenset())
             try:
                 plan = plan_pdn(cfg, die_w, pins, avoid)
                 routing = route.route_nets(
@@ -1202,14 +1209,14 @@ def place_and_route(schematic, layout, *, grid, routing_spec, pin_rects,
                 extra_w += e.deficit * x_pitch * cfg.track_mult[LIDX[M4]]
             except PinAccessError:
                 raise   # permanent: more rows cannot make a pin reachable
-            except RuntimeError:
+            except route.CongestionError:
                 # Congestion. Adding rows relieves it for a multi-row block,
                 # but a pin-dense block in little area (few cells, many
                 # ports) needs routing room that only more width gives, so
                 # widen and retry the same row count a bounded number of
                 # times before advancing.
                 if width_tries < 2:
-                    extra_w = max(extra_w, die_w // 3) + die_w // 3
+                    min_w = die_w + die_w // 3
                     width_tries += 1
                     continue
                 if i == 4:
@@ -1531,20 +1538,29 @@ def plan_pdn(cfg, die_w, pins, avoid):
         The :class:`PdnPlan`. Empty when the profile has no PDN.
 
     Raises:
-        RuntimeError: a stripe found no usable column, which a larger
+        CongestionError: a stripe found no usable column, which a larger
             floorplan resolves.
         ValueError: the profile's levels are unusable (first level not
-            vertical, levels not consecutive, or inside the routing window).
+            vertical, levels not consecutive, too narrow for their via cuts,
+            or inside the routing window).
     """
     if cfg.pdn is None or not cfg.pdn.stripes:
         return PdnPlan((), frozenset(), ())
-    if cfg.pdn.stripes[0].level % 2 != 1:
+    sp0 = cfg.pdn.stripes[0]
+    if sp0.level % 2 != 1:
         raise ValueError("the first PDN stripe level must be vertical (odd), "
             "since it taps the horizontal rails")
+    if sp0.width < sp0.via.cut + 2 * sp0.via.encl_above:
+        raise ValueError(f"PDN stripe level {sp0.level} is too narrow to "
+            "enclose one rail-tap via cut")
     for prev, sp in zip(cfg.pdn.stripes, cfg.pdn.stripes[1:]):
         if sp.level != prev.level + 1:
             raise ValueError("PDN stripe levels must be consecutive, since "
                 "each level connects down to the one before it")
+        if (sp.width < sp.via.cut + 2 * sp.via.encl_above
+                or prev.width < sp.via.cut + 2 * sp.via.encl_below):
+            raise ValueError(f"PDN stripe levels {prev.level} and {sp.level} "
+                "are too narrow to enclose one crossing via cut")
     ring = cfg.pdn.ring
     if ring is not None:
         if ring.v_level % 2 != 1 or ring.h_level % 2 != 0:
@@ -1608,7 +1624,7 @@ def plan_pdn(cfg, die_w, pins, avoid):
                         col = cand
                         break
                 if col is None:
-                    raise RuntimeError(
+                    raise route.CongestionError(
                         f"power stripe {k} on level {sp.level} found no "
                         "usable track column")
                 prev_col = col

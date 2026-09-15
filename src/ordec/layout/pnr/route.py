@@ -60,6 +60,15 @@ class PinAccessError(RuntimeError):
     """
 
 
+@public
+class CongestionError(RuntimeError):
+    """Routing did not converge within the rip-up iteration budget.
+
+    Not permanent: a wider or taller floorplan adds routing capacity, so
+    :func:`~.flow.place_and_route` grows the die and retries.
+    """
+
+
 # One routed *segment* of a net (a 2-pin MST edge, the min-area extensions, or
 # the port escape): its wire edges, the grid nodes it occupies (congestion
 # bookkeeping), its terminal endpoints as (terminal index, node) pairs, and the
@@ -1103,8 +1112,8 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
     Raises:
         PinAccessError: a terminal is unreachable on the grid. This is
             permanent, so the caller re-raises instead of retrying.
-        RuntimeError: the rip-up loop did not converge, after which the caller
-            grows the floorplan and retries.
+        CongestionError: the rip-up loop did not converge, after which the
+            caller grows the floorplan and retries.
     """
     if port_edges:
         # A key that names nothing is a typo or a stale port name, and left
@@ -1147,6 +1156,7 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
     # Reject any off-track candidate whose bridge would come within the metal
     # spacing of a tap landing (rects mutually expanded, so conservative).
     spacing = cfg.wire_space[0]
+    m1_spacing = cfg.m1_space
     m2_half_w, m2_land_half = cfg.wire_width[0] // 2, cfg.land_half_h[0]
     tap_half_w, tap_half_h = tap_m2_land(cfg)
 
@@ -1167,10 +1177,12 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
         x0, y0, x1, y1 = land
         merged = False
         near_own = False
-        for bx in range((x0 - spacing) // 10000, (x1 + spacing) // 10000 + 1):
+        for bx in range((x0 - m1_spacing) // 10000,
+                (x1 + m1_spacing) // 10000 + 1):
             for rect, snet in m1_buckets.get(bx, ()):
-                if (x0 - spacing < rect.ux and x1 + spacing > rect.lx
-                        and y0 - spacing < rect.uy and y1 + spacing > rect.ly):
+                if (x0 - m1_spacing < rect.ux and x1 + m1_spacing > rect.lx
+                        and y0 - m1_spacing < rect.uy
+                        and y1 + m1_spacing > rect.ly):
                     if snet not in own_nets:
                         return False
                     near_own = True
@@ -1367,11 +1379,18 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
     m4_off = cfg.track_off[LIDX[M4]]
     m3_mult_e = cfg.track_mult[LIDX[M3]]
     m3_off_e = cfg.track_off[LIDX[M3]]
+    m4_half_w = cfg.wire_width[LIDX[M4]] // 2
+
+    def pad_fits(x):
+        # The pad is wire-width wide, so the outermost columns would poke
+        # past the left/right die outline and break the flush-abut contract.
+        return m4_half_w <= x * x_pitch <= xmax * x_pitch - m4_half_w
+
     for edge, names in by_edge.items():
         if edge in ('top', 'bottom'):
             yrow = escape_row(cfg, edge)
             usable = [x for x in range(m4_off, xmax + 1, m4_mult)
-                if (x, yrow, M4) not in blocked]
+                if pad_fits(x) and (x, yrow, M4) not in blocked]
             axis = 0
         else:
             xcol = escape_col(xmax, edge)
@@ -1584,7 +1603,7 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
                 yrow = escape_row(cfg, edge)
                 goal = [(track, yrow, M4)]
                 fallback = [(x, yrow, M4)
-                    for x in range(m4_off, xmax + 1, m4_mult)]
+                    for x in range(m4_off, xmax + 1, m4_mult) if pad_fits(x)]
             else:
                 xcol = escape_col(xmax, edge)
                 goal = [(xcol, track, M3)]
@@ -1703,7 +1722,7 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
             for key in order:
                 add_seg(net_name, key, route_seg(net_name, key, allowed))
     else:
-        raise RuntimeError(
+        raise CongestionError(
             f"router did not converge: {len(bad_nodes)} conflict nodes")
 
     # Consolidate the per-(net, terminal) via/landing overrides down to the
@@ -1752,7 +1771,7 @@ def route_nets(routed_nets, pins, cfg, xmax, port_nets=(), blocked=frozenset(),
 
 
 
-def tap_avoid_columns(routed_nets, pins, cfg):
+def tap_avoid_columns(routed_nets, pins, cfg, direct_pins=frozenset()):
     """Find the track columns where a stripe's rail tap could strand a pin
     access.
 
@@ -1775,6 +1794,9 @@ def tap_avoid_columns(routed_nets, pins, cfg):
         routed_nets: the signal nets that will be routed, ``{name: NetInfo}``.
         pins: ``{inst: {pin: [Rect4I]}}`` die-coordinate pin rectangles.
         cfg: the routing grid + geometry (:class:`GridConfig`).
+        direct_pins: the ``(inst, pin)`` terminals the cell library routed up
+            to Metal1, which :func:`route_nets` reaches through
+            :func:`landing_access` instead of :func:`access_nodes`.
 
     Returns:
         The tap-hostile column indices as a set.
@@ -1810,10 +1832,17 @@ def tap_avoid_columns(routed_nets, pins, cfg):
     avoid = set()
     for net in routed_nets.values():
         for iname, pname in net.terminals:
+            rail = pname in cfg.supply_pin_names
+            # Enumerate the same candidates route_nets will use: a Metal1
+            # pin (direct_pins) is reached by covered-not-enclosed landing
+            # access, everything else by enclosure-based access.
+            if not rail and (iname, pname) in direct_pins:
+                cands = landing_access(pins[iname][pname], cfg)
+            else:
+                cands = [c[:4] for c in access_nodes(
+                    pins[iname][pname], cfg, rail)]
             fatal = None   # columns that invalidate EVERY candidate so far
-            for (xi, yi, via_x, via_y, _land) in access_nodes(
-                    pins[iname][pname], cfg,
-                    pname in cfg.supply_pin_names):
+            for (xi, yi, via_x, via_y) in cands:
                 cols = killer_columns(xi, yi, via_x, via_y)
                 fatal = cols if fatal is None else fatal & cols
                 if not fatal:

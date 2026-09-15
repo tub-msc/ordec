@@ -705,9 +705,12 @@ class SpecialNmos(Nmos):
 
     Netlisting-only (spice_in / LVS), like :class:`PmosHvt`. The LVS deck
     extracts its geometry as the standard nfet, so it netlists on that model
-    to compare equal. The standard channel-width check is skipped, since
-    these cells legitimately use sub-minimum fingers and ORDeC never lays
-    them out.
+    to compare equal. Simulation also uses the standard model: the PDK's
+    ngspice libraries define no special_nfet_01v8 subcircuit (the name
+    appears only in the cell netlists), and the device is the standard one
+    electrically. The standard channel-width check is skipped, since these
+    cells legitimately use sub-minimum fingers and ORDeC never lays them
+    out.
     """
     model_name = "sky130_fd_pr__nfet_01v8"
 

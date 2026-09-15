@@ -271,8 +271,8 @@ def safe_name(name: str) -> str:
 
 
 SI_SUFFIX = {'t': R('1e12'), 'g': R('1e9'), 'meg': R('1e6'), 'k': R('1e3'),
-    'm': R('1e-3'), 'u': R('1e-6'), 'n': R('1e-9'), 'p': R('1e-12'),
-    'f': R('1e-15')}
+    'mil': R('25.4e-6'), 'm': R('1e-3'), 'u': R('1e-6'), 'n': R('1e-9'),
+    'p': R('1e-12'), 'f': R('1e-15')}
 
 
 def spice_real(value: str) -> R:
@@ -280,7 +280,8 @@ def spice_real(value: str) -> R:
 
     Handled separately from ``R(...)`` because SPICE combines scientific
     notation with a suffix (``1e+06u``), which a single substitution parse
-    cannot express.
+    cannot express. Per SPICE convention, letters beyond the scale factor
+    are units and are ignored (``10pF``, ``5kOhm``).
     """
     m = re.fullmatch(r'([+-]?[0-9.]+(?:[eE][+-]?[0-9]+)?)\s*([a-zA-Z]*)',
         value.strip())
@@ -290,6 +291,8 @@ def spice_real(value: str) -> R:
     suffix = suffix.lower()
     if suffix.startswith('meg'):
         suffix = 'meg'
+    elif suffix.startswith('mil'):
+        suffix = 'mil'
     elif suffix:
         suffix = suffix[0]
     factor = SI_SUFFIX.get(suffix, R(1))

@@ -185,7 +185,9 @@ Power delivery
 Within a row, power is carried by rail abutment, as in any standard-cell flow. Above the
 rails, the block carries a power distribution network of **stripes** on the metals above
 the routing window, declared per PDK as a ``PdnSpec`` on the ``GridConfig`` profile (the
-sg13g2 profile puts them on the thick TopMetal1 and TopMetal2).
+sg13g2 profile puts them on the thick TopMetal1 and TopMetal2). A profile without a PDN
+(``pdn=None``) is limited to single-row blocks, since the boustrophedon's inner rails
+would float without stripes.
 
 Each stripe level alternates the two supply nets at an even spacing across the die,
 targeting one supply pair per configured pitch. The first level runs vertically and
