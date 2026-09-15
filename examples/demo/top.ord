@@ -94,7 +94,7 @@ cell Top:
             .vss -- vss
             .vdd -- vdd
             .vbias -- vbias
-        x = lambda: extlib['counter']
+        x = extlib['counter']
         x digital_part:
             .pos=(15,10)
             .rst_ni -- rst_n
