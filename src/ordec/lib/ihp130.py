@@ -14,7 +14,7 @@ from ..core import *
 from ..schematic import spice_params, Netlister
 from ..sim.ngspice import NgspiceSetup
 from . import generic_mos
-from .pdk_common import PdkDict, check_dir, check_file, rundir
+from .pdk_common import PdkDict, TechInfo, check_dir, check_file, rundir, format_si, OHM
 from ..layout import makevias, write_gds
 from ..layout import klayout
 from ..layout.pnr import GridConfig
@@ -49,15 +49,33 @@ def tech_params() -> dict:
     data = json.loads(pdk().klayout_drc_mod_json.read_text())
     return data["techParams"] | data["drc_rules"] | data["pcells"]
 
-def _tech_dist(name: str) -> R:
+def tech_dist(name: str) -> R:
     """Read a distance-like tech parameter as a Rational."""
     value = tech_params()[name]
     if isinstance(value, str):
         return R(value)
     return R(f"{value}u")
 
-def _tech_nm(name: str) -> int:
-    return int(_tech_dist(name) / R("1n"))
+def tech_nm(name: str) -> int:
+    return int(tech_dist(name) / R("1n"))
+
+public(tech = TechInfo(
+    manufacturing_grid=5, # sg13g2 layout quantum (MANUFACTURINGGRID)
+    nominal_vdd=R("1.5"), # LV core devices
+    conductors=("Activ", "GatPoly", "Metal1", "Metal2", "Metal3", "Metal4",
+        "Metal5", "TopMetal1", "TopMetal2", "MIM"),
+    via_connects={
+        "Cont": ("Activ", "GatPoly", "Metal1"),
+        "Via1": ("Metal1", "Metal2"),
+        "Via2": ("Metal2", "Metal3"),
+        "Via3": ("Metal3", "Metal4"),
+        "Via4": ("Metal4", "Metal5"),
+        "TopVia1": ("Metal5", "TopMetal1"),
+        "TopVia2": ("TopMetal1", "TopMetal2"),
+        "Vmim": ("MIM", "TopMetal1"),
+    },
+    device_bodies=("Activ", "MIM"),
+))
 
 def ngspice_setup():
     """Return ngspice setup commands and environment variables."""
@@ -353,15 +371,17 @@ class SG13G2(Cell):
         addvia(layers.Via4)
         # The top of the stack has its own, much larger rules. TopVia1 is an
         # exact 420 nm cut (TV1.a) that Metal5 must enclose by 100 nm (TV1.c)
-        # and TopMetal1 by 420 nm (TV1.d); TopMetal1 is 1640 nm wide at least
+        # and TopMetal1 by 420 nm (TV1.d). TopMetal1 is 1640 nm wide at least
         # (TM1.a). TopVia2 is 900 nm (TV2.a), enclosed by 500 nm on both
         # sides (TV2.c/d), and TopMetal2 is 2000 nm wide at least (TM2.a).
         # A Metal5 pad of 620 nm serves both the Via4 below and the TopVia1
-        # above; a TopMetal1 pad between TopVia1 and TopVia2 needs 1900 nm.
+        # above. A TopMetal1 pad with a TopVia2 on it needs 1900 nm even at
+        # stack ends, since the wire endcap cannot supply the 500 nm TV2.c/d
+        # enclosure sideways.
         addmetal(layers.Metal5, route_via=(620, 620), route_pad=(620, 620))
         addvia(layers.TopVia1, route_via=(420, 420))
         addmetal(layers.TopMetal1, route_width=1640, route_via=(1900, 1900),
-            route_pad=(1640, 1640))
+            route_pad=(1900, 1900))
         addvia(layers.TopVia2, route_via=(900, 900))
         addmetal(layers.TopMetal2, route_width=2000, route_via=(2000, 2000),
             route_pad=(2000, 2000))
@@ -389,6 +409,9 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool,
     s = Solver(l)
 
     L = int(length/R("1n"))
+    if int(width/R("1n")) % num_gates != 0:
+        raise ParameterError("w must divide evenly into the finger count,"
+            " otherwise drawn and netlisted width diverge.")
     W = int(width/R("1n") / num_gates)
 
     l.poly = PathNode()
@@ -468,7 +491,7 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool,
         s.constrain(l.nwell.uy == max_activ.uy + 310)
 
     # l.sd[i].rect/l.m1 are assigned after solve() via makevias, which needs
-    # the solved geometry; defer the undefined-attribute check until then.
+    # the solved geometry, so defer the undefined-attribute check until then.
     s.solve(allow_undefined=True)
 
     # Cnt.c requires 0.07 um Activ enclosure of Cont, which the two sd
@@ -504,6 +527,35 @@ class Mos(SimLeafCell):
     contact_sd_odd = Parameter(bool, default=True)
     #: Contact even-numbered source/drain regions (Cont + Metal1)
     contact_sd_even = Parameter(bool, default=True)
+
+    # Dimension limits of the LV devices, hardcoded so that constructing a
+    # cell does not require the PDK environment. They match the PDK's PCell
+    # bounds (tech_params nmos_minW/minL/maxW/maxL/maxNG, identical for pmos,
+    # with the width limits applying per finger).
+    min_l = R("0.13u")
+    max_l = R("10u")
+    min_w = R("0.15u")
+    max_w = R("10u")
+    max_ng = 100
+
+    fingers_param = 'ng' #: Gate-finger count parameter name
+    drain_current_param = 'ids' #: Drain current in ngspice_save_params
+
+    @classmethod
+    def params_check(cls, params):
+        l, w, ng, m = params['l'], params['w'], params['ng'], params['m']
+        if l is None or w is None:
+            return
+        if ng < 1 or ng > cls.max_ng:
+            raise ParameterError(f"ng must be between 1 and {cls.max_ng}.")
+        if m < 1:
+            raise ParameterError("m must be at least 1.")
+        if not cls.min_l <= l <= cls.max_l:
+            raise ParameterError(
+                f"l = {l} outside the allowed range [{cls.min_l}, {cls.max_l}].")
+        if not cls.min_w <= w/ng <= cls.max_w:
+            raise ParameterError(f"w/ng = {w/ng} outside the allowed range"
+                f" [{cls.min_w}, {cls.max_w}] per finger.")
 
     def ngspice_save_params(self):
         # PSP103 (OSDI) operating-point outputs:
@@ -597,7 +649,7 @@ def layoutgen_tap(cell: Cell, length: R, width: R, nwell: bool):
         s.constrain(l.psd.size == l.activ.size + Vec2I(60, 60))
 
     # l.m1.rect is assigned after solve() from the via stack, which needs the
-    # solved geometry; defer the undefined-attribute check until then.
+    # solved geometry, so defer the undefined-attribute check until then.
     s.solve(allow_undefined=True)
 
     vias_rect = makevias(l, l.activ.rect, layers.Cont,
@@ -642,7 +694,7 @@ class Ptap(Cell):
         return [cls(l=R("0.7u"), w=R("0.7u"))]
 
 
-def _layoutgen_resistor(
+def layoutgen_resistor(
         cell: Cell,
         kind: str,
         *,
@@ -668,35 +720,35 @@ def _layoutgen_resistor(
     ps = int(cell.ps / R("1n"))
     bends = cell.b
 
-    if width < _tech_nm(f"{kind}_minW"):
+    if width < tech_nm(f"{kind}_minW"):
         raise ParameterError(f"w below {kind} minimum width.")
-    if length < _tech_nm(f"{kind}_minL"):
+    if length < tech_nm(f"{kind}_minL"):
         raise ParameterError(f"l below {kind} minimum length.")
-    if width > _tech_nm(f"{kind}_maxW"):
+    if width > tech_nm(f"{kind}_maxW"):
         raise ParameterError(f"w above {kind} maximum width ({kind}_maxW).")
-    if length > _tech_nm(f"{kind}_maxL"):
+    if length > tech_nm(f"{kind}_maxL"):
         raise ParameterError(
             f"l above {kind} maximum length ({kind}_maxL). Use series segments.")
-    if bends != 0 and ps < _tech_nm(f"{kind}_minPS"):
+    if bends != 0 and ps < tech_nm(f"{kind}_minPS"):
         raise ParameterError(f"ps below {kind} minimum spacing.")
     add_salblock = kind in ("rhigh", "rppd")
     if bends >= 2 and add_salblock:
         # Keep the SalBlock covers legal next to the salicided terminal
-        # heads; the foundry PCell would push the contacts out instead.
-        ps_floor = _tech_nm("Sal_c") + _tech_nm("Sal_d")
+        # heads, where the foundry PCell would push the contacts out instead.
+        ps_floor = tech_nm("Sal_c") + tech_nm("Sal_d")
         if ps < ps_floor:
             raise ParameterError(
                 f"bent {kind} with b >= 2 needs ps >= {ps_floor} nm "
                 "(SalBlock enclosure plus spacing next to the terminal "
                 "contacts); set ps on the instance.")
 
-    cont_size = _tech_nm("Cnt_a")
-    poly_over_cont = _tech_nm("Cnt_d")
-    contbar_poly_over = _tech_nm("CntB_d")
-    contbar_min_len = _tech_nm("CntB_a1")
-    metal_x_enc = _tech_nm("M1_c1")
-    metal_y_enc = max(_tech_nm("M1_c1"), _tech_nm(f"{kind}_met_over_cont"))
-    cont_to_body = _tech_nm(f"{kind}_cont_to_body")
+    cont_size = tech_nm("Cnt_a")
+    poly_over_cont = tech_nm("Cnt_d")
+    contbar_poly_over = tech_nm("CntB_d")
+    contbar_min_len = tech_nm("CntB_a1")
+    metal_x_enc = tech_nm("M1_c1")
+    metal_y_enc = max(tech_nm("M1_c1"), tech_nm(f"{kind}_met_over_cont"))
+    cont_to_body = tech_nm(f"{kind}_cont_to_body")
     head_len = cont_to_body + cont_size + poly_over_cont
 
     if width - 2 * contbar_poly_over < contbar_min_len:
@@ -735,7 +787,7 @@ def _layoutgen_resistor(
     # LVS measures a bent body as its shortest port-adjacent edge plus w,
     # so each stripe is drawn l - w long to restore the l parameter.
     stripe_len = length if bends == 0 else length - width
-    if bends and stripe_len < _tech_nm(f"{kind}_minL"):
+    if bends and stripe_len < tech_nm(f"{kind}_minL"):
         raise ParameterError(
             f"bent {kind} stripes are drawn l - w long; l = {length} nm "
             f"with w = {width} nm leaves less than {kind} minimum length.")
@@ -744,7 +796,7 @@ def _layoutgen_resistor(
         return i * pitch
 
     # Connector j joins stripes j and j+1, at the top for even j, at the
-    # bottom for odd j; n sits below stripe 0, p at the last free end.
+    # bottom for odd j. n sits below stripe 0, p at the last free end.
     body_rects = [
         Rect4I(stripe_x(i), 0, stripe_x(i) + width, stripe_len)
         for i in range(stripes)
@@ -791,8 +843,8 @@ def _layoutgen_resistor(
     total_y_hi = max(body_y_hi, l.poly_head_n.uy, l.poly_head_p.uy)
 
     if add_psd or add_nsd:
-        sd_enc = _tech_nm("Rhi_c" if add_nsd else "Rppd_b")
-        sal_enc = _tech_nm("Sal_c")
+        sd_enc = tech_nm("Rhi_c" if add_nsd else "Rppd_b")
+        sal_enc = tech_nm("Sal_c")
 
         if add_psd:
             l.psd = LayoutRect(
@@ -840,7 +892,7 @@ def _layoutgen_resistor(
             rect=(total_x_lo - sal_enc, total_y_lo - sal_enc, total_x_hi + sal_enc, total_y_hi + sal_enc),
         )
     else:
-        ext_enc = _tech_nm("Rsil_e")
+        ext_enc = tech_nm("Rsil_e")
         l.extblock = LayoutRect(
             layer=layers.EXTBlock,
             rect=(total_x_lo - ext_enc, total_y_lo - ext_enc, total_x_hi + ext_enc, total_y_hi + ext_enc),
@@ -852,7 +904,7 @@ def _layoutgen_resistor(
     return l
 
 
-def _layoutgen_cmim(cell: Cell) -> Layout:
+def layoutgen_cmim(cell: Cell) -> Layout:
     """Generate the fixed SG13G2 MiM capacitor layout."""
     if cell.m != 1:
         raise ParameterError("m != 1 not supported for layout.")
@@ -862,25 +914,25 @@ def _layoutgen_cmim(cell: Cell) -> Layout:
 
     width = int(cell.w / R("1n"))
     length = int(cell.l / R("1n"))
-    min_lw = _tech_nm("cmim_minLW")
+    min_lw = tech_nm("cmim_minLW")
     if width < min_lw or length < min_lw:
         raise ParameterError("w and l must be at least cmim_minLW.")
-    max_lw = _tech_nm("cmim_maxLW")
+    max_lw = tech_nm("cmim_maxLW")
     if width > max_lw or length > max_lw:
         raise ParameterError("w and l must be at most cmim_maxLW.")
 
-    mim_c = _tech_nm("Mim_c")
-    mim_d = _tech_nm("Mim_d")
-    tv1_size = _tech_nm("TV1_a")
-    tv1_space = _tech_nm("TV1_a") + _tech_nm("TV1_b")
-    tv1_enc = _tech_nm("TV1_d")
+    mim_c = tech_nm("Mim_c")
+    mim_d = tech_nm("Mim_d")
+    tv1_size = tech_nm("TV1_a")
+    tv1_space = tech_nm("TV1_a") + tech_nm("TV1_b")
+    tv1_enc = tech_nm("TV1_d")
 
     # The TopMetal1 plate (via array plus enclosure) must meet TM1.a. At
     # cmim_minLW only one via fits and the plate is too narrow.
-    tm1_min = _tech_nm("TM1_a")
+    tm1_min = tech_nm("TM1_a")
     for side, name in ((width, "w"), (length, "l")):
-        if _cmim_plate_span(side, mim_d, tv1_size, tv1_space, tv1_enc) < tm1_min:
-            needed = _cmim_min_side_for_tm1(mim_d, tv1_size, tv1_space, tv1_enc, tm1_min)
+        if cmim_plate_span(side, mim_d, tv1_size, tv1_space, tv1_enc) < tm1_min:
+            needed = cmim_min_side_for_tm1(mim_d, tv1_size, tv1_space, tv1_enc, tm1_min)
             raise ParameterError(
                 f"{name} = {side} nm gives a TopMetal1 plate narrower than "
                 f"TM1.a ({tm1_min} nm). Cmim needs w and l >= {needed} nm.")
@@ -922,7 +974,7 @@ def _layoutgen_cmim(cell: Cell) -> Layout:
     return l
 
 
-def _cmim_plate_span(side: int, mim_d: int, tv1_size: int, tv1_gap: int,
+def cmim_plate_span(side: int, mim_d: int, tv1_size: int, tv1_gap: int,
                      tv1_enc: int) -> int:
     """TopMetal1 plate width along one side of a Cmim: the TopVia1 array
     (same arithmetic as makevias) plus the TV1.d enclosure on both ends."""
@@ -932,13 +984,13 @@ def _cmim_plate_span(side: int, mim_d: int, tv1_size: int, tv1_gap: int,
     return count * tv1_size + (count - 1) * tv1_gap + 2 * tv1_enc
 
 
-def _cmim_min_side_for_tm1(mim_d: int, tv1_size: int, tv1_gap: int,
+def cmim_min_side_for_tm1(mim_d: int, tv1_size: int, tv1_gap: int,
                            tv1_enc: int, tm1_min: int) -> int:
     """Smallest Cmim side (10 nm steps) whose top plate meets TM1.a."""
-    side = _tech_nm("cmim_minLW")
-    while _cmim_plate_span(side, mim_d, tv1_size, tv1_gap, tv1_enc) < tm1_min:
+    side = tech_nm("cmim_minLW")
+    while cmim_plate_span(side, mim_d, tv1_size, tv1_gap, tv1_enc) < tm1_min:
         side += 10
-        if side > _tech_nm("cmim_maxLW"):
+        if side > tech_nm("cmim_maxLW"):
             break
     return side
 
@@ -962,6 +1014,28 @@ class Res(SimLeafCell):
     b = Parameter(int, default=0)
     ps = Parameter(R, default=R("0.18u"))
     m = Parameter(int, default=1)
+
+    #: Bend length factor of the resistor models (resistors_mod.lib).
+    display_kappa = 1.85
+
+    def display_resistance(self) -> float:
+        """
+        Nominal typical-corner resistance, following the geometry formula of
+        the ngspice models (resistors_mod.lib): sheet resistance over the
+        effective length and width plus the end resistance. Display only.
+        """
+        w = float(self.w)
+        weff = w + self.display_dw
+        leff = ((self.b + 1)*float(self.l)
+            + (2/self.display_kappa*weff + float(self.ps))*self.b)
+        return (self.display_rsh*leff/weff + 2*self.display_rz/w) / self.m
+
+    def display_params(self):
+        # Out-of-range parameters (caught later by layout/netlist checks)
+        # must not break the schematic display:
+        if float(self.w) <= 0 or float(self.w) + self.display_dw <= 0 or self.m < 1:
+            return self.params_list()
+        return self.params_list() + [f"R≈{format_si(self.display_resistance())}{OHM}"]
 
     def ngspice_current_pins(self):
         return {"i": "p"}
@@ -1031,9 +1105,14 @@ class Rsil(Res):
     l = Parameter(R, default=R("0.50u"))
     w = Parameter(R, default=R("0.50u"))
 
+    # Typical-corner model constants (rsh_rsil, weff, rzspec):
+    display_rsh = 7.0
+    display_dw = 0.01e-6
+    display_rz = 4.5e-6
+
     @viewgen_noctx
     def layout(self) -> Layout:
-        return _layoutgen_resistor(self, "rsil", add_res=True)
+        return layoutgen_resistor(self, "rsil", add_res=True)
 
     @classmethod
     def discoverable_instances(cls):
@@ -1051,9 +1130,14 @@ class Rppd(Res):
     l = Parameter(R, default=R("0.50u"))
     w = Parameter(R, default=R("0.50u"))
 
+    # Typical-corner model constants (rsh_rppd, weff, rzspec):
+    display_rsh = 260.0
+    display_dw = 0.006e-6
+    display_rz = 35e-6
+
     @viewgen_noctx
     def layout(self) -> Layout:
-        return _layoutgen_resistor(self, "rppd", add_psd=True)
+        return layoutgen_resistor(self, "rppd", add_psd=True)
 
     @classmethod
     def discoverable_instances(cls):
@@ -1071,9 +1155,14 @@ class Rhigh(Res):
     l = Parameter(R, default=R("0.96u"))
     w = Parameter(R, default=R("0.50u"))
 
+    # Typical-corner model constants (rsh_rhigh, weff, rzspec):
+    display_rsh = 1360.0
+    display_dw = -0.04e-6
+    display_rz = 80e-6
+
     @viewgen_noctx
     def layout(self) -> Layout:
-        return _layoutgen_resistor(self, "rhigh", add_psd=True, add_nsd=True)
+        return layoutgen_resistor(self, "rhigh", add_psd=True, add_nsd=True)
 
     @classmethod
     def discoverable_instances(cls):
@@ -1087,6 +1176,21 @@ class Cmim(SimLeafCell):
     w = Parameter(R, default=R("6.99u"))
     m = Parameter(int, default=1)
     ic = Parameter(R, optional=True)
+
+    # Typical-corner model constants: cap_carea (1.5 fF/um^2) and the
+    # perimeter capacitance matching the ngspice model (40 aF/um).
+    display_ca = 1.5e-3
+    display_cp = 4.0e-11
+
+    def display_capacitance(self) -> float:
+        """Nominal typical-corner capacitance (area plus perimeter term),
+        for the schematic display."""
+        w = float(self.w)
+        l = float(self.l)
+        return (self.display_ca*w*l + self.display_cp*2*(w + l)) * self.m
+
+    def display_params(self):
+        return self.params_list() + [f"C≈{format_si(self.display_capacitance())}F"]
 
     def ngspice_current_pins(self):
         return {"i": "p"}
@@ -1131,7 +1235,7 @@ class Cmim(SimLeafCell):
 
     @viewgen_noctx
     def layout(self) -> Layout:
-        return _layoutgen_cmim(self)
+        return layoutgen_cmim(self)
 
     @classmethod
     def discoverable_instances(cls):
@@ -1301,7 +1405,7 @@ public(grid = GridConfig(
     via_half=95,
     encl=10,
     encl_endcap=50,
-    manufacturing_grid=5, # sg13g2 layout quantum (MANUFACTURINGGRID)
+    manufacturing_grid=tech.manufacturing_grid,
     # Supply naming (sg13g2 stdcell library pins + ORDeC net conventions):
     vdd_pin="VDD",
     vss_pin="VSS",
@@ -1316,7 +1420,7 @@ public(grid = GridConfig(
     min_area_tracks=2,    # 2 * pitch * 210 nm wire >= 0.144 um^2 Mn min area
     port_pad_inner=600,   # from the edge rail into the block
     port_pad_outer=360,   # from the edge rail into the parent's channel
-    strap_vdd_x=-520,     # left margin; right strap mirrors to die_w + 520
+    strap_vdd_x=-520,     # left margin (the right strap mirrors to die_w + 520)
     strap_vss_x=-1080,    # just outside VDD
     rail_ext=150,
     mesh_half_w=210,      # 420 nm Metal5 mesh straps (2x wire width)

@@ -65,6 +65,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "ordec.ord" = ["*.lark"]
+"ordec.lib" = ["*.drc"]
 "ordec.layout" = ["*.lark"]
 "ordec.examples" = ["*.json", "*.ord"]
 "ordec.courses.getting_started" = ["*.json", "*.ord"]

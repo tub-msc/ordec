@@ -473,6 +473,14 @@ class Cell(metaclass=MetaCell):
         else:
             return [f"{k}={v}" for k, v in param_items]
 
+    def display_params(self) -> list[str]:
+        """
+        Parameter strings shown next to schematic instances. Defaults to
+        :meth:`params_list`; subclasses may add derived quantities, e.g. a
+        resistor's nominal resistance.
+        """
+        return self.params_list()
+
     def __repr__(self):
         return f"{type(self).__name__}({','.join(self.params_list(use_repr=True))})"
 

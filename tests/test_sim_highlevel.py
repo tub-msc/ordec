@@ -355,19 +355,13 @@ def test_sky130_inv_dc_sweep():
     assert h.o.voltage[-1] == pytest.approx(0.00012158997833462999, abs=1e-10)
 
 def test_sky130_nmos_out_of_range():
-    from ordec.sim.ngspice import NgspiceError
+    # Out-of-range dimensions fail at cell construction (params_check),
+    # before ngspice's model binning would reject them.
+    from ordec.core import ParameterError
     from ordec.lib import sky130
-    from ordec.sim import Simulator
 
-    s = Schematic()
-    s.vss = Net()
-    nmos = sky130.Nmos(l="100n", w="250n").symbol
-    s.i_nmos = SchemInstance(nmos.portmap(g=s.vss, d=s.vss, s=s.vss, b=s.vss), pos=Vec2R(10, 5))
-    s = s.freeze()
-
-    h = SimHierarchy.from_schematic(s)
-    with pytest.raises(NgspiceError, match="circuit not parsed"):
-        Simulator(h).op()
+    with pytest.raises(ParameterError):
+        sky130.Nmos(l="100n", w="250n")
 
 # IHP130 tests
 # ------------

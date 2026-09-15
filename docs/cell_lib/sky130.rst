@@ -3,6 +3,55 @@
 
 This cell library provides part of the `SkyWater Open Source PDK <https://github.com/google/skywater-pdk/>`_.
 
+Substrate handling in LVS
+-------------------------
+
+The SKY130 KLayout LVS deck models the substrate as a chip-wide global net
+whose name is given by the ``substrate_net`` argument of :func:`run_lvs`
+(default ``vss``). Devices with a substrate terminal (e.g. the bulk of
+``Nmos``) connect to this global net, and the deck merges it with layout nets
+of the same name. The name must therefore match the netlisted name of the net
+that ties the substrate taps (``Ptap``), otherwise the bulk terminals remain
+on a separate net and the comparison fails.
+
+DRC coverage
+------------
+
+The PDK's KLayout DRC deck (``sky130A_mr.drc``) covers widths, spacings and
+BEOL via enclosures, but omits several front-end rules (licon, npc, implant
+and nwell enclosures, poly/diff gate extensions). :func:`run_drc` therefore
+additionally runs a supplementary deck shipped with ORDeC that implements
+those rules from the published SkyWater periphery rule values. This does not
+reach the coverage of a magic-based sign-off; for tapeouts, an additional
+independent DRC run is advisable.
+
+Displayed device values
+-----------------------
+
+Schematic instances of ``Rpoly`` and ``Cmim`` show their nominal value
+(``R≈`` and ``C≈``) next to the raw parameters. It is derived from the drawn
+geometry with the typical-corner constants of the ngspice models:
+
+.. code-block:: none
+
+    R = 48.2 Ω/sq * leff / (w + 0.005 µm)
+    leff = (b + 1) * l + (ps + 1.12 * w) * b
+
+where each bend contributes the stripe gap plus two corner squares at the
+usual 0.56 corner factor, and
+
+.. code-block:: none
+
+    C = 2 fF/µm² * l * w + 164 aF/µm * 2 * (l + w)
+
+for ``Cmim``. The value is rounded to three significant digits and marked
+with ``≈`` because secondary model effects are not included: it matches the
+simulated typical-corner value within about 1 %. The labels are display-only
+and do not affect netlists or simulation.
+
+Cells
+-----
+
 .. automodule:: ordec.lib.sky130
   :members:
   :member-order: groupwise
