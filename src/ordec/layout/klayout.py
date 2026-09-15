@@ -190,8 +190,8 @@ def insert_drc_value(report: DrcReport, item, order: int, value_str: str, conv):
         if len(rings) > 1:
             # The DRC schema stores a single ring, and representing holes
             # properly would need a schema change. Approximating by the outer
-            # ring loses the holes but keeps the violation -- and keeps every
-            # other violation in the same report, which raising here destroyed.
+            # ring loses the holes but keeps the violation, and keeps every
+            # other violation in the same report, which raising here would drop.
             # Contact-array rules such as Cnt.b1 report exactly this shape.
             warnings.warn(
                 f"DRC polygon with {len(rings) - 1} hole(s) approximated by "
@@ -318,7 +318,7 @@ def parse_rdb(filename, report: DrcReport, directory: Directory = None):
                     # One unrepresentable shape must not discard the whole
                     # report. The item itself is already recorded with its
                     # rule and cell, so the violation is still counted and
-                    # named -- only its geometry is missing.
+                    # named, only its geometry is missing.
                     warnings.warn(
                         f"{cat_text} in {cell_name}: dropping unsupported "
                         f"DRC shape ({e.__class__.__name__}: "

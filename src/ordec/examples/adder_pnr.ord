@@ -18,6 +18,8 @@ stdcells.read_spice(ihp130.pdk().stdcell_spice, device_map=ihp130.device_map)
 
 pin_rects = lef_pin_rects(ihp130.pdk().stdcell_lef, "Metal1")
 
+FILL = tuple(stdcells[f"sg13g2_fill_{n}"] for n in (1, 2, 4, 8))
+
 Xor = stdcells["sg13g2_xor2_1"]
 And = stdcells["sg13g2_and2_1"]
 Or = stdcells["sg13g2_or2_1"]
@@ -88,7 +90,7 @@ cell RippleAdder:
     viewgen layout(self) -> Layout:
         place_and_route(self.schematic, ., grid=ihp130.grid,
             routing_spec=ihp130.SG13G2().default_routing_spec,
-            pin_rects=pin_rects)
+            pin_rects=pin_rects, filler_cells=FILL)
 
     @viewgen(auto_refresh=False)
     viewgen drc(self) -> DrcReport:

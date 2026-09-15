@@ -45,6 +45,8 @@ stdcells.read_spice(ihp130.pdk().stdcell_spice, device_map=ihp130.device_map)
 def pin_rects():
     return lef_pin_rects(ihp130.pdk().stdcell_lef, "Metal1")
 
+FILL = tuple(stdcells[f"sg13g2_fill_{n}"] for n in (1, 2, 4, 8))
+
 Inv  = stdcells["sg13g2_inv_1"]
 Dff  = stdcells["sg13g2_dfrbp_1"]
 Mux  = stdcells["sg13g2_mux2_1"]
@@ -82,7 +84,7 @@ cell InvChain:
     viewgen layout(self) -> Layout:
         place_and_route(self.schematic, ., grid=ihp130.grid,
             routing_spec=SG13G2().default_routing_spec,
-            pin_rects=pin_rects())
+            pin_rects=pin_rects(), filler_cells=FILL)
 
 cell DffArray:
     """n flip-flops sharing clk and rst (high fan-out), with per-bit d[i]/q[i]."""
@@ -120,7 +122,7 @@ cell DffArray:
     viewgen layout(self) -> Layout:
         place_and_route(self.schematic, ., grid=ihp130.grid,
             routing_spec=SG13G2().default_routing_spec,
-            pin_rects=pin_rects())
+            pin_rects=pin_rects(), filler_cells=FILL)
 
 cell Crossbar:
     """n mux2 cells: y[i] = sel[i] ? busB : busA, with busA/busB shared by all."""
@@ -154,7 +156,7 @@ cell Crossbar:
     viewgen layout(self) -> Layout:
         place_and_route(self.schematic, ., grid=ihp130.grid,
             routing_spec=SG13G2().default_routing_spec,
-            pin_rects=pin_rects())
+            pin_rects=pin_rects(), filler_cells=FILL)
 
 cell RippleAdder:
     """n-bit ripple-carry adder with sum[i] = a[i]^b[i]^carry[i] and
@@ -220,7 +222,7 @@ cell RippleAdder:
     viewgen layout(self) -> Layout:
         place_and_route(self.schematic, ., grid=ihp130.grid,
             routing_spec=SG13G2().default_routing_spec,
-            pin_rects=pin_rects())
+            pin_rects=pin_rects(), filler_cells=FILL)
 
 cell TiedReset:
     """n flip-flops sharing clk, RESET_B held high on each (no reset port)."""
@@ -255,7 +257,7 @@ cell TiedReset:
     viewgen layout(self) -> Layout:
         place_and_route(self.schematic, ., grid=ihp130.grid,
             routing_spec=SG13G2().default_routing_spec,
-            pin_rects=pin_rects())
+            pin_rects=pin_rects(), filler_cells=FILL)
 
 cell InvPair:
     """Two inverters in series (a composite, non-foundry sub-cell)."""
@@ -307,7 +309,7 @@ cell PairChain:
     viewgen layout(self) -> Layout:
         place_and_route(self.schematic, ., grid=ihp130.grid,
             routing_spec=SG13G2().default_routing_spec,
-            pin_rects=pin_rects())
+            pin_rects=pin_rects(), filler_cells=FILL)
 
 
 cell SplitSupply:
@@ -340,7 +342,7 @@ cell SplitSupply:
     viewgen layout(self) -> Layout:
         place_and_route(self.schematic, ., grid=ihp130.grid,
             routing_spec=SG13G2().default_routing_spec,
-            pin_rects=pin_rects())
+            pin_rects=pin_rects(), filler_cells=FILL)
 
 
 cell MisnamedSupply:
@@ -367,7 +369,7 @@ cell MisnamedSupply:
     viewgen layout(self) -> Layout:
         place_and_route(self.schematic, ., grid=ihp130.grid,
             routing_spec=SG13G2().default_routing_spec,
-            pin_rects=pin_rects())
+            pin_rects=pin_rects(), filler_cells=FILL)
 
 
 cell HandGeometry:
@@ -399,7 +401,7 @@ cell HandGeometry:
             .rect = (0, 0, 3000, 3000)
         place_and_route(self.schematic, ., grid=ihp130.grid,
             routing_spec=SG13G2().default_routing_spec,
-            pin_rects=pin_rects())
+            pin_rects=pin_rects(), filler_cells=FILL)
 
 
 cell DeviceLeaf:
@@ -426,4 +428,4 @@ cell DeviceLeaf:
     viewgen layout(self) -> Layout:
         place_and_route(self.schematic, ., grid=ihp130.grid,
             routing_spec=SG13G2().default_routing_spec,
-            pin_rects=pin_rects())
+            pin_rects=pin_rects(), filler_cells=FILL)

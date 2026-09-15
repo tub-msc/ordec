@@ -17,7 +17,7 @@ from . import generic_mos
 from .pdk_common import PdkDict, TechInfo, check_dir, check_file, rundir, format_si, OHM
 from ..layout import makevias, write_gds
 from ..layout import klayout
-from ..layout.pnr import GridConfig
+from ..layout.pnr import GridConfig, PdnSpec, PdnStripes, PdnVia
 
 @functools.cache
 def pdk() -> PdkDict:
@@ -821,7 +821,7 @@ def layoutgen_resistor(
             l.poly_bend[j] = LayoutRect(layer=layers.PolyRes, rect=rect)
         if add_res:
             # RES must match the body exactly (rsil core = PolyRes AND
-            # RES); covering the heads would grow the extracted body.
+            # RES). Covering the heads would grow the extracted body.
             l.res = PathNode()
             for i, rect in enumerate(body_rects + bend_rects):
                 l.res[i] = LayoutRect(layer=layers.RES, rect=rect)
@@ -1393,7 +1393,7 @@ def run_lvs(layout: Layout, symbol: Symbol, use_tempdir: bool=True) -> LvsReport
 
 # The sg13g2 routing-grid and emitted-geometry profile the P&R engine works
 # from. Track pitches and row height come from the tech LEF; the wire, via,
-# landing, strap and rail dimensions and the manufacturing grid come from the
+# landing, stripe and rail dimensions and the manufacturing grid come from the
 # sign-off DRC rules. Frozen, so the engine derives its per-floorplan variants
 # with dataclasses.replace rather than mutating it.
 public(grid = GridConfig(
@@ -1402,7 +1402,7 @@ public(grid = GridConfig(
     y_pitch=420,
     row_height=3780,
     tracks_per_row=9,
-    via_half=95,
+    via_half=(95, 95, 95, 95),
     encl=10,
     encl_endcap=50,
     manufacturing_grid=tech.manufacturing_grid,
@@ -1412,16 +1412,38 @@ public(grid = GridConfig(
     vdd_net="vdd",
     vss_net="vss",
     # Emitted geometry (sg13g2 sign-off DRC rules):
-    wire_width=210,       # Mn min width
-    wire_ext=150,         # via half 95 + 55 endcap (Mn.c1 / V*.c1)
-    strap_half_w=105,     # wire_width / 2
-    land_half_h=345,      # 690 nm landing -> Mn min area
+    wire_width=(210, 210, 210, 210),   # Mn min width
+    wire_space=(210, 210, 210, 210),   # Mn min spacing (Mn.b)
+    wire_ext=(150, 150, 150, 150),     # via half 95 + 55 endcap (Mn.c1 / V*.c1)
+    land_half_h=(345, 345, 345, 345),  # 690 nm landing -> Mn min area
+    m1_land_half_w=105,   # half the Metal1 landing width under a Via1
     m1_land_half_h=145,   # Metal1 endcap landing under a Via1 (V1.c1)
-    min_area_tracks=2,    # 2 * pitch * 210 nm wire >= 0.144 um^2 Mn min area
-    port_pad_inner=600,   # from the edge rail into the block
-    port_pad_outer=360,   # from the edge rail into the parent's channel
-    strap_vdd_x=-520,     # left margin (the right strap mirrors to die_w + 520)
-    strap_vss_x=-1080,    # just outside VDD
-    rail_ext=150,
-    mesh_half_w=210,      # 420 nm Metal5 mesh straps (2x wire width)
+    m1_space=210,         # Metal1 min spacing (M1.b)
+    via1_space=190,       # Via1 cut min spacing (V1.b)
+    min_area_tracks=(2, 2, 2, 2),  # 2 * pitch * 210 nm wire >= 0.144 um^2 Mn min area
+    port_pad_inner=600,   # port-pad depth from the die edge
+    # Power distribution: TopMetal1 stripes (vertical, tapping the rails
+    # through Via1..Via4 and TopVia1 stacks) crossed by TopMetal2 stripes
+    # (horizontal, connected by TopVia2). The thick top metals carry the
+    # supply current, and neither is a routing layer, so the stripes cost no
+    # routing capacity beyond the rail-tap columns. Stripe widths stay below
+    # the 5 um wide-metal spacing threshold (TM2.bR).
+    pdn=PdnSpec(stripes=(
+        PdnStripes(level=5,       # TopMetal1
+            width=2200,           # >= 1640 (TM1.a)
+            pitch=75600,          # one supply pair per pitch as the die grows
+            spacing=1640,         # TM1.b
+            via=PdnVia(cut=420,   # TopVia1 exact cut (TV1.a)
+                cut_pitch=840,    # cut + spacing (TV1.b)
+                encl_above=420,   # TopMetal1 enclosure (TV1.d)
+                encl_below=100)), # Metal5 enclosure (TV1.c)
+        PdnStripes(level=6,       # TopMetal2
+            width=2200,           # >= 2000 (TM2.a)
+            pitch=75600,
+            spacing=2000,         # TM2.b
+            via=PdnVia(cut=900,   # TopVia2 cut (TV2.a)
+                cut_pitch=1960,   # cut + spacing (TV2.b)
+                encl_above=500,   # TopMetal2 enclosure (TV2.d)
+                encl_below=500)), # TopMetal1 enclosure (TV2.c)
+        )),
     ))

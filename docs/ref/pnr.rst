@@ -10,7 +10,7 @@ must supply as explicit parameters: the PDK's
 the spec's nine lowest ``route_id`` layers, so the layer stack has its single source of
 truth in :mod:`ordec.core.schema`, shared with :doc:`SRouter <layout>`), a
 :class:`~ordec.layout.pnr.GridConfig` (the routing grid and the DRC-driven
-emission geometry such as wire, via, landing and strap dimensions) and a per-cell
+emission geometry such as wire, via, landing and stripe dimensions) and a per-cell
 pin-rectangle lookup, which :func:`~ordec.layout.pnr.lef_pin_rects` reads out of a
 library LEF for a given pin layer. An "is this a routing leaf?" predicate can be passed
 too, but defaults to treating every cell loaded from an
@@ -40,9 +40,9 @@ geometry that is DRC-clean by construction. The algorithms are textbook ones:
 simulated-annealing placement, flipped-row floorplanning, and negotiated-congestion maze
 routing with A\* (see `Scope`_).
 
-The engine wants a standard-cell library: abutting rails, Metal1-only pins, integer-track
-cell widths. An analog placement flow would be a sibling package rather than a mode of
-this one.
+The engine wants a standard-cell library: abutting rails, pins on the access layer
+(Metal1, or a sub-layer such as sky130's li1), integer-site cell widths. An analog
+placement flow would be a sibling package rather than a mode of this one.
 
 The package is one module per phase. ``place`` orders cells and folds them into rows,
 ``route`` does pin access, pattern and maze search and the rip-up loop, and ``flow`` holds
@@ -60,8 +60,8 @@ pin-rectangle lookup and rejected with a clear exception when the engine looks i
 since the engine routes the metals above the leaf cells. A
 few cells with very small or staircase pins (``a21o``, ``dlhrq``) can hit a Via1 endcap
 landing that cannot be satisfied without an M1.b or V1.c1 violation, and fixing those
-would take a polygon-exact via-access engine. Non-logic cells (antenna, fill, decap) are
-out of scope.
+would take a polygon-exact via-access engine. Antenna and decap cells are out of scope,
+while fill and well-tap cells are placed by the flow itself rather than routed.
 
 The routing grid
 ----------------
@@ -162,35 +162,60 @@ min-area and via-endcap rules are carried by the wires themselves rather than by
 isolated via landings, which cannot satisfy them at this pitch. That is why every run
 spans a minimum number of tracks (``extend_min_area``) and overhangs its end vias.
 
+The geometry model is per layer throughout: wire widths, spacings, extensions, via cuts
+and minimum areas are tuples over the four routing layers, and each layer runs on its
+own track lattice, a multiple and offset of the base grids (``track_mult``,
+``track_off``). A uniform stack such as sg13g2 keeps every multiple at 1; sky130hd runs
+met3/met4 on every second base track and met5 on every tenth, offset by half a pitch
+each. Where a min-width wire cannot enclose its vias, explicit landing pads per via
+(``via_land``) take over, and ``use_m5`` withholds a top layer whose wires cannot fit
+the base grid at all. Three further profile hooks cover standard-cell conventions the
+sg13g2 library does not need: a pin-access sub-layer under Metal1 (sky130's li1,
+reached through the sub-via under the Metal1 landing), well-abutment pins whose
+terminals are never routed (``abut_pins``), and well-tap insertion
+(``well_tap_dist`` with the ``well_tap_cell`` argument), which re-abuts each packed row
+with a tap cell wherever the run since the last one would exceed the limit, at least
+one per row. Filler cells passed as ``filler_cells`` close each row's tail out to the
+die edge, so the rails and wells stay continuous and the die carries no bare stretch,
+and the die width is a whole number of placement sites so the tiling always closes.
+
 Power delivery
 --------------
 
-Within a row, power is carried by rail abutment, as in any standard-cell flow. A
-multi-row block gets two more structures. A single-row block needs neither, since its one
-shared rail per supply already ties everything:
+Within a row, power is carried by rail abutment, as in any standard-cell flow. Above the
+rails, the block carries a power distribution network of **stripes** on the metals above
+the routing window, declared per PDK as a ``PdnSpec`` on the ``GridConfig`` profile (the
+sg13g2 profile puts them on the thick TopMetal1 and TopMetal2). A profile without a PDN
+(``pdn=None``) is limited to single-row blocks, since the boustrophedon's inner rails
+would float without stripes.
 
-* **Side straps** (``emit_power_straps``) are a vertical Metal2 strap per supply in the
-  margin on each side of the cell area, tapping every rail. The ring ties the rails the
-  boustrophedon leaves separate and exposes the supply ports on Metal4 pads in the margin.
-* **Power mesh** (``emit_power_mesh``) is a horizontal Metal5 strap over every *interior*
-  rail, meaning the rails shared between two abutted rows, which carry the most current.
-  Each strap is stitched down to its rail by via stacks at regular tap columns, and the
-  rails carry the mesh current on to the side straps. Rail current then flows at most half
-  a tap pitch on thin Metal1 instead of the full row length, which is what bounds IR drop
-  as blocks grow wider. The straps sit on the rail lines, where the router can never place
-  a wire because a layer change is forbidden on rail tracks, so the mesh costs almost no
-  routing capacity. The tap via stacks and the tracks beside the wide straps are reserved
-  as hard blockages (``mesh_blocked_nodes``) that terminal access, the pattern router, the
-  maze router and the min-area growth all respect. Because those blockages are hard, the
-  tap columns are chosen around the placement's pin accesses (``tap_avoid_columns``). A
-  tap that invalidates a terminal's every access candidate would deadlock the rip-up
-  negotiation, since such a terminal cannot retreat to an alternative. It can do that by
-  strangling the terminal's min-area growth against a neighbor or by crowding out its
-  off-track access bridge, so each nominal tap is nudged to the nearest harmless column
-  instead. The mesh stays strictly within the die. The side margins and the strip above
-  the top rail are the *parent's* territory, where its risers to the edge pads run, which
-  is what keeps the block composable. ``GridConfig.power_mesh`` switches the mesh on and
-  off and ``mesh_tap_pitch`` sets the stitch density.
+Each stripe level alternates the two supply nets at an even spacing across the die,
+targeting one supply pair per configured pitch. The first level runs vertically and
+**taps** every rail of its net where it crosses one: a via stack from the Metal1 rail
+through the routing metals, topped by a cut row sized to the stripe width
+(``emit_pdn``). Each further level crosses the one below at right angles and connects
+with a cut array at every same-net crossing. Rail current then flows at most half a
+stripe pitch on thin Metal1 instead of the full row length, which is what bounds IR drop
+as blocks grow wider. The taps sit on rail lines, where the router can never place a
+wire because a layer change is forbidden on rail tracks, and the stripe metals lie above
+the routing window, so the whole network costs almost no routing capacity.
+
+Stripe positions are fixed before routing (``plan_pdn``), because the tap via stacks and
+their landings are reserved as hard blockages that terminal access, the pattern router,
+the maze router and the min-area growth all respect. Because those blockages are hard,
+the stripe columns are chosen around the placement's pin accesses
+(``tap_avoid_columns``). A tap that invalidates a terminal's every access candidate
+would deadlock the rip-up negotiation, since such a terminal cannot retreat to an
+alternative. It can do that by strangling the terminal's min-area growth against a
+neighbor or by crowding out its off-track access bridge, so each nominal stripe column
+is nudged to the nearest harmless one instead.
+
+A level is emitted only if two stripes plus their spacing fit the die extent
+perpendicular to them, so a small block simply carries fewer levels, and a single-row
+die too narrow for any stripes falls back to its two self-tied rails. A multi-row die is
+widened to fit the first level if necessary, since without stripes the boustrophedon's
+inner rails would float. A stripe overhangs a die edge only just far enough to enclose
+its edge-rail tap cuts, sitting in the parent's channel like the signal port pads do.
 
 The supply pin and net names (``VDD``, ``vdd`` and so on) are part of the ``GridConfig``
 profile rather than the engine. The sg13g2 conventions live in ``ihp130.grid``.
@@ -198,28 +223,28 @@ profile rather than the engine. The sg13g2 conventions live in ``ihp130.grid``.
 The block interface
 -------------------
 
-Every signal port is routed out to the top or the bottom edge and exposed on a Metal4 pad
-straddling that rail, out in the parent's channel. The parent therefore lands on the pad
-and never routes over the block interior, which is what keeps a composition robust: a
-placement change inside the block cannot drop a parent wire onto an internal net. The
-supplies need no escape, since they leave on the side straps.
+Every signal port is routed out to one of the four die edges and exposed on a pad flush
+with that edge, reaching ``port_pad_inner`` into the block: a Metal4 pad on the top and
+bottom edges, a Metal3 one on the left and right. All pin geometry stays within the die
+outline, so blocks can abut. The parent lands on the pad and never routes over the block
+interior, which is what keeps a composition robust: a placement change inside the block
+cannot drop a parent wire onto an internal net. The supplies need no escape, since they
+leave on their stripes, and each supply port is exposed on one topmost-level stripe.
 
 Which edge a port takes is normally the parent's decision, since only the parent knows
-what sits above and below the block. Pass it in::
+what surrounds the block. Pass it in::
 
     place_and_route(schematic, layout, ...,
-        port_edges={'clk': 'bottom', 'done': 'top'})
+        port_edges={'clk': 'bottom', 'data': 'left', 'done': 'top'})
 
 This is the same constraint a production flow applies at the floorplan stage, where pin
 placement is decided top-down and pushed into each block. A parent's layout view
 generator is the natural place to derive the mapping, since it has already placed the
 block and its neighbours.
 
-A port left out of ``port_edges`` falls back to whichever edge its own terminals sit
-nearer, so a block routed on its own still does something sensible: a net driven from the
-bottom row does not climb the whole block to leave it and come straight back down. On an
-8-bit register array that halves the routed wirelength, from 366 um to 210 um, with 14 of
-the 18 ports leaving at the bottom.
+A port left out of ``port_edges`` falls back to its nearest edge, so a block routed on
+its own still does something sensible: a net driven from deep inside the block does not
+cross it to leave, only for the parent to bring the wire straight back.
 
 The fallback is worth understanding before relying on it. It sees only the block's own
 terminals, never the parent's connectivity, so it is uninformed about the very thing that

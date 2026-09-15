@@ -1,0 +1,175 @@
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+"""
+Synthetic cells for the sky130 place-and-route tests
+(tests/test_sky130_pnr.py), the sky130hd counterparts of pnr_cells.ord.
+The well pins (VNB/VPB) are wired to the supply nets as the standard-cell
+netlists require, and the profile's abut_pins drops them from routing.
+"""
+
+import functools
+
+from ordec.core import *
+from ordec.extlibrary import ExtLibrary
+from ordec.lib import sky130
+from ordec.lib.sky130 import SKY130
+from ordec.layout.pnr import lef_pin_rects, place_and_route
+
+stdcells = ExtLibrary()
+stdcells.read_lef(sky130.stdcell_pdk().lef)
+stdcells.read_gds(sky130.stdcell_pdk().gds, SKY130().layers)
+stdcells.read_spice(sky130.stdcell_pdk().cdl, device_map=sky130.device_map_cdl)
+
+@functools.cache
+def pin_rects():
+    return lef_pin_rects(sky130.stdcell_pdk().lef, "li1", rail_layer="met1",
+        rail_pins=("VPWR", "VGND"), obs_ok=("li1",),
+        ignore_layers=("nwell", "pwell"))
+
+WellTap = stdcells["sky130_fd_sc_hd__tapvpwrvgnd_1"]
+FILL = tuple(stdcells[f"sky130_fd_sc_hd__fill_{n}"] for n in (1, 2, 4, 8))
+
+Inv = stdcells["sky130_fd_sc_hd__inv_1"]
+Xor = stdcells["sky130_fd_sc_hd__xor2_1"]
+And = stdcells["sky130_fd_sc_hd__and2_1"]
+Or  = stdcells["sky130_fd_sc_hd__or2_1"]
+Dff = stdcells["sky130_fd_sc_hd__dfxtp_1"]
+
+cell DffChain:
+    """n flip-flops in series on a shared clock, exercising the sequential
+    cells' special low-leakage devices and their CDL device combining."""
+    n = Parameter(int, default=2)
+
+    viewgen symbol(self) -> Symbol:
+        input d:   .align=West
+        input clk: .align=West
+        output q:  .align=East
+        inout vdd: .align=North
+        inout vss: .align=South
+
+    viewgen schematic(self) -> Schematic:
+        port d:   .align=East; .pos=(0, 0)
+        port clk: .align=East; .pos=(0, 4)
+        port q:   .align=West; .pos=(20 + 8 * self.n, 0)
+        port vdd: .align=East; .pos=(0, 8)
+        port vss: .align=East; .pos=(0, 12)
+
+        path ff, nd
+        for i in range(self.n - 1):
+            net nd[i]
+        for i in range(self.n):
+            src = d if i == 0 else nd[i - 1]
+            dst = q if i == self.n - 1 else nd[i]
+            Dff ff[i]:
+                .pos = (10 + 8 * i, 4)
+                .D -- src; .CLK -- clk; .Q -- dst
+                .VPWR -- vdd; .VGND -- vss
+                .VPB -- vdd; .VNB -- vss
+
+    viewgen layout(self) -> Layout:
+        place_and_route(self.schematic, ., grid=sky130.grid,
+            routing_spec=SKY130().default_routing_spec,
+            pin_rects=pin_rects(), sub_via_layer=SKY130().layers.mcon,
+            well_tap_cell=WellTap, filler_cells=FILL)
+
+cell InvChain:
+    """n inverters in series: a -> inv0 -> inv1 -> ... -> y."""
+    n = Parameter(int, default=8)
+
+    viewgen symbol(self) -> Symbol:
+        input a:   .align=West
+        output y:  .align=East
+        inout vdd: .align=North
+        inout vss: .align=South
+
+    viewgen schematic(self) -> Schematic:
+        port a:   .align=East; .pos=(0, 10)
+        port y:   .align=West; .pos=(20 + 8 * self.n, 10)
+        port vdd: .align=East; .pos=(0, 18)
+        port vss: .align=East; .pos=(0, 2)
+
+        path inv, nd
+        for i in range(self.n - 1):
+            net nd[i]
+        for i in range(self.n):
+            src = a if i == 0 else nd[i - 1]
+            dst = y if i == self.n - 1 else nd[i]
+            Inv inv[i]:
+                .pos = (10 + 8 * i, 10)
+                .A -- src; .Y -- dst
+                .VPWR -- vdd; .VGND -- vss
+                .VPB -- vdd; .VNB -- vss
+
+    viewgen layout(self) -> Layout:
+        place_and_route(self.schematic, ., grid=sky130.grid,
+            routing_spec=SKY130().default_routing_spec,
+            pin_rects=pin_rects(), sub_via_layer=SKY130().layers.mcon,
+            well_tap_cell=WellTap, filler_cells=FILL)
+
+cell RippleAdder:
+    """n-bit ripple-carry adder with sum[i] = a[i]^b[i]^carry[i] and
+    carry[i+1] = (a[i]&b[i]) | (carry[i] & (a[i]^b[i])), with carry[0]=cin."""
+    n = Parameter(int, default=4)
+
+    viewgen symbol(self) -> Symbol:
+        input cin:   .align=West
+        output cout: .align=East
+        inout vdd:   .align=North
+        inout vss:   .align=South
+        path a, b, sum
+        for i in range(self.n):
+            input a[i]:    .align=West
+            input b[i]:    .align=West
+            output sum[i]: .align=East
+
+    viewgen schematic(self) -> Schematic:
+        path a, b, sum
+        for i in range(self.n):
+            port a[i]:   .align=East; .pos=(0, 16 * i)
+            port b[i]:   .align=East; .pos=(0, 16 * i + 4)
+            port sum[i]: .align=West; .pos=(46, 16 * i)
+        port cin:  .align=East; .pos=(0, 16 * self.n)
+        port cout: .align=West; .pos=(46, 16 * self.n)
+        port vdd:  .align=East; .pos=(0, 16 * self.n + 4)
+        port vss:  .align=East; .pos=(0, 16 * self.n + 8)
+
+        # carry[i] is the carry into bit i: carry[0]=cin, carry[n]=cout.
+        path cy
+        carry = [cin]
+        for i in range(self.n - 1):
+            net cy[i]
+            carry.append(cy[i])
+        carry.append(cout)
+
+        path t, g, p, txor, sxor, gand, pand, cor
+        for i in range(self.n):
+            net t[i]
+            net g[i]
+            net p[i]
+            Xor txor[i]:
+                .pos = (10, 16 * i)
+                .A -- a[i]; .B -- b[i]; .X -- t[i]
+                .VPWR -- vdd; .VGND -- vss; .VPB -- vdd; .VNB -- vss
+            Xor sxor[i]:
+                .pos = (22, 16 * i)
+                .A -- t[i]; .B -- carry[i]; .X -- sum[i]
+                .VPWR -- vdd; .VGND -- vss; .VPB -- vdd; .VNB -- vss
+            And gand[i]:
+                .pos = (34, 16 * i)
+                .A -- a[i]; .B -- b[i]; .X -- g[i]
+                .VPWR -- vdd; .VGND -- vss; .VPB -- vdd; .VNB -- vss
+            And pand[i]:
+                .pos = (10, 16 * i + 8)
+                .A -- carry[i]; .B -- t[i]; .X -- p[i]
+                .VPWR -- vdd; .VGND -- vss; .VPB -- vdd; .VNB -- vss
+            Or cor[i]:
+                .pos = (22, 16 * i + 8)
+                .A -- g[i]; .B -- p[i]; .X -- carry[i + 1]
+                .VPWR -- vdd; .VGND -- vss; .VPB -- vdd; .VNB -- vss
+
+    viewgen layout(self) -> Layout:
+        place_and_route(self.schematic, ., grid=sky130.grid,
+            routing_spec=SKY130().default_routing_spec,
+            pin_rects=pin_rects(), sub_via_layer=SKY130().layers.mcon,
+            well_tap_cell=WellTap, filler_cells=FILL)

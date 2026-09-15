@@ -137,11 +137,19 @@ def order_cells_sa(cells, nets, cfg, iters=6000, seed=1, resync=500):
     since a net crossing rows is far harder to route. A single row, or a netlist
     with no multi-terminal signal nets, returns the barycenter order directly.
 
+    The cost also carries the folded maximum row width, weighted by the row
+    count, since the die follows the widest row: an order that clusters wide
+    cells folds into one oversized row and pure-wirelength annealing would
+    keep it. The weight makes a nanometer of die width cost as much as
+    ``n_rows`` nanometers of wire, which is the area it adds.
+
     A swap is scored incrementally: it exchanges the two cells' positions and
     re-derives only the bboxes of the nets touching them, so a move costs
-    O(degree) rather than a full fold. Unequal cell widths make the slot
-    positions drift from the true fold, so every ``resync`` accepted moves the
-    fold and the bboxes are recomputed exactly.
+    O(degree) rather than a full fold. The width term is scored against the
+    last exact fold's row assignment. Unequal cell widths make the slot
+    positions and the row assignment drift from the true fold, so every
+    ``resync`` accepted moves the fold, the bboxes and the row sums are
+    recomputed exactly.
 
     Args:
         cells: ``{name: LeafCell}`` for the cells to order.
@@ -169,6 +177,8 @@ def order_cells_sa(cells, nets, cfg, iters=6000, seed=1, resync=500):
     def half_perim(box):
         return (box[1] - box[0]) + 2 * (box[3] - box[2])
 
+    width_weight = cfg.n_rows
+
     def full_state(order):
         center = cell_centers(cells, order, cfg)
         bbox = []
@@ -176,7 +186,15 @@ def order_cells_sa(cells, nets, cfg, iters=6000, seed=1, resync=500):
             xs = [center[m][0] for m in members]
             ys = [center[m][1] for m in members]
             bbox.append((min(xs), max(xs), min(ys), max(ys)))
-        return center, bbox, sum(half_perim(box) for box in bbox)
+        row_of = {}
+        row_sums = []
+        for row, row_cells in enumerate(fold_rows(cells, order, cfg)):
+            row_sums.append(sum(cells[n].width for n in row_cells))
+            for name in row_cells:
+                row_of[name] = row
+        cost = sum(half_perim(box) for box in bbox) \
+            + width_weight * max(row_sums)
+        return center, bbox, row_of, row_sums, cost
 
     def moved_bbox(ni, box, moved, new_pos):
         # One member of net ni moves off box to new_pos. A growing move only
@@ -195,7 +213,7 @@ def order_cells_sa(cells, nets, cfg, iters=6000, seed=1, resync=500):
 
     rng = random.Random(seed)
     order = order_cells(cells, nets, cfg.supply_net_names)
-    center, bbox, cur_cost = full_state(order)
+    center, bbox, row_of, row_sums, cur_cost = full_state(order)
     best_order, best_cost = order[:], cur_cost
     temp = max(cur_cost / max(len(order), 1), 1.0)
     accepted = 0
@@ -217,19 +235,32 @@ def order_cells_sa(cells, nets, cfg, iters=6000, seed=1, resync=500):
             box = moved_bbox(ni, bbox[ni], moved, new_pos)
             new_boxes.append((ni, box))
             delta += half_perim(box) - half_perim(bbox[ni])
+        ra, rb = row_of[cell_a], row_of[cell_b]
+        if ra != rb:
+            # Against the last exact fold, the swap exchanges the cells'
+            # rows, so only two row sums move.
+            wa, wb = cells[cell_a].width, cells[cell_b].width
+            old_max = max(row_sums)
+            row_sums[ra] += wb - wa
+            row_sums[rb] += wa - wb
+            delta += width_weight * (max(row_sums) - old_max)
         if delta <= 0 or rng.random() < math.exp(-delta / temp):
             order[a], order[b] = order[b], order[a]
             center[cell_a], center[cell_b] = pos_b, pos_a
+            row_of[cell_a], row_of[cell_b] = rb, ra
             for ni, box in new_boxes:
                 bbox[ni] = box
             cur_cost += delta
             accepted += 1
-            if accepted % resync == 0:   # exact re-fold: cancel slot drift
-                center, bbox, cur_cost = full_state(order)
+            if accepted % resync == 0:   # exact re-fold: cancel the drift
+                center, bbox, row_of, row_sums, cur_cost = full_state(order)
                 if cur_cost < best_cost:
                     best_cost, best_order = cur_cost, order[:]
+        elif ra != rb:
+            row_sums[ra] += cells[cell_a].width - cells[cell_b].width
+            row_sums[rb] += cells[cell_b].width - cells[cell_a].width
         temp *= 0.9995
-    _, _, final_cost = full_state(order)
+    _, _, _, _, final_cost = full_state(order)
     if final_cost < best_cost:
         best_cost, best_order = final_cost, order[:]
     return best_order
