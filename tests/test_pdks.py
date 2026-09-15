@@ -9,7 +9,6 @@ geometry details, parameter bounds) stays in the per-PDK test files.
 """
 
 import math
-import sys
 
 import pytest
 
@@ -20,12 +19,8 @@ from ordec.lib import ihp130, sky130, Gnd, Vdc
 from .lib.ihp130_inv import Inv as Ihp130Inv
 from .lib.sky130_inv import Inv as Sky130Inv
 from .lib.pdk_mos2f import Mos2f
-from .lib.thinwrap import thin_wrapper_cell
+from .lib.thinwrap import gallery_wrapper_cell
 
-
-def pdklib(cell):
-    """The PDK library module a device cell belongs to."""
-    return sys.modules[type(cell).__module__]
 
 def short_id(cell):
     return f"{type(cell).__module__.rsplit('.', 1)[-1]}-{type(cell).__name__}"
@@ -102,44 +97,38 @@ def test_mos_two_finger_lvs_clean(pdk):
     assert mos2f_run_lvs(pdk, cell).clean()
 
 
-# Passives: DRC/LVS of the devices, meanders, resistance and capacitance
-# ----------------------------------------------------------------------
+# Passives: DRC/LVS galleries, resistance and capacitance
+# --------------------------------------------------------
 
-PASSIVES = [
-    ihp130.Rsil(), ihp130.Rppd(), ihp130.Rhigh(), ihp130.Cmim(),
-    sky130.Rpoly(), sky130.Cmim(),
-]
+# All passive devices of a PDK, plus representative meanders, in one gallery
+# layout: deck startup dominates KLayout runtime, so a single DRC and a
+# single LVS run per PDK cover them all. Meander picks span the resistor
+# kinds, both stripe parities (even and odd counts place the p terminal at
+# opposite ends) and a high bend count.
+GALLERIES = {
+    'ihp130': [
+        ihp130.Rsil(), ihp130.Rppd(), ihp130.Rhigh(), ihp130.Cmim(),
+        ihp130.Rsil(l="2.0u", w="0.5u", b=1, ps="180n"),
+        ihp130.Rppd(l="2.0u", w="0.5u", b=2, ps="400n"),
+        ihp130.Rhigh(l="2.0u", w="0.5u", b=5, ps="400n"),
+    ],
+    'sky130': [
+        sky130.Rpoly(), sky130.Cmim(),
+        sky130.Rpoly(l="2.0u", w="0.5u", b=2),
+    ],
+}
 
-@pytest.mark.parametrize("cell", PASSIVES, ids=short_id)
-def test_passive_lvs_clean(cell):
-    wrapper = thin_wrapper_cell(cell)
-    lvs_report = pdklib(cell).run_lvs(wrapper.layout, wrapper.symbol, use_tempdir=True)
+@pytest.mark.parametrize("pdk", GALLERIES.keys())
+def test_passive_gallery_lvs_clean(pdk):
+    wrapper = gallery_wrapper_cell(GALLERIES[pdk], f"PassiveGallery_{pdk}")
+    lvs_report = MOS_PDKS[pdk].run_lvs(wrapper.layout, wrapper.symbol,
+        use_tempdir=True)
     assert lvs_report.clean()
 
-@pytest.mark.parametrize("cell", PASSIVES, ids=short_id)
-def test_passive_drc_clean(cell):
-    res = pdklib(cell).run_drc(thin_wrapper_cell(cell).layout, use_tempdir=True)
-    assert res.summary() == {}
-
-
-# Representative meanders instead of a full kind x bends matrix (each case
-# costs several KLayout runs): even and odd stripe counts place the p
-# terminal at opposite ends, so both parities are covered.
-MEANDERS = [
-    ihp130.Rsil(l="2.0u", w="0.5u", b=1, ps="180n"),
-    ihp130.Rhigh(l="2.0u", w="0.5u", b=2, ps="400n"),
-    sky130.Rpoly(l="2.0u", w="0.5u", b=2),
-]
-
-@pytest.mark.parametrize("cell", MEANDERS, ids=short_id)
-def test_resistor_meander_lvs_clean(cell):
-    wrapper = thin_wrapper_cell(cell)
-    lvs_report = pdklib(cell).run_lvs(wrapper.layout, wrapper.symbol, use_tempdir=True)
-    assert lvs_report.clean()
-
-@pytest.mark.parametrize("cell", MEANDERS, ids=short_id)
-def test_resistor_meander_drc_clean(cell):
-    res = pdklib(cell).run_drc(thin_wrapper_cell(cell).layout, use_tempdir=True)
+@pytest.mark.parametrize("pdk", GALLERIES.keys())
+def test_passive_gallery_drc_clean(pdk):
+    wrapper = gallery_wrapper_cell(GALLERIES[pdk], f"PassiveGallery_{pdk}")
+    res = MOS_PDKS[pdk].run_drc(wrapper.layout, use_tempdir=True)
     assert res.summary() == {}
 
 
