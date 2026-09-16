@@ -261,7 +261,7 @@ class SchematicRenderer(Renderer):
             fill: #80b380;
         }
         .symbolOutline {
-            stroke: #a3cca3;
+            stroke: none;
         }
         .symbolPoly {
             stroke: #000;
@@ -362,7 +362,9 @@ class SchematicRenderer(Renderer):
         circle.attrib['data-error'] = err.error_type.value
 
     def draw_symbol(self, s: Symbol, trans: TD4R, inst_name: str="?"):
-        # Draw outline
+        # The outline rect is not drawn (stroke: none), but stays in the SVG
+        # as the hit area for click-to-source (see pointer-events rule in css
+        # and svg.js) and to identify instance groups in the web UI.
         rect = trans * s.outline
         lx, ly, ux, uy = rect.tofloat()
         outline = ET.SubElement(self.cur_group, 'rect',
