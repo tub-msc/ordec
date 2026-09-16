@@ -636,7 +636,7 @@ class ResistorRules:
     cont_to_body: int   #: terminal contact to body distance
     met_over_cont: int  #: Metal1 enclosure of the terminal contact along the stripe
 
-def _layoutgen_resistor(
+def layoutgen_resistor(
         cell: Cell,
         rules: ResistorRules,
         *,
@@ -844,7 +844,7 @@ def _layoutgen_resistor(
     return l
 
 
-def _layoutgen_cmim(cell: Cell) -> Layout:
+def layoutgen_cmim(cell: Cell) -> Layout:
     """Generate the fixed SG13G2 MiM capacitor layout."""
     if cell.m != 1:
         raise ParameterError("m != 1 not supported for layout.")
@@ -871,8 +871,8 @@ def _layoutgen_cmim(cell: Cell) -> Layout:
     # cmim_minLW only one via fits and the plate is too narrow.
     tm1_min = 1640  # TM1.a
     for side, name in ((width, "w"), (length, "l")):
-        if _cmim_plate_span(side, mim_d, tv1_size, tv1_space, tv1_enc) < tm1_min:
-            needed = _cmim_min_side_for_tm1(mim_d, tv1_size, tv1_space, tv1_enc, tm1_min, min_lw, max_lw)
+        if cmim_plate_span(side, mim_d, tv1_size, tv1_space, tv1_enc) < tm1_min:
+            needed = cmim_min_side_for_tm1(mim_d, tv1_size, tv1_space, tv1_enc, tm1_min, min_lw, max_lw)
             raise ParameterError(
                 f"{name} = {side} nm gives a TopMetal1 plate narrower than "
                 f"TM1.a ({tm1_min} nm). Cmim needs w and l >= {needed} nm.")
@@ -914,7 +914,7 @@ def _layoutgen_cmim(cell: Cell) -> Layout:
     return l
 
 
-def _cmim_plate_span(side: int, mim_d: int, tv1_size: int, tv1_gap: int,
+def cmim_plate_span(side: int, mim_d: int, tv1_size: int, tv1_gap: int,
                      tv1_enc: int) -> int:
     """TopMetal1 plate width along one side of a Cmim: the TopVia1 array
     (same arithmetic as makevias) plus the TV1.d enclosure on both ends."""
@@ -924,11 +924,11 @@ def _cmim_plate_span(side: int, mim_d: int, tv1_size: int, tv1_gap: int,
     return count * tv1_size + (count - 1) * tv1_gap + 2 * tv1_enc
 
 
-def _cmim_min_side_for_tm1(mim_d: int, tv1_size: int, tv1_gap: int,
+def cmim_min_side_for_tm1(mim_d: int, tv1_size: int, tv1_gap: int,
         tv1_enc: int, tm1_min: int, min_lw: int, max_lw: int) -> int:
     """Smallest Cmim side (10 nm steps) whose top plate meets TM1.a."""
     side = min_lw
-    while _cmim_plate_span(side, mim_d, tv1_size, tv1_gap, tv1_enc) < tm1_min:
+    while cmim_plate_span(side, mim_d, tv1_size, tv1_gap, tv1_enc) < tm1_min:
         side += 10
         if side > max_lw:
             break
@@ -1033,7 +1033,7 @@ class Rsil(Res):
             cont_to_body=120,
             met_over_cont=30,
         )
-        return _layoutgen_resistor(self, rules, add_res=True)
+        return layoutgen_resistor(self, rules, add_res=True)
 
     @classmethod
     def discoverable_instances(cls):
@@ -1061,7 +1061,7 @@ class Rppd(Res):
             cont_to_body=200,
             met_over_cont=70,
         )
-        return _layoutgen_resistor(self, rules, add_psd=True, add_salblock=True)
+        return layoutgen_resistor(self, rules, add_psd=True, add_salblock=True)
 
     @classmethod
     def discoverable_instances(cls):
@@ -1089,7 +1089,7 @@ class Rhigh(Res):
             cont_to_body=200,
             met_over_cont=30,
         )
-        return _layoutgen_resistor(self, rules, add_psd=True, add_nsd=True, add_salblock=True)
+        return layoutgen_resistor(self, rules, add_psd=True, add_nsd=True, add_salblock=True)
 
     @classmethod
     def discoverable_instances(cls):
@@ -1147,7 +1147,7 @@ class Cmim(SimLeafCell):
 
     @viewgen_noctx
     def layout(self) -> Layout:
-        return _layoutgen_cmim(self)
+        return layoutgen_cmim(self)
 
     @classmethod
     def discoverable_instances(cls):
