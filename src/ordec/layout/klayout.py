@@ -7,6 +7,7 @@ import subprocess
 import xml.etree.ElementTree as ET
 import re
 import warnings
+from pathlib import Path
 
 from lark import Lark, Transformer, v_args
 
@@ -15,15 +16,25 @@ from ..core import *
 logger = logging.getLogger(__name__)
 
 
-def run(script, cwd, **kwargs):
+def run(script, cwd, capture=None, **kwargs):
     """
     Run KLayout script 'script' in directory 'cwd' with provided keyword args.
+
+    Args:
+        capture: Optional file name (relative to cwd) to which stdout and
+            stderr are redirected, for decks that log to stdout instead of
+            taking a log file variable.
     """
     cmdline = ['klayout', '-b', '-r', str(script)]
     for k, v in kwargs.items():
         cmdline += ['-rd', f'{k}={v}']
     logger.debug("%s %s", cwd, shlex.join(cmdline))
-    subprocess.check_call(cmdline, cwd=cwd)
+    if capture is None:
+        subprocess.check_call(cmdline, cwd=cwd)
+    else:
+        with open(Path(cwd) / capture, 'w') as f:
+            subprocess.check_call(cmdline, cwd=cwd, stdout=f,
+                stderr=subprocess.STDOUT)
 
 
 def unquote(tok) -> str:
@@ -177,8 +188,12 @@ def insert_drc_value(report: DrcReport, item, order: int, value_str: str, conv):
     elif kind == 'polygon':
         rings = payload
         if len(rings) > 1:
-            raise NotImplementedError(
-                f"DRC polygon with holes is not supported: {value_str!r}")
+            # The DRC schema supports no holes, so drop them and keep the
+            # outer ring. Contact-array rules such as ihp130's Cnt.b1 report
+            # this shape.
+            warnings.warn(
+                f"DRC polygon with {len(rings) - 1} hole(s) approximated by "
+                f"its outer ring")
         poly = report % DrcPoly(item=item, order=order, tag=tag)
         for i, p in enumerate(rings[0]):
             report % PolyVec2I(ref=poly, order=i, pos=pt(p))

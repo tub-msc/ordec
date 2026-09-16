@@ -348,15 +348,16 @@ class SG13G2(Cell):
         addmetal(layers.Metal2)
         addvia(layers.Via2)
         addmetal(layers.Metal3)
-        # Todo: settings about Metal3 not checked yet.
         addvia(layers.Via3)
         addmetal(layers.Metal4)
         addvia(layers.Via4)
-        addmetal(layers.Metal5)
-        addvia(layers.TopVia1)
-        addmetal(layers.TopMetal1)
-        addvia(layers.TopVia2)
-        addmetal(layers.TopMetal2)
+        addmetal(layers.Metal5, route_via=(620, 620), route_pad=(620, 620))
+        addvia(layers.TopVia1, route_via=(420, 420))
+        addmetal(layers.TopMetal1, route_width=1640, route_via=(1900, 1900),
+            route_pad=(1640, 1640))
+        addvia(layers.TopVia2, route_via=(900, 900))
+        addmetal(layers.TopMetal2, route_width=2000, route_via=(2000, 2000),
+            route_pad=(2000, 2000))
 
         return rs
 
@@ -592,10 +593,19 @@ def layoutgen_tap(cell: Cell, length: R, width: R, nwell: bool):
     # solved geometry; defer the undefined-attribute check until then.
     s.solve(allow_undefined=True)
 
+    # Contact array replicating the PDK tap PCells (DrawContArray).
+    cont_size = _tech_nm("Cnt_a")
+    cont_margin = _tech_nm("Cnt_c")
+    spacing = _tech_nm("Cnt_b")
+    cols = (L - 2*cont_margin + spacing) // (cont_size + spacing)
+    rows = (W - 2*cont_margin + spacing) // (cont_size + spacing)
+    if min(cols, rows) >= tech_params()["Cnt_b1_nr"]:
+        spacing = _tech_nm("Cnt_b1")
+
     vias_rect = makevias(l, l.activ.rect, layers.Cont,
-        size=Vec2I(160, 160),
-        spacing=Vec2I(180, 180),
-        margin=Vec2I(70, 70),
+        size=Vec2I(cont_size, cont_size),
+        spacing=Vec2I(spacing, spacing),
+        margin=Vec2I(cont_margin, cont_margin),
         )
     # Shrink M1 to via stack, with 50 nm extension north and south:
     l.m1.rect = (vias_rect.lx, vias_rect.ly - 50, vias_rect.ux, vias_rect.uy + 50)
@@ -638,17 +648,15 @@ def _layoutgen_resistor(
         add_psd: bool = False,
         add_nsd: bool = False) -> Layout:
     """
-    Generate an SG13G2 poly resistor.
-
-    This is still simpler than the foundry PCells and currently supports only
-    the straight-body case. The IHP resistor PCells have several asymmetry and
-    contact-push corner cases for bent devices which are intentionally kept out
-    of scope until ORDeC has a PCell-compatible implementation.
+    Generate an SG13G2 poly resistor: straight (b=0) or meandered (b bends,
+    b+1 stripes of length l, ps apart, joined at alternating ends). Bent
+    Rppd and Rhigh require a larger ps instead of the foundry PCell's
+    contact pushing.
     """
     if cell.m != 1:
         raise ParameterError("m != 1 not supported for layout.")
-    if cell.b != 0:
-        raise ParameterError("b != 0 not supported for layout.")
+    if cell.b < 0:
+        raise ParameterError("b must be non-negative.")
 
     layers = SG13G2().layers
     l = Layout(ref_layers=layers, cell=cell, symbol=cell.symbol)
@@ -662,8 +670,23 @@ def _layoutgen_resistor(
         raise ParameterError(f"w below {kind} minimum width.")
     if length < _tech_nm(f"{kind}_minL"):
         raise ParameterError(f"l below {kind} minimum length.")
+    if width > _tech_nm(f"{kind}_maxW"):
+        raise ParameterError(f"w above {kind} maximum width ({kind}_maxW).")
+    if length > _tech_nm(f"{kind}_maxL"):
+        raise ParameterError(
+            f"l above {kind} maximum length ({kind}_maxL). Use series segments.")
     if bends != 0 and ps < _tech_nm(f"{kind}_minPS"):
         raise ParameterError(f"ps below {kind} minimum spacing.")
+    add_salblock = kind in ("rhigh", "rppd")
+    if bends >= 2 and add_salblock:
+        # Keep the SalBlock covers legal next to the salicided terminal
+        # heads (the foundry PCell would push the contacts out instead).
+        ps_floor = _tech_nm("Sal_c") + _tech_nm("Sal_d")
+        if ps < ps_floor:
+            raise ParameterError(
+                f"bent {kind} with b >= 2 needs ps >= {ps_floor} nm "
+                "(SalBlock enclosure plus spacing next to the terminal "
+                "contacts); set ps on the instance.")
 
     cont_size = _tech_nm("Cnt_a")
     poly_over_cont = _tech_nm("Cnt_d")
@@ -705,19 +728,57 @@ def _layoutgen_resistor(
         setattr(l, f"term_{name}", LayoutRect(layer=layers.Metal1, rect=term_rect))
         return head_rect, cont_rect, term_rect
 
-    body_x_lo = 0
-    body_y_lo = 0
-    body_x_hi = width
-    body_y_hi = length
+    stripes = bends + 1
+    pitch = width + ps
+    # LVS measures a bent body as its shortest port-adjacent edge plus w,
+    # so each stripe is drawn l - w long to restore the l parameter.
+    stripe_len = length if bends == 0 else length - width
+    if bends and stripe_len < _tech_nm(f"{kind}_minL"):
+        raise ParameterError(
+            f"bent {kind} stripes are drawn l - w long; l = {length} nm "
+            f"with w = {width} nm leaves less than {kind} minimum length.")
 
-    body_rect = Rect4I(0, 0, width, length)
-    l.poly_body = LayoutRect(layer=layers.PolyRes, rect=body_rect)
+    # Connector j joins stripes j and j+1, at the top for even j, at the
+    # bottom for odd j. n sits below stripe 0, p at the last free end.
+    body_rects = [
+        Rect4I(i * pitch, 0, i * pitch + width, stripe_len)
+        for i in range(stripes)
+    ]
+    bend_rects = [
+        Rect4I(j * pitch, stripe_len, (j + 1) * pitch + width, stripe_len + width)
+        if j % 2 == 0 else
+        Rect4I(j * pitch, -width, (j + 1) * pitch + width, 0)
+        for j in range(bends)
+    ]
 
-    if add_res:
-        l.res = LayoutRect(layer=layers.RES, rect=body_rect)
+    if bends == 0:
+        l.poly_body = LayoutRect(layer=layers.PolyRes, rect=body_rects[0])
+        if add_res:
+            l.res = LayoutRect(layer=layers.RES, rect=body_rects[0])
+    else:
+        l.poly_body = PathNode()
+        for i, rect in enumerate(body_rects):
+            l.poly_body[i] = LayoutRect(layer=layers.PolyRes, rect=rect)
+        l.poly_bend = PathNode()
+        for j, rect in enumerate(bend_rects):
+            l.poly_bend[j] = LayoutRect(layer=layers.PolyRes, rect=rect)
+        if add_res:
+            # RES must match the body exactly (rsil core = PolyRes AND
+            # RES). Covering the heads would grow the extracted body.
+            l.res = PathNode()
+            for i, rect in enumerate(body_rects + bend_rects):
+                l.res[i] = LayoutRect(layer=layers.RES, rect=rect)
 
     make_terminal("n", 0, 0, -1)
-    make_terminal("p", 0, length, 1)
+    if stripes % 2 == 1:
+        make_terminal("p", (stripes - 1) * pitch, stripe_len, 1)
+    else:
+        make_terminal("p", (stripes - 1) * pitch, 0, -1)
+
+    body_x_lo = 0
+    body_y_lo = min([0] + [r.ly for r in bend_rects])
+    body_x_hi = (stripes - 1) * pitch + width
+    body_y_hi = max([stripe_len] + [r.uy for r in bend_rects])
 
     total_x_lo = body_x_lo
     total_x_hi = body_x_hi
@@ -740,14 +801,35 @@ def _layoutgen_resistor(
                 rect=(total_x_lo - sd_enc, total_y_lo - sd_enc, total_x_hi + sd_enc, total_y_hi + sd_enc),
             )
 
-        l.salblock = LayoutRect(
-            layer=layers.SalBlock,
-            # Straight Rppd/Rhigh devices keep SalBlock flush with the resistor
-            # body in the longitudinal direction; only the lateral enclosure is
-            # present. Extending SalBlock beyond the body collapses the required
-            # 0.20 um spacing to the terminal contact.
-            rect=(body_x_lo - sal_enc, body_y_lo, body_x_hi + sal_enc, body_y_hi),
-        )
+        # SalBlock defines the resistor core, so it covers stripes and bend
+        # connectors but stays flush where a terminal head attaches (keeps
+        # the spacing to the terminal contact).
+        if bends == 0:
+            l.salblock = LayoutRect(
+                layer=layers.SalBlock,
+                rect=(body_x_lo - sal_enc, 0, body_x_hi + sal_enc, stripe_len),
+            )
+        else:
+            l.salblock = PathNode()
+            l.salblock[0] = LayoutRect(
+                layer=layers.SalBlock,
+                rect=(body_x_lo - sal_enc, 0, body_x_hi + sal_enc, stripe_len),
+            )
+            top_bends = [r for r in bend_rects if r.ly == stripe_len]
+            bot_bends = [r for r in bend_rects if r.uy == 0]
+            l.salblock[1] = LayoutRect(
+                layer=layers.SalBlock,
+                rect=(min(r.lx for r in top_bends) - sal_enc, stripe_len,
+                      max(r.ux for r in top_bends) + sal_enc,
+                      stripe_len + width + sal_enc),
+            )
+            if bot_bends:
+                l.salblock[2] = LayoutRect(
+                    layer=layers.SalBlock,
+                    rect=(min(r.lx for r in bot_bends) - sal_enc,
+                          -width - sal_enc,
+                          max(r.ux for r in bot_bends) + sal_enc, 0),
+                )
         l.extblock = LayoutRect(
             layer=layers.EXTBlock,
             rect=(total_x_lo - sal_enc, total_y_lo - sal_enc, total_x_hi + sal_enc, total_y_hi + sal_enc),
@@ -778,12 +860,25 @@ def _layoutgen_cmim(cell: Cell) -> Layout:
     min_lw = _tech_nm("cmim_minLW")
     if width < min_lw or length < min_lw:
         raise ParameterError("w and l must be at least cmim_minLW.")
+    max_lw = _tech_nm("cmim_maxLW")
+    if width > max_lw or length > max_lw:
+        raise ParameterError("w and l must be at most cmim_maxLW.")
 
     mim_c = _tech_nm("Mim_c")
     mim_d = _tech_nm("Mim_d")
     tv1_size = _tech_nm("TV1_a")
     tv1_space = _tech_nm("TV1_a") + _tech_nm("TV1_b")
     tv1_enc = _tech_nm("TV1_d")
+
+    # The TopMetal1 plate (via array plus enclosure) must meet TM1.a. At
+    # cmim_minLW only one via fits and the plate is too narrow.
+    tm1_min = _tech_nm("TM1_a")
+    for side, name in ((width, "w"), (length, "l")):
+        if _cmim_plate_span(side, mim_d, tv1_size, tv1_space, tv1_enc) < tm1_min:
+            needed = _cmim_min_side_for_tm1(mim_d, tv1_size, tv1_space, tv1_enc, tm1_min)
+            raise ParameterError(
+                f"{name} = {side} nm gives a TopMetal1 plate narrower than "
+                f"TM1.a ({tm1_min} nm). Cmim needs w and l >= {needed} nm.")
 
     l.mim = LayoutRect(layer=layers.MIM, rect=(0, 0, width, length))
     l.term_n = LayoutRect(
@@ -822,6 +917,27 @@ def _layoutgen_cmim(cell: Cell) -> Layout:
     return l
 
 
+def _cmim_plate_span(side: int, mim_d: int, tv1_size: int, tv1_gap: int,
+                     tv1_enc: int) -> int:
+    """TopMetal1 plate width along one side of a Cmim: the TopVia1 array
+    (same arithmetic as makevias) plus the TV1.d enclosure on both ends."""
+    count = (side - 2 * mim_d + tv1_gap) // (tv1_size + tv1_gap)
+    if count < 1:
+        return 0
+    return count * tv1_size + (count - 1) * tv1_gap + 2 * tv1_enc
+
+
+def _cmim_min_side_for_tm1(mim_d: int, tv1_size: int, tv1_gap: int,
+                           tv1_enc: int, tm1_min: int) -> int:
+    """Smallest Cmim side (10 nm steps) whose top plate meets TM1.a."""
+    side = _tech_nm("cmim_minLW")
+    while _cmim_plate_span(side, mim_d, tv1_size, tv1_gap, tv1_enc) < tm1_min:
+        side += 10
+        if side > _tech_nm("cmim_maxLW"):
+            break
+    return side
+
+
 class Res(SimLeafCell):
     """
     Shared base class for SG13G2 resistors.
@@ -830,6 +946,11 @@ class Res(SimLeafCell):
     pin ``bn`` connecting the device's bulk/substrate node. ``bn`` is part
     of the LVS comparison and requires care in hierarchical designs; see
     :ref:`ihp130_substrate_lvs`.
+
+    ``b`` bends fold the body into ``b + 1`` stripes of length ``l`` each,
+    ``ps`` apart, joined at alternating ends, so a large resistance becomes
+    a compact meander. With three or more stripes, Rppd and Rhigh need
+    ``ps`` >= 400 nm on SG13G2.
     """
     l = Parameter(R)
     w = Parameter(R)
