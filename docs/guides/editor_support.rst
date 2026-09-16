@@ -226,8 +226,11 @@ again. They are not part of the default ``pytest`` run: run them with
 ``pyyaml`` and ``tree-sitter`` Python packages, or let the ``editors``
 CI workflow run them on changes under ``support/editors/``,
 ``src/ordec/ord/`` and the repository ``.ord`` files. The tree-sitter tests
-skip unless a C compiler is available and the parser sources have been
-generated as described below.
+need a C compiler and the generated parser sources described below; they
+regenerate the parser via ``npm run generate`` when it is missing or older
+than ``grammar.js`` (which requires ``node_modules`` from ``npm ci``), skip
+when it was never generated and cannot be, and fail on a stale parser that
+cannot be regenerated.
 
 In ``support/editors/tree-sitter-ord/``, the ``src/`` directory is
 generated from ``grammar.js``: ``npm run generate`` copies the

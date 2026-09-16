@@ -315,6 +315,32 @@ TREE_SITTER_RULES = {
 }
 
 
+def generate_tree_sitter_parser():
+    """Ensure the generated parser in tree-sitter-ord/src is up to date.
+
+    Like build_web_dist in tests/web_fixtures.py, regenerate (via 'npm run
+    generate') only when parser.c is missing or older than its inputs:
+    grammar.js and the package files pinning the tree-sitter-python scanner.
+    Testing a parser generated from an older grammar.js would report grammar
+    failures that do not exist, so a stale parser that cannot be regenerated
+    is a failure, whereas a missing parser still skips.
+    """
+    root = EDITORS / 'tree-sitter-ord'
+    parser_c = root / 'src' / 'parser.c'
+    inputs = ('grammar.js', 'package.json', 'package-lock.json')
+    inputs_mtime = max((root / name).stat().st_mtime for name in inputs)
+    if parser_c.exists() and parser_c.stat().st_mtime >= inputs_mtime:
+        return
+    npm = shutil.which('npm')
+    if npm is None or not (root / 'node_modules').is_dir():
+        hint = 'run npm ci && npm run generate in support/editors/tree-sitter-ord'
+        if parser_c.exists():
+            pytest.fail(f'parser is older than grammar.js, {hint}')
+        pytest.skip(f'parser not generated, {hint}')
+    subprocess.run([npm, 'run', 'generate'], cwd=root, check=True,
+                   stdout=subprocess.DEVNULL)
+
+
 @pytest.fixture(scope='module')
 def ord_tree_sitter_parser(tmp_path_factory):
     """Compile the generated tree-sitter parser and load it via py-tree-sitter."""
@@ -322,10 +348,8 @@ def ord_tree_sitter_parser(tmp_path_factory):
     cc = shutil.which('cc')
     if cc is None:
         pytest.skip('no C compiler available')
+    generate_tree_sitter_parser()
     src = EDITORS / 'tree-sitter-ord' / 'src'
-    if not (src / 'parser.c').exists():
-        pytest.skip('parser not generated, run npm ci && npm run generate '
-                    'in support/editors/tree-sitter-ord')
     library = tmp_path_factory.mktemp('tree_sitter_ord') / 'ord.so'
     subprocess.run(
         [cc, '-fPIC', '-shared', '-I', str(src), str(src / 'parser.c'),
