@@ -173,12 +173,12 @@ class SG13G2(Cell):
         s.GatPoly = Layer(
             gdslayer_shapes=GdsLayer(layer=5, data_type=0),
             style_fill=rgb_color("#bf4026"),
-            )
-        s.GatPoly.pin = Layer(
-            gdslayer_shapes=GdsLayer(layer=5, data_type=2),
-            style_fill=rgb_color("#bf4026"),
-            is_pinlayer=True,
-            )
+            pin=s % Layer(
+                gdslayer_shapes=GdsLayer(layer=5, data_type=2),
+                style_fill=rgb_color("#bf4026"),
+                is_pinlayer=True,
+            ),
+        )
         
         s.Cont = Layer(
             gdslayer_shapes=GdsLayer(layer=6, data_type=0),
@@ -209,38 +209,40 @@ class SG13G2(Cell):
         # Metal stack
         # -----------
 
-        def addmetal(name, layer, color):
-            setattr(s, name, Layer(
-                gdslayer_shapes=GdsLayer(layer=layer, data_type=0),
-                style_fill=color,
-            ))
-            getattr(s, name).pin = Layer(
+        def metal(layer, color):
+            """Insert a metal layer with its pin layer; the caller names the metal."""
+            pin = s % Layer(
                 gdslayer_text=GdsLayer(layer=layer, data_type=25),
                 gdslayer_shapes=GdsLayer(layer=layer, data_type=2),
                 style_fill=color,
                 is_pinlayer=True,
             )
+            return s % Layer(
+                gdslayer_shapes=GdsLayer(layer=layer, data_type=0),
+                style_fill=color,
+                pin=pin,
+            )
 
-        def addvia(name, layer, color):
-            setattr(s, name, Layer(
+        def via(layer, color):
+            return Layer(
                 gdslayer_shapes=GdsLayer(layer=layer, data_type=0),
                 style_stroke=color,
                 style_crossrect=True,
-            ))
+            )
 
-        addmetal("Metal1", 8, rgb_color("#39bfff"))
-        addvia("Via1", 19, rgb_color("#ccccff"))
-        addmetal("Metal2", 10, rgb_color("#ccccd9"))
-        addvia("Via2", 29, rgb_color("#ff3736"))
-        addmetal("Metal3", 30, rgb_color("#d80000"))
-        addvia("Via3", 49, rgb_color("#9ba940"))
-        addmetal("Metal4", 50, rgb_color("#93e837"))
-        addvia("Via4", 66, rgb_color("#deac5e"))
-        addmetal("Metal5", 67, rgb_color("#dcd146"))
-        addvia("TopVia1", 125, rgb_color("#ffe6bf"))
-        addmetal("TopMetal1", 126, rgb_color("#ffe6bf"))
-        addvia("TopVia2", 133, rgb_color("#ff8000"))
-        addmetal("TopMetal2", 134, rgb_color("#ff8000"))
+        s.Metal1 = metal(8, rgb_color("#39bfff"))
+        s.Via1 = via(19, rgb_color("#ccccff"))
+        s.Metal2 = metal(10, rgb_color("#ccccd9"))
+        s.Via2 = via(29, rgb_color("#ff3736"))
+        s.Metal3 = metal(30, rgb_color("#d80000"))
+        s.Via3 = via(49, rgb_color("#9ba940"))
+        s.Metal4 = metal(50, rgb_color("#93e837"))
+        s.Via4 = via(66, rgb_color("#deac5e"))
+        s.Metal5 = metal(67, rgb_color("#dcd146"))
+        s.TopVia1 = via(125, rgb_color("#ffe6bf"))
+        s.TopMetal1 = metal(126, rgb_color("#ffe6bf"))
+        s.TopVia2 = via(133, rgb_color("#ff8000"))
+        s.TopMetal2 = metal(134, rgb_color("#ff8000"))
 
         # Other layers
         # ------------
@@ -292,13 +294,13 @@ class SG13G2(Cell):
         s.PolyRes = Layer(
             gdslayer_shapes=GdsLayer(layer=128, data_type=0),
             style_fill=rgb_color("#cc6633"),
-            )
-        s.PolyRes.pin = Layer(
-            gdslayer_shapes=GdsLayer(layer=128, data_type=2),
-            style_fill=rgb_color("#cc6633"),
-            is_pinlayer=True,
-            )
-        
+            pin=s % Layer(
+                gdslayer_shapes=GdsLayer(layer=128, data_type=2),
+                style_fill=rgb_color("#cc6633"),
+                is_pinlayer=True,
+            ),
+        )
+
         s.prBoundary = Layer(
             gdslayer_shapes=GdsLayer(layer=189, data_type=4), # data_type 4 or 0?
             style_fill=rgb_color("#9900e6"),

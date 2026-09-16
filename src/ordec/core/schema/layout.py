@@ -59,23 +59,27 @@ class Layer(NonLeafNode):
     #: Indicates whether the present layer is suitable for pin shapes / text.
     #: This flag affects the behavior of the pinlayer() method.
     is_pinlayer = Attr(bool, optional=False, default=False) 
+    #: Layer on which pin shapes and labels of this layer are placed.
+    pin = LocalRef('Layer', refcheck_custom=lambda val: issubclass(val, Layer))
 
     def pinlayer(self) -> 'Layer':
         """
         Returns the layer on which pin shapes corresponding to the current
-        layer should be placed. This could be the layer itself, or its .pin
-        child (e.g. Metal1.pin).
+        layer should be placed. This is either the layer itself (if it has
+        is_pinlayer set) or its pin layer.
         """
         if self.is_pinlayer:
             return self
-        else:
-            l = self.pin
-            if not l.is_pinlayer:
-                raise Exception(f"{l} is found at 'pin' path but does not have is_pinlayer set.")
-            return l
+        l = self.pin
+        if l is None:
+            raise Exception(f"{self} has no pin layer.")
+        if not l.is_pinlayer:
+            raise Exception(f"{l} is the pin layer of {self} but does not have is_pinlayer set.")
+        return l
 
     gdslayer_text_index = Index(gdslayer_text, unique=True)
     gdslayer_shapes_index = Index(gdslayer_shapes, unique=True)
+    pin_idx = Index(pin)
 
     def inline_css(self) -> str:
          return f"fill:{self.style_fill};stroke:{self.style_stroke};"

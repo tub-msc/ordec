@@ -24,13 +24,22 @@ def webdata(layout: Layout.Frozen):
     expand_pins(layout, directory)
     layout = layout.freeze()
 
+    def layer_label(layer):
+        # Pin layers are usually inserted anonymously; label them after the
+        # layer they belong to.
+        try:
+            return layer.full_path_str()
+        except TypeError:
+            parent = layer.root.one(Layer.pin_idx.query(layer))
+            return parent.full_path_str() + ".pin"
+
     def get_weblayer(layer):
         try:
             weblayer = weblayers_dict[layer]
         except KeyError:
             weblayer = {
                 'nid': layer.nid,
-                'path': layer.full_path_str(),
+                'path': layer_label(layer),
                 'styleFill': layer.style_fill,
                 'styleStroke': layer.style_stroke,
                 'styleCrossRect': layer.style_crossrect,
