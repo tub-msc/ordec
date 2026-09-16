@@ -20,6 +20,7 @@ class Res(SimLeafCell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
+        s.add_default_annotations(show_cell_name=False)
 
         s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
@@ -71,6 +72,7 @@ class Cap(SimLeafCell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
+        s.add_default_annotations()
 
         s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
@@ -109,6 +111,7 @@ class Ind(SimLeafCell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
+        s.add_default_annotations()
 
         s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
@@ -143,6 +146,7 @@ class Gnd(SimLeafCell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
+        s.add_default_annotations(show_cell_name=False)
 
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
 
@@ -162,6 +166,7 @@ class NoConn(SimLeafCell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
+        s.add_default_annotations()
 
         s.a = Pin(pos=Vec2R(0, 2), pintype=PinType.In, align=West)
 
@@ -240,6 +245,7 @@ class Vdc(AcStimulusMixin, SimLeafCell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
+        s.add_default_annotations(show_cell_name=False)
 
         s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
@@ -284,6 +290,7 @@ class Idc(AcStimulusMixin, SimLeafCell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
+        s.add_default_annotations(show_cell_name=False)
 
         s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
@@ -358,6 +365,7 @@ class Vpwl(AcStimulusMixin, PwlMixin, SimLeafCell):
     def symbol(self) -> Symbol:
         """ Defines the schematic symbol for the PWL source. """
         s = Symbol(cell=self)
+        s.add_default_annotations()
 
         s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
@@ -414,6 +422,7 @@ class Vpulse(AcStimulusMixin, SimLeafCell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
+        s.add_default_annotations()
 
         s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
@@ -477,6 +486,7 @@ class Vsin(AcStimulusMixin, SimLeafCell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
+        s.add_default_annotations()
 
         s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
@@ -530,6 +540,7 @@ class Ipwl(AcStimulusMixin, PwlMixin, SimLeafCell):
     def symbol(self) -> Symbol:
         """ Defines the schematic symbol for the PWL current source. """
         s = Symbol(cell=self)
+        s.add_default_annotations()
 
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
         s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
@@ -593,6 +604,7 @@ class Ipulse(AcStimulusMixin, SimLeafCell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
+        s.add_default_annotations()
 
         s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
@@ -664,6 +676,7 @@ class Isin(AcStimulusMixin, SimLeafCell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
+        s.add_default_annotations()
 
         s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)

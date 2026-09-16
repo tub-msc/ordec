@@ -33,6 +33,52 @@ def clean_css(css: str) -> str:
     """remove newlines / unneeded spaces from CSS literal string"""
     return re.sub(r"\s+", " ", css).strip()
 
+def annotation_lines(s: Symbol, inst: SchemInstance|None) -> list[tuple[str, AnnotationKind]]:
+    """
+    The shown lines of the annotation block of symbol s, as (text, kind),
+    with the schematic's SchemAnnotationOverrides applied when drawn as
+    instance inst. Instance name lines are omitted for a symbol on its own.
+    """
+    shown = {a.nid: a.shown for a in s.all(SymbolAnnotation)}
+    if inst is not None:
+        for o in inst.root.all(SchemAnnotationOverride.ref_idx.query(inst)):
+            shown[o.there.nid] = o.shown
+    lines = []
+    for a in s.all(SymbolAnnotation):
+        if not shown[a.nid]:
+            continue
+        if a.kind == AnnotationKind.InstanceName:
+            if inst is None:
+                continue
+            lines.append((inst.full_path_label(), a.kind))
+        else:
+            lines.append((a.text, a.kind))
+    return lines
+
+def annotation_anchor(s: Symbol, trans: TD4R, inst: SchemInstance|None) -> TD4R:
+    """
+    Anchor of the annotation block (position and direction the text extends
+    in, see Renderer.draw_label): the instance's annotation_pos if set, else
+    the symbol's default transformed by trans.
+    """
+    if inst is not None and inst.annotation_pos is not None:
+        return inst.annotation_pos.transl() * inst.annotation_align
+    pos = s.annotation_pos
+    if pos is None:
+        pos = s.outline.northeast
+    return trans * pos.transl() * s.annotation_align
+
+def annotation_extent(s: Symbol, trans: TD4R, inst: SchemInstance|None) -> Rect4R | None:
+    """
+    Estimated bounding box of the annotation block of s (drawn as instance
+    inst, or on its own), or None if no line of it is shown.
+    """
+    lines = annotation_lines(s, inst)
+    if not lines:
+        return None
+    anchor = annotation_anchor(s, trans, inst)
+    return Renderer.label_rect(anchor, max(len(text) for text, kind in lines), len(lines))
+
 class Renderer:
     """
     Instantiate the Renderer class and then call one of its render_ methods,
@@ -42,6 +88,9 @@ class Renderer:
 
     pin_text_space = 0.125
     port_text_space = 0.15 + 0.5
+    # Estimated character width in schematic units (11pt Inconsolata at 75%
+    # stretch, scaled by 0.045), for layout that has to reserve text space.
+    label_char_width = 0.3
     pixel_per_unit = 25
     conn_point_radius = 0.1625
     # font_size_internal_pt must match the font-size in the css class
@@ -88,9 +137,39 @@ class Renderer:
         finally:
             self.group_stack.pop()
 
-    def draw_label(self, text: str, trans: TD4R, halign=HAlign.Left, valign=VAlign.Top, space=None, svg_class=""):
+    @classmethod
+    def label_rect(cls, trans: TD4R, n_chars: int, n_lines: int, halign=HAlign.Left, valign=VAlign.Top, space=None) -> Rect4R:
         """
-        dominant_baseline: chose "hanging" or "ideographic"
+        Estimated bounding box of a label drawn by draw_label with the same
+        arguments, using label_char_width per character.
+        """
+        align = trans.d4.unflip()
+        if align in (West, South):
+            halign = halign.invert()
+        frame = trans.transl.transl()
+        if align in (North, South):
+            frame *= R90
+        if space is None:
+            space = cls.pin_text_space
+        length = (space + cls.label_char_width * n_chars) * {HAlign.Left: 1, HAlign.Right: -1}[halign]
+        depth = cls.font_size_actual_grid_units * n_lines
+        if valign == VAlign.Top:
+            y0, y1 = -(space + depth), 0
+        elif valign == VAlign.Bottom:
+            y0, y1 = 0, space + depth
+        else:
+            y0, y1 = -depth/2, depth/2
+        return frame * Rect4R(min(0, length), y0, max(0, length), y1)
+
+    def draw_label(self, text: str, trans: TD4R, halign=HAlign.Left, valign=VAlign.Top, space=None, svg_class: str|list[str]=""):
+        """
+        Draws text (possibly multi-line, separated by newlines) extending from
+        the translation of trans in the direction of its D4 component. Text
+        is never rotated by 180 degrees: for West and South, halign is
+        inverted instead.
+
+        svg_class is either one class for the whole text or a list with one
+        class per line.
         """
 
         align = trans.d4.unflip()
@@ -125,14 +204,25 @@ class Renderer:
         tag = ET.SubElement(self.cur_group, 'text', transform=g_matrix.svg_transform(x_scale=scale, y_scale=-scale))
 
         lines = text.split('\n')
+        if isinstance(svg_class, str):
+            line_classes = [svg_class] * len(lines)
+        else:
+            line_classes = svg_class
+            svg_class = ""
         if len(lines) == 1:
             # Make the XML tree more compact by skipping <tspan> for single-line text:
             tag.text = lines[0]
+            svg_class = line_classes[0]
         else:
-            for idx, line in enumerate(lines):
-                y = idx+1-len(lines)
-                tspan=ET.SubElement(tag, 'tspan', x="0", y=f"{y}em")
+            # Lines stack away from the anchor: downwards for Top, upwards
+            # for Bottom, centered for Middle.
+            first = {VAlign.Top: 0, VAlign.Bottom: 1-len(lines),
+                VAlign.Middle: -(len(lines)-1)/2}[valign]
+            for idx, (line, line_class) in enumerate(zip(lines, line_classes)):
+                tspan=ET.SubElement(tag, 'tspan', x="0", y=f"{first+idx}em")
                 tspan.text = line
+                if line_class:
+                    tspan.attrib['class'] = line_class
 
         tag.attrib['dominant-baseline'] = {
             VAlign.Top: 'hanging',
@@ -140,7 +230,8 @@ class Renderer:
             VAlign.Middle: 'middle',
             }[valign]
         tag.attrib['text-anchor'] = {HAlign.Left: 'start', HAlign.Right: 'end'}[halign]
-        tag.attrib['class'] = svg_class
+        if svg_class:
+            tag.attrib['class'] = svg_class
 
 
     def setup_canvas(self, rect: Rect4R, padding: float = 1.0, scale_viewbox: float|int = 1):
@@ -311,7 +402,12 @@ class SchematicRenderer(Renderer):
                         )
 
     def render_symbol(self, s: Symbol):
-        self.setup_canvas(s.outline)
+        # The annotation block usually lies outside the outline.
+        canvas = s.outline
+        extent = annotation_extent(s, TD4R(), None)
+        if extent is not None:
+            canvas = canvas.extend(Vec2R(extent.lx, extent.ly)).extend(Vec2R(extent.ux, extent.uy))
+        self.setup_canvas(canvas)
         if self.enable_grid:
             self.draw_grid(s.outline)
         self.draw_symbol(s, TD4R())
@@ -344,8 +440,7 @@ class SchematicRenderer(Renderer):
                     self.cur_group.attrib['data-srcfile'] = str(inst.src_loc.filename)
                     self.cur_group.attrib['data-srcline'] = str(inst.src_loc.line)
                     self.cur_group.attrib['data-srccol'] = str(inst.src_loc.column)
-                trans = inst.loc_transform()
-                self.draw_symbol(inst.symbol, trans, inst.full_path_label())
+                self.draw_symbol(inst.symbol, inst.loc_transform(), inst)
 
         for port in s.all(SchemPort):
             with self.subgroup(node=port, data_nid=port.ref.nid):
@@ -361,7 +456,13 @@ class SchematicRenderer(Renderer):
         circle.attrib['class'] = 'errorMarker'
         circle.attrib['data-error'] = err.error_type.value
 
-    def draw_symbol(self, s: Symbol, trans: TD4R, inst_name: str="?"):
+    annotation_class = {
+        AnnotationKind.CellName: 'cellName',
+        AnnotationKind.InstanceName: 'instanceName',
+        AnnotationKind.Param: 'params',
+    }
+
+    def draw_symbol(self, s: Symbol, trans: TD4R, inst: SchemInstance|None=None):
         # The outline rect is not drawn (stroke: none), but stays in the SVG
         # as the hit area for click-to-source (see pointer-events rule in css
         # and svg.js) and to identify instance groups in the web UI.
@@ -371,15 +472,21 @@ class SchematicRenderer(Renderer):
             x=str(lx), y=str(ly), width=str(ux-lx), height=str(uy-ly))
         outline.attrib['class'] = 'symbolOutline'
 
-        #params_str = cell.params_str()
-        params_str = "\n".join(s.cell.params_list())
+        for t in s.all(SymbolText):
+            if t.kind == AnnotationKind.InstanceName:
+                if inst is None:
+                    continue
+                text = inst.full_path_label()
+            else:
+                text = t.text
+            self.draw_label(text, trans * t.pos.transl() * t.align,
+                svg_class=self.annotation_class[t.kind])
 
-        self.draw_label(type(s.cell).__name__,
-            rect.northeast.transl() * R90, svg_class="cellName")
-        self.draw_label(params_str, rect.southeast.transl() * R90,
-            valign=VAlign.Bottom, svg_class="params")
-        self.draw_label(inst_name, rect.northwest.transl() * MX90,
-            svg_class="instanceName")
+        lines = annotation_lines(s, inst)
+        if lines:
+            self.draw_label("\n".join(text for text, kind in lines),
+                annotation_anchor(s, trans, inst),
+                svg_class=[self.annotation_class[kind] for text, kind in lines])
 
         for poly in s.all(SymbolPoly):
             p = ET.SubElement(self.cur_group, 'path', d=poly.svg_path(),
@@ -401,8 +508,14 @@ class SchematicRenderer(Renderer):
         self.draw_arrow(ArrowType.Pin, pin.pintype, trans_local)
 
         label = pin.full_path_label()
-        self.draw_label(label, trans_local,
-            valign=VAlign.Bottom, svg_class='pinLabel')
+        # Labels go below horizontal stubs and left of vertical stubs. This
+        # keeps the area above horizontal stubs free, where symbols like the
+        # MOS place their annotation block.
+        if trans_local.d4.unflip() in (East, West):
+            valign = VAlign.Top
+        else:
+            valign = VAlign.Bottom
+        self.draw_label(label, trans_local, valign=valign, svg_class='pinLabel')
 
     def draw_arrow(self, arrowtype: ArrowType, pt: PinType, trans: TD4R):
         if arrowtype == ArrowType.Pin:

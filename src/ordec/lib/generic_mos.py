@@ -49,6 +49,7 @@ class Nmos(Mos):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
+        s.add_default_annotations()
 
         s.g = Pin(pos=Vec2R(0, 2), pintype=PinType.In, align=West)
         s.s = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
@@ -72,6 +73,7 @@ class Pmos(Mos):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
+        s.add_default_annotations()
 
         s.g = Pin(pos=Vec2R(0, 2), pintype=PinType.In, align=West)
         s.d = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
@@ -95,6 +97,7 @@ class Inv(Cell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
+        s.add_default_annotations()
 
         s.vdd = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
         s.vss = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
@@ -148,6 +151,7 @@ class Ringosc(Cell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
+        s.add_default_annotations()
 
         s.vdd = Pin(pintype=PinType.Inout, align=North)
         s.vss = Pin(pintype=PinType.Inout, align=South)
@@ -197,6 +201,7 @@ class And2(Cell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
+        s.add_default_annotations()
 
         s.vdd = Pin(pos=Vec2R(2.5, 5), pintype=PinType.Inout, align=North)
         s.vss = Pin(pos=Vec2R(2.5, 0), pintype=PinType.Inout, align=South)
@@ -218,6 +223,7 @@ class Or2(Cell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
+        s.add_default_annotations()
 
         s.vdd = Pin(pos=Vec2R(2.5, 5), pintype=PinType.Inout, align=North)
         s.vss = Pin(pos=Vec2R(2.5, 0), pintype=PinType.Inout, align=South)

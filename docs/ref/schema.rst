@@ -23,6 +23,24 @@ General stuff
 Symbols
 -------
 
+Besides pins and drawn geometry, a symbol carries text in two forms.
+:class:`SymbolText` is drawn at a fixed position of the symbol, typically
+inside its outline. :class:`SymbolAnnotation` nodes form the annotation
+block (instance name, cell name, parameters), which is placed as a whole
+outside the symbol: by default at ``Symbol.annotation_pos`` (symbol
+coordinates, transformed with the instance), or where the schematic puts it
+via ``SchemInstance.annotation_pos``. Each annotation line has a ``shown``
+flag, which a schematic can override per instance with
+:class:`SchemAnnotationOverride` to declutter the drawing.
+
+Symbol viewgens start out with the default block (see
+:meth:`Symbol.add_default_annotations`, which hides parameters left at their
+default) and may modify, remove or extend it. A symbol viewgen that draws
+nothing (no :class:`SymbolPoly` or :class:`SymbolArc`) becomes a box symbol
+(:meth:`Symbol.make_box`): the outline is drawn, and the labels are placed
+as :class:`SymbolText` at fixed positions inside the box instead of forming
+an annotation block.
+
 .. autoclass:: Symbol
    :members:
    :undoc-members:
@@ -41,6 +59,18 @@ Symbols
    :undoc-members:
 
 .. autoclass:: SymbolArc
+   :members:
+   :undoc-members:
+
+.. autoclass:: AnnotationKind
+   :members:
+   :undoc-members:
+
+.. autoclass:: SymbolText
+   :members:
+   :undoc-members:
+
+.. autoclass:: SymbolAnnotation
    :members:
    :undoc-members:
 
@@ -68,6 +98,10 @@ Schematics
    :undoc-members:
 
 .. autoclass:: SchemInstanceConn
+   :members:
+   :undoc-members:
+
+.. autoclass:: SchemAnnotationOverride
    :members:
    :undoc-members:
 

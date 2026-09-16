@@ -306,8 +306,8 @@ def get_instance_nid(web, inst_name):
             // Instance groups have symbolOutline rect inside
             if (g.querySelector('rect.symbolOutline')) {
                 const nid = g.getAttribute('data-nid');
-                // Check text content for instance name
-                const texts = g.querySelectorAll('text');
+                // Check the instance name annotation
+                const texts = g.querySelectorAll('.instanceName');
                 for (const t of texts) {
                     if (t.textContent === arguments[0]) {
                         return parseInt(nid, 10);

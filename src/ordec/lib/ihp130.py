@@ -961,6 +961,7 @@ class Res(SimLeafCell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
+        s.add_default_annotations()
 
         s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
@@ -1110,6 +1111,7 @@ class Cmim(SimLeafCell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
+        s.add_default_annotations()
 
         s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)

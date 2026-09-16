@@ -44,6 +44,55 @@ def symbol_place_pins(node: Symbol, hpadding=3, vpadding=3):
 
     node.outline = Rect4R(lx=0, ly=0, ux=width, uy=height)
 
+def symbol_make_box(node: Symbol):
+    """
+    Turns a symbol without own drawing into a box symbol: the outline is
+    drawn as a SymbolPoly, and the shown SymbolAnnotations are replaced by
+    SymbolTexts at fixed positions inside the box (instance name top left,
+    cell name top right, parameters stacked at the bottom right). Hidden
+    annotations are dropped.
+    """
+    from .render import Renderer
+    o = node.outline
+    node % SymbolPoly(vertices=[Vec2R(o.lx, o.ly), Vec2R(o.ux, o.ly),
+        Vec2R(o.ux, o.uy), Vec2R(o.lx, o.uy), Vec2R(o.lx, o.ly)])
+
+    params = []
+    for a in list(node.all(SymbolAnnotation)):
+        if a.shown:
+            if a.kind == AnnotationKind.InstanceName:
+                node % SymbolText(pos=o.northwest, align=East, kind=a.kind)
+            elif a.kind == AnnotationKind.CellName:
+                node % SymbolText(pos=o.northeast, align=West, kind=a.kind, text=a.text)
+            else:
+                params.append(a.text)
+        a.remove()
+    # A text hangs below its pos (with pin_text_space padding), so the stack
+    # of parameters is built upwards from the bottom edge.
+    line = Renderer.font_size_actual_grid_units
+    space = Renderer.pin_text_space
+    for i, text in enumerate(reversed(params)):
+        node % SymbolText(pos=Vec2R(o.ux, o.ly + 2*space + (i+1)*line),
+            align=West, kind=AnnotationKind.Param, text=text)
+
+def symbol_add_default_annotations(node: Symbol, cell_name: str|None = None, show_cell_name: bool = True):
+    """
+    Adds the default SymbolAnnotation block to a symbol: instance name, cell
+    name and one line per cell parameter (as listed by Cell.params_list).
+    cell_name defaults to the class name of the symbol's cell. Hidden lines
+    (shown=False) are the cell name with show_cell_name=False (e.g. for ideal
+    components whose symbol says it all) and parameters left at their
+    default; schematics can still show them via an override.
+    """
+    if cell_name is None:
+        cell_name = type(node.cell).__name__
+    node % SymbolAnnotation(kind=AnnotationKind.InstanceName)
+    node % SymbolAnnotation(kind=AnnotationKind.CellName, text=cell_name, shown=show_cell_name)
+    non_default = set(node.cell.params_list(skip_default=True))
+    for param in node.cell.params_list():
+        node % SymbolAnnotation(kind=AnnotationKind.Param, text=param,
+            shown=param in non_default)
+
 
 def schem_place(schem: Schematic, gap=None, port_margin=None):
     """

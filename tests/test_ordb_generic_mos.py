@@ -7,6 +7,8 @@ from ordec.lib.generic_mos import Inv, Nmos, Pmos
 def test_example_symbol():
     ref = MutableSubgraph.load({
         0: Symbol.Tuple(outline=Rect4R(lx=R('0.'), ly=R('0.'), ux=R('4.'), uy=R('4.')), cell=Inv()),
+        1: SymbolAnnotation(kind=AnnotationKind.InstanceName),
+        2: SymbolAnnotation(kind=AnnotationKind.CellName, text='Inv'),
         21: NPath(parent=None, name='vdd', ref=20),
         23: NPath(parent=None, name='vss', ref=22),
         25: NPath(parent=None, name='a', ref=24),
@@ -39,27 +41,30 @@ def test_example_symbol():
     assert ref.matches(symbol)
 
 def test_example_schematic():
+    inv = Inv().symbol
+    nmos = Nmos(l=R('250n'),w=R('500n')).symbol
+    pmos = Pmos(l=R('250n'),w=R('500n')).symbol
     ref = MutableSubgraph.load({
-        0: Schematic.Tuple(symbol=Inv().symbol, outline=Rect4R(lx=R('0.'), ly=R('1.'), ux=R('10.'), uy=R('13.')), cell=Inv()),
-        1: Net(pin=5),
+        0: Schematic.Tuple(symbol=inv, outline=Rect4R(lx=R('0.'), ly=R('1.'), ux=R('10.'), uy=R('13.')), cell=Inv()),
+        1: Net(pin=inv.a.nid),
         2: NPath(parent=None, name='a', ref=1),
-        3: Net(pin=7),
+        3: Net(pin=inv.y.nid),
         4: NPath(parent=None, name='y', ref=3),
-        5: Net(pin=1),
+        5: Net(pin=inv.vdd.nid),
         6: NPath(parent=None, name='vdd', ref=5),
-        7: Net(pin=3),
+        7: Net(pin=inv.vss.nid),
         8: NPath(parent=None, name='vss', ref=7),
-        9: SchemInstance(pos=Vec2R(x=R('3.'), y=R('2.')), orientation=R0, symbol=Nmos(l=R('250n'),w=R('500n')).symbol),
-        10: SchemInstanceConn(ref=9, here=7, there=3),
-        11: SchemInstanceConn(ref=9, here=7, there=7),
-        12: SchemInstanceConn(ref=9, here=1, there=1),
-        13: SchemInstanceConn(ref=9, here=3, there=5),
+        9: SchemInstance(pos=Vec2R(x=R('3.'), y=R('2.')), orientation=R0, symbol=nmos),
+        10: SchemInstanceConn(ref=9, here=7, there=nmos.s.nid),
+        11: SchemInstanceConn(ref=9, here=7, there=nmos.b.nid),
+        12: SchemInstanceConn(ref=9, here=1, there=nmos.g.nid),
+        13: SchemInstanceConn(ref=9, here=3, there=nmos.d.nid),
         14: NPath(parent=None, name='pd', ref=9),
-        15: SchemInstance(pos=Vec2R(x=R('3.'), y=R('8.')), orientation=R0, symbol=Pmos(l=R('250n'),w=R('500n')).symbol),
-        16: SchemInstanceConn(ref=15, here=5, there=5),
-        17: SchemInstanceConn(ref=15, here=5, there=7),
-        18: SchemInstanceConn(ref=15, here=1, there=1),
-        19: SchemInstanceConn(ref=15, here=3, there=3),
+        15: SchemInstance(pos=Vec2R(x=R('3.'), y=R('8.')), orientation=R0, symbol=pmos),
+        16: SchemInstanceConn(ref=15, here=5, there=pmos.s.nid),
+        17: SchemInstanceConn(ref=15, here=5, there=pmos.b.nid),
+        18: SchemInstanceConn(ref=15, here=1, there=pmos.g.nid),
+        19: SchemInstanceConn(ref=15, here=3, there=pmos.d.nid),
         20: NPath(parent=None, name='pu', ref=15),
         21: SchemPort(ref=5, pos=Vec2R(x=R('2.'), y=R('13.')), align=R270),
         22: SchemPort(ref=7, pos=Vec2R(x=R('2.'), y=R('1.')), align=R270),

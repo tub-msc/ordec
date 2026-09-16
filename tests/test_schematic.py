@@ -163,6 +163,7 @@ def test_schematic_double_instance():
     assert any(e.error_type == SchemErrorType.OverlappingInstances for e in errors)
 
 def test_scheminstance_unresolved_resolution():
+    sym = Nmos(l='2u', w='5u').symbol
     s_ref = MutableSubgraph.load({
         0: Schematic.Tuple(symbol=None, outline=None, cell=None, default_supply=None, default_ground=None),
         1: Net.Tuple(pin=None),
@@ -173,12 +174,12 @@ def test_scheminstance_unresolved_resolution():
         6: NPath.Tuple(parent=None, name='d', ref=5),
         7: Net.Tuple(pin=None),
         8: NPath.Tuple(parent=None, name='b', ref=7),
-        9: SchemInstance.Tuple(pos=Vec2R(R('1.'), R('2.')), orientation=R0, symbol=Nmos(l='2u', w='5u').symbol),
+        9: SchemInstance.Tuple(pos=Vec2R(R('1.'), R('2.')), orientation=R0, symbol=sym),
         10: NPath.Tuple(parent=None, name='myinst', ref=9),
-        11: SchemInstanceConn.Tuple(ref=9, here=1, there=1),
-        12: SchemInstanceConn.Tuple(ref=9, here=3, there=3),
-        13: SchemInstanceConn.Tuple(ref=9, here=5, there=5),
-        14: SchemInstanceConn.Tuple(ref=9, here=7, there=7),
+        11: SchemInstanceConn.Tuple(ref=9, here=1, there=sym.g.nid),
+        12: SchemInstanceConn.Tuple(ref=9, here=3, there=sym.s.nid),
+        13: SchemInstanceConn.Tuple(ref=9, here=5, there=sym.d.nid),
+        14: SchemInstanceConn.Tuple(ref=9, here=7, there=sym.b.nid),
     })
 
     s = Schematic()
@@ -222,6 +223,40 @@ def test_scheminstance_unresolved_hierarchical_path():
     conn = list(s.myinst.conns())[0]
     assert conn.here == s.mynet
     assert conn.there == lib_test.MultibitReg_StructOfArrays(bits=4).symbol.data.d[3]
+
+def test_annotations():
+    from .lib.ord import annotations as lib_ann
+    import re
+    # Symbol viewgens start with the default block and can adjust it:
+    sym = lib_ann.Box(n=1).symbol
+    assert [(a.kind, a.text, a.shown) for a in sym.all(SymbolAnnotation)] == [
+        (AnnotationKind.InstanceName, None, True),
+        (AnnotationKind.CellName, 'Box', False),
+        (AnnotationKind.Param, 'n=1', True),
+        (AnnotationKind.Param, 'm=1', False), # left at its default
+    ]
+    # A symbol on its own has no instance name to show:
+    assert 'class="instanceName"' not in sym.render().svg().decode()
+
+    sch = lib_ann.Top().schematic
+    # The computed outline covers b1's block, which starts at (3, 7):
+    assert sch.outline.uy >= 7
+    svg = sch.render().svg().decode()
+    assert svg.count('>Box<') == 2 # SymbolText of both instances
+    assert re.findall(r'class="instanceName">(\w+)<', svg) == ['b1', 'b2']
+    # b2 places its block explicitly, West-aligned (text-anchor end):
+    b2_block = svg.split('class="symbolOutline"')[2]
+    assert 'text-anchor="end"' in b2_block and 'n=2' in b2_block
+
+    # Per-instance overrides of the shown flag:
+    s = Schematic(outline=(0, 0, 8, 8))
+    s.b = SchemInstance(pos=(0, 0), symbol=lib_ann.Box(n=2).symbol)
+    by_text = {a.text: a for a in s.b.symbol.all(SymbolAnnotation)}
+    s % SchemAnnotationOverride(ref=s.b, there=by_text['n=2'], shown=False)
+    s % SchemAnnotationOverride(ref=s.b, there=by_text['Box'], shown=True)
+    svg = s.render().svg().decode()
+    assert 'n=2' not in svg
+    assert re.findall(r'class="cellName">Box<', svg) == ['class="cellName">Box<'] * 2
 
 def test_scheminstance_params_without_viewgen():
     s = Schematic()

@@ -457,14 +457,19 @@ class Cell(metaclass=MetaCell):
         """
         pass
 
-    def params_list(self, use_repr=False) -> list[str]:
+    def params_list(self, use_repr=False, skip_default=False) -> list[str]:
+        """
+        Parameters as key=value strings. Boolean parameters left at their
+        default are always omitted; skip_default=True omits all parameters
+        left at their default.
+        """
         param_items = []
         for k in self._class_params:
             v = getattr(self, k)
             if v is None:
                 continue
-            # Hide boolean parameters left at their default:
-            if isinstance(v, bool) and v == self._class_params[k].default:
+            at_default = v == self._class_params[k].default
+            if at_default and (skip_default or isinstance(v, bool)):
                 continue
             param_items.append((k, v))
         if use_repr:
