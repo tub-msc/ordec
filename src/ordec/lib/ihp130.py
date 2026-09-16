@@ -700,33 +700,32 @@ def _layoutgen_resistor(
     if width - 2 * contbar_poly_over < contbar_min_len:
         raise ParameterError("Width too small for resistor terminal contact bars.")
 
-    def make_terminal(name, x0, base_y, direction):
-        if direction > 0:
-            head_rect = Rect4I(x0, base_y, x0 + width, base_y + head_len)
-            cont_rect = Rect4I(
-                x0 + contbar_poly_over,
-                base_y + cont_to_body,
-                x0 + width - contbar_poly_over,
-                base_y + cont_to_body + cont_size,
-            )
-        else:
-            head_rect = Rect4I(x0, base_y - head_len, x0 + width, base_y)
-            cont_rect = Rect4I(
-                x0 + contbar_poly_over,
-                base_y - (cont_to_body + cont_size),
-                x0 + width - contbar_poly_over,
-                base_y - cont_to_body,
-            )
+    def make_terminal(x0, base_y, up):
+        """
+        Insert a poly head with contact bar at the body edge (x0, base_y),
+        growing in +y if up, else in -y. Returns the head and the Metal1
+        terminal, for the caller to name.
+        """
+        # Drawn with the body edge at y=0 and the head growing in +y, then
+        # placed at (x0, base_y), mirrored in y unless up.
+        place = TD4I(transl=Vec2I(x0, base_y), d4=D4.R0 if up else D4.MX)
+        head_rect = place * Rect4I(0, 0, width, head_len)
+        cont_rect = place * Rect4I(
+            contbar_poly_over,
+            cont_to_body,
+            width - contbar_poly_over,
+            cont_to_body + cont_size,
+        )
         term_rect = Rect4I(
             cont_rect.lx - metal_x_enc,
             cont_rect.ly - metal_y_enc,
             cont_rect.ux + metal_x_enc,
             cont_rect.uy + metal_y_enc,
         )
-        setattr(l, f"poly_head_{name}", LayoutRect(layer=layers.GatPoly, rect=head_rect))
-        setattr(l, f"cont_{name}", LayoutRect(layer=layers.Cont, rect=cont_rect))
-        setattr(l, f"term_{name}", LayoutRect(layer=layers.Metal1, rect=term_rect))
-        return head_rect, cont_rect, term_rect
+        l % LayoutRect(layer=layers.Cont, rect=cont_rect)
+        head = l % LayoutRect(layer=layers.GatPoly, rect=head_rect)
+        term = l % LayoutRect(layer=layers.Metal1, rect=term_rect)
+        return head, term
 
     stripes = bends + 1
     pitch = width + ps
@@ -769,11 +768,11 @@ def _layoutgen_resistor(
             for i, rect in enumerate(body_rects + bend_rects):
                 l.res[i] = LayoutRect(layer=layers.RES, rect=rect)
 
-    make_terminal("n", 0, 0, -1)
+    l.poly_head_n, l.term_n = make_terminal(0, 0, up=False)
     if stripes % 2 == 1:
-        make_terminal("p", (stripes - 1) * pitch, stripe_len, 1)
+        l.poly_head_p, l.term_p = make_terminal((stripes - 1) * pitch, stripe_len, up=True)
     else:
-        make_terminal("p", (stripes - 1) * pitch, 0, -1)
+        l.poly_head_p, l.term_p = make_terminal((stripes - 1) * pitch, 0, up=False)
 
     body_x_lo = 0
     body_y_lo = min([0] + [r.ly for r in bend_rects])
