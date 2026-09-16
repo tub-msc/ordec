@@ -12,8 +12,9 @@ All SG13G2 resistors (``Rsil``, ``Rppd``, ``Rhigh``) have a third pin ``bn`` con
 
 On the layout side, the SG13G2 LVS deck merges the resistors' bulk into a single chip-wide substrate (pwell) net. For hierarchical designs, this has the following consequences:
 
-* Every cell whose layout contains a resistor (directly or in a subcell) is extracted with an *additional, implicit pin* for the propagated substrate net — even though the cell's layout draws no substrate pin shape.
-* For LVS to pass, the schematic of each such cell needs a matching substrate port (named ``sub`` by convention) wired to the ``bn`` pins of all resistors and propagated down the hierarchy. Within the hierarchy, KLayout matches the extracted substrate pin against this port *topologically*; subcell layouts need neither a pin shape nor a label for it.
+* The net a resistor's ``bn`` is wired to in the schematic must be the net the layout's substrate is tied to, in every cell of the hierarchy.
+* In the normal case no extra port is needed: wire ``bn`` to the net of the substrate tap (usually ``vss``) and place a ``Ptap`` on that net inside the cell that owns the resistor.
+* If the substrate net is not one of the cell's ports, the cell needs a substrate port. Every cell whose layout contains a resistor (directly or in a subcell) is extracted with an *additional, implicit pin* for the propagated substrate net (even though the cell's layout draws no substrate pin shape), and its schematic then needs a matching substrate port (named ``sub`` by convention) wired to the ``bn`` pins of all resistors and propagated down the hierarchy. Within the hierarchy, KLayout matches the extracted substrate pin against this port *topologically*. Subcell layouts need neither a pin shape nor a label for it.
 * The *top* cell is the exception: top-level pins are compared by name, so the top layout must materialize the substrate connection explicitly. Place a substrate tap (``Ptap``) and attach a labeled Metal1 pin to it (see cell ``C_Hier`` in ``tests/lib/lvs_example_hier.ord`` for a working example).
 
 Approaches that do **not** work:

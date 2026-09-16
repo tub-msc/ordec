@@ -672,6 +672,11 @@ def _layoutgen_resistor(
         raise ParameterError(f"w below {kind} minimum width.")
     if length < _tech_nm(f"{kind}_minL"):
         raise ParameterError(f"l below {kind} minimum length.")
+    if width > _tech_nm(f"{kind}_maxW"):
+        raise ParameterError(f"w above {kind} maximum width ({kind}_maxW).")
+    if length > _tech_nm(f"{kind}_maxL"):
+        raise ParameterError(
+            f"l above {kind} maximum length ({kind}_maxL). Use series segments.")
     if bends != 0 and ps < _tech_nm(f"{kind}_minPS"):
         raise ParameterError(f"ps below {kind} minimum spacing.")
 
@@ -788,12 +793,25 @@ def _layoutgen_cmim(cell: Cell) -> Layout:
     min_lw = _tech_nm("cmim_minLW")
     if width < min_lw or length < min_lw:
         raise ParameterError("w and l must be at least cmim_minLW.")
+    max_lw = _tech_nm("cmim_maxLW")
+    if width > max_lw or length > max_lw:
+        raise ParameterError("w and l must be at most cmim_maxLW.")
 
     mim_c = _tech_nm("Mim_c")
     mim_d = _tech_nm("Mim_d")
     tv1_size = _tech_nm("TV1_a")
     tv1_space = _tech_nm("TV1_a") + _tech_nm("TV1_b")
     tv1_enc = _tech_nm("TV1_d")
+
+    # The TopMetal1 plate (via array plus enclosure) must meet TM1.a. At
+    # cmim_minLW only one via fits and the plate is too narrow.
+    tm1_min = _tech_nm("TM1_a")
+    for side, name in ((width, "w"), (length, "l")):
+        if _cmim_plate_span(side, mim_d, tv1_size, tv1_space, tv1_enc) < tm1_min:
+            needed = _cmim_min_side_for_tm1(mim_d, tv1_size, tv1_space, tv1_enc, tm1_min)
+            raise ParameterError(
+                f"{name} = {side} nm gives a TopMetal1 plate narrower than "
+                f"TM1.a ({tm1_min} nm). Cmim needs w and l >= {needed} nm.")
 
     l.mim = LayoutRect(layer=layers.MIM, rect=(0, 0, width, length))
     l.term_n = LayoutRect(
@@ -830,6 +848,27 @@ def _layoutgen_cmim(cell: Cell) -> Layout:
     l.term_p.create_pin(cell.symbol.p)
 
     return l
+
+
+def _cmim_plate_span(side: int, mim_d: int, tv1_size: int, tv1_gap: int,
+                     tv1_enc: int) -> int:
+    """TopMetal1 plate width along one side of a Cmim: the TopVia1 array
+    (same arithmetic as makevias) plus the TV1.d enclosure on both ends."""
+    count = (side - 2 * mim_d + tv1_gap) // (tv1_size + tv1_gap)
+    if count < 1:
+        return 0
+    return count * tv1_size + (count - 1) * tv1_gap + 2 * tv1_enc
+
+
+def _cmim_min_side_for_tm1(mim_d: int, tv1_size: int, tv1_gap: int,
+                           tv1_enc: int, tm1_min: int) -> int:
+    """Smallest Cmim side (10 nm steps) whose top plate meets TM1.a."""
+    side = _tech_nm("cmim_minLW")
+    while _cmim_plate_span(side, mim_d, tv1_size, tv1_gap, tv1_enc) < tm1_min:
+        side += 10
+        if side > _tech_nm("cmim_maxLW"):
+            break
+    return side
 
 
 class Res(SimLeafCell):
