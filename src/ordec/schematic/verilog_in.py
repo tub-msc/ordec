@@ -6,12 +6,34 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 from public import public
+import importlib.util
 import json
 import subprocess
+import sys
 import tempfile
 
 from ..core import *
 from .helpers import schem_place
+
+@public
+def run_yosys(commands: list[str]):
+    """
+    Runs Yosys commands on an empty design using the pyosys package.
+
+    Yosys runs in a child process rather than in-process, because Yosys
+    terminates its process on errors (e.g. on invalid Verilog input).
+    Raises subprocess.CalledProcessError if Yosys fails.
+    """
+    if importlib.util.find_spec("pyosys") is None:
+        raise ModuleNotFoundError("Yosys support requires the optional pyosys package (pip install ordec[yosys]).")
+    code = (
+        "import sys\n"
+        "from pyosys import libyosys\n"
+        "design = libyosys.Design()\n"
+        "for command in sys.argv[1:]:\n"
+        "    libyosys.run_pass(command, design)\n"
+    )
+    subprocess.run([sys.executable, "-c", code, *commands], check=True, capture_output=True, text=True)
 
 @public
 def verilog_to_yosys_json(verilog: str) -> dict[str, Any]:
@@ -23,13 +45,7 @@ def verilog_to_yosys_json(verilog: str) -> dict[str, Any]:
         in_fn = td_path / "in.v"
         out_fn = td_path / "out.json"
         in_fn.write_text(verilog, encoding='utf-8')
-        cmd = [
-            "yosys",
-            "-q",
-            "-p",
-            f"read_verilog {in_fn}; write_json {out_fn}",
-        ]
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
+        run_yosys([f"read_verilog {in_fn}", f"write_json {out_fn}"])
         return json.loads(out_fn.read_text(encoding='utf-8'))
 
 @public

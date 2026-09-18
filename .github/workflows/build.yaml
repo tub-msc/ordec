@@ -61,7 +61,7 @@ jobs:
       - name: Test image
         run: |
           docker run --rm --user root --shm-size=1g -v "$PWD":/mnt -w /mnt ordec-imagetest sh -xc \
-            'apt-get update && apt-get install -y --no-install-recommends chromium chromium-driver && pip install --no-cache-dir pytest pillow selenium && pytest -p no:cacheprovider -o addopts="--tb=short"'
+            'apt-get update && apt-get install -y --no-install-recommends chromium chromium-driver && pip install --no-cache-dir pytest pillow selenium pyosys && pytest -p no:cacheprovider -o addopts="--tb=short"'
       - name: Build and push Docker image
         id: push
         uses: docker/build-push-action@f2a1d5e99d037542a71f64918e516c093c6f3fc4
