@@ -258,6 +258,11 @@ def test_annotations():
     assert 'n=2' not in svg
     assert re.findall(r'class="cellName">Box<', svg) == ['class="cellName">Box<'] * 2
 
+    # Flatter arrangement: instance and cell name share one text row.
+    s.b.annotation_pos = (5, 5)
+    s.b.annotation_wrap = 20
+    assert '<tspan class="instanceName">b</tspan> <tspan class="cellName">Box</tspan>' in s.render().svg().decode()
+
 def test_scheminstance_params_without_viewgen():
     s = Schematic()
     s.myinst = SchemInstance(pos=(0, 0), symbol=Nmos().symbol)

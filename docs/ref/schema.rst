@@ -29,8 +29,10 @@ inside its outline. :class:`SymbolAnnotation` nodes form the annotation
 block (instance name, cell name, parameters), which is placed as a whole
 outside the symbol: by default at ``Symbol.annotation_pos`` (symbol
 coordinates, transformed with the instance), or where the schematic puts it
-via ``SchemInstance.annotation_pos``. Each annotation line has a ``shown``
-flag, which a schematic can override per instance with
+via ``SchemInstance.annotation_pos``. By default, every annotation line is
+a text row of its own; ``SchemInstance.annotation_wrap`` makes the block
+flatter by letting consecutive lines share a row. Each annotation line has a
+``shown`` flag, which a schematic can override per instance with
 :class:`SchemAnnotationOverride` to declutter the drawing.
 
 Symbol viewgens start out with the default block (see

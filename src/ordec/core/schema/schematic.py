@@ -386,6 +386,10 @@ class SchemInstance(Node, MixinSourceLoc):
     #: symbol), in which case annotation_align is ignored as well.
     annotation_pos = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
     annotation_align = Attr(D4, default=D4.East)
+    #: Arrangement of the annotation block: consecutive SymbolAnnotations
+    #: share a text row as long as it stays within annotation_wrap
+    #: characters; 0 means one per row.
+    annotation_wrap = Attr(int, default=0)
     #: None only while the instance is unresolved in its view context; must be
     #: resolved before the schematic is finalized (checked in postprocess
     #: and schem_check).

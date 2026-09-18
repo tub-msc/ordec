@@ -55,18 +55,39 @@ def annotation_lines(s: Symbol, inst: SchemInstance|None) -> list[tuple[str, Ann
             lines.append((a.text, a.kind))
     return lines
 
-def annotation_anchor(s: Symbol, trans: TD4R, inst: SchemInstance|None) -> TD4R:
+def annotation_row_chars(row: list) -> int:
+    """Length of a text row; its entries are separated by one space."""
+    return sum(len(text) for text, kind in row) + len(row) - 1
+
+def annotation_rows(lines: list, wrap: int) -> list[list]:
+    """
+    Arranges the lines of an annotation block (see annotation_lines) into
+    text rows: consecutive entries share a row as long as it stays within
+    wrap characters. wrap=0 is the default arrangement with one entry per
+    row; larger values make the block flatter.
+    """
+    rows = []
+    for line in lines:
+        if rows and annotation_row_chars(rows[-1] + [line]) <= wrap:
+            rows[-1].append(line)
+        else:
+            rows.append([line])
+    return rows
+
+def annotation_anchor(s: Symbol, trans: TD4R, inst: SchemInstance|None) -> tuple[TD4R, int]:
     """
     Anchor of the annotation block (position and direction the text extends
-    in, see Renderer.draw_label): the instance's annotation_pos if set, else
-    the symbol's default transformed by trans.
+    in, see Renderer.draw_label) and its arrangement (wrap, see
+    annotation_rows): the instance's annotation_pos if set, else the symbol's
+    default transformed by trans.
     """
+    wrap = 0 if inst is None else inst.annotation_wrap
     if inst is not None and inst.annotation_pos is not None:
-        return inst.annotation_pos.transl() * inst.annotation_align
+        return inst.annotation_pos.transl() * inst.annotation_align, wrap
     pos = s.annotation_pos
     if pos is None:
         pos = s.outline.northeast
-    return trans * pos.transl() * s.annotation_align
+    return trans * pos.transl() * s.annotation_align, wrap
 
 def annotation_extent(s: Symbol, trans: TD4R, inst: SchemInstance|None) -> Rect4R | None:
     """
@@ -76,8 +97,9 @@ def annotation_extent(s: Symbol, trans: TD4R, inst: SchemInstance|None) -> Rect4
     lines = annotation_lines(s, inst)
     if not lines:
         return None
-    anchor = annotation_anchor(s, trans, inst)
-    return Renderer.label_rect(anchor, max(len(text) for text, kind in lines), len(lines))
+    anchor, wrap = annotation_anchor(s, trans, inst)
+    rows = annotation_rows(lines, wrap)
+    return Renderer.label_rect(anchor, max(annotation_row_chars(row) for row in rows), len(rows))
 
 class Renderer:
     """
@@ -161,15 +183,16 @@ class Renderer:
             y0, y1 = -depth/2, depth/2
         return frame * Rect4R(min(0, length), y0, max(0, length), y1)
 
-    def draw_label(self, text: str, trans: TD4R, halign=HAlign.Left, valign=VAlign.Top, space=None, svg_class: str|list[str]=""):
+    def draw_label(self, text: str|list[list[tuple[str, str]]], trans: TD4R, halign=HAlign.Left, valign=VAlign.Top, space=None, svg_class: str=""):
         """
         Draws text (possibly multi-line, separated by newlines) extending from
         the translation of trans in the direction of its D4 component. Text
         is never rotated by 180 degrees: for West and South, halign is
         inverted instead.
 
-        svg_class is either one class for the whole text or a list with one
-        class per line.
+        text is either a string drawn with svg_class, or a list of rows, each
+        a list of (text, svg_class) spans that are drawn in one line,
+        separated by spaces.
         """
 
         align = trans.d4.unflip()
@@ -203,26 +226,31 @@ class Renderer:
         scale = round(self.font_size_actual_grid_units / (self.font_size_internal_pt * 96/72), 6)
         tag = ET.SubElement(self.cur_group, 'text', transform=g_matrix.svg_transform(x_scale=scale, y_scale=-scale))
 
-        lines = text.split('\n')
-        if isinstance(svg_class, str):
-            line_classes = [svg_class] * len(lines)
+        if isinstance(text, str):
+            rows = [[(line, svg_class)] for line in text.split('\n')]
         else:
-            line_classes = svg_class
-            svg_class = ""
-        if len(lines) == 1:
+            rows = text
+        if len(rows) == 1 and len(rows[0]) == 1:
             # Make the XML tree more compact by skipping <tspan> for single-line text:
-            tag.text = lines[0]
-            svg_class = line_classes[0]
+            tag.text, svg_class = rows[0][0]
         else:
-            # Lines stack away from the anchor: downwards for Top, upwards
+            svg_class = ""
+            # Rows stack away from the anchor: downwards for Top, upwards
             # for Bottom, centered for Middle.
-            first = {VAlign.Top: 0, VAlign.Bottom: 1-len(lines),
-                VAlign.Middle: -(len(lines)-1)/2}[valign]
-            for idx, (line, line_class) in enumerate(zip(lines, line_classes)):
-                tspan=ET.SubElement(tag, 'tspan', x="0", y=f"{first+idx}em")
-                tspan.text = line
-                if line_class:
-                    tspan.attrib['class'] = line_class
+            first = {VAlign.Top: 0, VAlign.Bottom: 1-len(rows),
+                VAlign.Middle: -(len(rows)-1)/2}[valign]
+            for idx, row in enumerate(rows):
+                tspan = ET.SubElement(tag, 'tspan', x="0", y=f"{first+idx}em")
+                if len(row) == 1:
+                    spans = [tspan]
+                else:
+                    spans = [ET.SubElement(tspan, 'tspan') for span in row]
+                for span, (span_text, span_class) in zip(spans, row):
+                    span.text = span_text
+                    if span_class:
+                        span.attrib['class'] = span_class
+                for span in spans[:-1]:
+                    span.tail = ' '
 
         tag.attrib['dominant-baseline'] = {
             VAlign.Top: 'hanging',
@@ -484,9 +512,9 @@ class SchematicRenderer(Renderer):
 
         lines = annotation_lines(s, inst)
         if lines:
-            self.draw_label("\n".join(text for text, kind in lines),
-                annotation_anchor(s, trans, inst),
-                svg_class=[self.annotation_class[kind] for text, kind in lines])
+            anchor, wrap = annotation_anchor(s, trans, inst)
+            lines = [(text, self.annotation_class[kind]) for text, kind in lines]
+            self.draw_label(annotation_rows(lines, wrap), anchor)
 
         for poly in s.all(SymbolPoly):
             p = ET.SubElement(self.cur_group, 'path', d=poly.svg_path(),
