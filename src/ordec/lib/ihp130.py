@@ -32,6 +32,7 @@ def pdk() -> PdkDict:
     pdk.ngspice_osdi_dir         =  check_dir(pdk.root / "libs.tech/ngspice/osdi")
     pdk.stdcell_spice_dir        =  check_dir(pdk.root / "libs.ref/sg13g2_stdcell/spice")
     pdk.stdcell_lef              = check_file(pdk.root / "libs.ref/sg13g2_stdcell/lef/sg13g2_stdcell.lef")
+    pdk.stdcell_liberty          = check_file(pdk.root / "libs.ref/sg13g2_stdcell/lib/sg13g2_stdcell_typ_1p20V_25C.lib")
     pdk.stdcell_gds              = check_file(pdk.root / "libs.ref/sg13g2_stdcell/gds/sg13g2_stdcell.gds")
     pdk.stdcell_spice            = check_file(pdk.root / "libs.ref/sg13g2_stdcell/spice/sg13g2_stdcell.spice")
     pdk.iocell_spice_dir         =  check_dir(pdk.root / "libs.ref/sg13g2_io/spice")
