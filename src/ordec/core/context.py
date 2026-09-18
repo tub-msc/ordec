@@ -378,6 +378,8 @@ class SchematicViewBuilder(MixinUnresolvedInstances, ViewBuilder):
 
         self.root.auto_wire()
         self.root.check(add_conn_points=True, add_terminal_taps=True)
+        # Last, since conn points, taps and wires are obstacles for the blocks.
+        self.root.place_annotations()
 
 
 class LayoutViewBuilder(MixinUnresolvedInstances, ViewBuilder):

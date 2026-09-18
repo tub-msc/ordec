@@ -92,10 +92,13 @@ class Symbol(MixinRenderable, SubgraphRoot):
     wire_id = WIRE_DOMAIN | 1
     outline = Attr(Rect4R, factory=coerce_tuple(Rect4R, 4))
     cell = LiveRef(Cell)
-    #: Default position of the SymbolAnnotation block in symbol coordinates.
-    #: None places it at the northeast corner of the outline.
+    #: Optional hint for the position of the SymbolAnnotation block in symbol
+    #: coordinates. None (the default) lets the schematic place the block
+    #: beside the symbol, preferring its east side (see
+    #: :func:`ordec.schematic.place_annotations`). A hint is used if the block
+    #: fits there; it follows the instance orientation.
     annotation_pos = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
-    #: Direction in which the SymbolAnnotation block extends from annotation_pos.
+    #: Direction in which the block extends from annotation_pos: East or West.
     annotation_align = Attr(D4, default=D4.East)
 
     def portmap(self, **kwargs):
@@ -232,6 +235,10 @@ class Schematic(MixinRenderable, SubgraphRoot):
     def place_unplaced_instances(self):
         from ...schematic.helpers import place_unplaced_instances
         place_unplaced_instances(self)
+
+    def place_annotations(self):
+        from ...schematic import place_annotations
+        place_annotations(self)
 
     def check(self, add_conn_points=False, add_terminal_taps=False):
         from ...schematic import schem_check
@@ -381,14 +388,18 @@ class SchemInstance(Node, MixinSourceLoc):
     pos = ConstrainableAttr(Vec2R, placeholder=Vec2LinearTerm,
         factory=coerce_tuple(Vec2R, 2))
     orientation = Attr(D4, default=D4.R0)
-    #: Position of the annotation block in schematic coordinates. None uses
-    #: the symbol's default (Symbol.annotation_pos, transformed like the
-    #: symbol), in which case annotation_align is ignored as well.
+    #: Position of the annotation block in schematic coordinates. Set by
+    #: Schematic.place_annotations() in the viewgen pipeline unless the
+    #: schematic sets it explicitly. If still None when rendering (e.g. in
+    #: hand-built schematics), the renderer places the block the same way
+    #: without storing the result, ignoring annotation_align.
     annotation_pos = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
     annotation_align = Attr(D4, default=D4.East)
     #: Arrangement of the annotation block: consecutive SymbolAnnotations
     #: share a text row as long as it stays within annotation_wrap
-    #: characters; 0 means one per row.
+    #: characters; 0 means one per row. Set together with annotation_pos:
+    #: place_annotations() chooses flatter blocks where vertical space is
+    #: scarce.
     annotation_wrap = Attr(int, default=0)
     #: None only while the instance is unresolved in its view context; must be
     #: resolved before the schematic is finalized (checked in postprocess

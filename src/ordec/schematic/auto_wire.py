@@ -35,7 +35,7 @@ from dataclasses import dataclass
 
 from ..core import *
 from ..core.schema.schematic import SchemInstanceSubcursor
-from .render import Renderer, annotation_extent
+from .render import Renderer
 
 logger = logging.getLogger(__name__)
 
@@ -1166,8 +1166,8 @@ def tap_outline_point(tap: SchemTapPoint) -> Vec2R:
     return tap.pos + (tap.align * Vec2R(0, 1)) * total
 
 def adjust_outline_initial(node: Schematic) -> Rect4R | None:
-    """Compute an initial outline enclosing all ports, tap points,
-    instances and their annotation blocks.
+    """Compute an initial outline enclosing all ports, tap points and
+    instances (annotation blocks are placed after wiring).
 
     Args:
         node: Schematic containing the elements.
@@ -1209,10 +1209,6 @@ def adjust_outline_initial(node: Schematic) -> Rect4R | None:
             outline = outline.extend(up_pos)
         else:
             outline = instance_geometry
-        extent = annotation_extent(instance.symbol, instance_transform, instance)
-        if extent is not None:
-            outline = outline.extend(Vec2R(extent.lx, extent.ly))
-            outline = outline.extend(Vec2R(extent.ux, extent.uy))
     if outline is not None:
         # Label extents are fractional; keep the outline on whole grid units,
         # which the routing grid (calculate_vertices) relies on.

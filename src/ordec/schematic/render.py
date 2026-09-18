@@ -74,20 +74,24 @@ def annotation_rows(lines: list, wrap: int) -> list[list]:
             rows.append([line])
     return rows
 
-def annotation_anchor(s: Symbol, trans: TD4R, inst: SchemInstance|None) -> tuple[TD4R, int]:
+def annotation_anchor(s: Symbol, trans: TD4R, inst: SchemInstance|None) -> tuple[TD4R, int] | None:
     """
     Anchor of the annotation block (position and direction the text extends
     in, see Renderer.draw_label) and its arrangement (wrap, see
-    annotation_rows): the instance's annotation_pos if set, else the symbol's
-    default transformed by trans.
+    annotation_rows): the instance's annotation_pos and annotation_wrap if
+    set, else the block is placed against the symbol's own geometry (a
+    symbol on its own, or an instance of a schematic that never ran
+    place_annotations; see SchematicRenderer.render_schematic for the
+    latter). None if no line of the block is shown.
     """
-    wrap = 0 if inst is None else inst.annotation_wrap
     if inst is not None and inst.annotation_pos is not None:
-        return inst.annotation_pos.transl() * inst.annotation_align, wrap
-    pos = s.annotation_pos
-    if pos is None:
-        pos = s.outline.northeast
-    return trans * pos.transl() * s.annotation_align, wrap
+        return inst.annotation_pos.transl() * inst.annotation_align, inst.annotation_wrap
+    from .annotate import place_block, symbol_obstacles, symbol_body, rect_anchor
+    placed = place_block(s, trans, inst, [r.tofloat() for r in symbol_obstacles(s, trans, inst)])
+    if placed is None:
+        return None
+    rect, wrap = placed
+    return rect_anchor(rect, symbol_body(s, trans, inst)), wrap
 
 def annotation_extent(s: Symbol, trans: TD4R, inst: SchemInstance|None) -> Rect4R | None:
     """
@@ -441,7 +445,22 @@ class SchematicRenderer(Renderer):
         self.draw_symbol(s, TD4R())
 
     def render_schematic(self, s: Schematic):
-        self.setup_canvas(s.outline)
+        from .annotate import block_rects, symbol_body, rect_anchor
+        # Instances that were never placed (schematics built outside the
+        # viewgen pipeline) get their annotation blocks placed here, without
+        # storing the result.
+        self.annotation_anchors = {}
+        canvas = s.outline
+        rects = block_rects(s)
+        for inst in s.all(SchemInstance):
+            if inst.nid not in rects:
+                continue
+            rect, wrap = rects[inst.nid]
+            if inst.annotation_pos is None:
+                body = symbol_body(inst.symbol, inst.loc_transform(), inst)
+                self.annotation_anchors[inst.nid] = (rect_anchor(rect, body), wrap)
+            canvas = canvas.extend(rect.southwest).extend(rect.northeast)
+        self.setup_canvas(canvas)
         if self.enable_grid:
             self.draw_grid(s.outline)
 
@@ -484,6 +503,9 @@ class SchematicRenderer(Renderer):
         circle.attrib['class'] = 'errorMarker'
         circle.attrib['data-error'] = err.error_type.value
 
+    #: Block (anchor, wrap) by instance nid, filled by render_schematic.
+    annotation_anchors = {}
+
     annotation_class = {
         AnnotationKind.CellName: 'cellName',
         AnnotationKind.InstanceName: 'instanceName',
@@ -512,7 +534,10 @@ class SchematicRenderer(Renderer):
 
         lines = annotation_lines(s, inst)
         if lines:
-            anchor, wrap = annotation_anchor(s, trans, inst)
+            if inst is not None and inst.nid in self.annotation_anchors:
+                anchor, wrap = self.annotation_anchors[inst.nid]
+            else:
+                anchor, wrap = annotation_anchor(s, trans, inst)
             lines = [(text, self.annotation_class[kind]) for text, kind in lines]
             self.draw_label(annotation_rows(lines, wrap), anchor)
 
