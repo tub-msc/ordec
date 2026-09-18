@@ -2,141 +2,141 @@
   <g transform="matrix(1 0 0 -1 0 38.0)">
     <rect x="0.0" y="0.0" width="6.0" height="38.0" class="symbolOutline" />
     <text transform="matrix(0.045 0 0 -0.045 5.875 37.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">MultibitReg_Arrays</text>
-    <text transform="matrix(0.045 0 0 -0.045 5.875 0.125)" dominant-baseline="ideographic" text-anchor="end" class="params">bits=32</text>
-    <text transform="matrix(0.045 0 0 -0.045 0.125 37.875)" dominant-baseline="hanging" text-anchor="start" class="instanceName">?</text>
+    <text transform="matrix(0.045 0 0 -0.045 5.875 0.785)" dominant-baseline="hanging" text-anchor="end" class="params">bits=32</text>
+    <path d="M0.0 0.0 L6.0 0.0 L6.0 38.0 L0.0 38.0 Z" transform="matrix(1 0 0 1 0.0 0.0)" class="symbolPoly" />
     <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(1 0 0 1 3.0 0.2)" class="pinArrow" />
     <text transform="matrix(0 0.045 0.045 0 2.875 0.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">vss</text>
     <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(-1 0 0 -1 3.0 37.8)" class="pinArrow" />
     <text transform="matrix(0 0.045 0.045 0 2.875 37.875)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">vdd</text>
     <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 3.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 0.125 3.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">d[0]</text>
+    <text transform="matrix(0.045 0 0 -0.045 0.125 2.875)" dominant-baseline="hanging" text-anchor="start" class="pinLabel">d[0]</text>
     <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 5.8 3.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 5.875 3.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">q[0]</text>
+    <text transform="matrix(0.045 0 0 -0.045 5.875 2.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel">q[0]</text>
     <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 4.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 0.125 4.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">d[1]</text>
+    <text transform="matrix(0.045 0 0 -0.045 0.125 3.875)" dominant-baseline="hanging" text-anchor="start" class="pinLabel">d[1]</text>
     <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 5.8 4.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 5.875 4.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">q[1]</text>
+    <text transform="matrix(0.045 0 0 -0.045 5.875 3.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel">q[1]</text>
     <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 5.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 0.125 5.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">d[2]</text>
+    <text transform="matrix(0.045 0 0 -0.045 0.125 4.875)" dominant-baseline="hanging" text-anchor="start" class="pinLabel">d[2]</text>
     <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 5.8 5.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 5.875 5.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">q[2]</text>
+    <text transform="matrix(0.045 0 0 -0.045 5.875 4.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel">q[2]</text>
     <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 6.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 0.125 6.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">d[3]</text>
+    <text transform="matrix(0.045 0 0 -0.045 0.125 5.875)" dominant-baseline="hanging" text-anchor="start" class="pinLabel">d[3]</text>
     <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 5.8 6.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 5.875 6.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">q[3]</text>
+    <text transform="matrix(0.045 0 0 -0.045 5.875 5.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel">q[3]</text>
     <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 7.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 0.125 7.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">d[4]</text>
+    <text transform="matrix(0.045 0 0 -0.045 0.125 6.875)" dominant-baseline="hanging" text-anchor="start" class="pinLabel">d[4]</text>
     <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 5.8 7.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 5.875 7.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">q[4]</text>
+    <text transform="matrix(0.045 0 0 -0.045 5.875 6.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel">q[4]</text>
     <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 8.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 0.125 8.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">d[5]</text>
+    <text transform="matrix(0.045 0 0 -0.045 0.125 7.875)" dominant-baseline="hanging" text-anchor="start" class="pinLabel">d[5]</text>
     <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 5.8 8.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 5.875 8.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">q[5]</text>
+    <text transform="matrix(0.045 0 0 -0.045 5.875 7.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel">q[5]</text>
     <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 9.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 0.125 9.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">d[6]</text>
+    <text transform="matrix(0.045 0 0 -0.045 0.125 8.875)" dominant-baseline="hanging" text-anchor="start" class="pinLabel">d[6]</text>
     <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 5.8 9.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 5.875 9.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">q[6]</text>
+    <text transform="matrix(0.045 0 0 -0.045 5.875 8.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel">q[6]</text>
     <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 10.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 0.125 10.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">d[7]</text>
+    <text transform="matrix(0.045 0 0 -0.045 0.125 9.875)" dominant-baseline="hanging" text-anchor="start" class="pinLabel">d[7]</text>
     <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 5.8 10.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 5.875 10.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">q[7]</text>
+    <text transform="matrix(0.045 0 0 -0.045 5.875 9.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel">q[7]</text>
     <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 11.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 0.125 11.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">d[8]</text>
+    <text transform="matrix(0.045 0 0 -0.045 0.125 10.875)" dominant-baseline="hanging" text-anchor="start" class="pinLabel">d[8]</text>
     <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 5.8 11.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 5.875 11.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">q[8]</text>
+    <text transform="matrix(0.045 0 0 -0.045 5.875 10.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel">q[8]</text>
     <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 12.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 0.125 12.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">d[9]</text>
+    <text transform="matrix(0.045 0 0 -0.045 0.125 11.875)" dominant-baseline="hanging" text-anchor="start" class="pinLabel">d[9]</text>
     <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 5.8 12.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 5.875 12.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">q[9]</text>
+    <text transform="matrix(0.045 0 0 -0.045 5.875 11.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel">q[9]</text>
     <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 13.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 0.125 13.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">d[10]</text>
+    <text transform="matrix(0.045 0 0 -0.045 0.125 12.875)" dominant-baseline="hanging" text-anchor="start" class="pinLabel">d[10]</text>
     <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 5.8 13.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 5.875 13.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">q[10]</text>
+    <text transform="matrix(0.045 0 0 -0.045 5.875 12.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel">q[10]</text>
     <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 14.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 0.125 14.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">d[11]</text>
+    <text transform="matrix(0.045 0 0 -0.045 0.125 13.875)" dominant-baseline="hanging" text-anchor="start" class="pinLabel">d[11]</text>
     <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 5.8 14.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 5.875 14.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">q[11]</text>
+    <text transform="matrix(0.045 0 0 -0.045 5.875 13.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel">q[11]</text>
     <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 15.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 0.125 15.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">d[12]</text>
+    <text transform="matrix(0.045 0 0 -0.045 0.125 14.875)" dominant-baseline="hanging" text-anchor="start" class="pinLabel">d[12]</text>
     <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 5.8 15.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 5.875 15.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">q[12]</text>
+    <text transform="matrix(0.045 0 0 -0.045 5.875 14.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel">q[12]</text>
     <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 16.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 0.125 16.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">d[13]</text>
+    <text transform="matrix(0.045 0 0 -0.045 0.125 15.875)" dominant-baseline="hanging" text-anchor="start" class="pinLabel">d[13]</text>
     <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 5.8 16.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 5.875 16.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">q[13]</text>
+    <text transform="matrix(0.045 0 0 -0.045 5.875 15.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel">q[13]</text>
     <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 17.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 0.125 17.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">d[14]</text>
+    <text transform="matrix(0.045 0 0 -0.045 0.125 16.875)" dominant-baseline="hanging" text-anchor="start" class="pinLabel">d[14]</text>
     <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 5.8 17.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 5.875 17.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">q[14]</text>
+    <text transform="matrix(0.045 0 0 -0.045 5.875 16.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel">q[14]</text>
     <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 18.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 0.125 18.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">d[15]</text>
+    <text transform="matrix(0.045 0 0 -0.045 0.125 17.875)" dominant-baseline="hanging" text-anchor="start" class="pinLabel">d[15]</text>
     <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 5.8 18.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 5.875 18.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">q[15]</text>
+    <text transform="matrix(0.045 0 0 -0.045 5.875 17.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel">q[15]</text>
     <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 19.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 0.125 19.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">d[16]</text>
+    <text transform="matrix(0.045 0 0 -0.045 0.125 18.875)" dominant-baseline="hanging" text-anchor="start" class="pinLabel">d[16]</text>
     <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 5.8 19.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 5.875 19.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">q[16]</text>
+    <text transform="matrix(0.045 0 0 -0.045 5.875 18.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel">q[16]</text>
     <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 20.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 0.125 20.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">d[17]</text>
+    <text transform="matrix(0.045 0 0 -0.045 0.125 19.875)" dominant-baseline="hanging" text-anchor="start" class="pinLabel">d[17]</text>
     <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 5.8 20.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 5.875 20.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">q[17]</text>
+    <text transform="matrix(0.045 0 0 -0.045 5.875 19.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel">q[17]</text>
     <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 21.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 0.125 21.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">d[18]</text>
+    <text transform="matrix(0.045 0 0 -0.045 0.125 20.875)" dominant-baseline="hanging" text-anchor="start" class="pinLabel">d[18]</text>
     <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 5.8 21.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 5.875 21.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">q[18]</text>
+    <text transform="matrix(0.045 0 0 -0.045 5.875 20.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel">q[18]</text>
     <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 22.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 0.125 22.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">d[19]</text>
+    <text transform="matrix(0.045 0 0 -0.045 0.125 21.875)" dominant-baseline="hanging" text-anchor="start" class="pinLabel">d[19]</text>
     <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 5.8 22.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 5.875 22.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">q[19]</text>
+    <text transform="matrix(0.045 0 0 -0.045 5.875 21.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel">q[19]</text>
     <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 23.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 0.125 23.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">d[20]</text>
+    <text transform="matrix(0.045 0 0 -0.045 0.125 22.875)" dominant-baseline="hanging" text-anchor="start" class="pinLabel">d[20]</text>
     <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 5.8 23.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 5.875 23.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">q[20]</text>
+    <text transform="matrix(0.045 0 0 -0.045 5.875 22.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel">q[20]</text>
     <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 24.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 0.125 24.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">d[21]</text>
+    <text transform="matrix(0.045 0 0 -0.045 0.125 23.875)" dominant-baseline="hanging" text-anchor="start" class="pinLabel">d[21]</text>
     <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 5.8 24.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 5.875 24.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">q[21]</text>
+    <text transform="matrix(0.045 0 0 -0.045 5.875 23.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel">q[21]</text>
     <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 25.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 0.125 25.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">d[22]</text>
+    <text transform="matrix(0.045 0 0 -0.045 0.125 24.875)" dominant-baseline="hanging" text-anchor="start" class="pinLabel">d[22]</text>
     <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 5.8 25.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 5.875 25.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">q[22]</text>
+    <text transform="matrix(0.045 0 0 -0.045 5.875 24.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel">q[22]</text>
     <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 26.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 0.125 26.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">d[23]</text>
+    <text transform="matrix(0.045 0 0 -0.045 0.125 25.875)" dominant-baseline="hanging" text-anchor="start" class="pinLabel">d[23]</text>
     <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 5.8 26.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 5.875 26.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">q[23]</text>
+    <text transform="matrix(0.045 0 0 -0.045 5.875 25.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel">q[23]</text>
     <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 27.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 0.125 27.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">d[24]</text>
+    <text transform="matrix(0.045 0 0 -0.045 0.125 26.875)" dominant-baseline="hanging" text-anchor="start" class="pinLabel">d[24]</text>
     <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 5.8 27.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 5.875 27.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">q[24]</text>
+    <text transform="matrix(0.045 0 0 -0.045 5.875 26.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel">q[24]</text>
     <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 28.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 0.125 28.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">d[25]</text>
+    <text transform="matrix(0.045 0 0 -0.045 0.125 27.875)" dominant-baseline="hanging" text-anchor="start" class="pinLabel">d[25]</text>
     <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 5.8 28.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 5.875 28.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">q[25]</text>
+    <text transform="matrix(0.045 0 0 -0.045 5.875 27.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel">q[25]</text>
     <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 29.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 0.125 29.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">d[26]</text>
+    <text transform="matrix(0.045 0 0 -0.045 0.125 28.875)" dominant-baseline="hanging" text-anchor="start" class="pinLabel">d[26]</text>
     <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 5.8 29.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 5.875 29.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">q[26]</text>
+    <text transform="matrix(0.045 0 0 -0.045 5.875 28.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel">q[26]</text>
     <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 30.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 0.125 30.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">d[27]</text>
+    <text transform="matrix(0.045 0 0 -0.045 0.125 29.875)" dominant-baseline="hanging" text-anchor="start" class="pinLabel">d[27]</text>
     <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 5.8 30.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 5.875 30.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">q[27]</text>
+    <text transform="matrix(0.045 0 0 -0.045 5.875 29.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel">q[27]</text>
     <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 31.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 0.125 31.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">d[28]</text>
+    <text transform="matrix(0.045 0 0 -0.045 0.125 30.875)" dominant-baseline="hanging" text-anchor="start" class="pinLabel">d[28]</text>
     <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 5.8 31.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 5.875 31.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">q[28]</text>
+    <text transform="matrix(0.045 0 0 -0.045 5.875 30.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel">q[28]</text>
     <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 32.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 0.125 32.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">d[29]</text>
+    <text transform="matrix(0.045 0 0 -0.045 0.125 31.875)" dominant-baseline="hanging" text-anchor="start" class="pinLabel">d[29]</text>
     <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 5.8 32.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 5.875 32.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">q[29]</text>
+    <text transform="matrix(0.045 0 0 -0.045 5.875 31.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel">q[29]</text>
     <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 33.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 0.125 33.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">d[30]</text>
+    <text transform="matrix(0.045 0 0 -0.045 0.125 32.875)" dominant-baseline="hanging" text-anchor="start" class="pinLabel">d[30]</text>
     <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 5.8 33.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 5.875 33.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">q[30]</text>
+    <text transform="matrix(0.045 0 0 -0.045 5.875 32.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel">q[30]</text>
     <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 34.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 0.125 34.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">d[31]</text>
+    <text transform="matrix(0.045 0 0 -0.045 0.125 33.875)" dominant-baseline="hanging" text-anchor="start" class="pinLabel">d[31]</text>
     <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 5.8 34.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 5.875 34.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">q[31]</text>
+    <text transform="matrix(0.045 0 0 -0.045 5.875 33.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel">q[31]</text>
     <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 35.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 0.125 35.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">clk</text>
+    <text transform="matrix(0.045 0 0 -0.045 0.125 34.875)" dominant-baseline="hanging" text-anchor="start" class="pinLabel">clk</text>
   </g>
 </svg>
