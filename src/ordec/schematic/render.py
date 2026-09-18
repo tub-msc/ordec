@@ -396,6 +396,9 @@ class SchematicRenderer(Renderer):
         .grid {
             fill: #ccc;
         }
+        .detail {
+            display: none;
+        }
         .schemWire, .tapPoint {
             stroke: #0066cc;
         }
@@ -421,7 +424,7 @@ class SchematicRenderer(Renderer):
     def draw_grid(self, rect: Rect4R, dot_size: float = 0.1):
         lx, ly, ux, uy = rect.tofloat()
         with self.subgroup():
-            self.cur_group.attrib['class']='grid'
+            self.cur_group.attrib['class']='grid detail'
 
             for x in range(math.floor(lx), math.ceil(ux)+1):
                 for y in range(math.floor(ly), math.ceil(uy)+1):
