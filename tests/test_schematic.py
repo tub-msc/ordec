@@ -266,6 +266,16 @@ def test_annotations():
     s.b.annotation_wrap = 20
     assert '<tspan class="instanceName">b</tspan> <tspan class="cellName">Box</tspan>' in s.render().svg().decode()
 
+def test_pin_show_flags():
+    from ordec.lib.generic_mos import Nmos, Inv
+    # The MOS symbol hides its pin arrows and labels. Hidden labels are
+    # still output, for the detail view of the web UI:
+    svg = Nmos().symbol.render().svg().decode()
+    assert 'class="pinArrow"' not in svg and 'class="pinLabel"' not in svg
+    assert svg.count('class="pinLabel detail"') == 4
+    svg = Inv().symbol.render().svg().decode()
+    assert svg.count('class="pinArrow"') == 4 and svg.count('class="pinLabel"') == 4
+
 def test_annotation_placement():
     from ordec.schematic.annotate import block_rects, schematic_obstacles, symbol_body, fits, rect_gap
     from ordec.lib.generic_mos import Inv

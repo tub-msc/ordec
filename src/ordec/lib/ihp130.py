@@ -963,9 +963,9 @@ class Res(SimLeafCell):
         s = Symbol(cell=self)
         s.add_default_annotations()
 
-        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
-        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
-        s.bn = Pin(pos=Vec2R(4, 2), pintype=PinType.In, align=East)
+        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South, show_arrow=False, show_label=False)
+        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North, show_arrow=False, show_label=False)
+        s.bn = Pin(pos=Vec2R(4, 2), pintype=PinType.In, align=East, show_arrow=False)
 
         zigzag_height = R(2)
         zigzag_width_half = R(0.625)
@@ -1113,8 +1113,8 @@ class Cmim(SimLeafCell):
         s = Symbol(cell=self)
         s.add_default_annotations()
 
-        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
-        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
+        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South, show_arrow=False, show_label=False)
+        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North, show_arrow=False, show_label=False)
 
         s % SymbolPoly(vertices=[Vec2R(1.25, 1.8), Vec2R(2.75, 1.8)])
         s % SymbolPoly(vertices=[Vec2R(1.25, 2.2), Vec2R(2.75, 2.2)])

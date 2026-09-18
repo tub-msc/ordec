@@ -130,6 +130,8 @@ class Pin(Node):
     pintype = Attr(PinType, default=PinType.Inout)
     pos     = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
     align   = Attr(D4, default=D4.R0)
+    show_label = Attr(bool, default=True) #: Whether the pin name is drawn next to the pin. Hidden pin names still show in the detail view of the web UI.
+    show_arrow = Attr(bool, default=True) #: Whether the arrow indicating pintype is drawn at the pin.
 
 @public
 class SymbolPoly(GenericPolyR, MixinPolygonalChain):

@@ -558,7 +558,8 @@ class SchematicRenderer(Renderer):
         # Flip by 180 degrees, as the text face the opposite of the pin direction:
         trans_local = trans * pin.pos.transl() * R180 * pin.align
 
-        self.draw_arrow(ArrowType.Pin, pin.pintype, trans_local)
+        if pin.show_arrow:
+            self.draw_arrow(ArrowType.Pin, pin.pintype, trans_local)
 
         label = pin.full_path_label()
         # Labels go below horizontal stubs and left of vertical stubs. This
@@ -568,7 +569,9 @@ class SchematicRenderer(Renderer):
             valign = VAlign.Top
         else:
             valign = VAlign.Bottom
-        self.draw_label(label, trans_local, valign=valign, svg_class='pinLabel')
+        # Hidden labels stay in the SVG for the detail view (see css).
+        svg_class = 'pinLabel' if pin.show_label else 'pinLabel detail'
+        self.draw_label(label, trans_local, valign=valign, svg_class=svg_class)
 
     def draw_arrow(self, arrowtype: ArrowType, pt: PinType, trans: TD4R):
         if arrowtype == ArrowType.Pin:

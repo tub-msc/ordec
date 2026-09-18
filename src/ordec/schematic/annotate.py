@@ -65,7 +65,7 @@ def arc_bbox(arc: SymbolArc) -> Rect4R:
 def symbol_obstacles(s: Symbol, trans: TD4R, inst: SchemInstance|None = None) -> list[Rect4R]:
     """
     Rectangles covering the drawn geometry of symbol s under trans: polygons,
-    arcs, pin stubs and pin labels, and fixed SymbolTexts. The outline itself
+    arcs, shown pin arrows and pin labels, and fixed SymbolTexts. The outline itself
     is not an obstacle, so blocks may use empty outline space.
     """
     rects = []
@@ -77,7 +77,10 @@ def symbol_obstacles(s: Symbol, trans: TD4R, inst: SchemInstance|None = None) ->
         # Same frame as Renderer.draw_pin: the stub is a 0.4 x 0.4 arrow
         # centered on the pin, the label hangs off it.
         trans_local = trans * pin.pos.transl() * R180 * pin.align
-        rects.append(trans_local * Rect4R(R(-0.2), R(-0.2), R(0.2), R(0.2)))
+        if pin.show_arrow:
+            rects.append(trans_local * Rect4R(R(-0.2), R(-0.2), R(0.2), R(0.2)))
+        if not pin.show_label:
+            continue
         if trans_local.d4.unflip() in (East, West):
             valign = VAlign.Top
         else:

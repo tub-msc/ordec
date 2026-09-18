@@ -23,6 +23,12 @@ General stuff
 Symbols
 -------
 
+Pins are drawn as an arrow indicating the pin type plus the pin name. Symbols
+whose drawing makes this obvious (e.g. the terminals of a resistor) can hide
+either one per pin with ``Pin.show_arrow`` and ``Pin.show_label``. Hidden pin
+names remain part of the rendered SVG (class ``detail``, like the grid) and
+show up in the detail view of the web UI.
+
 Besides pins and drawn geometry, a symbol carries text in two forms.
 :class:`SymbolText` is drawn at a fixed position of the symbol, typically
 inside its outline. :class:`SymbolAnnotation` nodes form the annotation
