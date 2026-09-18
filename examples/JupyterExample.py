@@ -5,7 +5,7 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.17.2
+#       jupytext_version: 1.18.1
 #   kernelspec:
 #     display_name: Python 3 (ipykernel)
 #     language: python
@@ -23,10 +23,10 @@ from IPython.core.interactiveshell import InteractiveShell
 InteractiveShell.ast_node_interactivity = "all"
 
 # +
-from ordec import lib
+from ordec.lib.generic_mos import Ringosc, Inv
 
-lib.Ringosc().schematic
-lib.Inv().schematic
+Ringosc().schematic
+Inv().schematic
 # -
 
 
