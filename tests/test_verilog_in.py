@@ -1,10 +1,14 @@
 # SPDX-FileCopyrightText: 2026 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+from pathlib import Path
+
 import pytest
+from notcl import TclTool
 
 from ordec.core import *
 from ordec.extlibrary import ExtLibrary, ExtLibraryError
+from ordec.lib import ihp130
 
 
 def _yosys_json_example():
@@ -70,3 +74,48 @@ def test_extlibrary_read_verilog_duplicate_sources():
 
     with pytest.raises(ExtLibraryError, match="Multiple (symbol|schematic) sources found for cell"):
         lib.read_yosys_json(data)
+
+
+class Yosys(TclTool):
+    def cmdline(self):
+        return ["yosys", "-c", self.script_name()]
+
+
+def synthesize(source_files: list[Path], top: str, liberty: Path, out: Path):
+    """
+    Synthesizes the (System)Verilog source files to a flat netlist of
+    standard cells from the liberty file, written to the Verilog file out.
+    """
+    with Yosys() as yosys:
+        yosys('yosys -import')
+        yosys.read_slang(*source_files, top=top)
+        yosys.synth(top=top)
+        yosys.flatten()
+        yosys.opt()
+        yosys.dfflibmap(liberty=liberty)
+        yosys.abc(liberty=liberty)
+        yosys.splitnets()
+        yosys("yosys rename -hide */w:*\\[*")
+        yosys.opt_clean(purge=True)
+        yosys.write_verilog(out)
+
+
+@pytest.mark.yosys
+def test_counter_synth(tmp_path):
+    """Yosys integration: RTL -> synthesized netlist -> ExtLibrary schematic."""
+    pdk = ihp130.pdk()
+    netlist = tmp_path / 'counter_synth.v'
+    synthesize([Path(__file__).parent / 'lib/counter.v'], 'counter', pdk.stdcell_liberty, netlist)
+
+    lib = ExtLibrary()
+    lib.read_lef(pdk.stdcell_lef)
+    lib.read_verilog(netlist.read_text())
+
+    symbol = lib['counter'].symbol
+    assert symbol.clk_i.pintype == PinType.In
+    assert [symbol.val_o[i].pintype for i in range(8)] == [PinType.Out] * 8
+
+    stdcells = [inst.symbol.cell.name for inst in lib['counter'].schematic.all(SchemInstance)]
+    assert all(name.startswith('sg13g2_') for name in stdcells)
+    # One flip-flop per counter bit shows that dfflibmap mapped to the liberty cells.
+    assert sum(name.startswith('sg13g2_dfrbp') for name in stdcells) == 8

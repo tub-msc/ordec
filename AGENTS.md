@@ -58,7 +58,7 @@ pytest tests/test_schematic.py
 # Run tests matching pattern
 pytest -k "test_ordb"
 
-# Markers: web (web interface), libngspice
+# Markers: web (web interface), libngspice, yosys (needs the yosys executable)
 pytest -m web
 
 # Fast testing: skip web tests (saves significant time)
