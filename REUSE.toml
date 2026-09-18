@@ -73,14 +73,6 @@ SPDX-FileCopyrightText = "2025 ORDeC contributors"
 SPDX-License-Identifier = "Apache-2.0"
 
 [[annotations]]
-# Example code for development:
-path = [
-    "examples/dev/*.py",
-]
-SPDX-FileCopyrightText = "2025 ORDeC contributors"
-SPDX-License-Identifier = "Apache-2.0"
-
-[[annotations]]
 # File in web/ where inline SPDX data would be messy or impossible:
 path = [
     "web/package.json",
@@ -124,8 +116,6 @@ path = [
     "docs/guides/ord_tutorial.py",
     "docs/cell_lib/base.py",
     "docs/screenshot_demo.png",
-    "examples/README.md",
-    "examples/interactive_rc_circuit/README.md",
 ]
 SPDX-FileCopyrightText = "2025 ORDeC contributors"
 SPDX-License-Identifier = "Apache-2.0"

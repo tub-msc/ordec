@@ -4,7 +4,6 @@ Dockerfile
 .github/
 .pytest_cache/
 docs/_build/
-examples/
 htmlcov/
 web/dist/
 web/node_modules/
