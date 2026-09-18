@@ -27,7 +27,7 @@ jobs:
     name: grammar tests
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/tub-msc/ordec-base:sha-96bde10
+      image: ghcr.io/tub-msc/ordec-base:sha-ced2d42
       options: --user root
     steps:
       - name: check out repository
