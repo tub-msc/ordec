@@ -14,4 +14,5 @@ Developer's Corner
    ordb_benchmarks
    ordb_benchmark_workloads
    ordb_wire
+   yosys
    design_decisions
