@@ -29,6 +29,14 @@ RUN wget -q https://www.klayout.org/downloads/source/klayout-0.30.5.tar.gz && \
     tar xf klayout-0.30.5.tar.gz && \
     rm klayout-0.30.5.tar.gz && \
     mv klayout-0.30.5 klayout-src
+# Note: The release asset yosys.tar.gz is used instead of the GitHub tag
+# archive, as only the former includes the submodules (abc, slang, ...).
+# It has no top-level directory.
+RUN wget -q https://github.com/YosysHQ/yosys/releases/download/v0.69/yosys.tar.gz && \
+    echo "6dad6412cae417f5a53e2c943c2aee160162cfc1bdd31669230da1b7e3522571 yosys.tar.gz" | sha256sum -c && \
+    mkdir yosys-src && \
+    tar xf yosys.tar.gz -C yosys-src && \
+    rm yosys.tar.gz
 
 WORKDIR /home/app/openvaf
 RUN wget -q https://openva.fra1.cdn.digitaloceanspaces.com/openvaf_23_5_0_linux_amd64.tar.gz && \
@@ -138,13 +146,53 @@ WORKDIR /home/app/klayout-src
 RUN ./build.sh -qmake qmake6 -nolibgit2 -nolstream -without-qtbinding -option -j`nproc --ignore=1` -prefix /home/app/klayout 
 #  -without-qt-designer -without-qtbinding -without-qt-uitools 
 
-# Stage 4: ORDeC base image
+# Stage 4: Build Yosys
+# ====================
+
+FROM debian:trixie AS ordec-build-yosys
+
+# - tcl-dev: needed for Tcl scripting (yosys -c)
+RUN useradd -ms /bin/bash app && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        cmake \
+        bison \
+        flex \
+        libfl-dev \
+        pkg-config \
+        python3 \
+        tcl-dev \
+        libreadline-dev \
+        libffi-dev \
+        zlib1g-dev \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+USER app
+WORKDIR /home/app
+
+COPY --chown=app --from=ordec-fetch /home/app/yosys-src /home/app/yosys-src
+
+WORKDIR /home/app/yosys-src
+
+# The slang frontend (SystemVerilog, read_slang) is part of the Yosys tree and
+# enabled by default. The libyosys shared library is not needed.
+RUN cmake -B build \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/home/app/yosys \
+        -DYOSYS_USE_BUNDLED_LIBS=ON \
+        -DYOSYS_ENABLE_UNIT_TESTS=OFF \
+        -DBUILD_SHARED_LIBS=OFF && \
+    cmake --build build -j`nproc --ignore=1` && \
+    cmake --install build
+
+# Stage 5: ORDeC base image
 # =========================
 
 FROM debian:trixie AS ordec-base
 
 # - libgomp1: needed for Ngspice
 # - binutils: needed for OpenVAF
+# - libtcl8.6, libreadline8t64, libffi8 (and zlib1g): needed for Yosys
 RUN useradd -ms /bin/bash app && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -164,17 +212,21 @@ RUN useradd -ms /bin/bash app && \
         libqt6xml6 \
         libruby \
         libpython3.13 \
+        libtcl8.6 \
+        libreadline8t64 \
+        libffi8 \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 USER app
 WORKDIR /home/app
 
 COPY --chown=app --from=ordec-build-ngspice /home/app/ngspice /home/app/ngspice
 COPY --chown=app --from=ordec-build-klayout /home/app/klayout /home/app/klayout
+COPY --chown=app --from=ordec-build-yosys /home/app/yosys /home/app/yosys
 COPY --chown=app --from=ordec-fetch /home/app/openvaf /home/app/openvaf
 COPY --chown=app --from=ordec-fetch /home/app/IHP-Open-PDK /home/app/IHP-Open-PDK
 COPY --chown=app --from=ordec-fetch /home/app/skywater /home/app/skywater
 
-ENV PATH="/home/app/openvaf:/home/app/ngspice/min/bin:/home/app/klayout:$PATH"
+ENV PATH="/home/app/openvaf:/home/app/ngspice/min/bin:/home/app/klayout:/home/app/yosys/bin:$PATH"
 ENV LD_LIBRARY_PATH="/home/app/klayout"
 ENV ORDEC_PDK_SKY130A="/home/app/skywater/sky130A"
 ENV ORDEC_PDK_SKY130B="/home/app/skywater/sky130B"
