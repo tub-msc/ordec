@@ -377,11 +377,8 @@ class SchematicRenderer(Renderer):
             font-weight: bold;
             fill: #f00;
         }
-        .pinLabel, .pinArrow {
-            fill: #4d994d;
-        }
-        .params, .cellName {
-            fill: #80b380;
+        .pinLabel, .pinArrow, .params, .cellName {
+            fill: #000;
         }
         .symbolOutline {
             stroke: none;
@@ -400,16 +397,16 @@ class SchematicRenderer(Renderer):
             fill: #ccc;
         }
         .schemWire, .tapPoint {
-            stroke: #cc0;
+            stroke: #0066cc;
         }
         .schemWire {
             stroke-linecap: square;
         }
         .connPoint, .tapPointLabel {
-            fill: #cc0;
+            fill: #0066cc;
         }
         .portArrow, .portLabel {
-            fill: #39f;
+            fill: #0066cc;
         }
         .errorMarker {
             fill: rgba(255, 0, 0, 0.25);

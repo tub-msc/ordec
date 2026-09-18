@@ -1612,6 +1612,10 @@ body.theme-dark .spotlight-buttons .spotlight-skip {
 .symbolPoly {
     stroke: var(--color-symbol-stroke) !important;
 }
+/* Symbol text and pin arrows share the color of the symbol drawing. */
+.pinLabel, .pinArrow, .params, .cellName {
+    fill: var(--color-symbol-stroke) !important;
+}
 
 /* -- Scrollbar --------------------------------------------------- */
 ::-webkit-scrollbar {
