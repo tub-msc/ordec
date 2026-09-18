@@ -75,7 +75,7 @@ Use with Jupyter
 
 ORDeC also has some level of Jupyter integration. The provided Jupyter notebooks are in Jupytext_ format. In contrast to th default "ipynb" format, the jupytext files show up nicely in version control and prevent that cached Jupyter results fill up and add noise to the version history.
 
-After installing Jupytext_, you can open and run the notebook **examples/JupyterExample.py** in Jupyter to see a minimal example.
+After installing Jupytext_, you can open and run the notebook **support/jupyter/JupyterExample.py** in Jupyter to see a minimal example.
 
 
 .. _Jupytext: https://jupytext.readthedocs.io/

@@ -57,7 +57,7 @@ SPDX-License-Identifier = "Apache-2.0"
 [[annotations]]
 # Basic Jupyter example:
 path = [
-    "examples/JupyterExample.py",
+    "support/jupyter/JupyterExample.py",
 ]
 SPDX-FileCopyrightText = "2025 ORDeC contributors"
 SPDX-License-Identifier = "CC0-1.0"
