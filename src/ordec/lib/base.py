@@ -72,7 +72,7 @@ class Cap(SimLeafCell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
-        s.add_default_annotations()
+        s.add_default_annotations(show_cell_name=False)
 
         s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South, show_arrow=False, show_label=False)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North, show_arrow=False, show_label=False)
@@ -111,7 +111,7 @@ class Ind(SimLeafCell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
-        s.add_default_annotations()
+        s.add_default_annotations(show_cell_name=False)
 
         s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South, show_arrow=False, show_label=False)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North, show_arrow=False, show_label=False)
@@ -166,7 +166,7 @@ class NoConn(SimLeafCell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
-        s.add_default_annotations()
+        s.add_default_annotations(show_cell_name=False)
 
         s.a = Pin(pos=Vec2R(0, 2), pintype=PinType.In, align=West, show_arrow=False, show_label=False)
 
@@ -350,6 +350,13 @@ class PwlMixin(Cell):
 
     pwl = Parameter(tuple, factory=pwl_waveform, value_repr=pwl_waveform_repr) #: Tuple of (time, value) tuples defining the waveform.
 
+    @staticmethod
+    def hide_pwl_annotation(s: Symbol):
+        """Hides the pwl parameter in the annotation block: waveform data is too long for it."""
+        for a in s.all(SymbolAnnotation):
+            if a.kind == AnnotationKind.Param and a.text.startswith('pwl='):
+                a.shown = False
+
     def ngspice_pwl_spec(self) -> str:
         """The PWL(...) netlist fragment from the canonical waveform."""
         args = " ".join(x.compat_str() for point in self.pwl for x in point)
@@ -365,7 +372,8 @@ class Vpwl(AcStimulusMixin, PwlMixin, SimLeafCell):
     def symbol(self) -> Symbol:
         """ Defines the schematic symbol for the PWL source. """
         s = Symbol(cell=self)
-        s.add_default_annotations()
+        s.add_default_annotations(show_cell_name=False)
+        self.hide_pwl_annotation(s)
 
         s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South, show_arrow=False, show_label=False)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North, show_arrow=False, show_label=False)
@@ -541,6 +549,7 @@ class Ipwl(AcStimulusMixin, PwlMixin, SimLeafCell):
         """ Defines the schematic symbol for the PWL current source. """
         s = Symbol(cell=self)
         s.add_default_annotations()
+        self.hide_pwl_annotation(s)
 
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North, show_arrow=False, show_label=False)
         s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South, show_arrow=False, show_label=False)
