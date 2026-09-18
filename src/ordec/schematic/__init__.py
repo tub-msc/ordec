@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from .helpers import (
-    symbol_place_pins, schem_place, schem_check,
+    symbol_place_pins, symbol_make_box, symbol_add_default_annotations,
+    schem_place, schem_check,
     SchematicError, spice_params,
 )
+from .annotate import place_annotations
 from .netlister import Netlister
 from .auto_wire import auto_wire, adjust_outline_initial

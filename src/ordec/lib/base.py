@@ -20,9 +20,10 @@ class Res(SimLeafCell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
+        s.add_default_annotations(show_cell_name=False)
 
-        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
-        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
+        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South, show_arrow=False, show_label=False)
+        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North, show_arrow=False, show_label=False)
 
         use_box_symbol = False
 
@@ -71,9 +72,10 @@ class Cap(SimLeafCell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
+        s.add_default_annotations(show_cell_name=False)
 
-        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
-        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
+        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South, show_arrow=False, show_label=False)
+        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North, show_arrow=False, show_label=False)
 
         #Kondensator
         s % SymbolPoly(vertices=[Vec2R(1.25, 1.8), Vec2R(2.75, 1.8)])
@@ -109,9 +111,10 @@ class Ind(SimLeafCell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
+        s.add_default_annotations(show_cell_name=False)
 
-        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
-        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
+        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South, show_arrow=False, show_label=False)
+        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North, show_arrow=False, show_label=False)
 
         r=0.35
         s % SymbolArc(pos=Vec2R(2, 3-r), radius=R(r), angle_start=R(-0.25), angle_end=R(0.25))
@@ -143,8 +146,9 @@ class Gnd(SimLeafCell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
+        s.add_default_annotations(show_cell_name=False)
 
-        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
+        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North, show_arrow=False, show_label=False)
 
         s % SymbolPoly(vertices=[Vec2R(2, 2.5), Vec2R(2, 4)])
         s % SymbolPoly(vertices=[Vec2R(1, 2.5), Vec2R(3, 2.5), Vec2R(2, 1),Vec2R(1, 2.5)])
@@ -162,8 +166,9 @@ class NoConn(SimLeafCell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
+        s.add_default_annotations(show_cell_name=False)
 
-        s.a = Pin(pos=Vec2R(0, 2), pintype=PinType.In, align=West)
+        s.a = Pin(pos=Vec2R(0, 2), pintype=PinType.In, align=West, show_arrow=False, show_label=False)
 
         s % SymbolPoly(vertices=[Vec2R(0, 2), Vec2R(2, 2)])
         s % SymbolPoly(vertices=[Vec2R(1.5, 2.5), Vec2R(2.5, 1.5)])
@@ -240,9 +245,10 @@ class Vdc(AcStimulusMixin, SimLeafCell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
+        s.add_default_annotations(show_cell_name=False)
 
-        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
-        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
+        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South, show_arrow=False, show_label=False)
+        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North, show_arrow=False, show_label=False)
 
         #Kreis
         s % SymbolArc(pos=Vec2R(2, 2), radius=R(1))
@@ -284,9 +290,10 @@ class Idc(AcStimulusMixin, SimLeafCell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
+        s.add_default_annotations(show_cell_name=False)
 
-        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
-        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
+        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South, show_arrow=False, show_label=False)
+        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North, show_arrow=False, show_label=False)
     
         s % SymbolPoly(vertices=[Vec2R(2, 3), Vec2R(2, 4)])
         s % SymbolPoly(vertices=[Vec2R(2, 1), Vec2R(2, 0)])
@@ -343,6 +350,13 @@ class PwlMixin(Cell):
 
     pwl = Parameter(tuple, factory=pwl_waveform, value_repr=pwl_waveform_repr) #: Tuple of (time, value) tuples defining the waveform.
 
+    @staticmethod
+    def hide_pwl_annotation(s: Symbol):
+        """Hides the pwl parameter in the annotation block: waveform data is too long for it."""
+        for a in s.all(SymbolAnnotation):
+            if a.kind == AnnotationKind.Param and a.text.startswith('pwl='):
+                a.shown = False
+
     def ngspice_pwl_spec(self) -> str:
         """The PWL(...) netlist fragment from the canonical waveform."""
         args = " ".join(x.compat_str() for point in self.pwl for x in point)
@@ -358,9 +372,11 @@ class Vpwl(AcStimulusMixin, PwlMixin, SimLeafCell):
     def symbol(self) -> Symbol:
         """ Defines the schematic symbol for the PWL source. """
         s = Symbol(cell=self)
+        s.add_default_annotations(show_cell_name=False)
+        self.hide_pwl_annotation(s)
 
-        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
-        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
+        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South, show_arrow=False, show_label=False)
+        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North, show_arrow=False, show_label=False)
 
         s % SymbolArc(pos=Vec2R(2, 2), radius=R(1))
 
@@ -414,9 +430,10 @@ class Vpulse(AcStimulusMixin, SimLeafCell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
+        s.add_default_annotations()
 
-        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
-        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
+        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South, show_arrow=False, show_label=False)
+        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North, show_arrow=False, show_label=False)
 
         s % SymbolArc(pos=Vec2R(2, 2), radius=R(1))
 
@@ -477,9 +494,10 @@ class Vsin(AcStimulusMixin, SimLeafCell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
+        s.add_default_annotations()
 
-        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
-        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
+        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South, show_arrow=False, show_label=False)
+        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North, show_arrow=False, show_label=False)
 
         s % SymbolArc(pos=Vec2R(2, 2), radius=R(1))
 
@@ -530,9 +548,11 @@ class Ipwl(AcStimulusMixin, PwlMixin, SimLeafCell):
     def symbol(self) -> Symbol:
         """ Defines the schematic symbol for the PWL current source. """
         s = Symbol(cell=self)
+        s.add_default_annotations()
+        self.hide_pwl_annotation(s)
 
-        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
-        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
+        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North, show_arrow=False, show_label=False)
+        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South, show_arrow=False, show_label=False)
 
         s % SymbolArc(pos=Vec2R(2, 2), radius=R(1))
         s % SymbolPoly(vertices=[Vec2R(2, 3), Vec2R(2, 4)]) # To positive pin 'p'
@@ -593,9 +613,10 @@ class Ipulse(AcStimulusMixin, SimLeafCell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
+        s.add_default_annotations()
 
-        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
-        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
+        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South, show_arrow=False, show_label=False)
+        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North, show_arrow=False, show_label=False)
 
         # Draw the symbol
         # Circle
@@ -664,9 +685,10 @@ class Isin(AcStimulusMixin, SimLeafCell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
+        s.add_default_annotations()
 
-        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
-        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
+        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South, show_arrow=False, show_label=False)
+        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North, show_arrow=False, show_label=False)
 
         # Circle
         s % SymbolArc(pos=Vec2R(2, 2), radius=R(1))

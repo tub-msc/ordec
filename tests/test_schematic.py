@@ -163,6 +163,7 @@ def test_schematic_double_instance():
     assert any(e.error_type == SchemErrorType.OverlappingInstances for e in errors)
 
 def test_scheminstance_unresolved_resolution():
+    sym = Nmos(l='2u', w='5u').symbol
     s_ref = MutableSubgraph.load({
         0: Schematic.Tuple(symbol=None, outline=None, cell=None, default_supply=None, default_ground=None),
         1: Net.Tuple(pin=None),
@@ -173,12 +174,12 @@ def test_scheminstance_unresolved_resolution():
         6: NPath.Tuple(parent=None, name='d', ref=5),
         7: Net.Tuple(pin=None),
         8: NPath.Tuple(parent=None, name='b', ref=7),
-        9: SchemInstance.Tuple(pos=Vec2R(R('1.'), R('2.')), orientation=R0, symbol=Nmos(l='2u', w='5u').symbol),
+        9: SchemInstance.Tuple(pos=Vec2R(R('1.'), R('2.')), orientation=R0, symbol=sym),
         10: NPath.Tuple(parent=None, name='myinst', ref=9),
-        11: SchemInstanceConn.Tuple(ref=9, here=1, there=1),
-        12: SchemInstanceConn.Tuple(ref=9, here=3, there=3),
-        13: SchemInstanceConn.Tuple(ref=9, here=5, there=5),
-        14: SchemInstanceConn.Tuple(ref=9, here=7, there=7),
+        11: SchemInstanceConn.Tuple(ref=9, here=1, there=sym.g.nid),
+        12: SchemInstanceConn.Tuple(ref=9, here=3, there=sym.s.nid),
+        13: SchemInstanceConn.Tuple(ref=9, here=5, there=sym.d.nid),
+        14: SchemInstanceConn.Tuple(ref=9, here=7, there=sym.b.nid),
     })
 
     s = Schematic()
@@ -222,6 +223,81 @@ def test_scheminstance_unresolved_hierarchical_path():
     conn = list(s.myinst.conns())[0]
     assert conn.here == s.mynet
     assert conn.there == lib_test.MultibitReg_StructOfArrays(bits=4).symbol.data.d[3]
+
+def test_annotations():
+    from .lib.ord import annotations as lib_ann
+    import re
+    # Symbol viewgens start with the default block and can adjust it:
+    sym = lib_ann.Box(n=1).symbol
+    assert [(a.kind, a.text, a.shown) for a in sym.all(SymbolAnnotation)] == [
+        (AnnotationKind.InstanceName, None, True),
+        (AnnotationKind.CellName, 'Box', False),
+        (AnnotationKind.Param, 'n=1', True),
+        (AnnotationKind.Param, 'm=1', False), # left at its default
+    ]
+    # A symbol on its own has no instance name to show:
+    assert 'class="instanceName"' not in sym.render().svg().decode()
+
+    sch = lib_ann.Top().schematic
+    # b1 is placed at its symbol's hint, b2 keeps its explicit position; the
+    # outline covers both blocks:
+    assert sch.b1.annotation_pos == Vec2R(3, 7)
+    assert sch.b2.annotation_pos == Vec2R(9, 7)
+    assert sch.outline.uy >= 7
+    svg = sch.render().svg().decode()
+    assert svg.count('>Box<') == 2 # SymbolText of both instances
+    assert re.findall(r'class="instanceName">(\w+)<', svg) == ['b1', 'b2']
+    # b2 places its block explicitly, West-aligned (text-anchor end):
+    b2_block = svg.split('class="symbolOutline"')[2]
+    assert 'text-anchor="end"' in b2_block and 'n=2' in b2_block
+
+    # Per-instance overrides of the shown flag:
+    s = Schematic(outline=(0, 0, 8, 8))
+    s.b = SchemInstance(pos=(0, 0), symbol=lib_ann.Box(n=2).symbol)
+    by_text = {a.text: a for a in s.b.symbol.all(SymbolAnnotation)}
+    s % SchemAnnotationOverride(ref=s.b, there=by_text['n=2'], shown=False)
+    s % SchemAnnotationOverride(ref=s.b, there=by_text['Box'], shown=True)
+    svg = s.render().svg().decode()
+    assert 'n=2' not in svg
+    assert re.findall(r'class="cellName">Box<', svg) == ['class="cellName">Box<'] * 2
+
+    # Flatter arrangement: instance and cell name share one text row.
+    s.b.annotation_pos = (5, 5)
+    s.b.annotation_wrap = 20
+    assert '<tspan class="instanceName">b</tspan> <tspan class="cellName">Box</tspan>' in s.render().svg().decode()
+
+def test_pin_show_flags():
+    from ordec.lib.generic_mos import Nmos, Inv
+    # The MOS symbol hides its pin arrows and labels. Hidden labels are
+    # still output, for the detail view of the web UI:
+    svg = Nmos().symbol.render().svg().decode()
+    assert 'class="pinArrow"' not in svg and 'class="pinLabel"' not in svg
+    assert svg.count('class="pinLabel detail"') == 4
+    svg = Inv().symbol.render().svg().decode()
+    assert svg.count('class="pinArrow"') == 4 and svg.count('class="pinLabel"') == 4
+
+def test_annotation_placement():
+    from ordec.schematic.annotate import block_rects, schematic_obstacles, symbol_body, fits, rect_gap
+    from ordec.lib.generic_mos import Inv
+    from .lib.ord import strongarm
+    # Inv wires manually (blocks are placed at render time), Strongarm runs
+    # the viewgen pipeline and has mirrored instances. No block may overlap
+    # another shape or block, and all stay close to their instance. For this,
+    # the blocks of Inv need a flatter arrangement than the default.
+    for sch in (Inv().schematic, strongarm.Strongarm().schematic):
+        obstacles = [r.tofloat() for r in schematic_obstacles(sch)]
+        rects = block_rects(sch)
+        assert len(rects) == len(list(sch.all(SchemInstance)))
+        for nid, (rect, wrap) in rects.items():
+            others = [r.tofloat() for n, (r, w) in rects.items() if n != nid]
+            assert fits(rect.tofloat(), obstacles + others)
+            inst = sch.cursor_at(nid)
+            body = symbol_body(inst.symbol, inst.loc_transform(), inst)
+            assert rect_gap(rect.tofloat(), body.tofloat()) == 0
+            if inst.annotation_pos is not None:
+                # Blocks left of their symbol are right-aligned.
+                assert (inst.annotation_align == West) == (rect.cx < body.cx)
+    assert all(wrap > 0 for rect, wrap in block_rects(Inv().schematic).values())
 
 def test_scheminstance_params_without_viewgen():
     s = Schematic()

@@ -81,7 +81,8 @@ def module_port_spec(module_data: dict[str, Any]) -> OrderedDict[str, tuple[str,
 
 
 def create_symbol(extlib, name, port_spec: OrderedDict[str, tuple[str, int]]) -> Symbol:
-    sym = Symbol(caption=name, cell=extlib[name])
+    sym = Symbol(cell=extlib[name])
+    sym.add_default_annotations(cell_name=name)
     for port_name, (direction, width) in port_spec.items():
         if direction == 'input':
             p = Pin(pintype=PinType.In, align=West)
@@ -96,6 +97,7 @@ def create_symbol(extlib, name, port_spec: OrderedDict[str, tuple[str, int]]) ->
             for i in range(width):
                 sym[port_name][i] = p
     sym.place_pins(hpadding=3, vpadding=2)
+    sym.make_box()
     return sym.freeze()
 
 

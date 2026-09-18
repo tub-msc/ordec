@@ -36,6 +36,16 @@ class PinType(Enum):
         return f'{self.__class__.__name__}.{self.name}'
 
 @public
+class AnnotationKind(Enum):
+    """What a SymbolText or SymbolAnnotation displays."""
+    CellName = 'cellname' #: Name of the instantiated cell (text holds the name).
+    InstanceName = 'instancename' #: Name of the SchemInstance (text is None, the name is only known in the schematic).
+    Param = 'param' #: A cell parameter, text usually in key=value form.
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}.{self.name}'
+
+@public
 class SchemErrorType(Enum):
     OverlappingTerminals = 'Overlapping terminals'
     MissingTerminalConnection = 'Missing terminal connection'
@@ -81,8 +91,15 @@ class Symbol(MixinRenderable, SubgraphRoot):
     view_builder = SymbolViewBuilder
     wire_id = WIRE_DOMAIN | 1
     outline = Attr(Rect4R, factory=coerce_tuple(Rect4R, 4))
-    caption = Attr(str)
     cell = LiveRef(Cell)
+    #: Optional hint for the position of the SymbolAnnotation block in symbol
+    #: coordinates. None (the default) lets the schematic place the block
+    #: beside the symbol, preferring its east side (see
+    #: :func:`ordec.schematic.place_annotations`). A hint is used if the block
+    #: fits there; it follows the instance orientation.
+    annotation_pos = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
+    #: Direction in which the block extends from annotation_pos: East or West.
+    annotation_align = Attr(D4, default=D4.East)
 
     def portmap(self, **kwargs):
         def inserter_func(main, sgu, primary_nid):
@@ -96,6 +113,14 @@ class Symbol(MixinRenderable, SubgraphRoot):
         from ...schematic import symbol_place_pins
         symbol_place_pins(self, hpadding=hpadding, vpadding=vpadding)
 
+    def make_box(self):
+        from ...schematic import symbol_make_box
+        symbol_make_box(self)
+
+    def add_default_annotations(self, cell_name: str|None = None, show_cell_name: bool = True):
+        from ...schematic import symbol_add_default_annotations
+        symbol_add_default_annotations(self, cell_name=cell_name, show_cell_name=show_cell_name)
+
 @public
 class Pin(Node):
     """Pins are single wire connections exposed through a symbol."""
@@ -105,6 +130,8 @@ class Pin(Node):
     pintype = Attr(PinType, default=PinType.Inout)
     pos     = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
     align   = Attr(D4, default=D4.R0)
+    show_label = Attr(bool, default=True) #: Whether the pin name is drawn next to the pin. Hidden pin names still show in the detail view of the web UI.
+    show_arrow = Attr(bool, default=True) #: Whether the arrow indicating pintype is drawn at the pin.
 
 @public
 class SymbolPoly(GenericPolyR, MixinPolygonalChain):
@@ -155,6 +182,36 @@ class SymbolArc(Node):
             d.append(f"a {r} {r} 0 {large_arc_flag} {sweep_flag} {e_dx} {e_dy}")
         return ' '.join(d)
 
+@public
+class SymbolText(Node):
+    """
+    Text at a fixed position of a Symbol, typically inside its outline
+    (e.g. the cell name inside a box symbol).
+    """
+    in_subgraphs = [Symbol]
+    wire_id = WIRE_DOMAIN | 17
+
+    pos   = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
+    align = Attr(D4, default=D4.East) #: Direction in which the text extends from pos.
+    kind  = Attr(AnnotationKind, optional=False)
+    text  = Attr(str) #: None for AnnotationKind.InstanceName.
+
+@public
+class SymbolAnnotation(Node):
+    """
+    One line of the annotation block of a Symbol (cell name, instance name,
+    parameter). The block is placed by the schematic outside the symbol
+    itself (see Symbol.annotation_pos and SchemInstance.annotation_pos).
+    Lines are stacked in node order. Only lines with shown=True are drawn;
+    a schematic can override this per instance with SchemAnnotationOverride.
+    """
+    in_subgraphs = [Symbol]
+    wire_id = WIRE_DOMAIN | 18
+
+    kind  = Attr(AnnotationKind, optional=False)
+    text  = Attr(str) #: None for AnnotationKind.InstanceName.
+    shown = Attr(bool, default=True)
+
 # Schematic
 # ---------
 
@@ -180,6 +237,10 @@ class Schematic(MixinRenderable, SubgraphRoot):
     def place_unplaced_instances(self):
         from ...schematic.helpers import place_unplaced_instances
         place_unplaced_instances(self)
+
+    def place_annotations(self):
+        from ...schematic import place_annotations
+        place_annotations(self)
 
     def check(self, add_conn_points=False, add_terminal_taps=False):
         from ...schematic import schem_check
@@ -329,6 +390,19 @@ class SchemInstance(Node, MixinSourceLoc):
     pos = ConstrainableAttr(Vec2R, placeholder=Vec2LinearTerm,
         factory=coerce_tuple(Vec2R, 2))
     orientation = Attr(D4, default=D4.R0)
+    #: Position of the annotation block in schematic coordinates. Set by
+    #: Schematic.place_annotations() in the viewgen pipeline unless the
+    #: schematic sets it explicitly. If still None when rendering (e.g. in
+    #: hand-built schematics), the renderer places the block the same way
+    #: without storing the result, ignoring annotation_align.
+    annotation_pos = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
+    annotation_align = Attr(D4, default=D4.East)
+    #: Arrangement of the annotation block: consecutive SymbolAnnotations
+    #: share a text row as long as it stays within annotation_wrap
+    #: characters; 0 means one per row. Set together with annotation_pos:
+    #: place_annotations() chooses flatter blocks where vertical space is
+    #: scarce.
+    annotation_wrap = Attr(int, default=0)
     #: None only while the instance is unresolved in its view context; must be
     #: resolved before the schematic is finalized (checked in postprocess
     #: and schem_check).
@@ -392,6 +466,18 @@ class SchemInstanceConn(Node):
     there = ExternalRef(Pin, of_subgraph=lambda c: c.ref.symbol, optional=False) # ExternalRef to Pin in SchemInstance.symbol
 
     ref_pin_idx = CombinedIndex([ref, there], unique=True)
+
+@public
+class SchemAnnotationOverride(Node):
+    """Overrides the shown flag of one SymbolAnnotation for one SchemInstance."""
+    in_subgraphs = [Schematic]
+    wire_id = WIRE_DOMAIN | 19
+
+    ref = LocalRef(SchemInstance, optional=False)
+    ref_idx = Index(ref)
+    there = ExternalRef(SymbolAnnotation, of_subgraph=lambda c: c.ref.symbol, optional=False)
+    ref_there_idx = CombinedIndex([ref, there], unique=True)
+    shown = Attr(bool, optional=False)
 
 
 class SchemInstanceUnresolvedSubcursor(tuple):

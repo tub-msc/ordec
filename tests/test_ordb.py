@@ -161,11 +161,11 @@ def test_subgraph_load():
 
     with pytest.raises(ModelViolation, match=r"Missing root node"):
         MutableSubgraph.load({
-            100: Symbol.Tuple(outline=None, caption=None),
+            100: Symbol.Tuple(outline=None),
         })
 
     s_dict = {
-        0: Symbol.Tuple(outline=None, caption=None),
+        0: Symbol.Tuple(outline=None),
         100: Pin(pintype=PinType.In, pos=Vec2R(x=0, y=2), align=R0),
         101: NPath(parent=None, name='a', ref=100),
         102: Pin(pintype=PinType.Out, pos=Vec2R(x=4, y=2), align=R0),
@@ -221,7 +221,7 @@ def test_subgraph_table():
 
 def test_subgraph_matches():
     ref = MutableSubgraph.load({
-        0: Symbol.Tuple(outline=None, caption=None),
+        0: Symbol.Tuple(outline=None),
         100: Pin.Tuple(pintype=PinType.In, pos=Vec2R(x=0, y=2), align=R0),
         101: NPath.Tuple(parent=None, name='a', ref=100),
         102: Pin.Tuple(pintype=PinType.Out, pos=Vec2R(x=4, y=2), align=R0),
@@ -240,7 +240,7 @@ def test_subgraph_matches():
     # Change of attribute should lead to inequivalence:
     s2 = s.copy()
     assert s2.subgraph.root_cursor is s2
-    s2.caption = "hello"
+    s2.annotation_pos = Vec2R(1, 2)
     assert not s2.matches(ref)
     # Original subgraph s should be unaffected:
     assert s.matches(ref)

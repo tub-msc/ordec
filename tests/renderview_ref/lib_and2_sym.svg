@@ -1,9 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="175.0px" height="175.0px" viewBox="-1.0 -1.0 7.0 7.0">
   <g transform="matrix(1 0 0 -1 0 5.0)">
     <rect x="0.0" y="0.0" width="5.0" height="5.0" class="symbolOutline" />
-    <text transform="matrix(0.045 0 0 -0.045 4.875 4.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">And2</text>
-    <text transform="matrix(0.045 0 0 -0.045 4.875 0.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
-    <text transform="matrix(0.045 0 0 -0.045 0.125 4.875)" dominant-baseline="hanging" text-anchor="start" class="instanceName">?</text>
+    <text transform="matrix(0.045 0 0 -0.045 3.125 4.66)" dominant-baseline="hanging" text-anchor="start" class="cellName">And2</text>
     <path d="M0.0 2.0 L1.0 2.0" transform="matrix(1 0 0 1 0.0 0.0)" class="symbolPoly" />
     <path d="M0.0 3.0 L1.0 3.0" transform="matrix(1 0 0 1 0.0 0.0)" class="symbolPoly" />
     <path d="M4.0 2.5 L5.0 2.5" transform="matrix(1 0 0 1 0.0 0.0)" class="symbolPoly" />
@@ -14,10 +12,10 @@
     <path d="M0 0 L0.2 -0.2 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 -0.2 Z" transform="matrix(1 0 0 1 2.5 0.2)" class="pinArrow" />
     <text transform="matrix(0 0.045 0.045 0 2.375 0.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">vss</text>
     <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 3.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 0.125 3.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">a</text>
+    <text transform="matrix(0.045 0 0 -0.045 0.125 2.875)" dominant-baseline="hanging" text-anchor="start" class="pinLabel">a</text>
     <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 2.0)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 0.125 2.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">b</text>
+    <text transform="matrix(0.045 0 0 -0.045 0.125 1.875)" dominant-baseline="hanging" text-anchor="start" class="pinLabel">b</text>
     <path d="M0 0 L0.2 0 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 0 Z" transform="matrix(0 1 -1 0 4.8 2.5)" class="pinArrow" />
-    <text transform="matrix(0.045 0 0 -0.045 4.875 2.625)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">y</text>
+    <text transform="matrix(0.045 0 0 -0.045 4.875 2.375)" dominant-baseline="hanging" text-anchor="end" class="pinLabel">y</text>
   </g>
 </svg>

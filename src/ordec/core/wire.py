@@ -67,7 +67,7 @@ from .rational import R
 from .geoprim import Vec2R, Vec2I, Rect4R, Rect4I, TD4R, TD4I, D4
 from .simarray import SimColumn, Quantity
 from .schema.base import PathEndType, SourceLocInfo, GdsLayer, RGBColor
-from .schema.schematic import PinType, SchemErrorType
+from .schema.schematic import PinType, SchemErrorType, AnnotationKind
 from .schema.report import ScaleType
 from .schema.simhier import SimType
 from .schema.lvs import LvsStatus, LvsItemType, LvsSide
@@ -111,6 +111,7 @@ ENUM_TAGS = {
     LvsItemType: 390016,
     Quantity: 390017,
     LvsSide: 390018,
+    AnnotationKind: 390019,
 }
 ENUM_BY_TAG = {tag: cls for cls, tag in ENUM_TAGS.items()}
 

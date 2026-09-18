@@ -23,6 +23,41 @@ General stuff
 Symbols
 -------
 
+Pins are drawn as an arrow indicating the pin type plus the pin name. Symbols
+whose drawing makes this obvious (e.g. the terminals of a resistor) can hide
+either one per pin with ``Pin.show_arrow`` and ``Pin.show_label``. Hidden pin
+names remain part of the rendered SVG (class ``detail``, like the grid) and
+show up in the detail view of the web UI.
+
+Besides pins and drawn geometry, a symbol carries text in two forms.
+:class:`SymbolText` is drawn at a fixed position of the symbol, typically
+inside its outline. :class:`SymbolAnnotation` nodes form the annotation
+block (instance name, cell name, parameters), which is placed as a whole
+beside the symbol. Schematics place the blocks after wiring
+(:func:`ordec.schematic.place_annotations`, stored in
+``SchemInstance.annotation_pos``): each block goes to the empty spot
+nearest to the symbol's center, preferring the east over the west and the
+north over the south side, where empty means no overlap with wires, ports,
+tap points, drawn symbol geometry, pin labels or other blocks. Blocks also
+keep away from other instances, so that it stays clear where they belong. By
+default, every annotation line is a text row of its own. Where a flatter
+block gets closer to the symbol, consecutive lines share a row
+(``SchemInstance.annotation_wrap``). The sides follow the instance
+orientation, the text stays horizontal; blocks left of their symbol are
+right-aligned. A symbol may hint a
+position with ``Symbol.annotation_pos``, which is tried first, and a
+schematic may set ``SchemInstance.annotation_pos`` explicitly. Each
+annotation line has a ``shown`` flag, which a schematic can override per
+instance with :class:`SchemAnnotationOverride` to declutter the drawing.
+
+Symbol viewgens start out with the default block (see
+:meth:`Symbol.add_default_annotations`, which hides parameters left at their
+default) and may modify, remove or extend it. A symbol viewgen that draws
+nothing (no :class:`SymbolPoly` or :class:`SymbolArc`) becomes a box symbol
+(:meth:`Symbol.make_box`): the outline is drawn, and the labels are placed
+as :class:`SymbolText` at fixed positions inside the box instead of forming
+an annotation block.
+
 .. autoclass:: Symbol
    :members:
    :undoc-members:
@@ -41,6 +76,18 @@ Symbols
    :undoc-members:
 
 .. autoclass:: SymbolArc
+   :members:
+   :undoc-members:
+
+.. autoclass:: AnnotationKind
+   :members:
+   :undoc-members:
+
+.. autoclass:: SymbolText
+   :members:
+   :undoc-members:
+
+.. autoclass:: SymbolAnnotation
    :members:
    :undoc-members:
 
@@ -68,6 +115,10 @@ Schematics
    :undoc-members:
 
 .. autoclass:: SchemInstanceConn
+   :members:
+   :undoc-members:
+
+.. autoclass:: SchemAnnotationOverride
    :members:
    :undoc-members:
 
