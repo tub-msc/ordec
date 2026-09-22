@@ -9,7 +9,7 @@
 # Stage 1
 # -------
 
-FROM ghcr.io/tub-msc/ordec-base:sha-96bde10 AS ordec-base
+FROM ghcr.io/tub-msc/ordec-base:sha-eb30724 AS ordec-base
 
 # Build ORDeC wheel:
 # Copy .git first, then checkout to ensure that setuptools_scm figures out the
