@@ -11,6 +11,7 @@ missing or older than the frontend sources, so a manual 'npm run build' is not
 required before running web tests.
 """
 
+import fcntl
 import os
 import importlib.resources
 import tarfile
@@ -76,15 +77,23 @@ def build_web_dist():
     (see CLAUDE.md). If a build is needed but npm is unavailable, this raises
     rather than skipping, so the missing toolchain is reported as a failure.
     """
-    if web_dist_latest_mtime() >= web_src_latest_mtime():
-        return  # web/dist is fresh, nothing to do.
+    # Lock on the web/ directory itself: several pytest-xdist workers may
+    # reach this at once, and only one of them should run the build. The
+    # others block here and find web/dist fresh afterwards.
+    lock_fd = os.open(web_path, os.O_RDONLY)
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        if web_dist_latest_mtime() >= web_src_latest_mtime():
+            return  # web/dist is fresh, nothing to do.
 
-    if shutil.which('npm') is None:
-        raise RuntimeError(
-            "web/dist is missing or stale and 'npm' was not found on PATH. "
-            "Install Node.js/npm, or run 'npm run build' in web/ manually.")
+        if shutil.which('npm') is None:
+            raise RuntimeError(
+                "web/dist is missing or stale and 'npm' was not found on PATH. "
+                "Install Node.js/npm, or run 'npm run build' in web/ manually.")
 
-    subprocess.check_call(['npm', '--prefix', str(web_path), 'run', 'build'])
+        subprocess.check_call(['npm', '--prefix', str(web_path), 'run', 'build'])
+    finally:
+        os.close(lock_fd)
 
 
 def frontend_tar():
@@ -119,7 +128,9 @@ class WebInfo:
             window.localStorage.setItem('ordecHmacBypass', arguments[1]?"true":"");
         """, self.key.token(), hmac_bypass)
 
-    def wait_for_ready(self, timeout=20):
+    def wait_for_ready(self, timeout=60):
+        # Generous timeout: views may run KLayout DRC/LVS or ngspice, and with
+        # pytest-xdist other workers compete for the CPU at the same time.
         WebDriverWait(self.driver, timeout, poll_frequency=0.05).until(
             EC.text_to_be_present_in_element((By.ID, 'status'), "ready"))
 
@@ -190,16 +201,19 @@ def web():
     webdriver_options.add_argument("--force-device-scale-factor=1")
 
     key = server.ServerKey()
-    port = 8102
     static_handler = server.StaticHandler(frontend_tar())
     startup_queue = queue.Queue(maxsize=1)
+    server_queue = queue.Queue(maxsize=1)
 
+    # Port 0: let the OS pick a free port, so that several pytest-xdist
+    # workers can run web tests at the same time.
     t = threading.Thread(target=server.server_thread,
-        args=('127.0.0.1', port, static_handler, key, startup_queue), daemon=True)
+        args=('127.0.0.1', 0, static_handler, key, startup_queue, server_queue), daemon=True)
     t.start()
     startup_error = startup_queue.get()
     if startup_error is not None:
         raise RuntimeError(f"Test server failed to start: {startup_error}")
+    port = server_queue.get().socket.getsockname()[1]
 
     with webdriver.Chrome(options=webdriver_options) as driver:
         web = WebInfo(

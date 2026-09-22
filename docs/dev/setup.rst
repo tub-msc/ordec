@@ -70,6 +70,8 @@ Run tests
 
 Automated testing is very important – not only to verify new features, but also to ensure that source code changes do not break existing functionality. To run all tests, execute :code:`pytest` in the repository's root directory.
 
+The tests run in parallel by default (pytest-xdist, up to 8 workers, see *tests/conftest.py*). Pass :code:`-n 0` to run them serially, e.g. for debugging.
+
 Coverage measurement is off by default, as it slows down the test run noticeably. To measure it, pass the pytest-cov options explicitly, e.g.::
 
     pytest --cov=ordec --cov-report=html

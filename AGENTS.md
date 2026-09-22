@@ -49,9 +49,12 @@ npm ci
 ### Running Tests
 
 ```bash
-# Run all tests from repository root (coverage is off by default, see
-# docs/dev/setup.rst)
+# Run all tests from repository root. Runs in parallel via pytest-xdist by
+# default (coverage is off by default, see docs/dev/setup.rst)
 pytest
+
+# Run serially, e.g. for debugging or readable -s output
+pytest -n 0
 
 # Run specific test file
 pytest tests/test_schematic.py
