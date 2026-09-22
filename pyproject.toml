@@ -56,6 +56,14 @@ test = [
 extra = [
     "black>=23.1.0",
 ]
+# Editor grammar tests (pytest support/editors/tests), see
+# docs/guides/editor_support.rst.
+editors = [
+    "pytest>=7.2.1",
+    "pytest-cov>=4.0.0",
+    "pyyaml>=6.0",
+    "tree-sitter>=0.25",
+]
 
 [project.scripts]
 ordec = "ordec.__main__:main"

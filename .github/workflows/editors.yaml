@@ -40,7 +40,7 @@ jobs:
       - name: install C compiler
         run: apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev
       - name: pip install
-        run: pip install . pytest pytest-cov pyyaml "tree-sitter>=0.25"
+        run: pip install .[editors]
       - name: generate tree-sitter parser
         run: |
           cd support/editors/tree-sitter-ord

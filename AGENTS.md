@@ -66,7 +66,8 @@ pytest -m web
 pytest -m "not web"
 
 # Editor grammar tests: pytest.ini has --ignore=support, so they need an
-# explicit path and are not part of a plain 'pytest' run.
+# explicit path and are not part of a plain 'pytest' run. Their extra
+# dependencies are the 'editors' extra (pip3 install -e .[editors]).
 pytest support/editors/tests
 
 # Run the suite against a non-default ORDB backend
