@@ -83,8 +83,6 @@ RUN useradd -ms /bin/bash app && \
 USER app
 WORKDIR /home/app
 
-# Three variants are possible. See docs/dev/ngspice_pipe_mode.rst for details.
-
 COPY --chown=app --from=ordec-fetch /home/app/ngspice-src /home/app/ngspice-src
 
 ARG ngspice_common_args="--disable-debug --without-x --enable-xspice --disable-cider --enable-openmp --enable-osdi"
@@ -92,13 +90,6 @@ ARG ngspice_common_args="--disable-debug --without-x --enable-xspice --disable-c
 WORKDIR /home/app/ngspice-src
 
 RUN ./configure --prefix=/home/app/ngspice/min ${ngspice_common_args} --with-readline=no --with-editline=no && \
-    ./autogen.sh && \
-    make clean && \
-    make -j`nproc --ignore=1` && \
-    make install
-
-# ngspice shared library:
-RUN ./configure --prefix=/home/app/ngspice/shared ${ngspice_common_args} --with-ngshared --with-readline=no --with-editline=no && \
     ./autogen.sh && \
     make clean && \
     make -j`nproc --ignore=1` && \
@@ -139,8 +130,6 @@ RUN useradd -ms /bin/bash app && \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 USER app
 WORKDIR /home/app
-
-# Three variants are possible. See docs/dev/ngspice_pipe_mode.rst for details.
 
 COPY --chown=app --from=ordec-fetch /home/app/klayout-src /home/app/klayout-src
 
@@ -186,7 +175,7 @@ COPY --chown=app --from=ordec-fetch /home/app/IHP-Open-PDK /home/app/IHP-Open-PD
 COPY --chown=app --from=ordec-fetch /home/app/skywater /home/app/skywater
 
 ENV PATH="/home/app/openvaf:/home/app/ngspice/min/bin:/home/app/klayout:$PATH"
-ENV LD_LIBRARY_PATH="/home/app/ngspice/shared/lib:/home/app/klayout"
+ENV LD_LIBRARY_PATH="/home/app/klayout"
 ENV ORDEC_PDK_SKY130A="/home/app/skywater/sky130A"
 ENV ORDEC_PDK_SKY130B="/home/app/skywater/sky130B"
 ENV ORDEC_PDK_IHP_SG13G2="/home/app/IHP-Open-PDK/ihp-sg13g2"
