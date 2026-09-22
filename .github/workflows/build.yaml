@@ -67,7 +67,7 @@ jobs:
             apt-get update
             apt-get install -y --no-install-recommends chromium chromium-driver
             pip install --no-cache-dir "ordec[test] @ file://$(ls /home/app/ordec-*.whl)"
-            pytest -m "not yosys" -p no:cacheprovider -o addopts="--tb=short"
+            pytest -p no:cacheprovider -o addopts="--tb=short"
           '
       - name: Build and push Docker image
         id: push
