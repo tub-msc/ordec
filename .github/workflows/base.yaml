@@ -4,11 +4,6 @@
 name: ordec-base docker image
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - 'base.Dockerfile'
 
 env:
   REGISTRY: ghcr.io
@@ -64,3 +59,13 @@ jobs:
           # image builds are much rarer than that.
           cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
           cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
+      # Each cache-to push moves the 'buildcache' tag and leaves the previous
+      # cache manifest behind untagged. Nothing references those, so delete
+      # them. Safe only because the build is single-platform without
+      # provenance/SBOM; otherwise untagged manifests would belong to the image.
+      - name: Delete untagged package versions
+        uses: actions/delete-package-versions@e5bc658cc4c965c472efe991f8beea3981499c55 # v5.0.0
+        with:
+          package-name: ordec-base
+          package-type: container
+          delete-only-untagged-versions: true
