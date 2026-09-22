@@ -52,6 +52,7 @@ test = [
     "selenium>=4.8.3",
     "pillow>=11.1.0",
     "notcl>=0.5.1",
+    "pytest-xdist>=3.0",
 ]
 extra = [
     "black>=23.1.0",
