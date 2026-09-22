@@ -26,7 +26,7 @@ jobs:
       - name: pip install
         run: pip install .[test]
       - name: run tests
-        run: COVERAGE_FILE=/tmp/coverage pytest -v --cov-report=html:/tmp/htmlcov -o cache_dir=/tmp/pytestcache --junit-xml=/tmp/test-results.xml
+        run: pytest -v -o cache_dir=/tmp/pytestcache --junit-xml=/tmp/test-results.xml
       - name: display test results
         if: always()
         uses: pmeier/pytest-results-action@main

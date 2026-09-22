@@ -68,7 +68,13 @@ This will launch a browser and open the ORDeC interface. Use the browser only to
 Run tests
 ---------
 
-Automated testing is very important – not only to verify new features, but also to ensure that source code changes do not break existing functionality. Tun run all tests, execute :code:`pytest-3` in the repository's root directory.
+Automated testing is very important – not only to verify new features, but also to ensure that source code changes do not break existing functionality. To run all tests, execute :code:`pytest` in the repository's root directory.
+
+Coverage measurement is off by default, as it slows down the test run noticeably. To measure it, pass the pytest-cov options explicitly, e.g.::
+
+    pytest --cov=ordec --cov-report=html
+
+The HTML report is written to *htmlcov/*.
 
 Use with Jupyter
 ----------------
