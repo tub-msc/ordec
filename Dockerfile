@@ -9,7 +9,7 @@
 # Stage 1
 # -------
 
-FROM ghcr.io/tub-msc/ordec-base:sha-96bde10 AS ordec-base
+FROM ghcr.io/tub-msc/ordec-base:sha-eb30724 AS ordec-base
 
 # Build ORDeC wheel:
 # Copy .git first, then checkout to ensure that setuptools_scm figures out the
@@ -26,6 +26,7 @@ FROM debian:trixie AS ordec
 
 # - libgomp1: needed for Ngspice
 # - zlib1g, libqt6*, libruby, libpython3.13: needed for KLayout
+# - libtcl8.6, libreadline8t64, libffi8 (and zlib1g): needed for Yosys
 RUN useradd -ms /bin/bash app && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -41,12 +42,16 @@ RUN useradd -ms /bin/bash app && \
         libqt6xml6 \
         libruby \
         libpython3.13 \
+        libtcl8.6 \
+        libreadline8t64 \
+        libffi8 \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 USER app
 WORKDIR /home/app
 
 COPY --chown=app --from=ordec-base /home/app/ngspice /home/app/ngspice
 COPY --chown=app --from=ordec-base /home/app/klayout /home/app/klayout
+COPY --chown=app --from=ordec-base /home/app/yosys /home/app/yosys
 COPY --chown=app --from=ordec-base /home/app/openvaf /home/app/openvaf
 COPY --chown=app --from=ordec-base /home/app/IHP-Open-PDK /home/app/IHP-Open-PDK
 COPY --chown=app --from=ordec-base /home/app/skywater /home/app/skywater
@@ -55,8 +60,8 @@ COPY --chown=app --from=ordec-base /home/app/ordec/dist/*.whl /home/app
 ENV VIRTUAL_ENV=/home/app/venv
 RUN python3 -m venv $VIRTUAL_ENV && $VIRTUAL_ENV/bin/pip install --no-cache-dir *.whl
 
-ENV PATH="$VIRTUAL_ENV/bin:/home/app/openvaf:/home/app/ngspice/min/bin:/home/app/klayout:$PATH"
-ENV LD_LIBRARY_PATH="/home/app/ngspice/shared/lib:/home/app/klayout"
+ENV PATH="$VIRTUAL_ENV/bin:/home/app/openvaf:/home/app/ngspice/min/bin:/home/app/klayout:/home/app/yosys/bin:$PATH"
+ENV LD_LIBRARY_PATH="/home/app/klayout"
 ENV ORDEC_PDK_SKY130A="/home/app/skywater/sky130A"
 ENV ORDEC_PDK_SKY130B="/home/app/skywater/sky130B"
 ENV ORDEC_PDK_IHP_SG13G2="/home/app/IHP-Open-PDK/ihp-sg13g2"

@@ -32,6 +32,13 @@ def pdk() -> PdkDict:
     pdk.ngspice_osdi_dir         =  check_dir(pdk.root / "libs.tech/ngspice/osdi")
     pdk.stdcell_spice_dir        =  check_dir(pdk.root / "libs.ref/sg13g2_stdcell/spice")
     pdk.stdcell_lef              = check_file(pdk.root / "libs.ref/sg13g2_stdcell/lef/sg13g2_stdcell.lef")
+    # Liberty files, one per PVT corner (process_voltage_temperature):
+    stdcell_corners = ['fast_1p32V_m40C', 'fast_1p65V_m40C', 'typ_1p20V_25C',
+        'typ_1p50V_25C', 'slow_1p08V_125C', 'slow_1p35V_125C']
+    pdk.stdcell_lib = {
+        cnr: check_file(pdk.root / f"libs.ref/sg13g2_stdcell/lib/sg13g2_stdcell_{cnr}.lib")
+            for cnr in stdcell_corners
+        }
     pdk.stdcell_gds              = check_file(pdk.root / "libs.ref/sg13g2_stdcell/gds/sg13g2_stdcell.gds")
     pdk.stdcell_spice            = check_file(pdk.root / "libs.ref/sg13g2_stdcell/spice/sg13g2_stdcell.spice")
     pdk.iocell_spice_dir         =  check_dir(pdk.root / "libs.ref/sg13g2_io/spice")

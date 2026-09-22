@@ -11,7 +11,6 @@ on:
       # repository .ord files are the corpus of the grammar oracle tests
       - 'src/ordec/**.ord'
       - 'tests/**.ord'
-      - 'examples/**.ord'
       - '.github/workflows/editors.yaml'
   pull_request:
     paths:
@@ -20,14 +19,13 @@ on:
       # repository .ord files are the corpus of the grammar oracle tests
       - 'src/ordec/**.ord'
       - 'tests/**.ord'
-      - 'examples/**.ord'
       - '.github/workflows/editors.yaml'
 jobs:
   grammars:
     name: grammar tests
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/tub-msc/ordec-base:sha-96bde10
+      image: ghcr.io/tub-msc/ordec-base:sha-eb30724
       options: --user root
     steps:
       - name: check out repository
@@ -42,7 +40,7 @@ jobs:
       - name: install C compiler
         run: apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev
       - name: pip install
-        run: pip install . pytest pytest-cov pyyaml "tree-sitter>=0.25"
+        run: pip install .[editors]
       - name: generate tree-sitter parser
         run: |
           cd support/editors/tree-sitter-ord

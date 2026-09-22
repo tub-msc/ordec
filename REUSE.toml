@@ -57,7 +57,7 @@ SPDX-License-Identifier = "Apache-2.0"
 [[annotations]]
 # Basic Jupyter example:
 path = [
-    "examples/JupyterExample.py",
+    "support/jupyter/JupyterExample.py",
 ]
 SPDX-FileCopyrightText = "2025 ORDeC contributors"
 SPDX-License-Identifier = "CC0-1.0"
@@ -68,14 +68,6 @@ path = [
     "tests/layout_gds/__init__.py",
     "tests/layout_gds/*.gds",
     "tests/lvsdb/c_hier.lvsdb",
-]
-SPDX-FileCopyrightText = "2025 ORDeC contributors"
-SPDX-License-Identifier = "Apache-2.0"
-
-[[annotations]]
-# Example code for development:
-path = [
-    "examples/dev/*.py",
 ]
 SPDX-FileCopyrightText = "2025 ORDeC contributors"
 SPDX-License-Identifier = "Apache-2.0"
@@ -124,8 +116,6 @@ path = [
     "docs/guides/ord_tutorial.py",
     "docs/cell_lib/base.py",
     "docs/screenshot_demo.png",
-    "examples/README.md",
-    "examples/interactive_rc_circuit/README.md",
 ]
 SPDX-FileCopyrightText = "2025 ORDeC contributors"
 SPDX-License-Identifier = "Apache-2.0"

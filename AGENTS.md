@@ -58,7 +58,7 @@ pytest tests/test_schematic.py
 # Run tests matching pattern
 pytest -k "test_ordb"
 
-# Markers: web (web interface), libngspice
+# Markers: web (web interface), yosys (needs the yosys executable)
 pytest -m web
 
 # Fast testing: skip web tests (saves significant time)
@@ -66,7 +66,8 @@ pytest -m web
 pytest -m "not web"
 
 # Editor grammar tests: pytest.ini has --ignore=support, so they need an
-# explicit path and are not part of a plain 'pytest' run.
+# explicit path and are not part of a plain 'pytest' run. Their extra
+# dependencies are the 'editors' extra (pip3 install -e .[editors]).
 pytest support/editors/tests
 
 # Run the suite against a non-default ORDB backend
