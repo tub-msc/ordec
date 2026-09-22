@@ -53,15 +53,22 @@ jobs:
       # tests, inside the freshly built image: the web fixture serves the
       # packaged webdist.tar (npm is not part of the image), so this also
       # covers the frontend packaging that users actually get. Chromium and
-      # selenium are test-only additions to a throwaway container (hence
-      # --user root); the pushed image is unaffected. Without selenium the
-      # web tests would silently skip. --shm-size=1g avoids headless Chromium
-      # crashes with Docker's default 64 MB /dev/shm. Coverage/cache addopts
-      # are dropped to keep output out of the mounted checkout.
+      # the test extra are test-only additions to a throwaway container
+      # (hence --user root); the pushed image is unaffected. Without selenium
+      # the web tests would silently skip. The extra is installed from the
+      # wheel left in /home/app by the Dockerfile (PEP 508 direct reference),
+      # so that the wheel stays the package under test and the dependency
+      # list lives in pyproject.toml only. --shm-size=1g avoids headless
+      # Chromium crashes with Docker's default 64 MB /dev/shm. Coverage/cache
+      # addopts are dropped to keep output out of the mounted checkout.
       - name: Test image
         run: |
-          docker run --rm --user root --shm-size=1g -v "$PWD":/mnt -w /mnt ordec-imagetest sh -xc \
-            'apt-get update && apt-get install -y --no-install-recommends chromium chromium-driver && pip install --no-cache-dir pytest pillow selenium notcl && pytest -m "not yosys" -p no:cacheprovider -o addopts="--tb=short"'
+          docker run --rm --user root --shm-size=1g -v "$PWD":/mnt -w /mnt ordec-imagetest sh -xec '
+            apt-get update
+            apt-get install -y --no-install-recommends chromium chromium-driver
+            pip install --no-cache-dir "ordec[test] @ file://$(ls /home/app/ordec-*.whl)"
+            pytest -m "not yosys" -p no:cacheprovider -o addopts="--tb=short"
+          '
       - name: Build and push Docker image
         id: push
         uses: docker/build-push-action@f2a1d5e99d037542a71f64918e516c093c6f3fc4
