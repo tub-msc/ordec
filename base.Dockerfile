@@ -202,23 +202,29 @@ ENV VIRTUAL_ENV=/home/app/venv
 RUN python3 -m venv $VIRTUAL_ENV
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
-# TODO: Docker layer with pyproject.toml for this / maybe also pin dependencies via requirements.txt or so.
+# This list must cover [project].dependencies and the 'test' extra of
+# pyproject.toml, plus 'build' (wheel build in Dockerfile). Keep it in sync:
+# anything missing here is downloaded again in every tests.yaml run and in
+# every build of the ordec image.
 RUN pip install --no-cache-dir \
     pyrsistent \
-    astor \
-    websockets \
     lark \
-    scipy \
+    astor \
     numpy \
+    scipy \
+    atpublic \
+    markdown2 \
+    websockets \
+    tabulate \
+    inotify-simple \
+    python-gdsii \
+    sc-leflib \
+    cbor2 \
     pytest \
     pytest-cov \
     selenium \
-    inotify-simple \
-    build \
-    atpublic \
-    tabulate \
     pillow \
-    python-gdsii
+    build
 
 # NPM install
 # -----------
