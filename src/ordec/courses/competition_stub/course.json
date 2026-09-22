@@ -1,0 +1,12 @@
+{
+  "title": "Competition Stub",
+  "competition": true,
+  "lessons": [
+    {
+      "file": "divider.ord",
+      "title": "The task",
+      "description": "Simulation-free stand-in for a competition course, used by the scoreboard web tests.",
+      "lesson_gen": "gen_divider"
+    }
+  ]
+}

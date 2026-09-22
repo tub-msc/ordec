@@ -81,6 +81,7 @@ where = ["src"]
 "ordec.courses.cmos_circuits" = ["*.json", "*.ord"]
 "ordec.courses.layout_tutorial" = ["*.json", "*.ord"]
 "ordec.courses.amp_competition" = ["*.json", "*.ord"]
+"ordec.courses.competition_stub" = ["*.json", "*.ord"]
 
 [tool.setuptools_scm]
 version_scheme = "release-branch-semver"
