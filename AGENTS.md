@@ -49,7 +49,8 @@ npm ci
 ### Running Tests
 
 ```bash
-# Run all tests from repository root (coverage configured in pytest.ini)
+# Run all tests from repository root (coverage is off by default, see
+# docs/dev/setup.rst)
 pytest
 
 # Run specific test file
