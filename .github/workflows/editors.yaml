@@ -24,23 +24,18 @@ jobs:
   grammars:
     name: grammar tests
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/tub-msc/ordec-base:sha-eb30724
-      options: --user root
+    env:
+      # The shallow checkout has no tags for setuptools-scm.
+      SETUPTOOLS_SCM_PRETEND_VERSION: "0"
     steps:
       - name: check out repository
         uses: actions/checkout@v4
-      - name: Source venv
-        run: |
-          . /home/app/venv/bin/activate
-          echo PATH=$PATH >> $GITHUB_ENV
-          echo SETUPTOOLS_SCM_PRETEND_VERSION="0" >> $GITHUB_ENV
-      - name: Mark workspace as safe for git
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-      - name: install C compiler
-        run: apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev
+      - name: set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
       - name: pip install
-        run: pip install .[editors]
+        run: pip install .[test-editors]
       - name: generate tree-sitter parser
         run: |
           cd support/editors/tree-sitter-ord
@@ -51,7 +46,7 @@ jobs:
           cd support/editors/tree-sitter-ord
           npx tree-sitter test
       - name: grammar oracle tests
-        run: pytest support/editors/tests -v -o cache_dir=/tmp/pytestcache
+        run: pytest support/editors/tests -v
       - name: vscode extension tests
         run: |
           cd support/editors/vscode/ord
