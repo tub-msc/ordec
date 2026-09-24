@@ -831,24 +831,17 @@ def test_lesson_solution(course_name, lesson_index, testdata):
         # audit trail (see checks.py / course.js pushScore).
         svgs = [e for e in elements if e['element_type'] == 'svg']
         assert len(svgs) == 1 and 'mn' in svgs[0]['inner']
-
-
-def test_amp_score_and_corner_table():
-    """The score is the nominal corner's current (~31 uA for the
-    reference: ~30 uA supply plus the 1 uA bias reference), and the
-    report tabulates every corner."""
-    from ordec.courses.amp_competition.checks import CORNERS
-    lesson = course_data('amp_competition')['lessons'][0]
-    src = courses_testdata['amp_competition'].lessons[0].solution_src(lesson)
-    elements = [e.element_webdata()
-        for e in run_lesson(lesson, src)['lesson']().elements()]
-    score = [e for e in elements if e['element_type'] == 'score']
-    assert len(score) == 1 and score[0]['eligible']
-    assert abs(score[0]['value'] - 31.0) < 1.0
-    table = [e for e in elements if e['element_type'] == 'markdown'
-        and 'Results across corners' in e['html']]
-    assert len(table) == 1
-    assert all(label in table[0]['html'] for label, _, _ in CORNERS)
+        # The score is the nominal corner's current (~31 uA for the
+        # reference: ~30 uA supply plus the 1 uA bias reference), and the
+        # report tabulates every corner.
+        from ordec.courses.amp_competition.checks import CORNERS
+        score = [e for e in elements if e['element_type'] == 'score']
+        assert len(score) == 1 and score[0]['eligible']
+        assert abs(score[0]['value'] - 31.0) < 1.0
+        table = [e for e in elements if e['element_type'] == 'markdown'
+            and 'Results across corners' in e['html']]
+        assert len(table) == 1
+        assert all(label in table[0]['html'] for label, _, _ in CORNERS)
 
 
 def test_amp_input_biased_fails_corners():
