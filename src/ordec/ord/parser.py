@@ -5,6 +5,7 @@ from lark import Lark, UnexpectedToken, UnexpectedCharacters, UnexpectedInput, T
 from lark.exceptions import VisitError
 from pathlib import Path
 import argparse
+import os
 from lark.indenter import PythonIndenter
 from .ord_transformer import OrdTransformer
 import ast
@@ -220,6 +221,18 @@ def parse_with_errors(parser, code):
         raise syntax_error("invalid syntax", code, e.line, e.column) from None
 
 
+def _cache_path():
+    # Building the LALR tables takes ~1 s, paid on every import (each
+    # process, each xdist worker). Lark keys the cache on the grammar text
+    # and rebuilds when it is stale. The cache is pickled, so it must not
+    # live in a shared directory such as Lark's default /tmp.
+    cache_dir = Path(os.environ.get('XDG_CACHE_HOME') or Path.home() / '.cache') / 'ordec'
+    try:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return False
+    return str(cache_dir / 'ord_parser.lark_cache')
+
 parser = Lark.open_from_package(
     __package__,
     "ord.lark",
@@ -227,7 +240,8 @@ parser = Lark.open_from_package(
     postlex=PythonTokenAwareIndenter(),
     start="file_input",
     maybe_placeholders=False,
-    propagate_positions=True
+    propagate_positions=True,
+    cache=_cache_path(),
 )
 
 def ord_to_py(ord_string: str) -> ast.Module:
