@@ -197,6 +197,11 @@ class SG13G2(Cell):
             style_fill=rgb_color("#8c8ca6"),
             )
 
+        s.ThickGateOx = Layer(
+            gdslayer_shapes=GdsLayer(layer=44, data_type=0),
+            style_fill=rgb_color("#ffffcc"),
+            )
+
         # Metal stack
         # -----------
 
@@ -266,6 +271,32 @@ class SG13G2(Cell):
         s.HeatTrans = Layer(
             gdslayer_shapes=GdsLayer(layer=51, data_type=0),
             style_fill=rgb_color("#8c8ca6"),
+            )
+
+        s.HeatRes = Layer(
+            gdslayer_shapes=GdsLayer(layer=52, data_type=0),
+            gdslayer_text=GdsLayer(layer=52, data_type=0),
+            style_fill=rgb_color("#8c8ca6"),
+            )
+
+        s.Passiv = Layer(
+            gdslayer_shapes=GdsLayer(layer=9, data_type=0),
+            style_fill=rgb_color("#e61f0d"),
+            )
+
+        s.dfpad = Layer(
+            gdslayer_shapes=GdsLayer(layer=41, data_type=0),
+            style_fill=rgb_color("#5e00e6"),
+            )
+
+        s.EdgeSeal = Layer(
+            gdslayer_shapes=GdsLayer(layer=39, data_type=0),
+            style_fill=rgb_color("#5e00e6"),
+            )
+
+        s.EdgeSealBoundary = Layer(
+            gdslayer_shapes=GdsLayer(layer=39, data_type=4),
+            style_stroke=rgb_color("#5e00e6"),
             )
 
         s.TEXT = Layer(
