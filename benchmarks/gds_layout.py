@@ -62,12 +62,7 @@ def main():
     data = stage('webdata_top', lambda: webdata(top))
     msg_bytes = len(stage('cbor_top', lambda: ws_encode(data)))
 
-    try:
-        import pvectorc
-        c_ext = True
-    except ImportError:
-        c_ext = False
-    print(f"backend={ordb.default_backend().name} pyrsistent_c_ext={c_ext} "
+    print(f"backend={ordb.default_backend().name} "
         f"cell={args.cell} shapes={n_shapes} nodes={n_nodes} instances={args.instances}")
     for name, t in times.items():
         if name in ('import', 'scan', 'webdata_cell'):

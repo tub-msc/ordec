@@ -11,6 +11,7 @@ Developer's Corner
    webui
    view_generation
    ipython_integration
+   ordb_core
    ordb_benchmarks
    ordb_benchmark_workloads
    ordb_wire

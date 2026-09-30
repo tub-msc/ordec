@@ -36,7 +36,7 @@ class SymVertex(Node):
     x = Attr(int)
     y = Attr(int)
 
-    ref_idx = Index(ref, sortkey=lambda node: node.order)
+    ref_idx = Index(ref, sortkey=order)
 
 # Schematic-like subgraph (mirrors Schematic/Net/SchemInstance/InstanceConn)
 # --------------------------------------------------------------------------
@@ -59,7 +59,7 @@ class SchConn(Node):
     LocalRef to the instance, ExternalRef into the instance's symbol."""
     in_subgraphs = [SchRoot]
     ref = LocalRef(SchInst, optional=False)
-    pin = ExternalRef(SymPin, of_subgraph=lambda node: node.ref.sym, optional=False)
+    pin = ExternalRef(SymPin, of_subgraph=('ref', 'sym'), optional=False)
     net = LocalRef(SchNet, optional=False)
 
     ref_idx = Index(ref)
@@ -90,7 +90,7 @@ class LVertex(Node):
     x = Attr(int)
     y = Attr(int)
 
-    ref_idx = Index(ref, sortkey=lambda node: node.order)
+    ref_idx = Index(ref, sortkey=order)
 
 class LLabel(Node):
     in_subgraphs = [LayRoot]
@@ -145,12 +145,21 @@ class CNode(Node):
     tag_idx = Index(tag)
 
 class ANode(Node):
-    """Arrayable node type for the differential fuzz (insert_array, chunk
-    storage in the cow-arrays backend)."""
+    """Arrayable node type for the differential fuzz (insert_array)."""
     in_subgraphs = [ChainRoot]
     arrayable = True
     val = Attr(int)
     other = Attr(int)
+
+class RNode(Node):
+    """Node with a LocalRef, a unique index and a sorted index, for the
+    differential fuzz (reference counting, unique checks, stale index
+    entries)."""
+    in_subgraphs = [ChainRoot]
+    target = LocalRef(CNode, optional=False)
+    key = Attr(int)
+    key_idx = Index(key, unique=True)
+    target_idx = Index(target, sortkey=key)
 
 # Micro-benchmark subgraph (from the former tests/bench_ordb_index.py)
 # --------------------------------------------------------------------

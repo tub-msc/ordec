@@ -27,9 +27,13 @@ setup(
     cmdclass={
         'build_py': NpmBuildPy
     },
-    # Optional: without a C compiler, ordec.layout.gdsrecords falls back to
-    # its slow pure-Python implementation.
     ext_modules=[
+        # The native core of ORDB: required, there is no fallback.
+        Extension('ordec.core.ordb._ordb',
+            sources=['src/ordec/core/ordb/_ordb.c'],
+            depends=['src/ordec/core/ordb/_ordb_store.h']),
+        # Optional: without a C compiler, ordec.layout.gdsrecords falls back to
+        # its slow pure-Python implementation.
         Extension('ordec.layout._gdsrecords',
             sources=['src/ordec/layout/_gdsrecords.c'], optional=True),
     ],

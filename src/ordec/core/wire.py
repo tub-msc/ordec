@@ -66,6 +66,7 @@ them (or by core/__init__), so its top-level schema imports stay cycle-free.
 from fractions import Fraction
 import hashlib
 import os
+import sys
 import threading
 
 import cbor2
@@ -76,7 +77,7 @@ from .ordb.base import (
     LocalRef, ExternalRef, SubgraphRef, LiveRef, FarRef, Node, Subgraph,
     FrozenSubgraph, MutableSubgraph, OrdbException, wire_registry,
 )
-from .ordb.arrays import row_values
+from .ordb.arrays import row_values, array_columns
 from .rational import R
 from .geoprim import Vec2R, Vec2I, Rect4R, Rect4I, TD4R, TD4I, D4
 from .simarray import SimColumn, Quantity
@@ -268,6 +269,12 @@ def encode_row_value(val, attr, ept: ExportTable, blobs: BlobTable):
         return cbor2.CBORTag(TAG_LIVEREF, list(ept.export(val)))
     return encode_plain(val, blobs)
 
+def little_endian(int64_bytes: bytes) -> bytes:
+    """Native int64 bytes as little-endian int64 bytes (the wire order)."""
+    if sys.byteorder == 'little':
+        return int64_bytes
+    return np.frombuffer(int64_bytes, dtype=np.int64).astype('<i8').tobytes()
+
 def encode_subgraph(sg: FrozenSubgraph, ept: ExportTable) -> bytes:
     """
     Encode a frozen subgraph to canonical CBOR wire bytes. Nested
@@ -277,32 +284,31 @@ def encode_subgraph(sg: FrozenSubgraph, ept: ExportTable) -> bytes:
     """
     blobs = BlobTable()
     arrays_by_wid = {}
-    # The arrayable types are taken from the subgraph's node type index keys
-    # (NodeTuple subclasses), not from wire_registry: array rows of a type
-    # without wire_id must raise like rows do, not be left out.
-    for ntuple in sg.index:
-        if not isinstance(ntuple, type) or getattr(ntuple, '_array_layout', None) is None:
-            continue
+    row_nids = []
+    # The node types are taken from the subgraph, not from wire_registry:
+    # nodes of a type without wire_id must raise, not be left out.
+    for ntuple in sg.ntuples():
         cls = ntuple._cursor_type
         wid = cls.__dict__.get('wire_id')
         if wid is None:
             raise WireError(f"{cls.__name__} declares no wire_id;"
                 " cannot serialize.")
-        cols = sg.backend.arrays(sg, cls, partial=True)
-        if len(cols['nid']) > 0:
-            arrays_by_wid[wid] = [cols['nid'].astype('<i8').tobytes()] \
-                + [cols[f.name].astype('<i8').tobytes() for f in cls.Tuple._array_layout]
+        nids = sg.nids(ntuple)
+        if ntuple._array_layout is not None:
+            col_nids, cols = array_columns(sg, cls, partial=True)
+            n = len(col_nids) // 8
+            if n > 0:
+                arrays_by_wid[wid] = [little_endian(b) for b in [col_nids] + cols]
+            if n < len(nids):
+                in_arrays = set(np.frombuffer(col_nids, dtype=np.int64).tolist())
+                row_nids.extend(nid for nid in nids if nid not in in_arrays)
+        else:
+            row_nids.extend(nids)
+    # Rows in nid order, which also fixes the order of the blob table.
     rows_by_wid = {}
-    for nid in sorted(sg.backend.row_nids(sg)):
-        node = sg.nodes[nid]
+    for nid in sorted(row_nids):
+        node = sg.row(nid)
         cls = node._cursor_type
-        wid = cls.__dict__.get('wire_id')
-        if wid is None:
-            raise WireError(f"{cls.__name__} declares no wire_id;"
-                " cannot serialize.")
-        fields = node._array_layout
-        if fields is not None and row_values(fields, node) is not None:
-            continue # encoded in arrays_by_wid
         row = [nid]
         for ad in node._layout:
             try:
@@ -310,7 +316,7 @@ def encode_subgraph(sg: FrozenSubgraph, ept: ExportTable) -> bytes:
                     blobs))
             except TypeError as e:
                 raise TypeError(f"{cls.__name__}.{ad.name}: {e}") from None
-        rows_by_wid.setdefault(wid, []).append(row)
+        rows_by_wid.setdefault(cls.__dict__['wire_id'], []).append(row)
     return cbor2.dumps([blobs.blobs, rows_by_wid, sg.nid_alloc.start,
         arrays_by_wid], canonical=True)
 
@@ -338,9 +344,12 @@ def collect_wire_deps(sg: FrozenSubgraph,
     """
     deps = {}
     def collect(sg):
-        # Array rows hold no SubgraphRefs (see ordb.base.array_layout).
-        for nid in sorted(sg.backend.row_nids(sg)):
-            node = sg.nodes[nid]
+        for nid in sg.nids():
+            node = sg.row(nid)
+            # Rows of arrayable types hold no SubgraphRefs (see
+            # ordb.base.array_layout).
+            if node._array_layout is not None:
+                continue
             for ad in node._layout:
                 if not isinstance(ad.attr, SubgraphRef):
                     continue
@@ -545,7 +554,7 @@ def wire_decode(data: bytes, ept: ExportTable, deps=None) -> Node:
     # The updater clamps nid_alloc.start to max_nid+1; restore the encoded
     # start (they differ when top nids were deleted before serialization).
     if sg.nid_alloc.start != nid_start:
-        sg.mutate(sg.nodes, sg.index, range(nid_start, sg.nid_alloc.stop))
+        sg._set_nid_start(nid_start)
     return sg.freeze().root_cursor
 
 # Want/have exchange

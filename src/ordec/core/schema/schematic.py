@@ -212,7 +212,7 @@ class NegatedWireOperand:
 class Net(Node):
     in_subgraphs = [Schematic]
     wire_id = WIRE_DOMAIN | 6
-    pin = ExternalRef(Pin, of_subgraph=lambda c: c.root.symbol)
+    pin = ExternalRef(Pin, of_subgraph=('root', 'symbol'))
     auto_wire = Attr(bool, default=True) #: Controls whether the Net is auto-wired
 
     pin_idx = Index(pin)
@@ -389,7 +389,7 @@ class SchemInstanceConn(Node):
 
     here = LocalRef(Net, optional=False,
         factory=lambda v: v.ref if isinstance(v, SchemPort) else v)
-    there = ExternalRef(Pin, of_subgraph=lambda c: c.ref.symbol, optional=False) # ExternalRef to Pin in SchemInstance.symbol
+    there = ExternalRef(Pin, of_subgraph=('ref', 'symbol'), optional=False) # ExternalRef to Pin in SchemInstance.symbol
 
     ref_pin_idx = CombinedIndex([ref, there], unique=True)
 

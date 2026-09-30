@@ -1,63 +1,29 @@
-ORDB storage backends and benchmarks
-====================================
+ORDB storage engines and benchmarks
+===================================
 
-ORDB's subgraph storage is pluggable: every subgraph carries a reference
-to a *storage backend* (:mod:`ordec.core.ordb.backend`) that owns the
-representation of its node store and combined index, the transaction
-mechanics, the freeze/thaw/copy lifecycle and frozen-subgraph value
-equality. The rest of ORDB (nodes, cursors, indices, queries, the updater)
-is backend-independent.
+Subgraph storage is implemented by the native core (:doc:`ordb_core`) in two
+engines with identical semantics: ``paged`` (persistent pages, the default)
+and ``flat`` (contiguous blocks, copied as a whole before the first write
+after sharing). Every subgraph keeps the engine it was created with; derived
+subgraphs (freeze/thaw/copy) inherit it.
 
-Available backends
-------------------
-
-============================ ==================================================
-Name                          Storage model
-============================ ==================================================
-``pyrsistent-patricia``       Persistent HAMT maps (pyrsistent), Patricia-trie
-                              integer-set buckets. The default until
-                              ``cow-arrays`` replaced it.
-``pyrsistent-pvector``        Same maps, sorted persistent-vector buckets (the
-                              pre-Patricia behavior; kept as a baseline).
-``fullcopy``                  Plain dicts, full copies at every boundary
-                              including transaction begin. Strawman baseline.
-``cow``                       Plain dicts, O(1) snapshot sharing, transactions
-                              copy only what they must (top-level dict and
-                              changed buckets once after a snapshot; owned
-                              buckets are changed in place at commit).
-``cow-arrays``                The cow backend plus array chunks for rows
-                              inserted with ``insert_array`` (arrayable node
-                              types, e.g. LayoutRect): no per-node cost for
-                              bulk geometry. Edits of chunk rows go to a
-                              transaction overlay, applied at commit (in place
-                              for owned chunks, on a copy for shared ones).
-                              The default.
-``delta`` /                   Delta chains ported from the Zig ORDB
-``delta-compactN``            reimplementation (``zig`` branch): each frozen
-                              generation stores only its delta; reads walk the
-                              chain. ``compactN`` flattens chains deeper than N
-                              at freeze.
-============================ ==================================================
-
-Backend selection: the ``ORDEC_ORDB_BACKEND`` environment variable, or
+Engine selection: the ``ORDEC_ORDB_BACKEND`` environment variable, or
 programmatically ``ordb.use_backend(name)`` (context manager) /
-``MutableSubgraph(backend=...)``. Derived subgraphs (freeze/thaw/copy)
-inherit their origin's backend. The whole test suite is expected to pass
-under every backend::
+``MutableSubgraph(backend=...)``. The whole test suite is expected to pass
+under both engines::
 
-    ORDEC_ORDB_BACKEND=delta pytest -m "not web"
+    ORDEC_ORDB_BACKEND=flat pytest -m "not web"
 
 Benchmark suite
 ---------------
 
 The top-level ``benchmarks/`` package (not shipped in the wheel) compares
-the backends on synthetic workloads shaped like real ORDeC usage: many
+the storage engines on synthetic workloads shaped like real ORDeC usage: many
 small view builds, layout flatten/expand, read-only render scans,
 simulation-hierarchy construction, freeze/thaw generation chains, and
 index-bucket micros. :doc:`ordb_benchmark_workloads` writes out what they
-do, along with the PRNG, the checksum and the JSON output, so that a
-pure-Zig ORDB can run the same workloads and be compared against (the
-zigbridge FFI is deliberately not benchmarked).
+do, along with the PRNG, the checksum and the JSON output, so that
+another implementation could run the same workloads.
 
 Typical usage::
 
@@ -76,10 +42,10 @@ Typical usage::
         --repeats 5 --warmup 1 --checksum --time-limit 0 --out results/py.json
 
     # compare (also merges results from other worlds/machines)
-    python -m benchmarks.report results/*.json --baseline pyrsistent-pvector
+    python -m benchmarks.report results/*.json --baseline paged
 
     # HTML report
-    python -m benchmarks.report results/*.json --baseline pyrsistent-pvector \
+    python -m benchmarks.report results/*.json --baseline paged \
         --html results/report.html --no-tables
 
 The ``default`` scale is sized so the full matrix stays in the minutes range;
@@ -118,82 +84,63 @@ backend by a different margin. Untimed setup belongs to no phase, so
 Two checks keep a comparison honest:
 
 - ``python -m benchmarks.equivalence`` checks that every workload produces
-  an identical canonical checksum under every backend and runs a
-  differential fuzz (random op sequence applied lockstep under candidate
-  and reference backends, state compared after every operation, including
-  transaction-isolation and abort checks).
+  an identical canonical checksum under every engine and runs a
+  differential fuzz (random transactions, snapshots, aborts and nested
+  updaters applied to all engines in lockstep; after every step the engines
+  must agree, index queries must equal brute-force scans and snapshots must
+  be unchanged).
 - ``tests/test_benchmarks.py`` runs the whole suite at the smallest scale
   in CI.
 
-Transactions, index snapshots and immutability
-----------------------------------------------
+Results
+-------
 
-While a :class:`~ordec.core.ordb.SubgraphUpdater` transaction is open, the
-subgraph's own ``nodes``/``index`` keep showing the pre-transaction state;
-only the updater's views expose uncommitted changes. Code may query the
-subgraph mid-transaction and rely on seeing the pre-transaction snapshot.
-Additionally, ``index[key]`` returns an immutable snapshot of the bucket,
-so callers may iterate a query result while removing exactly those nodes
-(the ``expand_rects`` pattern). Backends have to get both right
-(:mod:`ordec.core.ordb.backend`); the differential fuzz checks them.
+One workstation (Intel Core i7-14700K), Python 3.13.5. The previous
+implementation (``cow-arrays``: Python dicts plus numpy chunks, and the other
+pure-Python backends it replaced) is given for comparison.
 
-The state mappings a subgraph hands out via ``.nodes``/``.index`` must
-also reject in-place mutation through their public API: frozen subgraphs
-cache their content hash, and backends share state objects across
-freeze/thaw/fork, so a stray write would silently corrupt every subgraph
-in the sharing group. pyrsistent gets this from pmap; the dict-based
-backends use guarded dict subclasses whose public mutators raise
-``TypeError`` and whose index read paths (``[]``, ``get``, ``items``,
-``values``, ``copy``) return bucket snapshots
-(``src/ordec/core/ordb/backend_fullcopy.py``). Reads stay at native dict
-speed, but note for cross-version comparisons that turning fullcopy's
-node store from an exact dict into a subclass costs roughly a third on
-raw node reads (CPython specializes exact dicts only); cow's node store
-was a subclass all along. ``tests/test_ordb.py`` asserts the contract
-under every backend.
+Per operation, measured on the benchmark schema:
 
-Going forward
--------------
+============================================== ============ ======= =======
+Operation                                      cow-arrays   paged   flat
+============================================== ============ ======= =======
+insert with ``%`` (one transaction per node)   9.6 us       0.66 us 0.93 us
+attribute read on a cursor                     229 ns       20 ns   16 ns
+``all(T)`` plus one attribute read, per node   1.75 us      95 ns   83 ns
+attribute assignment (own transaction)         8.5 us       0.40 us 0.24 us
+polygon vertex insert (sorted index)           15.3 us      0.85 us 0.64 us
+thaw, one update, freeze (50,000 nodes)        1.9 ms       1.6 us  0.35 ms
+hash of a frozen subgraph (50,000 nodes)       66 ms        0.25 ms 0.17 ms
+============================================== ============ ======= =======
 
-Patricia buckets removed the quadratic index maintenance, but the layout
-webdata path is still slow, and its profile no longer points at a single
-hotspot: what is left is the sheer volume of transactional work. Roughly in
-order of payoff:
+Synthetic suite at ``--scale large`` (sum of the phases, one run):
 
-``webdata()`` mutates the graph in order to serialize it. ``expand_geom``
-opens a transaction per replaced rect — around 29k of them — and inserts
-~147k nodes, paying index updates and constraint checks for a result that is
-discarded once rendered. A read-only traversal prototype (walk instances
-recursively with accumulated transforms, expand shapes inline, never touch the
-graph) produced identical shape counts in 0.42 s where the current pipeline
-takes roughly 100 s. That is the fix for the web path, and it also removes the
-``flatten()`` and ``mutable_copy()`` costs.
-``ordec.layout.helpers.compare()`` can check geometric equivalence against the
-old pipeline.
+=========================== ============ ======= =======
+Workload                    cow-arrays   paged   flat
+=========================== ============ ======= =======
+``symbol_build``            4.7 s        0.30 s  0.25 s
+``render_scan``             19.3 s       1.97 s  1.85 s
+``sim_hierarchy``           3.4 s        0.31 s  0.26 s
+``snapshot_chain``          0.9 s        0.14 s  0.14 s
+``layout_flatten``          65.3 s       2.97 s  2.19 s
+=========================== ============ ======= =======
 
-pyrsistent runs as pure Python on 3.13 — its C extension does not build there,
-and ``pmap.set`` dominates what remains. That costs roughly 2–3× across *all*
-ORDB operations, not only this path. Worth pursuing upstream or vendoring the
-patch; a startup warning when the extension is missing would at least make the
-degradation visible rather than silent.
+Retained memory of ``snapshot_chain`` at the large scale (64 generations of
+50,000 nodes, all kept alive): 31.6 MiB with ``paged``, 174 MiB with
+``flat``, against 231 MiB for ``cow-arrays`` and 93 MiB for the former
+``pyrsistent-patricia``. Pages of 16 rows keep this small: every generation
+copies only the pages it touches, while ``flat`` copies every touched table.
+On the other workloads, both engines need 2 to 6 times less memory than
+``cow-arrays``.
 
-``webdata()`` is not memoized. Views are frozen and hashable, so caching the
-conversion per frozen view in the server would make reopening a panel free.
+An example IO ring in SG13G2 (739,000 rectangles) builds in about
+0.3 s (``cow-arrays``: 0.58 s); it is dominated by GDS processing, ORDB takes
+about 40 ms of it.
 
-Further out, the schema itself amplifies: every polygon vertex is its own
-node, so geometry-heavy subgraphs carry several times the node count and every
-bulk operation pays for it. Running bulk transforms in a single transaction
-rather than one per node is the cheap mitigation; storing vertex arrays as an
-attribute (as :class:`~ordec.core.simarray.SimColumn` does for simulation data)
-would change the constraint-based layout workflow and is a separate
-discussion.
+Choosing an engine
+------------------
 
-``cow-arrays`` became the default after large-scale runs: it is faster than
-``pyrsistent-patricia`` on every workload of the suite and needs about half
-the memory, except on ``snapshot_chain``, where keeping many generations of
-one large subgraph costs about 2.5x the memory (each generation that is
-modified owns a copy of the top-level dicts). The ``delta``
-backend's weakness on ``micro_replace`` points at its index-delta merge at
-commit. Candidates worth measuring: a ``cow`` backend with Patricia buckets,
-and an unsorted-NID-bucket variant — ascending iteration is the only ordering
-the API promises, so a hash set with sort-on-read is admissible.
+``paged`` is the default: its transactions need no undo log, and chains of
+generations of a large subgraph stay cheap. ``flat`` is somewhat faster for
+single-row updates (no page copies) and builds, but every generation that
+touches a table copies the table.

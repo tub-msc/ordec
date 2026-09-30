@@ -5,8 +5,6 @@ import pytest
 import re
 from ordec.core import *
 from ordec.core import ordb
-from ordec.core.ordb import BucketKind
-from ordec.core.ordb.base import IndexKey
 from tabulate import tabulate
 import ordec.core.ordb.base
 
@@ -456,11 +454,9 @@ def test_index():
     s.node2 = NodeA(color=123)
     s.node3 = NodeA(color=456)
 
-    # Direct inspection of the underlying index pmap:
-    key123 = IndexKey(NodeA.color_idx, 123)
-    key456 = IndexKey(NodeA.color_idx, 456)
-    assert set(s.subgraph.index[key123]) == {s.node1.nid, s.node2.nid}
-    assert set(s.subgraph.index[key456]) == {s.node3.nid}
+    # Low-level query by index and key:
+    assert s.subgraph.query(NodeA.color_idx, 123) == [s.node1.nid, s.node2.nid]
+    assert s.subgraph.query(NodeA.color_idx, 456) == [s.node3.nid]
 
     # Query API returns all nodes matching the key:
     got123 = {c.nid for c in s.all(NodeA.color_idx.query(123))}
@@ -483,7 +479,7 @@ def test_unique():
         s2 % NodeU1(label='hello')
     # Make sure neither the nodes nor the index was modified here:
     assert s2.subgraph.internally_equal(s.subgraph)
-    assert s2.subgraph.index == s.subgraph.index
+    assert len(s2.subgraph.query(NodeU1.unique_label, 'hello')) == 1
 
     # Updating an existing node to collide with another must also fail,
     # and leave the subgraph unchanged.
@@ -494,7 +490,7 @@ def test_unique():
     with pytest.raises(UniqueViolation):
         n_b.label = 'hello'
     assert s3.subgraph.internally_equal(s3_before.subgraph)
-    assert s3.subgraph.index == s3_before.subgraph.index
+    assert s3.subgraph.query(NodeU1.unique_label, 'world') == [n_b.nid]
 
     # Removing a node then re-inserting the same label must succeed.
     s3.subgraph.remove_nid(n_a.nid)
@@ -515,7 +511,7 @@ def test_unique():
             NodeU1(label='world').insert_into(u, u.nid_generate())
             NodeU1(label='hello').insert_into(u, u.nid_generate())
     assert s5.subgraph.internally_equal(s5_before.subgraph)
-    assert s5.subgraph.index == s5_before.subgraph.index
+    assert s5.subgraph.query(NodeU1.unique_label, 'world') == []
 
 def test_cursor_remove():
     s = MyHead()
@@ -862,7 +858,7 @@ def test_index_custom_sort():
         in_subgraphs=[MyHead]
         ref    = LocalRef(MyNode)
         order  = Attr(int)
-        idx_ref = Index(ref, sortkey=lambda node: node.order)
+        idx_ref = Index(ref, sortkey=order)
 
     s = MyHead()
     with s.updater() as u:
@@ -917,7 +913,7 @@ def test_cursor_externalref():
     class NodeExtRef(Node):
         in_subgraphs=[MyHead]
         subg = SubgraphRef(MyHead)
-        eref = ExternalRef(MyNode, of_subgraph=lambda c: c.subg)
+        eref = ExternalRef(MyNode, of_subgraph=('subg',))
 
     s1 = MyHead()
     s1.n1 = MyNode(label='hello')
@@ -946,7 +942,7 @@ def test_externalref_validation():
     class NodeExtRef(Node):
         in_subgraphs=[MyHead]
         subg = SubgraphRef(MyHead)
-        eref = ExternalRef(NodeB, of_subgraph=lambda c: c.subg)
+        eref = ExternalRef(NodeB, of_subgraph=('subg',))
 
     s_ref = MyHead()
     s_ref.a = NodeA(text='A')
@@ -982,7 +978,7 @@ def test_index_externalref_by_node():
     class NodeExtRef(Node):
         in_subgraphs=[MyHead]
         subg = SubgraphRef(MyHead)
-        eref = ExternalRef(MyNode, of_subgraph=lambda c: c.subg)
+        eref = ExternalRef(MyNode, of_subgraph=('subg',))
         eref_idx = Index(eref)
 
     s_ref = MyHead()
@@ -1205,168 +1201,109 @@ def test_assign_npath():
     s.x = x
     assert s.x.nid == x.nid
 
-    # TODO: This is bad behaviour at the moment as the cursor 'caches' the NPath nid:
-    assert s.x != x
+    # Cursors are equal if they select the same node (the NPath is not part
+    # of the identity):
+    assert s.x == x
 
     with pytest.raises(UniqueViolation):
         # Ensure that we cannot assign multiple paths to a node:
         s.y = x
 
-# Storage backend immutability contract
-# -------------------------------------
-#
-# Subgraph state (.nodes/.index) is exposed read-only: all mutation goes
-# through a StorageTxn (see ordec.core.ordb.backend). Frozen subgraphs cache
-# their content hash and backends may share state objects across
-# freeze/thaw/fork, so an in-place mutation that slipped through would
-# silently corrupt sibling subgraphs. Backends may either raise on mutation
-# attempts (dict-based backends, delta views) or return a new object without
-# mutating (pyrsistent's PMap.update), so the cross-backend assertion is
-# state invariance, not "raises".
+# Query results and node values are snapshots
+# ---------------------------------------------
 
 class GuardNode(Node):
     in_subgraphs = [MyHead]
     color = Attr(int)
     color_idx = Index(color)
 
-def _guard_subgraph():
+def test_query_snapshot():
     s = MyHead()
     s.node1 = GuardNode(color=123)
     s.node2 = GuardNode(color=123)
-    s.node3 = GuardNode(color=456)
-    return s.subgraph
-
-def _guard_fingerprint(sg):
-    return (
-        tuple(sorted(sg.nodes.items())),
-        tuple(sg.all(GuardNode.color_idx.query(123), wrap_cursor=False)),
-        tuple(sg.all(GuardNode.color_idx.query(456), wrap_cursor=False)),
-    )
-
-MUTATION_VECTORS = [
-    lambda d, k: d.__setitem__(k, 'garbage'),
-    lambda d, k: d.__delitem__(k),
-    lambda d, k: d.__ior__({k: 'garbage'}),
-    lambda d, k: d.update({k: 'garbage'}),
-    lambda d, k: d.pop(k),
-    lambda d, k: d.popitem(),
-    lambda d, k: d.clear(),
-    lambda d, k: d.setdefault(object(), 'garbage'),
-]
-
-def test_state_mappings_reject_or_ignore_mutation(ordb_backend):
-    mutable = _guard_subgraph()
-    frozen = mutable.freeze()
-    thawed = frozen.thaw()
-    fp = _guard_fingerprint(frozen)
+    frozen = s.freeze()
     h = hash(frozen)
-
-    guarded = ordb_backend in ('fullcopy', 'cow')
-    for sg in (frozen, mutable, thawed):
-        for mapping in (sg.nodes, sg.index):
-            key = next(iter(mapping))
-            for vector in MUTATION_VECTORS:
-                if guarded:
-                    with pytest.raises(TypeError):
-                        vector(mapping, key)
-                else:
-                    try:
-                        vector(mapping, key)
-                    except (TypeError, AttributeError):
-                        pass
-
-    assert _guard_fingerprint(frozen) == fp
-    assert _guard_fingerprint(mutable) == fp
-    assert _guard_fingerprint(thawed) == fp
+    nids = s.all(GuardNode.color_idx.query(123), wrap_cursor=False)
+    nids.append(999)
+    with pytest.raises(TypeError):
+        s.subgraph.nodes[1] = 'garbage'
+    # Iterating a query result while removing exactly its nodes:
+    for node in s.all(GuardNode.color_idx.query(123)):
+        node.remove()
+    assert list(s.all(GuardNode)) == []
+    assert len(frozen.subgraph.query(GuardNode.color_idx, 123)) == 2
     assert hash(frozen) == h
-    assert frozen == mutable.freeze()
 
-def test_bucket_snapshots_detached(ordb_backend):
-    mutable = _guard_subgraph()
-    frozen = mutable.freeze()
-    fp = _guard_fingerprint(frozen)
-    key = IndexKey(GuardNode.color_idx, 123)
-
-    def try_mutate(bucket):
-        for attempt in (lambda: bucket.append(999), lambda: bucket.add(999),
-                lambda: bucket.remove(next(iter(bucket)))):
-            try:
-                attempt()
-            except (AttributeError, TypeError):
-                pass
-
-    for sg in (frozen, mutable):
-        buckets = [sg.index[key]]
-        if (got := sg.index.get(key)) is not None:
-            buckets.append(got)
-        for accessor in ('items', 'values', 'copy'):
-            method = getattr(sg.index, accessor, None)
-            if method is None:
-                continue
-            result = method()
-            buckets.extend(result.values() if isinstance(result, dict)
-                else (v for _, v in result) if accessor == 'items'
-                else result)
-        for bucket in buckets:
-            try_mutate(bucket)
-
-    assert _guard_fingerprint(frozen) == fp
-    assert _guard_fingerprint(mutable) == fp
-
-# freeze()/copy() while an updater transaction is open must capture the
-# pre-transaction state (transaction isolation extends to snapshots), must
-# not change retroactively when the transaction commits, and must leave
-# both subgraphs usable. Regression test: the delta backend used to commit
-# into the generation that freeze had just sealed and handed to the
-# snapshot, corrupting the snapshot and leaving the mutable un-updatable.
+# Transactions: reads through the subgraph see uncommitted changes; freeze
+# and copy are refused while an updater is open; nested updaters roll back
+# as a unit.
 
 def _labels(sg):
     return sorted(node.label for node in sg.all(MyNode))
 
-def test_freeze_during_open_updater():
+def test_open_updater():
     s = MyHead().subgraph
     with s.updater() as u:
         u.add_single(MyNode(label='pre'), u.nid_generate())
     with s.updater() as u:
         u.add_single(MyNode(label='mid'), u.nid_generate())
-        snap = s.freeze()
-        assert _labels(snap) == ['pre']
-    assert _labels(snap) == ['pre'] # unchanged by the commit
-    assert _labels(s) == ['mid', 'pre']
+        assert _labels(s) == ['mid', 'pre']
+        with pytest.raises(OrdbException, match="while an updater is open"):
+            s.freeze()
+        with pytest.raises(OrdbException, match="while an updater is open"):
+            s.copy()
+    snap = s.freeze()
+    with pytest.raises(RuntimeError):
+        with s.updater() as outer:
+            outer.add_single(MyNode(label='outer'), outer.nid_generate())
+            with s.updater() as inner:
+                inner.add_single(MyNode(label='inner'), inner.nid_generate())
+            assert _labels(s) == ['inner', 'mid', 'outer', 'pre']
+            raise RuntimeError()
+    assert s.freeze() == snap
     with s.updater() as u: # the mutable stays usable
         u.add_single(MyNode(label='post'), u.nid_generate())
     assert _labels(s) == ['mid', 'post', 'pre']
-    assert _labels(snap) == ['pre']
+    assert _labels(snap) == ['mid', 'pre']
 
-def test_copy_during_open_updater():
-    s = MyHead().subgraph
-    with s.updater() as u:
-        u.add_single(MyNode(label='pre'), u.nid_generate())
-    with s.updater() as u:
-        u.add_single(MyNode(label='mid'), u.nid_generate())
-        fork = s.copy()
-    assert _labels(fork) == ['pre']
-    assert _labels(s) == ['mid', 'pre']
-    with fork.updater() as u: # both stay usable and independent
-        u.add_single(MyNode(label='fork'), u.nid_generate())
-    with s.updater() as u:
-        u.add_single(MyNode(label='post'), u.nid_generate())
-    assert _labels(fork) == ['fork', 'pre']
-    assert _labels(s) == ['mid', 'post', 'pre']
+class ValueNode(Node):
+    in_subgraphs = [MyHead]
+    arrayable = True
+    num = Attr(int)
+    pos = Attr(Vec2I)
 
-def test_bucket_remove_absent_raises():
-    """StorageTxn.bucket_remove contract: removing a value that is not in
-    the bucket (or a key without a bucket) raises KeyError/ValueError."""
-    s = _guard_subgraph()
+def test_stored_values():
+    """Values outside the native slot encoding (None, big ints, bools)
+    round-trip and compare like plain values."""
+    s = MyHead()
+    values = [(1, Vec2I(1, 2)), (None, None), (2**80, Vec2I(-2**63 + 5, 7)),
+        (True, Vec2I(0, 0)), (-2**63, Vec2I(2**70, 1))]
+    nids = [(s % ValueNode(num=n, pos=p)).nid for n, p in values]
+    for nid, (n, p) in zip(nids, values):
+        node = s.subgraph.cursor_at(nid)
+        assert (node.num, node.pos) == (n, p)
+        assert type(node.num) is type(n)
+    arrays = s.arrays(ValueNode, partial=True)
+    assert arrays['nid'].tolist() == [nids[0], nids[3]]
+    assert arrays['pos'].tolist() == [[1, 2], [0, 0]]
+    with pytest.raises(ValueError):
+        s.arrays(ValueNode)
+    t = s.copy()
+    t.subgraph.cursor_at(nids[2]).num = 2**80 # equal value, new object
+    assert s.freeze() == t.freeze() and hash(s.freeze()) == hash(t.freeze())
 
-    txn = s.backend.begin(s)
-    with pytest.raises((KeyError, ValueError)):
-        txn.bucket_remove(IndexKey(GuardNode.color_idx, 123), 999999,
-            BucketKind.NID)
-    txn.abort()
-
-    txn = s.backend.begin(s)
-    with pytest.raises((KeyError, ValueError)):
-        txn.bucket_remove(IndexKey(GuardNode.color_idx, 777), 1,
-            BucketKind.NID)
-    txn.abort()
+def test_gc_shared_blocks():
+    """Cycles through storage shared by snapshots are collected."""
+    import gc, weakref
+    class Holder:
+        pass
+    class ObjHead(SubgraphRoot):
+        obj = Attr(object)
+    h = Holder()
+    root = ObjHead(obj=h)
+    frozen = root.freeze()
+    h.back = (root, frozen)
+    refs = [weakref.ref(root.subgraph), weakref.ref(frozen.subgraph)]
+    del h, root, frozen
+    gc.collect()
+    assert [r() for r in refs] == [None, None]

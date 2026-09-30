@@ -148,19 +148,17 @@ print(x.parent[1])
 
 # ## Principle 4: Persistent data structure
 #
-# So far, we wrote and read various nodes of our subgraph "earth". Internally, the nodes are stored in a persistent map data structure (pyrsistent.PMap):
+# So far, we wrote and read various nodes of our subgraph "earth". Internally, the nodes are stored in tables, one per node type, that behave like persistent data structures:
 
-print(earth.subgraph.nodes)
+print(earth.subgraph.node_dict())
 
-# Persistent data structures are immutable and never need to be copied. Creating a copy of earth gives us a new Python object, but this new earth2 references the identical underlying PMap:
+# Creating a copy of earth gives us a new Python object, but no data is copied: earth2 shares the tables of earth.
 
 earth2 = earth.copy()
-earth2.subgraph.nodes is earth.subgraph.nodes
 
-# Once we modify earth2, its "nodes" PMap in earth2 is replaced with an extended one.
+# Once we modify earth2, only the parts of its tables that change are copied. The modification is not visible in earth:
 
 earth2 % Flight(flight_code="ABC100", origin=earth.united_kingdom.man, destination=earth.cdg, duration=45)
-earth2.subgraph.nodes is earth.subgraph.nodes
 
 # The new flight is part of earth2, but not of the original earth:
 
@@ -169,7 +167,7 @@ list(earth2.all(Flight.origin_idx.query(earth.united_kingdom.man)))
 
 # list(earth.all(Flight.origin_idx.query(earth.united_kingdom.man)))
 
-# One critical part of the persistent data structure PMap is that the insertion of the new flight into the nodes PMap created the new PMap earth2.nodes (1) without copying the entire previous earth.nodes and (2) while still preserving the immutability of earth.nodes.
+# The storage engine achieves this (1) without copying all tables of earth and (2) while preserving the immutability of earth: each subgraph sees exactly its own state.
 #
 # ## Principle 5: Mutable and immutable interfaces
 #
@@ -213,7 +211,7 @@ class Ticket(SubgraphRoot):
 class TicketSegment(Node):
     in_subgraphs = [Ticket]
     
-    flight = ExternalRef(Flight, of_subgraph=lambda c: c.root.planet)
+    flight = ExternalRef(Flight, of_subgraph=('root', 'planet'))
     seat = Attr(str)
     
 myticket = Ticket(price=1999.0, planet=earth_frozen)
