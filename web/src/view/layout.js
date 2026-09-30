@@ -12,6 +12,7 @@ import { View, CoordinateDisplay } from './view.js';
 
 import glslShapesVert from './glsl/layout-shapes.vert';
 import glslShapesFrag from './glsl/layout-shapes.frag';
+import glslGridVert from './glsl/layout-grid.vert';
 import glslPostVert from './glsl/layout-post.vert';
 import glslPostFrag from './glsl/layout-post.frag';
 import glslLabelsVert from './glsl/layout-labels.vert';
@@ -132,16 +133,6 @@ function composeTransforms(m1, m2) {
 
 function transformPoint(m, p) {
     return [m[0]*p[0] + m[1]*p[1] + m[4], m[2]*p[0] + m[3]*p[1] + m[5]];
-}
-
-function transformMat4(m) {
-    // Column-major 4x4 matrix for the model-view uniform:
-    return new Float32Array([
-        m[0], m[2], 0, 0,
-        m[1], m[3], 0, 0,
-        0, 0, 1, 0,
-        m[4], m[5], 0, 1,
-    ]);
 }
 
 function calcLayerColor(color, layerId, dampen) {
@@ -488,6 +479,22 @@ export class LayoutView extends View {
             program: prog,
             attribLocations: {
                 vertexPosition: gl.getAttribLocation(prog, "aVertexPosition"),
+                transformX: gl.getAttribLocation(prog, "aTransformX"),
+                transformY: gl.getAttribLocation(prog, "aTransformY"),
+            },
+            uniformLocations: {
+                projectionMatrix: gl.getUniformLocation(prog, "uProjectionMatrix"),
+                layerColor: gl.getUniformLocation(prog, "uLayerColor"),
+                brightness: gl.getUniformLocation(prog, "uBrightness"),
+            },
+        };
+
+        // The grid shares the fragment shader of the shapes program.
+        prog = this.glResources.createProgram(glslGridVert, glslShapesFrag);
+        this.programInfos.grid = {
+            program: prog,
+            attribLocations: {
+                vertexPosition: gl.getAttribLocation(prog, "aVertexPosition"),
             },
             uniformLocations: {
                 projectionMatrix: gl.getUniformLocation(prog, "uProjectionMatrix"),
@@ -557,6 +564,7 @@ export class LayoutView extends View {
 
             // dynamic, loaded by loadBuffersDynamic:
             shapeVertices: this.glResources.createBuffer(),
+            placementTransforms: this.glResources.createBuffer(),
             labelVertices: this.glResources.createBuffer(),
 
             // highlight overlay for DRC:
@@ -718,21 +726,41 @@ export class LayoutView extends View {
     prepareHierarchy() {
         // The layout arrives as cells (distinct layouts, cell 0 is the top)
         // with per-layer geometry and instances of other cells (see
-        // docs/dev/webui.rst). Each cell's geometry is loaded once; it is
-        // drawn once per draw item, i.e. per placement of the cell in the
-        // top cell, with the item's transform as model-view matrix.
+        // docs/dev/webui.rst). Each cell's geometry is loaded once. There
+        // is one draw item per placement of a cell in the top cell; all
+        // placements of a cell are drawn by one instanced draw call, with
+        // the items' transforms as per-instance attributes.
+        const gl = this.gl;
         const cells = this.data.cells;
         this.layerByNid = new Map(this.data.layers.map(l => [l.nid, l]));
         this.cellLayers = cells.map(cell => new Map(cell.layers.map(e => [e.layer, e])));
         this.drawItems = [];
         const walk = (cellIdx, m) => {
-            this.drawItems.push({cell: cellIdx, m: m, mat4: transformMat4(m)});
+            this.drawItems.push({cell: cellIdx, m: m});
             const inst = cells[cellIdx].instances;
             for (let i = 0; i < inst.cell.length; i++) {
                 walk(inst.cell[i], composeTransforms(m, inst.transform.subarray(6*i, 6*i + 6)));
             }
         };
         walk(0, [1, 0, 0, 1, 0, 0]);
+
+        // Sort by cell, so that the placements of one cell form one
+        // contiguous run of the placementTransforms buffer.
+        this.drawItems.sort((a, b) => a.cell - b.cell);
+        this.cellPlacements = cells.map(() => ({first: 0, count: 0}));
+        const buf = new Float32Array(6 * this.drawItems.length);
+        this.drawItems.forEach((item, i) => {
+            const m = item.m;
+            // Row order, as expected by aTransformX and aTransformY:
+            buf.set([m[0], m[1], m[4], m[2], m[3], m[5]], 6*i);
+            const placements = this.cellPlacements[item.cell];
+            if (placements.count == 0) {
+                placements.first = i;
+            }
+            placements.count++;
+        });
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.placementTransforms);
+        gl.bufferData(gl.ARRAY_BUFFER, buf, gl.STATIC_DRAW);
     }
 
     loadShapes() {
@@ -856,7 +884,7 @@ export class LayoutView extends View {
     drawGLShapes() {
         const gl = this.gl;
         const programInfo = this.programInfos.shapes;
-        const white = [255, 255, 255];
+        const {vertexPosition, transformX, transformY} = programInfo.attribLocations;
 
         gl.useProgram(programInfo.program);
 
@@ -876,24 +904,36 @@ export class LayoutView extends View {
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
         gl.uniformMatrix4fv(programInfo.uniformLocations.projectionMatrix, false, this.projectionMatrix);
-        gl.uniformMatrix4fv(programInfo.uniformLocations.modelViewMatrix, false, mat4.create());
 
         const brightnessFactor = Math.exp((this.brightness - 80)/15);
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.shapeVertices);
-        gl.vertexAttribPointer(programInfo.attribLocations.vertexPosition, 2, gl.FLOAT, false, 0, 0);
-        gl.enableVertexAttribArray(programInfo.attribLocations.vertexPosition);
+        gl.vertexAttribPointer(vertexPosition, 2, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(vertexPosition);
+
+        // The transform attributes advance per instance (placement), not per
+        // vertex. Their pointers are set per cell in drawLayer.
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.placementTransforms);
+        gl.enableVertexAttribArray(transformX);
+        gl.enableVertexAttribArray(transformY);
+        gl.vertexAttribDivisor(transformX, 1);
+        gl.vertexAttribDivisor(transformY, 1);
 
         gl.uniform1f(programInfo.uniformLocations.brightness, brightnessFactor);
 
         const drawLayer = (layer, style, mode, offsetKey, countKey) => {
             gl.uniform4fv(programInfo.uniformLocations.layerColor,
                 calcLayerColor(style, layer.nid, true));
-            this.drawItems.forEach(item => {
-                const entry = this.cellLayers[item.cell].get(layer.nid);
-                if (entry && entry[countKey] > 0) {
-                    gl.uniformMatrix4fv(programInfo.uniformLocations.modelViewMatrix, false, item.mat4);
-                    gl.drawArrays(mode, entry[offsetKey], entry[countKey]);
+            this.cellLayers.forEach((layers, cellIdx) => {
+                const entry = layers.get(layer.nid);
+                const placements = this.cellPlacements[cellIdx];
+                if (entry && entry[countKey] > 0 && placements.count > 0) {
+                    // WebGL2 has no base instance parameter, so the cell's
+                    // run of transforms is selected by the byte offset.
+                    const offset = placements.first * 6*4;
+                    gl.vertexAttribPointer(transformX, 3, gl.FLOAT, false, 6*4, offset);
+                    gl.vertexAttribPointer(transformY, 3, gl.FLOAT, false, 6*4, offset + 3*4);
+                    gl.drawArraysInstanced(mode, entry[offsetKey], entry[countKey], placements.count);
                 }
             });
         };
@@ -912,15 +952,31 @@ export class LayoutView extends View {
             }
         });
 
-        // Draw grid:
+        // Vertex attribute state is shared by all programs (no vertex array
+        // objects are used), so the divisors must not leak into later draws.
+        gl.vertexAttribDivisor(transformX, 0);
+        gl.vertexAttribDivisor(transformY, 0);
+
+        this.drawGLGrid(brightnessFactor);
+    }
+
+    drawGLGrid(brightnessFactor) {
+        // Drawn into the intermediate framebuffer, with the blend and depth
+        // state set up by drawGLShapes.
+        const gl = this.gl;
+        const programInfo = this.programInfos.grid;
+        const white = [255, 255, 255];
+
+        gl.useProgram(programInfo.program);
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.gridVertices);
         gl.vertexAttribPointer(programInfo.attribLocations.vertexPosition, 2, gl.FLOAT, false, 0, 0);
         gl.enableVertexAttribArray(programInfo.attribLocations.vertexPosition);
 
+        gl.uniform1f(programInfo.uniformLocations.brightness, brightnessFactor);
         gl.uniform4fv(programInfo.uniformLocations.layerColor,
             calcLayerColor(white, 0, false));
-        
+        gl.uniformMatrix4fv(programInfo.uniformLocations.projectionMatrix, false, this.projectionMatrix);
         gl.uniformMatrix4fv(programInfo.uniformLocations.modelViewMatrix, false, this.scaleGrid());
 
         gl.drawArrays(gl.POINTS, 0, this.gridSize * this.gridSize);
