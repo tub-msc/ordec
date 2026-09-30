@@ -703,6 +703,20 @@ courses_testdata = {
             """),
         ]),
     ]),
+    # Simulation-free stand-in for amp_competition, used by the competition
+    # web tests (see its checks.py). The empty skeleton passes the "only
+    # resistors" check.
+    'competition_stub': CourseTestdata('Competition Stub', [
+        LessonTestdata(passfails=2, skeleton_passed=[False, True],
+            has_svg=True, solution=[
+            InsertSolution("""
+            # EDIT HERE
+            """, """
+            Res r1: .$r=1k; .p -- vdd; .n -- vout; .pos=(6,9)
+            Res r2: .$r=1k; .p -- vout; .n -- vss; .pos=(6,3)
+            """),
+        ]),
+    ]),
 }
 
 
@@ -786,9 +800,10 @@ def test_course_special_lesson_flags():
 
 def test_course_competition_flag():
     # The competition flag (hides the lesson navigator in the frontend)
-    # must be passed through, and only amp_competition carries it.
+    # must be passed through, and only the competition courses carry it.
     for name in courses_testdata:
-        assert course_data(name)['competition'] is (name == 'amp_competition')
+        assert course_data(name)['competition'] is (
+            name in ('amp_competition', 'competition_stub'))
 
 
 def test_course_unknown():

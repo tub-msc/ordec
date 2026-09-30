@@ -138,7 +138,9 @@ def test_index(web):
 
     # Check that we link to each expected example and course.
     expected = {f'example={testcase}' for testcase in testcases_integrated.keys()}
-    expected.update({f'course={name}' for name in courses_testdata.keys()})
+    # competition_stub is a test-only course, not linked anywhere.
+    expected.update({f'course={name}' for name in courses_testdata.keys()
+        if name != 'competition_stub'})
     assert app_html_link_queries == expected
 
 # Visual browser-based testing was painful (fonts, different browser versions,
@@ -517,20 +519,23 @@ def test_course_intro_callout(web):
 
 @pytest.mark.web
 def test_course_competition_nav(web):
-    """A competition course (amp_competition) hides the lesson navigator; the
-    status marker and the source management buttons remain. Without the
-    hub's scoreboard service the course is unlisted on the landing page,
-    there is no team dialog, and the Scoreboard panel of the shipped layout
-    says so (see landing-page.js/scoreboard.js)."""
+    """A competition course hides the lesson navigator; the status marker
+    and the source management buttons remain. Without the hub's scoreboard
+    service the competition is unlisted on the landing page, there is no
+    team dialog, and the Scoreboard panel of the shipped layout says so (see
+    landing-page.js/scoreboard.js).
+
+    Like test_course_competition_scoreboard, this runs on the simulation-free
+    competition_stub course instead of amp_competition."""
     web.resize_viewport()
     web.driver.get(web.url)
     web.driver.execute_script(
-        "window.localStorage.removeItem('ordecCourse:amp_competition');")
+        "window.localStorage.removeItem('ordecCourse:competition_stub');")
     assert web.driver.execute_script("""
         return document.querySelector('#competitionSection').hidden;
     """) is True
 
-    web.navigate('app.html#course=amp_competition')
+    web.navigate('app.html#course=competition_stub')
     web.wait_for_ready()
     wait_for_course_marker(web, 'unsolved')
     info = web.driver.execute_script("""
@@ -613,15 +618,6 @@ SCOREBOARD_FAKE_JS = """
 """
 
 
-# Edits for the competition_stub course (see its checks.py): the solution
-# replaces the EDIT HERE marker; STUB_CAP adds a Cap instance, which fails
-# the "only resistors" check.
-STUB_SOLUTION = """Res r1: .$r=1k; .p -- vdd; .n -- vout; .pos=(6,9)
-        Res r2: .$r=1k; .p -- vout; .n -- vss; .pos=(6,3)
-        # EDIT HERE"""
-STUB_CAP = "Cap cx: .$c=1p; .p -- vout; .n -- vss; .pos=(10,3)"
-
-
 @pytest.mark.web
 def test_course_competition_scoreboard(web):
     """With a scoreboard (faked in-page, see SCOREBOARD_FAKE_JS), the
@@ -632,7 +628,7 @@ def test_course_competition_scoreboard(web):
     stored team without asking again.
 
     Runs on the competition_stub course, whose checks need no simulation:
-    the scoreboard flow is the same as in competition_stub, but each of the
+    the scoreboard flow is the same as in amp_competition, but each of the
     several builds this test triggers takes well under a second instead of
     the seconds of ngspice corner runs. The stub course is unlisted."""
     web.resize_viewport()
@@ -751,7 +747,8 @@ def test_course_competition_scoreboard(web):
         # own score is marked stale (spinner).
         lessons = web.driver.execute_script(
             "return window.courseController.course.lessons;")
-        sol = lessons[0]['src'].replace('# EDIT HERE', STUB_SOLUTION)
+        sol = courses_testdata['competition_stub'].lessons[0].solution_src(
+            lessons[0])
         # The stub builds in a fraction of a second, too short to poll for
         # the spinner: record it with an observer instead.
         web.driver.execute_script("""
@@ -803,8 +800,9 @@ def test_course_competition_scoreboard(web):
             const editor = window.courseController.editor.editor;
             editor.setValue(editor.getValue()
                 .replace('import Res', 'import Res, Cap')
-                .replace('# EDIT HERE', arguments[0] + '\\n        # EDIT HERE'));
-        """, STUB_CAP)
+                .replace(arguments[0], arguments[0] + arguments[1]));
+        """, '.n -- vss; .pos=(6,3)',
+            '\n        Cap cx: .$c=1p; .p -- vout; .n -- vss; .pos=(10,3)')
         wait_for_course_marker(web, 'unsolved')
         web.wait_until("""
             return !document.querySelector('.scoreboard')
