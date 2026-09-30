@@ -703,6 +703,20 @@ courses_testdata = {
             """),
         ]),
     ]),
+    # Simulation-free stand-in for amp_competition, used by the competition
+    # web tests (see its checks.py). The empty skeleton passes the "only
+    # resistors" check.
+    'competition_stub': CourseTestdata('Competition Stub', [
+        LessonTestdata(passfails=2, skeleton_passed=[False, True],
+            has_svg=True, solution=[
+            InsertSolution("""
+            # EDIT HERE
+            """, """
+            Res r1: .$r=1k; .p -- vdd; .n -- vout; .pos=(6,9)
+            Res r2: .$r=1k; .p -- vout; .n -- vss; .pos=(6,3)
+            """),
+        ]),
+    ]),
 }
 
 
@@ -786,9 +800,10 @@ def test_course_special_lesson_flags():
 
 def test_course_competition_flag():
     # The competition flag (hides the lesson navigator in the frontend)
-    # must be passed through, and only amp_competition carries it.
+    # must be passed through, and only the competition courses carry it.
     for name in courses_testdata:
-        assert course_data(name)['competition'] is (name == 'amp_competition')
+        assert course_data(name)['competition'] is (
+            name in ('amp_competition', 'competition_stub'))
 
 
 def test_course_unknown():
@@ -831,24 +846,17 @@ def test_lesson_solution(course_name, lesson_index, testdata):
         # audit trail (see checks.py / course.js pushScore).
         svgs = [e for e in elements if e['element_type'] == 'svg']
         assert len(svgs) == 1 and 'mn' in svgs[0]['inner']
-
-
-def test_amp_score_and_corner_table():
-    """The score is the nominal corner's current (~31 uA for the
-    reference: ~30 uA supply plus the 1 uA bias reference), and the
-    report tabulates every corner."""
-    from ordec.courses.amp_competition.checks import CORNERS
-    lesson = course_data('amp_competition')['lessons'][0]
-    src = courses_testdata['amp_competition'].lessons[0].solution_src(lesson)
-    elements = [e.element_webdata()
-        for e in run_lesson(lesson, src)['lesson']().elements()]
-    score = [e for e in elements if e['element_type'] == 'score']
-    assert len(score) == 1 and score[0]['eligible']
-    assert abs(score[0]['value'] - 31.0) < 1.0
-    table = [e for e in elements if e['element_type'] == 'markdown'
-        and 'Results across corners' in e['html']]
-    assert len(table) == 1
-    assert all(label in table[0]['html'] for label, _, _ in CORNERS)
+        # The score is the nominal corner's current (~31 uA for the
+        # reference: ~30 uA supply plus the 1 uA bias reference), and the
+        # report tabulates every corner.
+        from ordec.courses.amp_competition.checks import CORNERS
+        score = [e for e in elements if e['element_type'] == 'score']
+        assert len(score) == 1 and score[0]['eligible']
+        assert abs(score[0]['value'] - 31.0) < 1.0
+        table = [e for e in elements if e['element_type'] == 'markdown'
+            and 'Results across corners' in e['html']]
+        assert len(table) == 1
+        assert all(label in table[0]['html'] for label, _, _ in CORNERS)
 
 
 def test_amp_input_biased_fails_corners():

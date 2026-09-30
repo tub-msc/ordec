@@ -328,12 +328,21 @@ def ngspice_batch(netlist: str, spiceinit_commands: list[str] | None = None,
             monitor = None
             progress("Running ngspice")
 
+        # Ngspice starts one OpenMP thread per core, and idle OpenMP threads
+        # spin by default. When several ngspice processes share the cores
+        # (parallel tests, concurrent view generation, hub instances), the
+        # spinning threads starve each other and sub-second simulations
+        # take minutes. Passive waiting avoids this; a value set by the
+        # user takes precedence.
+        env = dict(env or os.environ)
+        env.setdefault('OMP_WAIT_POLICY', 'passive')
+
         exe = _ngspice_executable()
         logger.debug("Running ngspice batch: %s", exe)
         p = subprocess.Popen(
             [exe, "-b", "-r", "sim.raw", "netlist.sp"],
             cwd=tmpdir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            env=env or None)
+            env=env)
 
         # Drain stdout on a side thread: reading here would block the
         # progress-poll loop, not reading at all could stall ngspice on a

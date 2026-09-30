@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+import os
 import types
 
 import pytest
@@ -8,6 +9,24 @@ from ordec.core import Subgraph
 from ordec.language import compile_ord
 
 pytest_plugins = ["tests.web_fixtures"]
+
+# pytest-xdist settings (pytest.ini enables -n auto --dist loadgroup).
+MAX_WORKERS = 8
+# Web tests are spread over at most this many workers. Each worker running
+# web tests starts its own ORDeC server and headless Chrome (about 1 GB per
+# Chrome), which is why they are not distributed freely.
+WEB_WORKERS = 4
+
+def pytest_xdist_auto_num_workers(config):
+    return min(MAX_WORKERS, os.cpu_count() or 1)
+
+def pytest_collection_modifyitems(config, items):
+    # Under --dist loadgroup, tests with the same xdist_group run on one
+    # worker. Assign web tests round-robin to WEB_WORKERS groups; all other
+    # tests stay ungrouped and are distributed freely.
+    web_items = [item for item in items if item.get_closest_marker("web")]
+    for i, item in enumerate(web_items):
+        item.add_marker(pytest.mark.xdist_group(f"web{i % WEB_WORKERS}"))
 
 
 class OrdFile(pytest.File):

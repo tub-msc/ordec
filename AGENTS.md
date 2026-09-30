@@ -49,8 +49,12 @@ npm ci
 ### Running Tests
 
 ```bash
-# Run all tests from repository root (coverage configured in pytest.ini)
+# Run all tests from repository root. Runs in parallel via pytest-xdist by
+# default (coverage is off by default, see docs/dev/setup.rst)
 pytest
+
+# Run serially, e.g. for debugging or readable -s output
+pytest -n 0
 
 # Run specific test file
 pytest tests/test_schematic.py
@@ -67,7 +71,7 @@ pytest -m "not web"
 
 # Editor grammar tests: pytest.ini has --ignore=support, so they need an
 # explicit path and are not part of a plain 'pytest' run. Their extra
-# dependencies are the 'editors' extra (pip3 install -e .[editors]).
+# dependencies are the 'test-editors' extra (pip3 install -e .[test-editors]).
 pytest support/editors/tests
 
 # Run the suite against a non-default ORDB backend

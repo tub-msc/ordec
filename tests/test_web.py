@@ -138,7 +138,9 @@ def test_index(web):
 
     # Check that we link to each expected example and course.
     expected = {f'example={testcase}' for testcase in testcases_integrated.keys()}
-    expected.update({f'course={name}' for name in courses_testdata.keys()})
+    # competition_stub is a test-only course, not linked anywhere.
+    expected.update({f'course={name}' for name in courses_testdata.keys()
+        if name != 'competition_stub'})
     assert app_html_link_queries == expected
 
 # Visual browser-based testing was painful (fonts, different browser versions,
@@ -517,20 +519,23 @@ def test_course_intro_callout(web):
 
 @pytest.mark.web
 def test_course_competition_nav(web):
-    """A competition course (amp_competition) hides the lesson navigator; the
-    status marker and the source management buttons remain. Without the
-    hub's scoreboard service the course is unlisted on the landing page,
-    there is no team dialog, and the Scoreboard panel of the shipped layout
-    says so (see landing-page.js/scoreboard.js)."""
+    """A competition course hides the lesson navigator; the status marker
+    and the source management buttons remain. Without the hub's scoreboard
+    service the competition is unlisted on the landing page, there is no
+    team dialog, and the Scoreboard panel of the shipped layout says so (see
+    landing-page.js/scoreboard.js).
+
+    Like test_course_competition_scoreboard, this runs on the simulation-free
+    competition_stub course instead of amp_competition."""
     web.resize_viewport()
     web.driver.get(web.url)
     web.driver.execute_script(
-        "window.localStorage.removeItem('ordecCourse:amp_competition');")
+        "window.localStorage.removeItem('ordecCourse:competition_stub');")
     assert web.driver.execute_script("""
         return document.querySelector('#competitionSection').hidden;
     """) is True
 
-    web.navigate('app.html#course=amp_competition')
+    web.navigate('app.html#course=competition_stub')
     web.wait_for_ready()
     wait_for_course_marker(web, 'unsolved')
     info = web.driver.execute_script("""
@@ -620,12 +625,17 @@ def test_course_competition_scoreboard(web):
     team dialog; a rejected name shows the error inline, an accepted one
     opens the course with the Scoreboard panel polling the standings. An
     all-checks-passing design pushes its score, and a revisit re-claims the
-    stored team without asking again."""
+    stored team without asking again.
+
+    Runs on the competition_stub course, whose checks need no simulation:
+    the scoreboard flow is the same as in amp_competition, but each of the
+    several builds this test triggers takes well under a second instead of
+    the seconds of ngspice corner runs. The stub course is unlisted."""
     web.resize_viewport()
     web.driver.get(web.url)
     web.driver.execute_script("""
-        window.localStorage.removeItem('ordecCourse:amp_competition');
-        window.localStorage.removeItem('ordecTeam:amp_competition');
+        window.localStorage.removeItem('ordecCourse:competition_stub');
+        window.localStorage.removeItem('ordecTeam:competition_stub');
     """)
     script = web.driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument',
         {'source': SCOREBOARD_FAKE_JS % json.dumps(web.key.token())})
@@ -635,7 +645,7 @@ def test_course_competition_scoreboard(web):
             return !document.querySelector('#competitionSection').hidden;
         """)
 
-        web.navigate('app.html#course=amp_competition')
+        web.navigate('app.html#course=competition_stub')
         web.wait_until("return !!document.querySelector('#teamdialog');")
         # The course does not open before the team has joined:
         assert web.driver.execute_script(
@@ -674,7 +684,7 @@ def test_course_competition_scoreboard(web):
                 claims: window.scoreboardFake.claims.map(c => c.team),
                 pushes: window.scoreboardFake.pushes.map(p => p.score),
                 stored: JSON.parse(window.localStorage.getItem(
-                    'ordecTeam:amp_competition')).name,
+                    'ordecTeam:competition_stub')).name,
             };
         """)
         assert info['rows'] == [
@@ -692,7 +702,7 @@ def test_course_competition_scoreboard(web):
         # stored secret is replaced along with the name.
         secret = web.driver.execute_script("""
             return JSON.parse(window.localStorage.getItem(
-                'ordecTeam:amp_competition')).secret;
+                'ordecTeam:competition_stub')).secret;
         """)
         web.driver.execute_script(
             "document.querySelector('.scoreboard-rename').click();")
@@ -717,7 +727,7 @@ def test_course_competition_scoreboard(web):
         info = web.driver.execute_script("""
             const rows = [...document.querySelectorAll('.scoreboard tr')];
             const stored = JSON.parse(window.localStorage.getItem(
-                'ordecTeam:amp_competition'));
+                'ordecTeam:competition_stub'));
             return {
                 rows: rows.map(tr => tr.innerText.split('\t')),
                 own: rows.map(tr => tr.classList.contains('scoreboard-own')),
@@ -737,19 +747,26 @@ def test_course_competition_scoreboard(web):
         # own score is marked stale (spinner).
         lessons = web.driver.execute_script(
             "return window.courseController.course.lessons;")
-        sol = courses_testdata['amp_competition'].lessons[0].solution_src(
+        sol = courses_testdata['competition_stub'].lessons[0].solution_src(
             lessons[0])
+        # The stub builds in a fraction of a second, too short to poll for
+        # the spinner: record it with an observer instead.
+        web.driver.execute_script("""
+            const board = document.querySelector('.scoreboard');
+            window.staleSeen = false;
+            new MutationObserver(() => {
+                if (board.classList.contains('scoreboard-stale'))
+                    window.staleSeen = true;
+            }).observe(board, {attributes: true, attributeFilter: ['class']});
+        """)
         web.driver.execute_script(
             "window.courseController.editor.editor.setValue(arguments[0]);", sol)
-        web.wait_until("""
-            return document.querySelector('.scoreboard')
-                .classList.contains('scoreboard-stale');
-        """)
         wait_for_course_marker(web, 'solved')
         web.wait_until("""
             return !document.querySelector('.scoreboard')
                 .classList.contains('scoreboard-stale');
         """)
+        assert web.driver.execute_script("return window.staleSeen;")
         assert web.driver.execute_script("""
             return [...document.querySelectorAll('.lm_tab')]
                 .some(t => t.innerText === 'Scoreboard');
@@ -775,16 +792,17 @@ def test_course_competition_scoreboard(web):
         # The schematic travels along as a standalone SVG document.
         assert push['svg'].startswith('<svg xmlns="http://www.w3.org/2000/svg"')
         assert 'viewBox="' in push['svg'] and push['svg'].endswith('</svg>')
-        assert 'mn' in push['svg'] and 'mp' in push['svg']
+        assert 'r1' in push['svg'] and 'r2' in push['svg']
 
         # A build that fails a check pushes null: the board shows "no score"
         # again instead of the earlier passing one.
         web.driver.execute_script("""
             const editor = window.courseController.editor.editor;
-            editor.setValue(editor.getValue().replace(arguments[0],
-                arguments[0] + arguments[1]));
-        """, '.b -- vdd; .pos=(8,10)',
-            '\n        Cap cx: .$c=1p; .p -- vout; .n -- vss; .pos=(12,4)')
+            editor.setValue(editor.getValue()
+                .replace('import Res', 'import Res, Cap')
+                .replace(arguments[0], arguments[0] + arguments[1]));
+        """, '.n -- vss; .pos=(6,3)',
+            '\n        Cap cx: .$c=1p; .p -- vout; .n -- vss; .pos=(10,3)')
         wait_for_course_marker(web, 'unsolved')
         web.wait_until("""
             return !document.querySelector('.scoreboard')
@@ -812,7 +830,7 @@ def test_course_competition_scoreboard(web):
             window.scoreboardFake.final = {started: '11:00:00', result: [
                 {team: 'Ohm my', verified: 30.01, fails: []},
                 {team: 'Other team', verified: null,
-                    fails: ['gain 3.00 < 20']},
+                    fails: ['only 1 resistor']},
             ]};
         """)
         web.wait_until("""
@@ -877,7 +895,7 @@ def test_course_competition_scoreboard(web):
 
         # A fresh guest session (the fake forgets the team) silently
         # re-claims the stored name with its secret instead of asking again.
-        web.navigate('app.html#course=amp_competition')
+        web.navigate('app.html#course=competition_stub')
         web.wait_for_ready()
         wait_for_course_marker(web, 'solved')
         info = web.driver.execute_script("""
@@ -889,13 +907,13 @@ def test_course_competition_scoreboard(web):
         assert info['teamdialog'] is False
         assert info['claims'] == [{'team': 'Ohm my',
             'secret': json.loads(web.driver.execute_script(
-                "return window.localStorage.getItem('ordecTeam:amp_competition');"
+                "return window.localStorage.getItem('ordecTeam:competition_stub');"
             ))['secret']}]
     finally:
         web.driver.execute_cdp_cmd('Page.removeScriptToEvaluateOnNewDocument',
             script)
         web.driver.execute_script(
-            "window.localStorage.removeItem('ordecTeam:amp_competition');")
+            "window.localStorage.removeItem('ordecTeam:competition_stub');")
 
 
 @pytest.mark.web
@@ -1125,8 +1143,7 @@ def test_progress_and_cancel(web):
     # (result is a str, shown as preformatted Report).
     rv_js("rv.resOverlayRefreshable.querySelector('button').click();")
     web.wait_until(
-        "return window.ordecApp.client.resultViewers[0].viewUpToDate;",
-        timeout=30)
+        "return window.ordecApp.client.resultViewers[0].viewUpToDate;")
     assert "slow result" in rv_js("return rv.testInfo().html;")
 
 
@@ -1162,8 +1179,7 @@ def {name}():
     web.wait_for_ready()
     rv_js("rv._onViewSelected('before()');")
     web.wait_until(
-        "return window.ordecApp.client.resultViewers[0].viewUpToDate;",
-        timeout=30)
+        "return window.ordecApp.client.resultViewers[0].viewUpToDate;")
     assert "before result" in rv_js("return rv.testInfo().html;")
 
     # A module build exception keeps the (stale) view list and selection.

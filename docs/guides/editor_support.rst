@@ -222,8 +222,9 @@ recognized by the Sublime and VS Code rules and by the compiled
 tree-sitter parser, with no false positives on other lines. After
 changing ``ord.lark``, update the grammars until these tests pass
 again. They are not part of the default ``pytest`` run: run them with
-``pytest support/editors/tests/`` after ``pip install -e .[editors]``
-(which adds the ``pyyaml`` and ``tree-sitter`` packages), or let the
+``pytest support/editors/tests/`` after ``pip install -e .[test-editors]``
+(which adds ``pytest``, ``pytest-xdist``, ``pyyaml`` and ``tree-sitter``,
+independent of the ``test`` extra), or let the
 ``editors`` CI workflow run them on changes under ``support/editors/``,
 ``src/ordec/ord/`` and the repository ``.ord`` files. The tree-sitter tests
 need a C compiler and the generated parser sources described below; they

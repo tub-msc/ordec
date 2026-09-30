@@ -232,6 +232,11 @@ at every process corner, lowest current wins), the hub can run a
 scoreboard as a JupyterHub service (``support/hub/scoreboard.py``), enabled
 per workshop in ``.env``:
 
+(``competition_stub`` is a second, unlisted competition course without any
+simulation. The web tests use it to exercise the scoreboard flow quickly; it
+is reachable via ``app.html#course=competition_stub`` for trying out a
+scoreboard deployment as well.)
+
 .. code-block:: sh
 
     ORDEC_HUB_SCOREBOARD=1
