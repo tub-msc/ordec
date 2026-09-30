@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from functools import partial
+import numpy as np
 from gdsii.library import Library
 from gdsii.structure import Structure
 import gdsii.elements as elements
@@ -69,72 +70,104 @@ def read_gds_structure(structure: Structure, layers: LayerStack, unit: R, extlib
     # Associating the layout with its ExtLibraryCell makes exports (GDS, LVS)
     # name it consistently with the symbol/schematic of the same cell.
     layout = Layout(ref_layers=layers, cell=extlib[structure.name.decode('ascii')])
-    for elem in structure:
-        if isinstance(elem, elements.Boundary):
-            layer = lookup_layer(elem.layer, elem.data_type, text=False)    
-            if elem.xy[0] != elem.xy[-1]:
-                raise GdsReaderException(f"Invalid GDS data: Boundary (LayoutPoly) {elem!r} not closed!")
-            if len(elem.xy) < 4: # 4 = 3 vertices + 1 repeated end vertex
-                raise GdsReaderException(f"Invalid GDS data: Boundary (LayoutPoly) {elem!r} has less than 3 vertices!")
-            vertices=[conv_xy(xy) for xy in elem.xy[:-1]]
-            if poly_orientation(vertices) == 'cw':
-                vertices.reverse()
-                assert poly_orientation(vertices) == 'ccw'
-            layout % LayoutPoly(
-                layer=layer,
-                vertices=vertices
-                )
-        elif isinstance(elem, elements.Text):
-            layer = lookup_layer(elem.layer, elem.text_type, text=True)    
-            layout % LayoutLabel(
-                layer=layer,
-                pos=conv_xy(elem.xy[0]),
-                text=elem.string.decode('ascii'),
-                )
-        elif isinstance(elem, elements.Path):
-            layer = lookup_layer(elem.layer, elem.data_type, text=False)
-            if len(elem.xy) < 2:
-                raise GdsReaderException(f"Invalid GDS data: Path {elem} has less than 2 vertices!")
-            vertices=[conv_xy(xy) for xy in elem.xy]
-            endtype = gds_pathtype_to_endtype(elem.path_type)
-            if endtype == PathEndType.Custom:
-                layout % LayoutPath(layer=layer, vertices=vertices, endtype=endtype,
-                    ext_bgn=0 if elem.bgn_extn is None else elem.bgn_extn,
-                    ext_end=0 if elem.end_extn is None else elem.end_extn)
+    shape_layers = {} # (gds layer, data type) -> Layer nid
+    def lookup_shape_layer(gds_layer, gds_type):
+        try:
+            return shape_layers[gds_layer, gds_type]
+        except KeyError:
+            nid = lookup_layer(gds_layer, gds_type, text=False).nid
+            shape_layers[gds_layer, gds_type] = nid
+            return nid
+
+    # Axis-aligned rectangles (almost all elements of typical library cells,
+    # e.g. contacts and vias) become LayoutRects, inserted as one array.
+    rect_layers = []
+    rects = []
+
+    # All elements are inserted in a single transaction, which is much faster
+    # than one transaction per element.
+    with layout.updater() as sgu:
+        def add(node):
+            node.insert_into(sgu, sgu.nid_generate())
+
+        for elem in structure:
+            if isinstance(elem, elements.Boundary):
+                layer = lookup_shape_layer(elem.layer, elem.data_type)
+                xy = elem.xy
+                if xy[0] != xy[-1]:
+                    raise GdsReaderException(f"Invalid GDS data: Boundary (LayoutPoly) {elem!r} not closed!")
+                if len(xy) < 4: # 4 = 3 vertices + 1 repeated end vertex
+                    raise GdsReaderException(f"Invalid GDS data: Boundary (LayoutPoly) {elem!r} has less than 3 vertices!")
+                if len(xy) == 5:
+                    lx, ux = min(p[0] for p in xy), max(p[0] for p in xy)
+                    ly, uy = min(p[1] for p in xy), max(p[1] for p in xy)
+                    if lx < ux and ly < uy and \
+                            {tuple(p) for p in xy} == {(lx, ly), (ux, ly), (ux, uy), (lx, uy)}:
+                        rect_layers.append(layer)
+                        rects.append((lx, ly, ux, uy))
+                        continue
+                vertices=[conv_xy(xy) for xy in elem.xy[:-1]]
+                if poly_orientation(vertices) == 'cw':
+                    vertices.reverse()
+                    assert poly_orientation(vertices) == 'ccw'
+                add(LayoutPoly(
+                    layer=layer,
+                    vertices=vertices
+                    ))
+            elif isinstance(elem, elements.Text):
+                layer = lookup_layer(elem.layer, elem.text_type, text=True)    
+                add(LayoutLabel(
+                    layer=layer,
+                    pos=conv_xy(elem.xy[0]),
+                    text=elem.string.decode('ascii'),
+                    ))
+            elif isinstance(elem, elements.Path):
+                layer = lookup_shape_layer(elem.layer, elem.data_type)
+                if len(elem.xy) < 2:
+                    raise GdsReaderException(f"Invalid GDS data: Path {elem} has less than 2 vertices!")
+                vertices=[conv_xy(xy) for xy in elem.xy]
+                endtype = gds_pathtype_to_endtype(elem.path_type)
+                if endtype == PathEndType.Custom:
+                    add(LayoutPath(layer=layer, vertices=vertices, endtype=endtype,
+                        ext_bgn=0 if elem.bgn_extn is None else elem.bgn_extn,
+                        ext_end=0 if elem.end_extn is None else elem.end_extn))
+                else:
+                    add(LayoutPath(layer=layer, vertices=vertices, endtype=endtype))
+            elif isinstance(elem, elements.SRef):
+                if elem.mag not in (1.0, None):
+                    raise GdsReaderException("SRef with magnification != 1.0 not supported.")
+                ref_name = elem.struct_name.decode('ascii')
+                add(LayoutInstance(
+                    pos=conv_xy(elem.xy[0]),
+                    orientation=gds_to_d4(elem.angle, elem.strans),
+                    ref=extlib[ref_name].frame,
+                    ))
+            elif isinstance(elem, elements.ARef):
+                if elem.mag not in (1.0, None):
+                    raise GdsReaderException("ARef with magnification != 1.0 not supported.")
+                ref_name = elem.struct_name.decode('ascii')
+                try:    
+                    pos_origin, pos_col_end, pos_row_end = [conv_xy(xy) for xy in elem.xy]            
+                except ValueError:
+                    raise GdsReaderException(f"Found ARef with len(elem.xy) of {len(elem.xy)}, expected 3.") from None
+                add(LayoutInstanceArray(
+                    pos=pos_origin,
+                    orientation=gds_to_d4(elem.angle, elem.strans),
+                    ref=extlib[ref_name].frame,
+                    cols=elem.cols,
+                    rows=elem.rows,
+                    vec_col=(pos_col_end - pos_origin) // elem.cols,
+                    vec_row=(pos_row_end - pos_origin) // elem.rows,
+                    ))
+            elif isinstance(elem, elements.Box):
+                raise NotImplementedError("GDS Box element not supported.")
+            elif isinstance(elem, elements.Node):
+                raise NotImplementedError("GDS Node element not supported.")
             else:
-                layout % LayoutPath(layer=layer, vertices=vertices, endtype=endtype)
-        elif isinstance(elem, elements.SRef):
-            if elem.mag not in (1.0, None):
-                raise GdsReaderException("SRef with magnification != 1.0 not supported.")
-            ref_name = elem.struct_name.decode('ascii')
-            layout % LayoutInstance(
-                pos=conv_xy(elem.xy[0]),
-                orientation=gds_to_d4(elem.angle, elem.strans),
-                ref=extlib[ref_name].frame,
-                )
-        elif isinstance(elem, elements.ARef):
-            if elem.mag not in (1.0, None):
-                raise GdsReaderException("ARef with magnification != 1.0 not supported.")
-            ref_name = elem.struct_name.decode('ascii')
-            try:    
-                pos_origin, pos_col_end, pos_row_end = [conv_xy(xy) for xy in elem.xy]            
-            except ValueError:
-                raise GdsReaderException(f"Found ARef with len(elem.xy) of {len(elem.xy)}, expected 3.") from None
-            layout % LayoutInstanceArray(
-                pos=pos_origin,
-                orientation=gds_to_d4(elem.angle, elem.strans),
-                ref=extlib[ref_name].frame,
-                cols=elem.cols,
-                rows=elem.rows,
-                vec_col=(pos_col_end - pos_origin) // elem.cols,
-                vec_row=(pos_row_end - pos_origin) // elem.rows,
-                )
-        elif isinstance(elem, elements.Box):
-            raise NotImplementedError("GDS Box element not supported.")
-        elif isinstance(elem, elements.Node):
-            raise NotImplementedError("GDS Node element not supported.")
-        else:
-            raise GdsReaderException(f"Unknown GDS element: {elem!r}")
+                raise GdsReaderException(f"Unknown GDS element: {elem!r}")
+
+        if rects:
+            sgu.insert_array(LayoutRect, layer=np.array(rect_layers), rect=np.array(rects))
 
     return layout.freeze()
 
