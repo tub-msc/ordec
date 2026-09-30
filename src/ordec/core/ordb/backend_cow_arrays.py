@@ -404,8 +404,9 @@ class CowArraysBackend(StorageBackend):
             if values is None:
                 if partial:
                     continue
-                raise ValueError(f"{ntype.__name__} nid={nid} has None values"
-                    " and cannot be represented as array.")
+                raise ValueError(f"{ntype.__name__} nid={nid} has values that"
+                    " are None or outside the int64 range and cannot be represented"
+                    " as array.")
             d_nids.append(nid)
             d_rows.append(values)
         if len(chunks) == 1 and not d_nids and chunks[0].live is None \

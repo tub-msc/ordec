@@ -168,6 +168,10 @@ def test_roundtrip_arrays(ept):
         l % LayoutRect(layer=layers.Metal2) # rect None: stays a row
         return l.freeze()
     orig = build(as_array=True)
+    with pytest.raises(ValueError, match="exceed the int64 range"):
+        with Layout(ref_layers=layers).updater() as u: # uint64 must not wrap
+            u.insert_array(LayoutRect, layer=layers.Metal1,
+                rect=np.array([[0, 0, 1, 2**63]], dtype=np.uint64))
     back = wire_decode(orig.subgraph.wire_encode(ept), ept,
         orig.subgraph.wire_deps(ept))
     assert back.subgraph == orig.subgraph

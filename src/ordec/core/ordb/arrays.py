@@ -33,7 +33,8 @@ def normalize(ntype, values: dict) -> tuple[int, dict]:
     Converts insert_array() keyword values into int64 columns. Each value
     is either an array-like with one row per node or a scalar (int, Node or
     value such as Rect4I) applied to all rows. Attributes not given use
-    their default; there must be no None values.
+    their default; there must be no None values and no values outside the
+    int64 range.
     """
     fields = array_fields(ntype)
     unknown = values.keys() - {f.name for f in fields}
@@ -55,6 +56,10 @@ def normalize(ntype, values: dict) -> tuple[int, dict]:
         if a.dtype.kind not in 'iu':
             raise TypeError(f"{ntype.__name__}.{f.name}: expected integer values,"
                 f" got dtype {a.dtype}.")
+        if a.dtype == np.uint64 and a.size and a.max() > INT64_MAX:
+            # astype would wrap these to negative values.
+            raise ValueError(f"{ntype.__name__}.{f.name}: values exceed the"
+                " int64 range.")
         a = a.astype(np.int64, copy=False)
         if is_scalar:
             scalars[f] = a
@@ -133,8 +138,9 @@ def gather(subgraph, ntype, partial: bool=False) -> dict:
         if values is None:
             if partial:
                 continue
-            raise ValueError(f"{ntype.__name__} nid={nid} has None values"
-                " and cannot be represented as array.")
+            raise ValueError(f"{ntype.__name__} nid={nid} has values that"
+                " are None or outside the int64 range and cannot be represented"
+                " as array.")
         nids.append(nid)
         rows.append(values)
     return columns(fields, nids, rows)

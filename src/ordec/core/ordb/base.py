@@ -888,8 +888,9 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
     #: stored as arrays (SubgraphUpdater.insert_array, Subgraph.arrays).
     #: All attributes must be array-representable: int, LocalRef,
     #: ExternalRef or a value type with array_width (Vec2I, Rect4I).
-    #: Rows with None values remain possible, but are not representable in
-    #: arrays. Like wire_id, it applies to the declaring class only.
+    #: Rows with None values or ints outside the int64 range remain
+    #: possible, but are not representable in arrays. Like wire_id, it
+    #: applies to the declaring class only.
     arrayable = False
 
     @classmethod
@@ -1677,7 +1678,8 @@ class Subgraph(SubgraphQueryMixin, ABC):
         """
         Returns all nodes of an arrayable node type (Node.arrayable) as
         read-only int64 arrays: 'nid' plus one array per attribute, rows
-        ordered by nid. Raises ValueError if a node has None values.
+        ordered by nid. Raises ValueError if a node has values that are None
+        or outside the int64 range.
         """
         return self.backend.arrays(self, ntype)
 
