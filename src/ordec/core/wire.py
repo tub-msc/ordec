@@ -46,7 +46,8 @@ attribute in ordb.arrays layout order, value types such as Rect4I row-major
 (n x width). All other nodes are rows, including arrayable ones with a None
 value or an integer outside the int64 range. A node type can thus occur in
 both elements. Which element a node belongs in follows from its values
-alone, so the encoding stays canonical.
+alone, so the encoding stays canonical; the decoder rejects rows that
+belong in the fourth element.
 
 The blob table holds the data buffers referenced by SimColumn values,
 verbatim (no repacking or transpose), deduplicated by buffer object
@@ -515,7 +516,13 @@ def wire_decode(data: bytes, ept: ExportTable, deps=None) -> Node:
             kwargs = {}
             for ad, val in zip(cls.Tuple._layout, values):
                 kwargs[ad.name] = resolve_row_value(val, deps, ept, blobs)
-            u.add_single(cls.Tuple(**kwargs), nid=nid)
+            node = cls.Tuple(**kwargs)
+            fields = node._array_layout
+            if fields is not None and row_values(fields, node) is not None:
+                # Accepting it would give the same content a second hash.
+                raise WireError(f"Non-canonical wire data: {cls.__name__}"
+                    f" nid={nid} must be encoded in arrays.")
+            u.add_single(node, nid=nid)
         for cls, nids, cols in arrays:
             u.insert_array_at(cls, nids, cols)
     # The updater clamps nid_alloc.start to max_nid+1; restore the encoded

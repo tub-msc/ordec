@@ -174,6 +174,14 @@ def test_roundtrip_arrays(ept):
     assert [r.rect for r in list(back.all(LayoutRect))[:3]] == rects
     assert build(as_array=False).subgraph.wire_hash(ept) == orig.subgraph.wire_hash(ept)
 
+    # A row that belongs in the arrays is rejected (non-canonical): give the
+    # rect-less LayoutRect row a rect.
+    tree = cbor2.loads(orig.subgraph.wire_encode(ept))
+    row = tree[1][LayoutRect.wire_id][0]
+    row[-1] = cbor2.CBORTag(390004, [0, 0, 1, 1])
+    with pytest.raises(WireError, match="must be encoded in arrays"):
+        wire_decode(cbor2.dumps(tree, canonical=True), ept, orig.subgraph.wire_deps(ept))
+
 def test_farref(ept):
     foreign = FarRef(b'\xaa' * 16, 42, name='foreign')
     orig = WHead(obj=foreign).freeze()
