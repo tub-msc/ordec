@@ -277,9 +277,17 @@ def encode_subgraph(sg: FrozenSubgraph, ept: ExportTable) -> bytes:
     """
     blobs = BlobTable()
     arrays_by_wid = {}
-    for wid, cls in wire_registry.items():
-        if cls.Tuple._array_layout is None or cls.Tuple not in sg.index:
+    # The arrayable types are taken from the subgraph's node type index keys
+    # (NodeTuple subclasses), not from wire_registry: array rows of a type
+    # without wire_id must raise like rows do, not be left out.
+    for ntuple in sg.index:
+        if not isinstance(ntuple, type) or getattr(ntuple, '_array_layout', None) is None:
             continue
+        cls = ntuple._cursor_type
+        wid = cls.__dict__.get('wire_id')
+        if wid is None:
+            raise WireError(f"{cls.__name__} declares no wire_id;"
+                " cannot serialize.")
         cols = sg.backend.arrays(sg, cls, partial=True)
         if len(cols['nid']) > 0:
             arrays_by_wid[wid] = [cols['nid'].astype('<i8').tobytes()] \
@@ -438,7 +446,7 @@ def resolve_row_value(val, deps, ept, blobs):
         return FarRef(endpoint_id, obj_id, name)
     return fix_plain(val, blobs)
 
-def decode_arrays(wid, data):
+def decode_arrays(wid, data, nid_start):
     """Decodes one arrays_by_wid entry into (cls, nids, cols)."""
     cls = wire_registry.get(wid)
     if cls is None:
@@ -447,12 +455,17 @@ def decode_arrays(wid, data):
     if fields is None:
         raise WireError(f"{cls.__name__} is not arrayable.")
     if not (isinstance(data, list) and len(data) == len(fields) + 1
-            and all(isinstance(b, bytes) for b in data)):
+            and all(isinstance(b, bytes) and len(b) % 8 == 0 for b in data)):
         raise WireError(f"Malformed arrays for {cls.__name__}.")
     nids = np.frombuffer(data[0], dtype='<i8').astype(np.int64)
     n = len(nids)
+    if n == 0:
+        # Same content as an absent entry, which has another hash.
+        raise WireError(f"Non-canonical wire data: empty arrays for {cls.__name__}.")
     if not (np.diff(nids) > 0).all():
         raise WireError(f"Array nids of {cls.__name__} are not ascending.")
+    if nids[0] < 0 or nids[-1] >= nid_start:
+        raise WireError(f"Array nids of {cls.__name__} are out of range.")
     cols = {}
     for f, b in zip(fields, data[1:]):
         a = np.frombuffer(b, dtype='<i8').astype(np.int64)
@@ -495,6 +508,8 @@ def wire_decode(data: bytes, ept: ExportTable, deps=None) -> Node:
     blobs, rows_by_wid, nid_start, arrays_by_wid = tree
     if not all(isinstance(b, bytes) for b in blobs):
         raise WireError("Malformed blob table.")
+    if not 0 <= nid_start <= 2**32:
+        raise WireError("Malformed wire data: nid_start out of range.")
 
     items = []
     for wid, rows in rows_by_wid.items():
@@ -505,10 +520,12 @@ def wire_decode(data: bytes, ept: ExportTable, deps=None) -> Node:
         for row in rows:
             if not isinstance(row, list) or len(row) != len(layout) + 1:
                 raise WireError(f"Malformed row for {cls.__name__}.")
+            if not (isinstance(row[0], int) and 0 <= row[0] < nid_start):
+                raise WireError(f"Row nid of {cls.__name__} is out of range.")
             items.append((row[0], cls, row[1:]))
     items.sort(key=lambda item: item[0])
 
-    arrays = [decode_arrays(wid, cols) for wid, cols in arrays_by_wid.items()]
+    arrays = [decode_arrays(wid, cols, nid_start) for wid, cols in arrays_by_wid.items()]
 
     sg = MutableSubgraph()
     with sg.updater() as u:

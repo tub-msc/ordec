@@ -58,6 +58,11 @@ class WNoWire(Node):
     in_subgraphs = [WHead]
     label = Attr(str)
 
+class WNoWireArray(Node):
+    in_subgraphs = [WHead]
+    arrayable = True
+    val = Attr(int)
+
 class WPair(SubgraphRoot):
     wire_id = WIRE_DOMAIN | 4
     label = Attr(str)
@@ -186,6 +191,34 @@ def test_roundtrip_arrays(ept):
     with pytest.raises(WireError, match="must be encoded in arrays"):
         wire_decode(cbor2.dumps(tree, canonical=True), ept, orig.subgraph.wire_deps(ept))
 
+def set_nid(tree, wid, index, nid):
+    """Overwrites one nid in the arrays entry of wid."""
+    b = bytearray(tree[3][wid][0])
+    struct.pack_into('<q', b, 8 * index, nid)
+    tree[3][wid][0] = bytes(b)
+
+@pytest.mark.parametrize('mutate', [
+    lambda t, wid: t[3][wid].__setitem__(0, t[3][wid][0] + b'\0'),
+    lambda t, wid: t[3].__setitem__(wid, [b'', b'', b'']),
+    lambda t, wid: set_nid(t, wid, -1, t[2]),
+    lambda t, wid: set_nid(t, wid, 0, -5),
+    lambda t, wid: t[1][Layout.wire_id][0].__setitem__(0, -5),
+    lambda t, wid: t[1][Layout.wire_id][0].__setitem__(0, 2**40),
+    lambda t, wid: t.__setitem__(2, 2**32 + 1),
+], ids=['bytes_length', 'empty_arrays', 'array_nid_high', 'array_nid_negative',
+    'row_nid_negative', 'row_nid_high', 'nid_start'])
+def test_decode_malformed_nids_arrays(ept, mutate):
+    from ordec.lib.ihp130 import SG13G2
+    layers = SG13G2().layers
+    l = Layout(ref_layers=layers)
+    with l.updater() as u:
+        u.insert_array(LayoutRect, layer=layers.Metal1, rect=[[0, 0, 1, 1], [0, 0, 2, 2]])
+    sg = l.freeze().subgraph
+    tree = cbor2.loads(sg.wire_encode(ept))
+    mutate(tree, LayoutRect.wire_id)
+    with pytest.raises(WireError):
+        wire_decode(cbor2.dumps(tree, canonical=True), ept, sg.wire_deps(ept))
+
 def test_farref(ept):
     foreign = FarRef(b'\xaa' * 16, 42, name='foreign')
     orig = WHead(obj=foreign).freeze()
@@ -212,6 +245,13 @@ def test_missing_wire_id(ept):
     h = WHead(obj=live_obj)
     h % WNoWire(label='x')
     with pytest.raises(WireError, match="WNoWire"):
+        h.freeze().subgraph.wire_encode(ept)
+
+    # Array rows of a type without wire_id must not be silently left out:
+    h = WHead(obj=live_obj)
+    with h.updater() as u:
+        u.insert_array(WNoWireArray, val=[1, 2, 3])
+    with pytest.raises(WireError, match="WNoWireArray"):
         h.freeze().subgraph.wire_encode(ept)
 
 def test_wire_id_uniqueness():
