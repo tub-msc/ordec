@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from setuptools import setup
+from setuptools import setup, Extension
 from setuptools.command.build_py import build_py
 import subprocess
 import os
@@ -27,4 +27,10 @@ setup(
     cmdclass={
         'build_py': NpmBuildPy
     },
+    # Optional: without a C compiler, ordec.layout.gdsrecords falls back to
+    # its slow pure-Python implementation.
+    ext_modules=[
+        Extension('ordec.layout._gdsrecords',
+            sources=['src/ordec/layout/_gdsrecords.c'], optional=True),
+    ],
 )

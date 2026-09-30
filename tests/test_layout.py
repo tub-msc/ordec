@@ -10,6 +10,7 @@ import pytest
 
 from ordec.lib.ihp130 import SG13G2
 from ordec.layout.gds_in import GdsReaderException
+from ordec.layout import gdsrecords
 from ordec.layout import *
 from ordec.core import *
 from ordec.extlibrary import ExtLibrary, ExtLibraryError
@@ -31,6 +32,17 @@ def gds_text_from_layout(layout):
 #     print(x)
 
 gds_dir = importlib.resources.files("tests.layout_gds")
+
+def test_gdsrecords_py():
+    """Pure-Python fallback of gdsrecords matches the C extension."""
+    for fn in gds_dir.iterdir():
+        if fn.name.endswith('.gds'):
+            data = fn.read_bytes()
+            units, structures = gdsrecords.scan(data)
+            assert gdsrecords.scan_py(data) == (units, structures)
+            for name, start, end in structures:
+                assert gdsrecords.read_structure_py(data, start, end) \
+                    == gdsrecords.read_structure(data, start, end)
 
 def test_extlibrary():
     # This test is very bare-bones at the moment.
