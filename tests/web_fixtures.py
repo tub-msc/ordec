@@ -134,7 +134,7 @@ class WebInfo:
         WebDriverWait(self.driver, timeout, poll_frequency=0.05).until(
             EC.text_to_be_present_in_element((By.ID, 'status'), "ready"))
 
-    def wait_until(self, js, timeout=10):
+    def wait_until(self, js, timeout=60):
         """Poll a JS predicate until it returns truthy (else TimeoutException).
 
         js is a script body run via execute_script; it must return a value. A
@@ -142,6 +142,9 @@ class WebInfo:
         The 50 ms poll (vs. Selenium's 500 ms default) matches the sub-second
         UI reactions these tests wait on, trading a few cheap execute_script
         round-trips for much finer completion latency.
+
+        The timeout is as generous as in wait_for_ready, for the same reason:
+        with pytest-xdist, a sub-second UI reaction can take many seconds.
         """
         return WebDriverWait(self.driver, timeout, poll_frequency=0.05).until(
             lambda d: d.execute_script(js))

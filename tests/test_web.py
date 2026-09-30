@@ -1143,8 +1143,7 @@ def test_progress_and_cancel(web):
     # (result is a str, shown as preformatted Report).
     rv_js("rv.resOverlayRefreshable.querySelector('button').click();")
     web.wait_until(
-        "return window.ordecApp.client.resultViewers[0].viewUpToDate;",
-        timeout=30)
+        "return window.ordecApp.client.resultViewers[0].viewUpToDate;")
     assert "slow result" in rv_js("return rv.testInfo().html;")
 
 
@@ -1180,8 +1179,7 @@ def {name}():
     web.wait_for_ready()
     rv_js("rv._onViewSelected('before()');")
     web.wait_until(
-        "return window.ordecApp.client.resultViewers[0].viewUpToDate;",
-        timeout=30)
+        "return window.ordecApp.client.resultViewers[0].viewUpToDate;")
     assert "before result" in rv_js("return rv.testInfo().html;")
 
     # A module build exception keeps the (stale) view list and selection.
