@@ -44,6 +44,22 @@ def test_gdsrecords_py():
                 assert gdsrecords.read_structure_py(data, start, end) \
                     == gdsrecords.read_structure(data, start, end)
 
+def test_gds_malformed(tmp_path):
+    tech_layers = SG13G2().layers
+    data = (gds_dir / 'test_polygon.gds').read_bytes()
+    for name, content in [('empty', b''), ('truncated', data[:len(data) // 2])]:
+        (tmp_path / name).write_bytes(content)
+        with pytest.raises(GdsReaderException, match="Cannot read GDS file"):
+            ExtLibrary().read_gds(tmp_path / name, tech_layers)
+
+    # Polygon without its LAYER record (6 bytes: length, 0x0D, int16 type, value):
+    i = data.index(b'\x00\x06\x0d\x02')
+    (tmp_path / 'nolayer').write_bytes(data[:i] + data[i+6:])
+    lib = ExtLibrary()
+    lib.read_gds(tmp_path / 'nolayer', tech_layers)
+    with pytest.raises(GdsReaderException, match="lacks a valid LAYER record"):
+        lib['TOP'].layout
+
 def test_extlibrary():
     # This test is very bare-bones at the moment.
 

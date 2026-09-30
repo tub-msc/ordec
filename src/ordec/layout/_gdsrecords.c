@@ -104,6 +104,7 @@ static PyObject *scan(PyObject *self, PyObject *args) {
     const uint8_t *data = buf.buf;
     PyObject *units = Py_NewRef(Py_None), *structures = PyList_New(0), *name = NULL;
     Py_ssize_t pos = 0, start = 0;
+    int endlib = 0;
     if (!structures)
         goto fail;
     while (pos < buf.len) {
@@ -111,8 +112,10 @@ static PyObject *scan(PyObject *self, PyObject *args) {
         if (len < 0)
             goto fail;
         uint8_t rt = data[pos + 2];
-        if (rt == ENDLIB) // may be followed by padding
+        if (rt == ENDLIB) { // may be followed by padding
+            endlib = 1;
             break;
+        }
         if (rt == UNITS) {
             Py_SETREF(units, record_value(data + pos, len));
             if (!units)
@@ -133,6 +136,10 @@ static PyObject *scan(PyObject *self, PyObject *args) {
                 goto fail;
         }
         pos += len;
+    }
+    if (!endlib) { // truncated file
+        PyErr_SetString(PyExc_ValueError, "Invalid GDS data: no ENDLIB record.");
+        goto fail;
     }
     Py_XDECREF(name);
     PyBuffer_Release(&buf);

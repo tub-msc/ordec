@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from functools import partial
-import mmap
 import numpy as np
 
 from ..core import *
@@ -18,6 +17,9 @@ from .gdsrecords import BOUNDARY, PATH, SREF, AREF, TEXT, NODE, BOX, LAYER, \
 
 class GdsReaderException(Exception):
     pass
+
+RECORD_NAMES = {LAYER: 'LAYER', DATATYPE: 'DATATYPE', TEXTTYPE: 'TEXTTYPE',
+    XY: 'XY', COLROW: 'COLROW', STRING: 'STRING', SNAME: 'SNAME'}
 
 def gds_to_d4(angle: float|None, strans: int|None) -> D4:
     if strans is None:
@@ -52,6 +54,26 @@ def gds_pathtype_to_endtype(path_type: int) -> PathEndType:
 def read_gds_structure(data, name: str, start: int, end: int, layers: LayerStack, extlib: 'ExtLibrary') -> Layout:
     def conv_xy(xy):
         return [Vec2I(x, y) for x, y in zip(xy[0::2], xy[1::2])]
+
+    def ints(e, rt, n=None) -> tuple[int]:
+        """Values of the required integer record rt of element e (n values, if given)."""
+        v = e.get(rt)
+        if isinstance(v, int):
+            v = (v,) # gdsrecords returns a single value bare
+        if not (isinstance(v, tuple) and all(isinstance(x, int) for x in v)) \
+                or (n is not None and len(v) != n) or (rt == XY and len(v) % 2):
+            raise GdsReaderException(f"Invalid GDS data: element lacks a valid {RECORD_NAMES[rt]} record.")
+        return v
+
+    def text(e, rt) -> str:
+        """Value of the required ASCII string record rt of element e."""
+        v = e.get(rt)
+        if isinstance(v, bytes):
+            try:
+                return v.decode('ascii')
+            except UnicodeDecodeError:
+                pass
+        raise GdsReaderException(f"Invalid GDS data: element lacks a valid {RECORD_NAMES[rt]} record.")
 
     def lookup_layer(gds_layer, gds_type, text:bool=False):
         l = GdsLayer(gds_layer, gds_type)
@@ -119,14 +141,15 @@ def read_gds_structure(data, name: str, start: int, end: int, layers: LayerStack
 
         def add_elem(kind, e):
             if kind == BOUNDARY:
-                add_poly(lookup_shape_layer(e[LAYER], e[DATATYPE]), list(e[XY]))
+                layer = lookup_shape_layer(*ints(e, LAYER, 1), *ints(e, DATATYPE, 1))
+                add_poly(layer, list(ints(e, XY)))
             elif kind == TEXT:
-                layer = lookup_layer(e[LAYER], e[TEXTTYPE], text=True)
-                x, y = e[XY]
-                add(LayoutLabel(layer=layer, pos=Vec2I(x, y), text=e[STRING].decode('ascii')))
+                layer = lookup_layer(*ints(e, LAYER, 1), *ints(e, TEXTTYPE, 1), text=True)
+                x, y = ints(e, XY, 2)
+                add(LayoutLabel(layer=layer, pos=Vec2I(x, y), text=text(e, STRING)))
             elif kind == PATH:
-                layer = lookup_shape_layer(e[LAYER], e[DATATYPE])
-                vertices = conv_xy(e[XY])
+                layer = lookup_shape_layer(*ints(e, LAYER, 1), *ints(e, DATATYPE, 1))
+                vertices = conv_xy(ints(e, XY))
                 if len(vertices) < 2:
                     raise GdsReaderException(f"Invalid GDS data: Path with XY {e[XY]!r} has less than 2 vertices!")
                 endtype = gds_pathtype_to_endtype(e.get(PATHTYPE, 0))
@@ -138,24 +161,21 @@ def read_gds_structure(data, name: str, start: int, end: int, layers: LayerStack
             elif kind == SREF:
                 if e.get(MAG) not in (1.0, None):
                     raise GdsReaderException("SRef with magnification != 1.0 not supported.")
-                x, y = e[XY]
+                x, y = ints(e, XY, 2)
                 add(LayoutInstance(
                     pos=Vec2I(x, y),
                     orientation=gds_to_d4(e.get(ANGLE), e.get(STRANS)),
-                    ref=extlib[e[SNAME].decode('ascii')].frame,
+                    ref=extlib[text(e, SNAME)].frame,
                     ))
             elif kind == AREF:
                 if e.get(MAG) not in (1.0, None):
                     raise GdsReaderException("ARef with magnification != 1.0 not supported.")
-                try:
-                    pos_origin, pos_col_end, pos_row_end = conv_xy(e[XY])
-                except ValueError:
-                    raise GdsReaderException(f"Found ARef with {len(e[XY]) // 2} XY points, expected 3.") from None
-                cols, rows = e[COLROW]
+                pos_origin, pos_col_end, pos_row_end = conv_xy(ints(e, XY, 6))
+                cols, rows = ints(e, COLROW, 2)
                 add(LayoutInstanceArray(
                     pos=pos_origin,
                     orientation=gds_to_d4(e.get(ANGLE), e.get(STRANS)),
-                    ref=extlib[e[SNAME].decode('ascii')].frame,
+                    ref=extlib[text(e, SNAME)].frame,
                     cols=cols,
                     rows=rows,
                     vec_col=(pos_col_end - pos_origin) // cols,
@@ -171,11 +191,7 @@ def read_gds_structure(data, name: str, start: int, end: int, layers: LayerStack
         for layer, row in zip(quad_layers[~is_rect].tolist(), quads[~is_rect, 2:].tolist()):
             add_poly(layer, row)
         for kind, e in elems:
-            try:
-                add_elem(kind, e)
-            except (KeyError, TypeError, ValueError) as exc:
-                # Record missing or with an unexpected number of values.
-                raise GdsReaderException(f"Invalid GDS data: malformed element ({exc!r}).") from None
+            add_elem(kind, e)
 
         if is_rect.any():
             sgu.insert_array(LayoutRect, layer=quad_layers[is_rect],
@@ -188,13 +204,16 @@ def create_frame(name, lib) -> Layout:
     return lib[name].layout
 
 def gds_discover(gds_fn, layers, extlib):
-    # The mapping stays alive as long as the closures below; structures are
-    # only decoded when their layout is requested.
+    # The file is read completely and kept in memory by the closures below
+    # (later changes of the file on disk are not picked up); structures are
+    # only decoded when their layout is requested. Not mmap: a file truncated
+    # or rewritten while mapped would crash the process or yield garbage.
     with open(gds_fn, 'rb') as stream:
-        data = mmap.mmap(stream.fileno(), 0, access=mmap.ACCESS_READ)
+        data = stream.read()
     try:
         units, structures = gdsrecords.scan(data)
         unit = R(format(units[1], '.4e'))
+        structures = [(name.decode('ascii'), start, end) for name, start, end in structures]
     except (ValueError, TypeError, IndexError) as exc:
         raise GdsReaderException(f"Cannot read GDS file {gds_fn}: {exc}") from None
     if unit != layers.unit:
@@ -204,7 +223,6 @@ def gds_discover(gds_fn, layers, extlib):
     frame_funcs = {}
 
     for name, start, end in structures:
-        name = name.decode('ascii')
         # Use functools.partial to create a closure. (Not really partial though,
         # since all argument values are provided.) This postponsed creation of
         # the Layout subgraphs to when they are requested/needed.

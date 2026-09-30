@@ -7,9 +7,9 @@ Record-level GDS reader. A GDS file is a sequence of records, each with a
 type. Only what gds_in.py needs is decoded, coordinates stay integers.
 
 scan(data) -> (units, structures)
-    Walks all record headers of a GDS file (bytes-like). units is the value
-    of the UNITS record: (user units per database unit, database unit in
-    meters). structures lists (name, start, end) per structure, where
+    Walks all record headers of a GDS file (bytes-like) up to its ENDLIB
+    record. units is the value of the UNITS record: (user units per database
+    unit, database unit in meters). structures lists (name, start, end) per structure, where
     data[start:end] holds the records of its elements.
 
 read_structure(data, start, end) -> (quads, elements)
@@ -96,7 +96,7 @@ def scan_py(data):
     while pos < end:
         length, rt, dt = record_header(data, pos, end)
         if rt == ENDLIB: # may be followed by padding
-            break
+            return units, structures
         if rt == UNITS:
             units = record_value(data, pos, length, dt)
         elif rt == STRNAME:
@@ -106,7 +106,7 @@ def scan_py(data):
             structures.append((name, start, pos))
             name = None
         pos += length
-    return units, structures
+    raise ValueError("Invalid GDS data: no ENDLIB record.") # truncated file
 
 def read_structure_py(data, pos, end):
     if pos < 0 or end > len(data):
