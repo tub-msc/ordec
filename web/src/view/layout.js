@@ -119,6 +119,31 @@ function generateId() {
     return "idgen" + idCounter;
 }
 
+// Layout transforms are [a, b, c, d, tx, ty]: x' = a*x + b*y + tx,
+// y' = c*x + d*y + ty (see docs/dev/webui.rst).
+function composeTransforms(m1, m2) {
+    // m1 applied after m2:
+    return [
+        m1[0]*m2[0] + m1[1]*m2[2], m1[0]*m2[1] + m1[1]*m2[3],
+        m1[2]*m2[0] + m1[3]*m2[2], m1[2]*m2[1] + m1[3]*m2[3],
+        m1[0]*m2[4] + m1[1]*m2[5] + m1[4], m1[2]*m2[4] + m1[3]*m2[5] + m1[5],
+    ];
+}
+
+function transformPoint(m, p) {
+    return [m[0]*p[0] + m[1]*p[1] + m[4], m[2]*p[0] + m[3]*p[1] + m[5]];
+}
+
+function transformMat4(m) {
+    // Column-major 4x4 matrix for the model-view uniform:
+    return new Float32Array([
+        m[0], m[2], 0, 0,
+        m[1], m[3], 0, 0,
+        0, 0, 1, 0,
+        m[4], m[5], 0, 1,
+    ]);
+}
+
 function calcLayerColor(color, layerId, dampen) {
     // If dampen is true, infinite / 0xFF brightness is 'scaled away'.
     const dampenFactor = dampen?0.95:1.0;
@@ -322,6 +347,7 @@ export class LayoutView extends View {
     update(msgData, wireHash) {
         this.data = msgData;
         this.wireHash = wireHash;
+        this.prepareHierarchy();
 
         // Populate the sidebar before any zoom-to-fit below, so that its
         // final width is known when the fit area (the part of the canvas
@@ -672,8 +698,12 @@ export class LayoutView extends View {
 
         this.data.layers.forEach(layer => {
             layer.labelVerticesOffset = this.labelsNumVertices;
-            layer.labels.forEach(label => {
-                addLabel(label.pos[0], label.pos[1], label.text, 'center', 'middle');
+            this.drawItems.forEach(item => {
+                const entry = this.cellLayers[item.cell].get(layer.nid);
+                entry?.labels.forEach(label => {
+                    const [x, y] = transformPoint(item.m, label.pos);
+                    addLabel(x, y, label.text, 'center', 'middle');
+                });
             });
             layer.labelVerticesCount = this.labelsNumVertices - layer.labelVerticesOffset;
         });
@@ -685,55 +715,111 @@ export class LayoutView extends View {
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(labelVertices), gl.STATIC_DRAW);
     }
 
+    prepareHierarchy() {
+        // The layout arrives as cells (distinct layouts, cell 0 is the top)
+        // with per-layer geometry and instances of other cells (see
+        // docs/dev/webui.rst). Each cell's geometry is loaded once; it is
+        // drawn once per draw item, i.e. per placement of the cell in the
+        // top cell, with the item's transform as model-view matrix.
+        const cells = this.data.cells;
+        this.layerByNid = new Map(this.data.layers.map(l => [l.nid, l]));
+        this.cellLayers = cells.map(cell => new Map(cell.layers.map(e => [e.layer, e])));
+        this.drawItems = [];
+        const walk = (cellIdx, m) => {
+            this.drawItems.push({cell: cellIdx, m: m, mat4: transformMat4(m)});
+            const inst = cells[cellIdx].instances;
+            for (let i = 0; i < inst.cell.length; i++) {
+                walk(inst.cell[i], composeTransforms(m, inst.transform.subarray(6*i, 6*i + 6)));
+            }
+        };
+        walk(0, [1, 0, 0, 1, 0, 0]);
+    }
+
     loadShapes() {
         const gl = this.gl;
 
         // For all shapes, separate triangle (fill) and line (stroke) vertex
-        // "segments" are loaded into the the shapeVertices buffer.
-        // Currently, both triangle and line data is loaded into the buffer
-        // irrespective of whether it is needed to render the layer.
+        // "segments" are loaded into the the shapeVertices buffer, per cell
+        // and layer. Currently, both triangle and line data is loaded into
+        // the buffer irrespective of whether it is needed to render the layer.
         // This way, the data is always there, for example if something like
         // "outline on select / hover" is desired in the future.
 
-        const shapeVertices = [];
-        this.data.layers.forEach(layer => {
-            layer.shapeLineVerticesOffset = shapeVertices.length/2;
-            layer.polys.forEach(poly => {
-                shapeVertices.push(poly.vertices[0], poly.vertices[1]);
-                for(let i=2;i<poly.vertices.length-1;i+=2) {
-                    shapeVertices.push(
-                        // twice: first to end last line, second to start next line
-                        poly.vertices[i], poly.vertices[i+1],
-                        poly.vertices[i], poly.vertices[i+1],
-                    );
-                }
-                shapeVertices.push(poly.vertices[0], poly.vertices[1]);
+        // First pass: triangulate polygons and count vertices.
+        let numVertices = 0;
+        this.data.cells.forEach(cell => cell.layers.forEach(entry => {
+            const crossRect = this.layerByNid.get(entry.layer).styleCrossRect;
+            const nRects = entry.rects.length / 4;
+            const offs = entry.polyOffsets;
+            entry.polyTriangles = [];
+            let lines = nRects * (crossRect ? 12 : 8);
+            let tris = nRects * 6;
+            for (let p = 0; p < offs.length - 1; p++) {
+                const nv = offs[p+1] - offs[p];
+                const triangles = earcut(entry.polyCoords.subarray(2*offs[p], 2*offs[p+1]));
+                entry.polyTriangles.push(triangles);
+                lines += 2*nv + ((crossRect && nv == 4) ? 4 : 0);
+                tris += triangles.length;
+            }
+            entry.lineCount = lines;
+            entry.triCount = tris;
+            numVertices += lines + tris;
+        }));
 
-                if(layer.styleCrossRect && poly.vertices.length == 4*2) {
-                    // Add "X" shape if styleCrossRect is enabled: 
-                    shapeVertices.push(
-                        poly.vertices[0], poly.vertices[1],
-                        poly.vertices[4], poly.vertices[5],
-                        poly.vertices[2], poly.vertices[3],
-                        poly.vertices[6], poly.vertices[7],
-                    );
-                }
-            });
-            layer.shapeLineVerticesCount = shapeVertices.length/2 - layer.shapeLineVerticesOffset;
-            layer.shapeTriVerticesOffset = shapeVertices.length/2;
-            layer.polys.forEach(poly => {
-                const triangles = earcut(poly.vertices);
-                triangles.forEach(nodeIdx => {
-                    shapeVertices.push(poly.vertices[nodeIdx*2 + 0]);
-                    shapeVertices.push(poly.vertices[nodeIdx*2 + 1]);
-                });
-            });
-            layer.shapeTriVerticesCount = shapeVertices.length/2 - layer.shapeTriVerticesOffset;
+        // Second pass: fill the buffer.
+        const buf = new Float32Array(2 * numVertices);
+        let n = 0; // vertices written
+        const push = (x, y) => { buf[2*n] = x; buf[2*n + 1] = y; n++; };
+        this.data.cells.forEach(cell => cell.layers.forEach(entry => {
+            const crossRect = this.layerByNid.get(entry.layer).styleCrossRect;
+            const r = entry.rects;
+            const offs = entry.polyOffsets;
+            const c = entry.polyCoords;
 
-        });
+            entry.lineOffset = n;
+            for (let i = 0; i < r.length; i += 4) {
+                const lx = r[i], ly = r[i+1], ux = r[i+2], uy = r[i+3];
+                push(lx, ly); push(ux, ly);
+                push(ux, ly); push(ux, uy);
+                push(ux, uy); push(lx, uy);
+                push(lx, uy); push(lx, ly);
+                if (crossRect) {
+                    push(lx, ly); push(ux, uy);
+                    push(ux, ly); push(lx, uy);
+                }
+            }
+            for (let p = 0; p < offs.length - 1; p++) {
+                const s = 2*offs[p];
+                const e = 2*offs[p+1];
+                push(c[s], c[s+1]);
+                for (let i = s + 2; i < e; i += 2) {
+                    // twice: first to end last line, second to start next line
+                    push(c[i], c[i+1]);
+                    push(c[i], c[i+1]);
+                }
+                push(c[s], c[s+1]);
+                if (crossRect && e - s == 4*2) {
+                    // Add "X" shape if styleCrossRect is enabled:
+                    push(c[s], c[s+1]); push(c[s+4], c[s+5]);
+                    push(c[s+2], c[s+3]); push(c[s+6], c[s+7]);
+                }
+            }
+
+            entry.triOffset = n;
+            for (let i = 0; i < r.length; i += 4) {
+                const lx = r[i], ly = r[i+1], ux = r[i+2], uy = r[i+3];
+                push(lx, ly); push(ux, ly); push(ux, uy);
+                push(lx, ly); push(ux, uy); push(lx, uy);
+            }
+            for (let p = 0; p < offs.length - 1; p++) {
+                const s = 2*offs[p];
+                entry.polyTriangles[p].forEach(idx => push(c[s + 2*idx], c[s + 2*idx + 1]));
+            }
+            delete entry.polyTriangles;
+        }));
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.shapeVertices);
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(shapeVertices), gl.STATIC_DRAW);
+        gl.bufferData(gl.ARRAY_BUFFER, buf, gl.STATIC_DRAW);
     }
 
     loadBuffersConstant() {
@@ -800,26 +886,29 @@ export class LayoutView extends View {
 
         gl.uniform1f(programInfo.uniformLocations.brightness, brightnessFactor);
 
+        const drawLayer = (layer, style, mode, offsetKey, countKey) => {
+            gl.uniform4fv(programInfo.uniformLocations.layerColor,
+                calcLayerColor(style, layer.nid, true));
+            this.drawItems.forEach(item => {
+                const entry = this.cellLayers[item.cell].get(layer.nid);
+                if (entry && entry[countKey] > 0) {
+                    gl.uniformMatrix4fv(programInfo.uniformLocations.modelViewMatrix, false, item.mat4);
+                    gl.drawArrays(mode, entry[offsetKey], entry[countKey]);
+                }
+            });
+        };
+
         this.data.layers.forEach(layer => {
             if(this.visibility.get(layer.nid)==false) {
                 // --> draw layer if visibility is either true or undefined.
                 return;
             }
-
-            if(layer.styleStroke && (layer.shapeLineVerticesCount > 0)) {
-                gl.uniform4fv(programInfo.uniformLocations.layerColor,
-                    calcLayerColor(layer.styleStroke, layer.nid, true));
-
-                gl.drawArrays(gl.LINES, layer.shapeLineVerticesOffset, layer.shapeLineVerticesCount);
-            }
-            
             // In the future, layerColor could be an attribute, not a uniform value.
-
-            if(layer.styleFill && (layer.shapeTriVerticesCount > 0)) {
-                gl.uniform4fv(programInfo.uniformLocations.layerColor,
-                    calcLayerColor(layer.styleFill, layer.nid, true));
-
-                gl.drawArrays(gl.TRIANGLES, layer.shapeTriVerticesOffset, layer.shapeTriVerticesCount);
+            if(layer.styleStroke) {
+                drawLayer(layer, layer.styleStroke, gl.LINES, 'lineOffset', 'lineCount');
+            }
+            if(layer.styleFill) {
+                drawLayer(layer, layer.styleFill, gl.TRIANGLES, 'triOffset', 'triCount');
             }
         });
 

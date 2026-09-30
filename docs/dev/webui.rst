@@ -48,6 +48,21 @@ All communication runs over one WebSocket (``/api/websocket``). Every message, i
 6. The client can abort an in-flight generation with ``{msg: 'cancelview', req}`` (idempotent; unknown ids are ignored). Cancellation is cooperative with escalation (see ``ThreadedJobRunner.cancel``): cancel flag → kill of registered external-tool subprocesses (e.g. ngspice) → optional async-exception injection for runaway Python loops (disable by setting ``ordec.jobrunner.ASYNC_CANCEL_ENABLED`` to False). The terminal message of a cancelled request has ``cancelled: true``; the panel then shows a "View generation cancelled." overlay and is not auto-re-requested until the user refreshes it.
 7. In local mode, the server watches the source files with inotify and pushes ``{msg: 'localmodule_changed'}``, upon which the client reconnects (unless auto-refresh is disabled). Disconnecting cancels all in-flight generations of that connection, so the rebuild does not wait behind stale long-running simulations.
 
+Layout view data
+~~~~~~~~~~~~~~~~
+
+The ``data`` of a layout view (``src/ordec/layout/webdata.py``, rendered by ``web/src/view/layout.js``) keeps the layout hierarchy: every distinct layout, the requested one and all instantiated ones, is one *cell*, sent once. Geometry is in integer database units (``unit`` in meters), as int32 typed arrays:
+
+- ``unit``: size of one database unit in meters.
+- ``extent``: ``[lx, ly, ux, uy]`` of the whole hierarchy in top-cell coordinates, or null for an empty layout.
+- ``layers``: style of every layer used anywhere, sorted by nid: ``nid``, ``path``, ``styleFill``, ``styleStroke``, ``styleCrossRect``, ``styleCSS``.
+- ``cells``: list of cells; cell 0 is the requested layout. Each cell has:
+
+  - ``layers``: per used layer ``{layer: nid, rects, polyOffsets, polyCoords, labels}``. ``rects`` holds ``lx, ly, ux, uy`` per rectangle; polygon ``p`` has the vertices ``polyOffsets[p]`` to ``polyOffsets[p+1]-1``, stored as ``x, y`` pairs in ``polyCoords``; ``labels`` is a list of ``{pos: [x, y], text}``. Paths and pins arrive already converted to polygons (pins on their pin layer, with a label).
+  - ``instances``: ``{cell, transform}`` with the cell index per instance and six values ``a, b, c, d, tx, ty`` per instance, mapping child coordinates to cell coordinates as ``x' = a*x + b*y + tx``, ``y' = c*x + d*y + ty``. Instance arrays arrive expanded into single instances.
+
+The viewer loads each cell's geometry into the vertex buffer once and draws it once per placement in the top cell, with the accumulated transform as model-view matrix. Rectangles are triangulated directly, only polygons go through earcut.
+
 View names are evaluated with ``eval()``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
