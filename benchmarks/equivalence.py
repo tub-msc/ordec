@@ -18,7 +18,9 @@ from ordec.core.ordb import OrdbException
 
 from .prng import Lcg
 from .checksum import checksum_result, checksum_subgraph
-from .schema import ChainRoot, CNode
+import numpy as np
+
+from .schema import ChainRoot, CNode, ANode
 from .workloads import WORKLOADS
 
 REFERENCE_BACKEND = 'pyrsistent-patricia'
@@ -61,13 +63,18 @@ class _FuzzDriver:
 
     def step(self, opcode):
         rng = self.rng
-        if opcode < 50: # insert
+        if opcode < 42: # insert
             self.cur.add(CNode(tag=rng.randint(16), val=rng.randint(1 << 20)))
-        elif opcode < 75: # update
+        elif opcode < 50: # insert arrayable nodes as array
+            n = 1 + rng.randint(5)
+            vals = np.array([rng.randint(1 << 20) for _ in range(n)])
+            with self.cur.updater() as u:
+                u.insert_array(ANode, val=vals, other=rng.randint(8))
+        elif opcode < 75: # update (None moves array rows out of arrays)
             nid = self._pick_nid()
             if nid is not None:
-                self.cur.update(
-                    self.cur.nodes[nid].set(val=rng.randint(1 << 20)), nid)
+                val = None if rng.randint(8) == 0 else rng.randint(1 << 20)
+                self.cur.update(self.cur.nodes[nid].set(val=val), nid)
         elif opcode < 85: # remove
             nid = self._pick_nid()
             if nid is not None:
@@ -113,8 +120,9 @@ class _FuzzDriver:
         idx = tuple(
             tuple(self.cur.all(CNode.tag_idx.query(tag), wrap_cursor=False))
             for tag in range(16))
+        anodes = tuple(self.cur.all(ANode, wrap_cursor=False))
         return (checksum_subgraph(self.cur), len(self.cur.nodes),
-            self.cur.nid_alloc.start, idx,
+            self.cur.nid_alloc.start, idx, anodes,
             tuple(checksum_subgraph(s) for s in self.snaps))
 
 def differential_fuzz(candidate, reference=REFERENCE_BACKEND, ops=300,

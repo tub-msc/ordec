@@ -23,6 +23,12 @@ Name                          Storage model
 ``cow``                       Plain dicts, O(1) snapshot sharing, transactions
                               copy only what they touch (top-level dict once
                               after a snapshot, buckets on first write).
+``cow-arrays``                The cow backend plus array chunks for rows
+                              inserted with ``insert_array`` (arrayable node
+                              types, e.g. LayoutRect): no per-node cost for
+                              bulk geometry. Edits of chunk rows go to a
+                              transaction overlay, applied at commit (in place
+                              for owned chunks, on a copy for shared ones).
 ``delta`` /                   Delta chains ported from the Zig ORDB
 ``delta-compactN``            reimplementation (``zig`` branch): each frozen
                               generation stores only its delta; reads walk the

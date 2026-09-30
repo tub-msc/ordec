@@ -150,6 +150,30 @@ def test_roundtrip_real_schematic(ept):
     assert back.cell is cell
     assert back.I1.pos == sch.I1.pos
 
+def test_roundtrip_arrays(ept):
+    """Arrayable nodes (LayoutRect) are encoded as arrays; the encoding does
+    not depend on whether they were inserted as array or row by row."""
+    import numpy as np
+    from ordec.lib.ihp130 import SG13G2
+    layers = SG13G2().layers
+    rects = [Rect4I(0, 0, 10, 10), Rect4I(5, 5, 20, 30), Rect4I(-3, 1, 4, 2)]
+    def build(as_array):
+        l = Layout(ref_layers=layers)
+        if as_array:
+            with l.updater() as u:
+                u.insert_array(LayoutRect, layer=layers.Metal1, rect=np.array(rects))
+        else:
+            for r in rects:
+                l % LayoutRect(layer=layers.Metal1, rect=r)
+        l % LayoutRect(layer=layers.Metal2) # rect None: stays a row
+        return l.freeze()
+    orig = build(as_array=True)
+    back = wire_decode(orig.subgraph.wire_encode(ept), ept,
+        orig.subgraph.wire_deps(ept))
+    assert back.subgraph == orig.subgraph
+    assert [r.rect for r in list(back.all(LayoutRect))[:3]] == rects
+    assert build(as_array=False).subgraph.wire_hash(ept) == orig.subgraph.wire_hash(ept)
+
 def test_farref(ept):
     foreign = FarRef(b'\xaa' * 16, 42, name='foreign')
     orig = WHead(obj=foreign).freeze()

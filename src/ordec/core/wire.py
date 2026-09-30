@@ -32,10 +32,18 @@ HASH_DOMAIN)::
 
     wire_bytes(sg) = canonical CBOR of [ [blob0, blob1, ...],
                                          {wire_id: [[nid, v0, ..., vN], ...]},
-                                         nid_alloc.start ]
+                                         nid_alloc.start,
+                                         {wire_id: [nids, col0, ..., colM]} ]
                      with rows ascending by nid and row values in
                      NodeTuple._layout order
     wire_hash(sg)  = SHA256(HASH_DOMAIN + wire_bytes(sg))
+
+Nodes of arrayable node types (Node.arrayable) without None values are
+encoded in the fourth element instead of as rows, whatever backend stores
+them: per type, byte strings of int64 little-endian values, first the nids
+(ascending), then one column per attribute in ordb.arrays layout order,
+value types such as Rect4I row-major (n x width). All other nodes, including
+arrayable ones with None values, are rows.
 
 The blob table holds the data buffers referenced by SimColumn values,
 verbatim (no repacking or transpose), deduplicated by buffer object
@@ -57,12 +65,14 @@ import os
 import threading
 
 import cbor2
+import numpy as np
 from public import public
 
 from .ordb.base import (
     LocalRef, ExternalRef, SubgraphRef, LiveRef, FarRef, Node, Subgraph,
     FrozenSubgraph, MutableSubgraph, OrdbException, wire_registry,
 )
+from .ordb.arrays import row_values
 from .rational import R
 from .geoprim import Vec2R, Vec2I, Rect4R, Rect4I, TD4R, TD4I, D4
 from .simarray import SimColumn, Quantity
@@ -262,14 +272,25 @@ def encode_subgraph(sg: FrozenSubgraph, ept: ExportTable) -> bytes:
     FrozenSubgraph.wire_encode().
     """
     blobs = BlobTable()
+    arrays_by_wid = {}
+    for wid, cls in wire_registry.items():
+        if cls.Tuple._array_layout is None or cls.Tuple not in sg.index:
+            continue
+        cols = sg.backend.arrays(sg, cls, partial=True)
+        if len(cols['nid']) > 0:
+            arrays_by_wid[wid] = [cols['nid'].astype('<i8').tobytes()] \
+                + [cols[f.name].astype('<i8').tobytes() for f in cls.Tuple._array_layout]
     rows_by_wid = {}
-    for nid in sorted(sg.nodes):
+    for nid in sorted(sg.backend.row_nids(sg)):
         node = sg.nodes[nid]
         cls = node._cursor_type
         wid = cls.__dict__.get('wire_id')
         if wid is None:
             raise WireError(f"{cls.__name__} declares no wire_id;"
                 " cannot serialize.")
+        fields = node._array_layout
+        if fields is not None and row_values(fields, node) is not None:
+            continue # encoded in arrays_by_wid
         row = [nid]
         for ad in node._layout:
             try:
@@ -278,8 +299,8 @@ def encode_subgraph(sg: FrozenSubgraph, ept: ExportTable) -> bytes:
             except TypeError as e:
                 raise TypeError(f"{cls.__name__}.{ad.name}: {e}") from None
         rows_by_wid.setdefault(wid, []).append(row)
-    return cbor2.dumps([blobs.blobs, rows_by_wid, sg.nid_alloc.start],
-        canonical=True)
+    return cbor2.dumps([blobs.blobs, rows_by_wid, sg.nid_alloc.start,
+        arrays_by_wid], canonical=True)
 
 def hash_wire_bytes(data: bytes) -> bytes:
     """
@@ -305,7 +326,8 @@ def collect_wire_deps(sg: FrozenSubgraph,
     """
     deps = {}
     def collect(sg):
-        for nid in sorted(sg.nodes):
+        # Array rows hold no SubgraphRefs (see ordb.base.array_layout).
+        for nid in sorted(sg.backend.row_nids(sg)):
             node = sg.nodes[nid]
             for ad in node._layout:
                 if not isinstance(ad.attr, SubgraphRef):
@@ -412,6 +434,35 @@ def resolve_row_value(val, deps, ept, blobs):
         return FarRef(endpoint_id, obj_id, name)
     return fix_plain(val, blobs)
 
+def decode_arrays(wid, data):
+    """Decodes one arrays_by_wid entry into (cls, nids, cols)."""
+    cls = wire_registry.get(wid)
+    if cls is None:
+        raise WireError(f"Unknown wire_id {wid:#x}.")
+    fields = cls.Tuple._array_layout
+    if fields is None:
+        raise WireError(f"{cls.__name__} is not arrayable.")
+    if not (isinstance(data, list) and len(data) == len(fields) + 1
+            and all(isinstance(b, bytes) for b in data)):
+        raise WireError(f"Malformed arrays for {cls.__name__}.")
+    nids = np.frombuffer(data[0], dtype='<i8').astype(np.int64)
+    n = len(nids)
+    if not (np.diff(nids) > 0).all():
+        raise WireError(f"Array nids of {cls.__name__} are not ascending.")
+    cols = {}
+    for f, b in zip(fields, data[1:]):
+        a = np.frombuffer(b, dtype='<i8').astype(np.int64)
+        if len(a) != n * f.width:
+            raise WireError(f"Malformed array column {cls.__name__}.{f.name}.")
+        cols[f.name] = a if f.width == 1 else a.reshape(n, f.width)
+        check = getattr(f.vtype, 'array_check', None)
+        if check is not None:
+            try:
+                check(cols[f.name])
+            except ValueError as e:
+                raise WireError(f"{cls.__name__}.{f.name}: {e}") from None
+    return cls, nids, cols
+
 @public
 def wire_decode(data: bytes, ept: ExportTable, deps=None) -> Node:
     """
@@ -432,12 +483,12 @@ def wire_decode(data: bytes, ept: ExportTable, deps=None) -> Node:
         tree = cbor2.loads(data, tag_hook=tag_hook)
     except cbor2.CBORDecodeError as e:
         raise WireError(f"CBOR decode failed: {e}") from e
-    if not (isinstance(tree, list) and len(tree) == 3
+    if not (isinstance(tree, list) and len(tree) == 4
             and isinstance(tree[0], list) and isinstance(tree[1], dict)
-            and isinstance(tree[2], int)):
+            and isinstance(tree[2], int) and isinstance(tree[3], dict)):
         raise WireError(
-            "Malformed wire data (expected [blobs, rows, nid_start]).")
-    blobs, rows_by_wid, nid_start = tree
+            "Malformed wire data (expected [blobs, rows, nid_start, arrays]).")
+    blobs, rows_by_wid, nid_start, arrays_by_wid = tree
     if not all(isinstance(b, bytes) for b in blobs):
         raise WireError("Malformed blob table.")
 
@@ -453,6 +504,8 @@ def wire_decode(data: bytes, ept: ExportTable, deps=None) -> Node:
             items.append((row[0], cls, row[1:]))
     items.sort(key=lambda item: item[0])
 
+    arrays = [decode_arrays(wid, cols) for wid, cols in arrays_by_wid.items()]
+
     sg = MutableSubgraph()
     with sg.updater() as u:
         for nid, cls, values in items:
@@ -460,6 +513,8 @@ def wire_decode(data: bytes, ept: ExportTable, deps=None) -> Node:
             for ad, val in zip(cls.Tuple._layout, values):
                 kwargs[ad.name] = resolve_row_value(val, deps, ept, blobs)
             u.add_single(cls.Tuple(**kwargs), nid=nid)
+        for cls, nids, cols in arrays:
+            u.insert_array_at(cls, nids, cols)
     # The updater clamps nid_alloc.start to max_nid+1; restore the encoded
     # start (they differ when top nids were deleted before serialization).
     if sg.nid_alloc.start != nid_start:

@@ -201,6 +201,7 @@ class LayoutRect(Node, MixinLayoutPinnable):
     """Layout rectangle."""
     in_subgraphs = [Layout]
     wire_id = WIRE_DOMAIN | 9
+    arrayable = True
 
     layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers)
     rect = ConstrainableAttr(Rect4I, factory=coerce_tuple(Rect4I, 4),

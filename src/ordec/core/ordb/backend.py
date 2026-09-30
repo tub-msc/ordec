@@ -89,6 +89,24 @@ class StorageBackend(ABC):
         """Flatten internal delta structure; identity for flat backends."""
         return subgraph.nodes, subgraph.index, subgraph.nid_alloc
 
+    def arrays(self, subgraph, ntype, partial=False):
+        """
+        Backend of Subgraph.arrays() (see ordec.core.ordb.arrays); with
+        partial, rows that are not array-representable are skipped instead
+        of raising. The generic implementation reads row by row; backends
+        storing array rows natively override it.
+        """
+        from .arrays import gather
+        return gather(subgraph, ntype, partial)
+
+    def row_nids(self, subgraph):
+        """
+        Iterable of the nids of all nodes not stored natively as array
+        rows (in any order). Array rows are read via arrays() instead,
+        e.g. by the wire encoder. Generic: all nids.
+        """
+        return subgraph.nodes
+
     # Value semantics of FrozenSubgraph (nodes + nid_alloc; index is excluded
     # as it is equal by construction). The generic implementations work
     # across backends; backends may override with faster equivalents that
@@ -151,6 +169,16 @@ class StorageTxn(ABC):
         sortval. sortval_of(other_nid) resolves the sort value of nids
         already in the bucket (via this txn's node state).
         """
+
+    def insert_array(self, ntype, nids, cols) -> bool:
+        """
+        Optionally stores array rows natively (see ordec.core.ordb.arrays):
+        nids is an ascending int64 array of unused nids, cols the validated
+        int64 columns. A backend that stores them maintains their index
+        entries itself. Returns False if the backend does not store rows of
+        ntype as arrays; SubgraphUpdater then inserts them row by row.
+        """
+        return False
 
     @abstractmethod
     def commit(self):

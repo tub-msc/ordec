@@ -33,6 +33,7 @@ from .backend_pyrsistent import PyrsistentBackend
 from .backend_fullcopy import FullCopyBackend
 from .backend_cow import CowBackend
 from .backend_delta import DeltaBackend
+from .backend_cow_arrays import CowArraysBackend
 
 register_backend(PyrsistentBackend(patricia=True))
 register_backend(PyrsistentBackend(patricia=False))
@@ -40,3 +41,4 @@ register_backend(FullCopyBackend())
 register_backend(CowBackend())
 register_backend(DeltaBackend())
 register_backend(DeltaBackend(auto_compact_depth=8))
+register_backend(CowArraysBackend())

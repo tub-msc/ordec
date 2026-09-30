@@ -145,6 +145,23 @@ Inserters & indices
 
 .. autoclass:: IndexQuery
 
+Array rows
+----------
+
+Node types declaring ``arrayable = True`` (e.g. :class:`~ordec.core.schema.LayoutRect`) can be inserted and read as arrays, which skips the per-node cost of cursors, NodeTuples and index maintenance for bulk data such as the rectangles of an imported GDS cell. All attributes of an arrayable type must be array-representable (int, :class:`LocalRef`, :class:`ExternalRef`, or a value type with ``array_width`` such as ``Vec2I``/``Rect4I``). In array form, each attribute is an int64 column, rows ordered by nid; a row is representable if none of its values is None.
+
+.. code-block:: python
+
+    with layout.updater() as u:
+        nids = u.insert_array(LayoutRect, layer=layers.Metal1, rect=rects) # rects: shape (n, 4)
+    cols = layout.arrays(LayoutRect) # {'nid': ..., 'layer': ..., 'rect': (n, 4)}
+
+:meth:`SubgraphUpdater.insert_array` is equivalent to inserting the same rows one by one with ``add_single`` in the same transaction, and :meth:`Subgraph.arrays` returns what iterating ``all(LayoutRect)`` would read. Array rows remain ordinary nodes: cursors, updates, removals and queries work on them as on any node. How they are stored is up to the storage backend: ``cow-arrays`` keeps them in array chunks (see :doc:`../dev/ordb_benchmarks`), all other backends store them row by row. The wire format encodes representable rows of arrayable types as arrays regardless of the backend (see :mod:`ordec.core.wire`).
+
+.. automethod:: SubgraphUpdater.insert_array
+
+.. automethod:: Subgraph.arrays
+
 Low-level stuff
 ---------------
 
