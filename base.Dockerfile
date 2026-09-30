@@ -193,12 +193,17 @@ FROM debian:trixie AS ordec-base
 # - libgomp1: needed for Ngspice
 # - binutils: needed for OpenVAF
 # - libtcl8.6, libreadline8t64, libffi8 (and zlib1g): needed for Yosys
+# - build-essential, python3-dev: needed to build ORDeC's C extensions
+#   (wheel build in Dockerfile, pip install in tests.yaml). Without them, the
+#   build succeeds but silently leaves the extensions out.
 RUN useradd -ms /bin/bash app && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
         libgomp1 \
         python3-minimal \
         python3-venv \
+        python3-dev \
+        build-essential \
         chromium-driver \
         npm \
         git \
@@ -232,8 +237,15 @@ ENV ORDEC_PDK_SKY130A="/home/app/skywater/sky130A"
 ENV ORDEC_PDK_SKY130B="/home/app/skywater/sky130B"
 ENV ORDEC_PDK_IHP_SG13G2="/home/app/IHP-Open-PDK/ihp-sg13g2"
 
+# OpenVAF compiles for the CPU of the build machine: ngspice dies with
+# "illegal instruction" when the models run on a CPU lacking some of its
+# instruction set extensions. OpenVAF 23.5.0 crashes on --target_cpu (the
+# script's --compile-model-generic), so tests.yaml recompiles the models on
+# the test machine instead. The script does not fail when OpenVAF does,
+# hence the check for its output.
 WORKDIR /home/app/IHP-Open-PDK/ihp-sg13g2/libs.tech/verilog-a/
-RUN ./openvaf-compile-va.sh
+RUN ./openvaf-compile-va.sh && \
+    for m in psp103 psp103_nqs r3_cmc mosvar; do test -f ../ngspice/osdi/$m.osdi || exit 1; done
 
 # Create Python venv + install Python dependencies
 # ------------------------------------------------
