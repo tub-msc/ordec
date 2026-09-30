@@ -23,9 +23,9 @@ ORDB is based on five principles:
 
 3. **Hierarchical tree organization:** Names can be assigned to nodes. Those names can be arranged hierarchically in a tree. This makes it possible to group design objects in arrays, structs or other logical units.
 
-4. **Persistent data structures:** The state of a ORDB subgraph is stored using `persistent data structures <https://en.wikipedia.org/wiki/Persistent_data_structure>`_ (from the `Pyrsistent <https://pyrsistent.readthedocs.io/>`_ library). Persistent data structures are immutable.
+4. **Persistent data structures:** The state of a ORDB subgraph behaves like a `persistent data structure <https://en.wikipedia.org/wiki/Persistent_data_structure>`_: a frozen state is immutable. How this is implemented is up to the storage backend (see :doc:`../dev/ordb_benchmarks`): the default backend shares state copy-on-write, the ``pyrsistent-*`` backends use the `Pyrsistent <https://pyrsistent.readthedocs.io/>`_ library.
    
-   Modifying a subgraph (i.e. adding, updating or removing nodes) replaces its old state with a new state, which is built upon the previous state. The old subgraph state remains unchanged. Due to this, logical copies of subgraphs are very cheap, as the underlying data structures are immutable and thus do not need to be copied.
+   Modifying a subgraph (i.e. adding, updating or removing nodes) replaces its old state with a new state, which is built upon the previous state. The old subgraph state remains unchanged. Due to this, logical copies of subgraphs are very cheap, as the underlying data does not need to be copied until it is modified.
    
    Persistence allows highly similar subgraphs to share memory. Examples: very similar symbols such as resistors with different values where only captions differ; evolving a schematic or layout for cross-technology mapping; placement or routing steps that evolve layouts; power grid generation; separate copies of the SimHierarchy when performing different simulations; reverting incremental changes.
 
@@ -144,6 +144,24 @@ Inserters & indices
 .. autoclass:: CombinedIndex
 
 .. autoclass:: IndexQuery
+
+Array rows
+----------
+
+Node types declaring ``arrayable = True`` (e.g. :class:`~ordec.core.schema.LayoutRect`) can be inserted and read as arrays, which skips the per-node cost of cursors, NodeTuples and index maintenance for bulk data such as the rectangles of an imported GDS cell. All attributes of an arrayable type must be array-representable (int, :class:`LocalRef`, :class:`ExternalRef`, or a value type with ``array_width`` such as ``Vec2I``/``Rect4I``). In array form, each attribute is an int64 column, rows ordered by nid; a row is representable if none of its values is None.
+
+.. code-block:: python
+
+    with layout.updater() as u:
+        nids = u.insert_array(LayoutRect, layer=layers.Metal1, rect=rects) # rects: shape (n, 4)
+    cols = layout.arrays(LayoutRect) # {'nid': ..., 'layer': ..., 'rect': (n, 4)}
+
+:meth:`SubgraphUpdater.insert_array` is equivalent to inserting the same rows one by one with ``add_single`` in the same transaction, and :meth:`Subgraph.arrays` returns what iterating ``all(LayoutRect)`` would read. Array rows remain ordinary nodes: cursors, updates, removals and queries work on them as on any node. How they are stored is up to the storage backend: ``cow-arrays`` keeps them in array chunks (see :doc:`../dev/ordb_benchmarks`), all other backends store them row by row. The wire format encodes representable rows of arrayable types as arrays regardless of the backend (see :mod:`ordec.core.wire`).
+
+.. automethod:: SubgraphUpdater.insert_array
+
+.. automethod:: Subgraph.arrays
+  :no-index:
 
 Low-level stuff
 ---------------

@@ -15,14 +15,23 @@ Available backends
 Name                          Storage model
 ============================ ==================================================
 ``pyrsistent-patricia``       Persistent HAMT maps (pyrsistent), Patricia-trie
-                              integer-set buckets. The default.
+                              integer-set buckets. The default until
+                              ``cow-arrays`` replaced it.
 ``pyrsistent-pvector``        Same maps, sorted persistent-vector buckets (the
                               pre-Patricia behavior; kept as a baseline).
 ``fullcopy``                  Plain dicts, full copies at every boundary
                               including transaction begin. Strawman baseline.
 ``cow``                       Plain dicts, O(1) snapshot sharing, transactions
-                              copy only what they touch (top-level dict once
-                              after a snapshot, buckets on first write).
+                              copy only what they must (top-level dict and
+                              changed buckets once after a snapshot; owned
+                              buckets are changed in place at commit).
+``cow-arrays``                The cow backend plus array chunks for rows
+                              inserted with ``insert_array`` (arrayable node
+                              types, e.g. LayoutRect): no per-node cost for
+                              bulk geometry. Edits of chunk rows go to a
+                              transaction overlay, applied at commit (in place
+                              for owned chunks, on a copy for shared ones).
+                              The default.
 ``delta`` /                   Delta chains ported from the Zig ORDB
 ``delta-compactN``            reimplementation (``zig`` branch): each frozen
                               generation stores only its delta; reads walk the
@@ -179,8 +188,11 @@ attribute (as :class:`~ordec.core.simarray.SimColumn` does for simulation data)
 would change the constraint-based layout workflow and is a separate
 discussion.
 
-On the benchmark side, a default-backend decision wants large-scale runs, and
-runs with a working pyrsistent C extension, before it is made. The ``delta``
+``cow-arrays`` became the default after large-scale runs: it is faster than
+``pyrsistent-patricia`` on every workload of the suite and needs about half
+the memory, except on ``snapshot_chain``, where keeping many generations of
+one large subgraph costs about 2.5x the memory (each generation that is
+modified owns a copy of the top-level dicts). The ``delta``
 backend's weakness on ``micro_replace`` points at its index-delta merge at
 commit. Candidates worth measuring: a ``cow`` backend with Patricia buckets,
 and an unsorted-NID-bucket variant — ascending iteration is the only ordering

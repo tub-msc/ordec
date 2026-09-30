@@ -40,6 +40,7 @@ the documentation).
 import argparse
 import http
 import json
+import cbor2
 import traceback
 import linecache
 import itertools
@@ -65,6 +66,7 @@ import select
 import errno
 
 import inotify_simple
+import numpy as np
 from websockets.sync.server import serve
 from websockets.http11 import Request, Response
 from websockets.datastructures import Headers
@@ -396,6 +398,36 @@ def message_exception(message, etype='Error'):
         'frames': [],
     }
 
+# RFC 8746 typed-array tags by numpy dtype (little-endian; uint8 has no
+# endianness). The client (cbor-x) decodes them into JS typed arrays.
+CBOR_TYPED_ARRAY_TAGS = {
+    np.dtype('uint8'): 64,
+    np.dtype('<u2'): 69,
+    np.dtype('<u4'): 70,
+    np.dtype('int8'): 72,
+    np.dtype('<i2'): 77,
+    np.dtype('<i4'): 78,
+    np.dtype('<f4'): 85,
+    np.dtype('<f8'): 86,
+}
+
+def cbor_default(encoder, value):
+    if not isinstance(value, np.ndarray):
+        raise cbor2.CBOREncodeTypeError(f"cannot serialize type {type(value).__name__}")
+    if value.ndim != 1:
+        raise cbor2.CBOREncodeValueError("only 1-dimensional arrays can be sent")
+    # Dtype conversion is explicit: a big-endian array raises instead of
+    # being silently converted.
+    try:
+        tag = CBOR_TYPED_ARRAY_TAGS[value.dtype]
+    except KeyError:
+        raise cbor2.CBOREncodeTypeError(f"unsupported array dtype {value.dtype}") from None
+    encoder.encode(cbor2.CBORTag(tag, np.ascontiguousarray(value).tobytes()))
+
+def ws_encode(payload) -> bytes:
+    """Encodes one WebSocket message (see docs/dev/webui.rst)."""
+    return cbor2.dumps(payload, default=cbor_default)
+
 class ConnectionHandler:
     def __init__(self, key, sysmodules_orig, jobrunner=None, on_activity=None):
         self.sysmodules_orig = set(sysmodules_orig.keys())
@@ -543,17 +575,21 @@ class ConnectionHandler:
         msgs = iter(websocket)
 
         def send_exception_info(reason):
-            websocket.send(json.dumps({
+            websocket.send(ws_encode({
                 'msg': 'exception',
                 'exception': message_exception(reason),
             }))
 
         # Validate auth_token to prevent code execution from untrusted connections:
         try:
-            msg_first = json.loads(next(msgs))
+            msg_first = cbor2.loads(next(msgs))
         except StopIteration:
             # Client connected and disconnected without sending anything.
             print(f"{remote}: websocket closed before first message")
+            return
+        except (cbor2.CBORDecodeError, TypeError):
+            # TypeError: text frame (str) instead of a binary CBOR frame.
+            send_exception_info("malformed first message: expected a binary CBOR frame")
             return
 
         try:
@@ -585,12 +621,12 @@ class ConnectionHandler:
             return
         
         if exc:
-            websocket.send(json.dumps({
+            websocket.send(ws_encode({
                 'msg': 'exception',
                 'exception': format_user_exception(exc),
             }))
         else: 
-            websocket.send(json.dumps({
+            websocket.send(ws_encode({
                 'msg': 'viewlist',
                 'views': discover_views(conn_globals),
             }))
@@ -609,7 +645,7 @@ class ConnectionHandler:
         def send_msg(payload):
             with websocket_lock:
                 try:
-                    websocket.send(json.dumps(payload))
+                    websocket.send(ws_encode(payload))
                 except ConnectionClosed:
                     pass  # late progress/terminal after disconnect
 
@@ -658,7 +694,7 @@ class ConnectionHandler:
         try:
             for msg_raw in websocket:
                 self.on_activity()
-                msg = json.loads(msg_raw)
+                msg = cbor2.loads(msg_raw)
                 msg_type = msg.get('msg')
                 if msg_type == 'getview':
                     try:
@@ -744,7 +780,7 @@ def background_inotify(watch_files, pipe_inotify_abort_r, websocket, websocket_l
         if stale:
             with websocket_lock:
                 try:
-                    websocket.send(json.dumps({'msg':'localmodule_changed'}))
+                    websocket.send(ws_encode({'msg':'localmodule_changed'}))
                 except ConnectionClosed:
                     return
 
@@ -756,7 +792,7 @@ def background_inotify(watch_files, pipe_inotify_abort_r, websocket, websocket_l
                 for m in inotify.read(timeout=0):
                     with websocket_lock:
                         try:
-                            websocket.send(json.dumps({'msg':'localmodule_changed'}))
+                            websocket.send(ws_encode({'msg':'localmodule_changed'}))
                         except ConnectionClosed:
                             # The client disconnected while events were
                             # pending (common on reconnects, which this very

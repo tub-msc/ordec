@@ -144,6 +144,14 @@ class CNode(Node):
 
     tag_idx = Index(tag)
 
+class ANode(Node):
+    """Arrayable node type for the differential fuzz (insert_array, chunk
+    storage in the cow-arrays backend)."""
+    in_subgraphs = [ChainRoot]
+    arrayable = True
+    val = Attr(int)
+    other = Attr(int)
+
 # Micro-benchmark subgraph (from the former tests/bench_ordb_index.py)
 # --------------------------------------------------------------------
 

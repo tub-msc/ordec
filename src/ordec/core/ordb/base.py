@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from abc import ABC, ABCMeta, abstractmethod
 import string
 import warnings
+import numpy as np
 from public import public
 
 from .backend import BucketKind, StorageBackend, default_backend
@@ -704,6 +705,39 @@ class NodeTuple(tuple):
 # Register NodeTuple as virtual subclass of Inserter. Combining tuple and ABC seems like it could cause problems.
 Inserter.register(NodeTuple)
 
+@dataclass(frozen=True, eq=False)
+class ArrayField:
+    """
+    One attribute of an arrayable node type (Node.arrayable) in array form:
+    width int64 columns; vtype(*ints) rebuilds the attribute value when
+    width > 1 (e.g. Rect4I), plain ints are used when vtype is None.
+    """
+    name: str
+    index: int
+    attr: Attr
+    width: int
+    vtype: type|NoneType
+
+def array_layout(name, layout, indices) -> tuple[ArrayField]:
+    fields = []
+    for ad in layout:
+        attr = ad.attr
+        if isinstance(attr, (LocalRef, ExternalRef)) or attr.type is int:
+            fields.append(ArrayField(ad.name, ad.index, attr, 1, None))
+        elif isinstance(getattr(attr.type, 'array_width', None), int) \
+                and not isinstance(attr, (SubgraphRef, LiveRef)):
+            fields.append(ArrayField(ad.name, ad.index, attr, attr.type.array_width, attr.type))
+        else:
+            raise TypeError(f"{name}.{ad.name}: attribute type"
+                f" {attr.type.__name__} is not array-representable.")
+    for idx in indices:
+        if getattr(idx, 'unique', False):
+            # Array rows are checked vectorized, which does not cover
+            # uniqueness yet.
+            raise TypeError(f"{name}: arrayable node types cannot have"
+                " unique indices.")
+    return tuple(fields)
+
 #: Maps declared wire_ids to their Node classes (see ordec.core.wire). Node
 #: classes opt into wire serialization by declaring wire_id = WIRE_DOMAIN | n
 #: in their class body, with WIRE_DOMAIN a per-module constant.
@@ -791,6 +825,9 @@ class NodeMeta(type):
                         nt_indices.append(ns)
 
             nodetuple_dict['indices'] = nt_indices
+            # arrayable, like wire_id, applies to the declaring class only.
+            nodetuple_dict['_array_layout'] = array_layout(name, layout, nt_indices) \
+                if attrs.get('arrayable', False) else None
             nodetuple_dict['_attrdesc_by_name'] = attrdesc_by_name
             nodetuple_dict['_attrdesc_by_attr'] = attrdesc_by_attr
             nodetuple_dict['_layout'] = layout
@@ -846,6 +883,15 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
     """
 
     in_subgraphs = []
+
+    #: Declares that rows of this node type may be inserted, read and
+    #: stored as arrays (SubgraphUpdater.insert_array, Subgraph.arrays).
+    #: All attributes must be array-representable: int, LocalRef,
+    #: ExternalRef or a value type with array_width (Vec2I, Rect4I).
+    #: Rows with None values or ints outside the int64 range remain
+    #: possible, but are not representable in arrays. Like wire_id, it
+    #: applies to the declaring class only.
+    arrayable = False
 
     @classmethod
     def raw_cursor(cls, subgraph: 'Subgraph', nid: int|NoneType, npath_nid: int|NoneType):
@@ -1221,6 +1267,10 @@ class SubgraphRoot(NonLeafNode):
         """Convenience wrapper for :meth:`Subgraph.all`."""
         return self.subgraph.all(*args, **kwargs)
 
+    def arrays(self, *args, **kwargs) -> 'dict[str, numpy.ndarray]':
+        """Convenience wrapper for :meth:`Subgraph.arrays`."""
+        return self.subgraph.arrays(*args, **kwargs)
+
     def one(self, *args, **kwargs) -> Node:
         """Convenience wrapper for :meth:`Subgraph.one`."""
         return self.subgraph.one(*args, **kwargs)
@@ -1364,6 +1414,7 @@ class SubgraphUpdater(SubgraphQueryMixin):
         'commit',
         'check_nids',
         'removed_nids',
+        'check_arrays',
         'valid',
         'nid_gen_counter',
         'nid_max_encountered',
@@ -1383,6 +1434,7 @@ class SubgraphUpdater(SubgraphQueryMixin):
         self.commit = True
         self.check_nids = {} # used as ordered set
         self.removed_nids = {} # used as ordered set
+        self.check_arrays = [] # (ntype, nids, cols) stored natively by the backend
         self.valid = True
         return self
 
@@ -1402,6 +1454,7 @@ class SubgraphUpdater(SubgraphQueryMixin):
                         if not any([issubclass(subgraph_root_cls, cls) for cls in permitted_in_subgraphs]):
                             raise ModelViolation(f"{nodes[nid]._cursor_type.__name__} is not permitted in subgraph {subgraph_root_cls.__name__}.")
                     nodes[nid].check_constraints(self, nid)
+                self.check_array_rows()
 
                 index = self.txn.index
                 for nid in self.removed_nids:
@@ -1475,6 +1528,63 @@ class SubgraphUpdater(SubgraphQueryMixin):
         self.removed_nids.pop(nid, None)
 
         return nid
+
+    def insert_array(self, ntype: type, **values) -> range:
+        """
+        Inserts n nodes of an arrayable node type (Node.arrayable) from
+        array values, e.g. insert_array(LayoutRect, layer=layer, rect=a)
+        with a of shape (n, 4). Equivalent to n add_single() calls with
+        consecutive new nids; see ordec.core.ordb.arrays for the value
+        forms.
+
+        Returns:
+            The nids of the inserted nodes.
+        """
+        from .arrays import normalize
+        n, cols = normalize(ntype, values)
+        start = self.nid_gen_counter
+        if n > 0 and start + n - 1 not in self.target_subgraph.nid_alloc:
+            raise OrdbException("nid allocation exhausted.")
+        nids = range(start, start + n)
+        self.insert_array_at(ntype, np.arange(start, start + n, dtype=np.int64), cols,
+            fresh=True)
+        return nids
+
+    def insert_array_at(self, ntype: type, nids, cols, fresh: bool=False):
+        """
+        Like insert_array, with given nids (ascending int64 array) and
+        normalized columns. Used by insert_array and wire_decode. fresh
+        states that the nids are newly generated (see
+        StorageTxn.insert_array).
+        """
+        if not self.valid:
+            raise TypeError("Invalid SubgraphUpdater.")
+        if len(nids) == 0:
+            return
+        if self.txn.insert_array(ntype, nids, cols, fresh):
+            nid_max = int(nids[-1])
+            self.nid_max_encountered = max(self.nid_max_encountered, nid_max)
+            self.nid_gen_counter = max(self.nid_gen_counter, self.nid_max_encountered+1)
+            if self.removed_nids:
+                for nid in nids.tolist():
+                    self.removed_nids.pop(nid, None)
+            self.check_arrays.append((ntype, nids, cols))
+        else:
+            from .arrays import iter_tuples
+            for nid, node in zip(nids.tolist(), iter_tuples(ntype, cols)):
+                self.add_single(node, nid)
+
+    def check_array_rows(self):
+        from .arrays import check_rows
+        for ntype, nids, cols in self.check_arrays:
+            # Rows removed or updated later in this transaction are not
+            # checked here (updated rows are checked per row via check_nids).
+            skip = self.removed_nids.keys() | self.check_nids.keys()
+            if skip:
+                keep = ~np.isin(nids, np.fromiter(skip, dtype=np.int64))
+                nids = nids[keep]
+                cols = {k: v[keep] for k, v in cols.items()}
+            check_rows(self, ntype, nids, cols)
 
     def remove_nid(self, nid):
         if not self.valid:
@@ -1566,6 +1676,15 @@ class Subgraph(SubgraphQueryMixin, ABC):
                 table_str = table_str.replace('</table>', '</table></div>', 1)
             ret.append(table_str)
         return "\n".join(ret).replace('\n', '\n  ')
+
+    def arrays(self, ntype: type) -> 'dict[str, numpy.ndarray]':
+        """
+        Returns all nodes of an arrayable node type (Node.arrayable) as
+        read-only int64 arrays: 'nid' plus one array per attribute, rows
+        ordered by nid. Raises ValueError if a node has values that are None
+        or outside the int64 range.
+        """
+        return self.backend.arrays(self, ntype)
 
     def node_dict(self, mode='canonical') -> dict[int,NodeTuple]:
         """

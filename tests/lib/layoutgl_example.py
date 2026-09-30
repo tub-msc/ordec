@@ -20,15 +20,12 @@ def layoutgl_example() -> Layout:
             Vec2I(500, 0),
         ],
     )
-    l % LayoutPoly(
-        layer=layers.Metal3.pin,
-        vertices=[
-            Vec2I(250, 250),
-            Vec2I(250, 750),
-            Vec2I(750, 750),
-            Vec2I(750, 250),
-        ],
-    )
+    # The Metal3.pin square (250, 250)-(750, 750) comes from a rotated
+    # instance of a subcell holding a LayoutRect, which exercises the
+    # hierarchical transfer and rect rendering of the viewer.
+    sub = Layout(ref_layers=layers)
+    sub % LayoutRect(layer=layers.Metal3.pin, rect=Rect4I(0, -500, 500, 0))
+    l % LayoutInstance(pos=Vec2I(250, 250), orientation=D4.R90, ref=sub.freeze())
     l % LayoutLabel(
         layer=layers.Metal3.pin,
         pos=Vec2I(500,500),

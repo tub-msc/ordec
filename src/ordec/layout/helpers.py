@@ -6,6 +6,7 @@ from typing import Iterable
 from public import public
 
 from ..core import *
+from ..core.ordb import SubgraphUpdater
 
 @public
 def poly_orientation(vertices: list[Vec2I]):
@@ -124,11 +125,15 @@ def expand_paths(layout: Layout):
     For the given Layout, replaces all LayoutPath instances by geometrically
     equivalent LayoutPoly instances.
     """
-    for path in layout.all(LayoutPath):
-        path.replace(LayoutPoly(
-            layer=path.layer,
-            vertices=path_to_poly_vertices(path),
-            ))
+    # One transaction for all paths; cursors read the pre-transaction state.
+    with layout.updater() as u:
+        for path in layout.all(LayoutPath):
+            poly = LayoutPoly(
+                layer=path.layer,
+                vertices=path_to_poly_vertices(path),
+                )
+            path.remove_node(u)
+            poly.insert_into(u, path.nid)
 
 @public
 def expand_rects(layout: Layout):
@@ -137,17 +142,21 @@ def expand_rects(layout: Layout):
     equivalent LayoutPoly instances.
     """
 
-    for rect in layout.all(LayoutRect):
-        r = rect.rect
-        rect.replace(LayoutPoly(
-            layer=rect.layer,
-            vertices=[
-                Vec2I(r.lx, r.ly),
-                Vec2I(r.ux, r.ly),
-                Vec2I(r.ux, r.uy),
-                Vec2I(r.lx, r.uy),
-            ]
-            ))
+    # One transaction for all rects; cursors read the pre-transaction state.
+    with layout.updater() as u:
+        for rect in layout.all(LayoutRect):
+            r = rect.rect
+            poly = LayoutPoly(
+                layer=rect.layer,
+                vertices=[
+                    Vec2I(r.lx, r.ly),
+                    Vec2I(r.ux, r.ly),
+                    Vec2I(r.ux, r.uy),
+                    Vec2I(r.lx, r.uy),
+                ]
+                )
+            rect.remove_node(u)
+            poly.insert_into(u, rect.nid)
 
 @public
 def expand_geom(layout: Layout):
@@ -168,21 +177,21 @@ def check_ref_layers(dst: Layout, inst: LayoutInstance):
             f" differs from the parent's ref_layers ({dst.ref_layers!r})."
         )
 
-def flatten_instance(dst: Layout, src: Layout, tran: TD4I, first_level: bool):
+def flatten_instance(sgu: SubgraphUpdater, dst: Layout, src: Layout, tran: TD4I, first_level: bool):
     # At the first level, src is dst and mutable. We need to process only the
-    # LayoutInstances and LayoutInstanceArarys and remove them.
-    # At all subsequent levels, src is not dst. The processed LayoutInstances
-    # and LayoutInstanceArrays should no longer be removed. (They cannot be
-    # removed, since src is frozen.)
+    # LayoutInstances and LayoutInstanceArarys; flatten() removes them.
+    # At all subsequent levels, src is not dst. Their shapes are copied into
+    # dst through sgu, a single transaction on dst for the whole flatten.
 
     assert first_level == (dst is src)
+
+    def add(node):
+        node.insert_into(sgu, sgu.nid_generate())
 
     for src_e in src.all(LayoutInstance):
         check_ref_layers(dst, src_e)
         sub_tran = tran * src_e.loc_transform()
-        flatten_instance(dst, src_e.ref, sub_tran, False)
-        if first_level:
-            src_e.remove()
+        flatten_instance(sgu, dst, src_e.ref, sub_tran, False)
 
     for src_e in src.all(LayoutInstanceArray):
         check_ref_layers(dst, src_e)
@@ -192,10 +201,7 @@ def flatten_instance(dst: Layout, src: Layout, tran: TD4I, first_level: bool):
                     * (col*src_e.vec_col).transl() \
                     * (row*src_e.vec_row).transl() \
                     * src_e.loc_transform()
-                flatten_instance(dst, src_e.ref, sub_tran, False)
-        if first_level:
-            src_e.remove()
-
+                flatten_instance(sgu, dst, src_e.ref, sub_tran, False)
 
     if first_level:
         return
@@ -209,37 +215,41 @@ def flatten_instance(dst: Layout, src: Layout, tran: TD4I, first_level: bool):
         return ret
 
     for src_e in src.all(LayoutPoly):
-        dst % LayoutPoly(
+        add(LayoutPoly(
             layer=src_e.layer,
             vertices=transform_vertex_loop(src_e.vertices()),
-        )
+        ))
 
     for src_e in src.all(LayoutPath):
-        dst % LayoutPath(
+        add(LayoutPath(
             layer=src_e.layer,
             width=src_e.width,
             endtype=src_e.endtype,
             vertices=[tran * v for v in src_e.vertices()],
             ext_bgn = src_e.ext_bgn,
             ext_end = src_e.ext_end,
-        )
+        ))
 
     for src_e in src.all(LayoutRect):
-        dst % LayoutRect(
+        add(LayoutRect(
             layer=src_e.layer,
             rect=tran * src_e.rect,
-        )
+        ))
 
     for src_e in src.all(LayoutLabel):
-        dst % LayoutLabel(
+        add(LayoutLabel(
             layer=src_e.layer,
             pos=tran * src_e.pos,
             text=src_e.text,
-        )
+        ))
 
 @public
 def flatten(layout: Layout):
-    flatten_instance(layout, layout, TD4I(), True)
+    insts = list(layout.all(LayoutInstance)) + list(layout.all(LayoutInstanceArray))
+    with layout.updater() as sgu:
+        flatten_instance(sgu, layout, layout, TD4I(), True)
+    for inst in insts:
+        inst.remove()
 
 @public
 def expand_instancearrays(layout: Layout):
@@ -321,31 +331,36 @@ def expand_pins(layout: Layout, directory: Directory):
     Handles LayoutPoly and LayoutPath refs directly. Expects that LayoutRect
     objects have already been expanded (e.g. through expand_rects).
     """
-    for pin in layout.all(LayoutPin):
-        ref = pin.ref
-        if isinstance(ref, LayoutPoly):
-            vertices = ref.vertices()
-        elif isinstance(ref, LayoutPath):
-            vertices = path_to_poly_vertices(ref)
-        else:
-            raise Exception(
-                f"expand_pins: unsupported ref type {type(ref)}. "
-                f"Run expand_rects first."
-            )
+    # One transaction for all pins; cursors read the pre-transaction state.
+    with layout.updater() as u:
+        for pin in layout.all(LayoutPin):
+            ref = pin.ref
+            if isinstance(ref, LayoutPoly):
+                vertices = ref.vertices()
+            elif isinstance(ref, LayoutPath):
+                vertices = path_to_poly_vertices(ref)
+            else:
+                raise Exception(
+                    f"expand_pins: unsupported ref type {type(ref)}. "
+                    f"Run expand_rects first."
+                )
 
-        pinlayer = pin.ref.layer.pinlayer()
+            pinlayer = pin.ref.layer.pinlayer()
 
-        layout % LayoutPoly(
-            layer=pinlayer,
-            vertices=vertices,
-            )
-        layout % LayoutLabel(
-            layer=pinlayer,
-            pos=_interior_point(vertices),
-            text=directory.name_node(pin.pin),
-            )
+            LayoutPoly(
+                layer=pinlayer,
+                vertices=vertices,
+                ).insert_into(u, u.nid_generate())
+            LayoutLabel(
+                layer=pinlayer,
+                pos=_interior_point(vertices),
+                text=directory.name_node(pin.pin),
+                ).insert_into(u, u.nid_generate())
 
-        pin.remove()
+            # Equivalent of pin.remove():
+            if pin.npath_nid is not None:
+                u.remove_nid(pin.npath_nid)
+            pin.remove_node(u)
 
 def _normalize_poly_vertices(vertices: list[Vec2I]) -> tuple:
     """Rotate vertex list so the lexicographically smallest (x, y) is first."""

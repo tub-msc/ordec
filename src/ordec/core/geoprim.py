@@ -86,6 +86,7 @@ class Vec2I(Vec2Generic):
     """2D vector with integer components."""
 
     __slots__ = ()
+    array_width = 2 #: Number of int columns in array rows (see ordb Node.arrayable).
 
     def __new__(cls, x, y):
         x = int(x)
@@ -268,6 +269,15 @@ class Rect4I(Rect4Generic):
     """2D rectangle with integer components."""
     __slots__ = ()
     vector_cls = Vec2I
+    array_width = 4 #: Number of int columns in array rows (see ordb Node.arrayable).
+
+    @staticmethod
+    def array_check(a):
+        """Vectorized equivalent of the checks in __new__ for an (n, 4) array."""
+        if (a[:, 0] > a[:, 2]).any():
+            raise ValueError("lx is greater than ux.")
+        if (a[:, 1] > a[:, 3]).any():
+            raise ValueError("ly is greater than uy.")
 
     def __new__(cls, lx: int, ly: int, ux: int, uy: int):
         lx = int(lx)

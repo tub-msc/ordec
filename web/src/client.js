@@ -1,7 +1,13 @@
 // SPDX-FileCopyrightText: 2025 ORDeC contributors
 // SPDX-License-Identifier: Apache-2.0
 
+import { Encoder } from 'cbor-x';
 import { session } from './auth.js';
+
+// All WebSocket messages are CBOR binary frames, in both directions (see
+// server.py). Maps decode to plain objects and 64-bit integers to numbers,
+// as with JSON; RFC 8746 typed-array tags decode to typed arrays.
+const cbor = new Encoder({useRecords: false, mapsAsObjects: true, int64AsNumber: true});
 
 export class OrdecClient {
     constructor(srctype, resultViewers, setStatus, onSessionLost) {
@@ -55,6 +61,7 @@ export class OrdecClient {
             wsUrl.protocol = 'wss:';
         }
         this.sock = new WebSocket(wsUrl.href, []);
+        this.sock.binaryType = 'arraybuffer';
         this.sockOpened = false;
         this.sock.onopen = (ev) => this.wsOnOpen(ev);
         this.sock.onmessage = (ev) => this.wsOnMessage(ev);
@@ -67,7 +74,7 @@ export class OrdecClient {
         if (messageEvent.target !== this.sock) {
             return;
         }
-        const msg = JSON.parse(messageEvent.data);
+        const msg = cbor.decode(new Uint8Array(messageEvent.data));
         //console.log(msg)
         if (msg['msg'] == 'viewlist') {
             this.exception = null;
@@ -175,7 +182,7 @@ export class OrdecClient {
                 msg.check_src = this.checkSrc;
             }
         }
-        this.sock.send(JSON.stringify(msg));
+        this.sock.send(cbor.encode(msg));
     }
 
     requestViews() {
@@ -190,7 +197,7 @@ export class OrdecClient {
                 const req = ++this.reqCounter;
                 rv.beginRequest(req);
                 this.inflight.set(req, rv);
-                this.sock.send(JSON.stringify({
+                this.sock.send(cbor.encode({
                     msg: 'getview',
                     view: rv.viewSelected,
                     req: req,
@@ -204,7 +211,7 @@ export class OrdecClient {
         // Idempotent; the in-flight entry is only removed by the terminal
         // 'view' message (which a cancel always produces).
         if (this.inflight.has(rv.currentReq)) {
-            this.sock.send(JSON.stringify({
+            this.sock.send(cbor.encode({
                 msg: 'cancelview',
                 req: rv.currentReq,
             }));

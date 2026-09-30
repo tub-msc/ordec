@@ -89,6 +89,24 @@ class StorageBackend(ABC):
         """Flatten internal delta structure; identity for flat backends."""
         return subgraph.nodes, subgraph.index, subgraph.nid_alloc
 
+    def arrays(self, subgraph, ntype, partial=False):
+        """
+        Backend of Subgraph.arrays() (see ordec.core.ordb.arrays); with
+        partial, rows that are not array-representable are skipped instead
+        of raising. The generic implementation reads row by row; backends
+        storing array rows natively override it.
+        """
+        from .arrays import gather
+        return gather(subgraph, ntype, partial)
+
+    def row_nids(self, subgraph):
+        """
+        Iterable of the nids of all nodes not stored natively as array
+        rows (in any order). Array rows are read via arrays() instead,
+        e.g. by the wire encoder. Generic: all nids.
+        """
+        return subgraph.nodes
+
     # Value semantics of FrozenSubgraph (nodes + nid_alloc; index is excluded
     # as it is equal by construction). The generic implementations work
     # across backends; backends may override with faster equivalents that
@@ -152,6 +170,20 @@ class StorageTxn(ABC):
         already in the bucket (via this txn's node state).
         """
 
+    def insert_array(self, ntype, nids, cols, fresh=False) -> bool:
+        """
+        Optionally stores array rows natively (see ordec.core.ordb.arrays):
+        nids is an ascending int64 array of nids, cols the validated int64
+        columns. fresh states that the nids are above every nid of the
+        subgraph and of this transaction, so they cannot collide; otherwise
+        the backend raises OrdbException for a nid that is in use. A backend
+        that stores the rows maintains their index entries itself. Returns
+        False if the backend does not store these rows as arrays (which may
+        depend on ntype and on the nids); SubgraphUpdater then inserts them
+        row by row.
+        """
+        return False
+
     @abstractmethod
     def commit(self):
         """Finalize and return (nodes, index) for Subgraph.mutate()."""
@@ -169,7 +201,7 @@ class StorageTxn(ABC):
 # backends themselves are registered in this package's __init__, which is
 # what keeps them free to import this module.
 
-BUILTIN_DEFAULT = 'pyrsistent-patricia'
+BUILTIN_DEFAULT = 'cow-arrays'
 
 _registry = {}
 _default = None
