@@ -21,8 +21,9 @@ Name                          Storage model
 ``fullcopy``                  Plain dicts, full copies at every boundary
                               including transaction begin. Strawman baseline.
 ``cow``                       Plain dicts, O(1) snapshot sharing, transactions
-                              copy only what they touch (top-level dict once
-                              after a snapshot, buckets on first write).
+                              copy only what they must (top-level dict and
+                              changed buckets once after a snapshot; owned
+                              buckets are changed in place at commit).
 ``cow-arrays``                The cow backend plus array chunks for rows
                               inserted with ``insert_array`` (arrayable node
                               types, e.g. LayoutRect): no per-node cost for
