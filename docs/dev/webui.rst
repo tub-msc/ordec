@@ -38,7 +38,7 @@ For automated browser tests, ``main.js`` exposes ``window.ordecApp`` (with ``.cl
 Client–server protocol
 ----------------------
 
-All communication runs over one WebSocket (``/api/websocket``) with JSON messages:
+All communication runs over one WebSocket (``/api/websocket``). Every message, in both directions, is one binary frame holding a CBOR-encoded map (``cbor2`` on the server, ``cbor-x`` in ``client.js``). Besides being more compact than JSON, CBOR carries binary data: numeric arrays in ``webdata()`` output are sent as RFC 8746 typed-array tags, which the client decodes directly into JavaScript typed arrays. The messages are:
 
 1. On connect, the client authenticates and submits the source: ``{msg: 'source', srctype, src, auth}`` (integrated mode, code from the browser editor) or ``{msg: 'localmodule', module, auth}`` (local mode, module on the server's filesystem).
 2. The server builds the cells, discovers all views (``discover_views``: every view generator — ``@viewgen``/``@viewgen_noctx``, as Cell method or module-level function — reachable from the module) and answers with ``{msg: 'viewlist', views: [...]}`` — or ``{msg: 'exception', exception}`` if evaluation failed.

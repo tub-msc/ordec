@@ -6,7 +6,7 @@ WebSocket protocol tests for progress reporting and view-generation
 cancellation (no browser; raw websockets.sync client against the server).
 """
 
-import json
+import cbor2
 import queue
 import socket
 import threading
@@ -92,10 +92,10 @@ class Client:
             self.views = {v['name'] for v in first['views']}
 
     def send(self, payload):
-        self.sock.send(json.dumps(payload))
+        self.sock.send(cbor2.dumps(payload))
 
     def recv(self, timeout=30):
-        return json.loads(self.sock.recv(timeout=timeout))
+        return cbor2.loads(self.sock.recv(timeout=timeout))
 
     def getview(self, view, req):
         self.send({'msg': 'getview', 'view': view, 'req': req})
@@ -275,9 +275,9 @@ def test_auth_error_structured(proto_server):
     url, key = proto_server
     sock = connect(url)
     try:
-        sock.send(json.dumps({'msg': 'source', 'srctype': 'python',
+        sock.send(cbor2.dumps({'msg': 'source', 'srctype': 'python',
             'src': 'x = 1\n', 'auth': 'wrong-token'}))
-        msg = json.loads(sock.recv(timeout=30))
+        msg = cbor2.loads(sock.recv(timeout=30))
         assert msg['msg'] == 'exception'
         exc = msg['exception']
         assert isinstance(exc, dict)

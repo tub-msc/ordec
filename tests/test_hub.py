@@ -9,6 +9,7 @@ No browser and no real JupyterHub required.
 """
 
 import json
+import cbor2
 import queue
 import socket
 import threading
@@ -291,9 +292,9 @@ def test_websocket_cookie_gating(hub_server):
     _, _, body = request(port, f'{PREFIX}api/token', {'Cookie': cookie})
     auth = json.loads(body)['auth']
     with connect(url, additional_headers={'Cookie': cookie}) as sock:
-        sock.send(json.dumps({'msg': 'source', 'srctype': 'python',
+        sock.send(cbor2.dumps({'msg': 'source', 'srctype': 'python',
             'src': 'x = 42', 'auth': auth}))
-        msg = json.loads(sock.recv(timeout=30))
+        msg = cbor2.loads(sock.recv(timeout=30))
         assert msg['msg'] == 'viewlist'
 
 
@@ -435,7 +436,7 @@ def test_base_path_without_hub(prefix_server):
     assert status == 404
     # Websocket needs no cookie without a hub:
     with connect(f'ws://127.0.0.1:{port}/pfx/api/websocket') as sock:
-        sock.send(json.dumps({'msg': 'source', 'srctype': 'python',
+        sock.send(cbor2.dumps({'msg': 'source', 'srctype': 'python',
             'src': 'x = 1', 'auth': key.token()}))
-        msg = json.loads(sock.recv(timeout=30))
+        msg = cbor2.loads(sock.recv(timeout=30))
         assert msg['msg'] == 'viewlist'
