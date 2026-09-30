@@ -197,7 +197,7 @@ class StorageTxn(ABC):
 # backends themselves are registered in this package's __init__, which is
 # what keeps them free to import this module.
 
-BUILTIN_DEFAULT = 'pyrsistent-patricia'
+BUILTIN_DEFAULT = 'cow-arrays'
 
 _registry = {}
 _default = None

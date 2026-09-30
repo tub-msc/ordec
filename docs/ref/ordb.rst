@@ -23,9 +23,9 @@ ORDB is based on five principles:
 
 3. **Hierarchical tree organization:** Names can be assigned to nodes. Those names can be arranged hierarchically in a tree. This makes it possible to group design objects in arrays, structs or other logical units.
 
-4. **Persistent data structures:** The state of a ORDB subgraph is stored using `persistent data structures <https://en.wikipedia.org/wiki/Persistent_data_structure>`_ (from the `Pyrsistent <https://pyrsistent.readthedocs.io/>`_ library). Persistent data structures are immutable.
+4. **Persistent data structures:** The state of a ORDB subgraph behaves like a `persistent data structure <https://en.wikipedia.org/wiki/Persistent_data_structure>`_: a frozen state is immutable. How this is implemented is up to the storage backend (see :doc:`../dev/ordb_benchmarks`): the default backend shares state copy-on-write, the ``pyrsistent-*`` backends use the `Pyrsistent <https://pyrsistent.readthedocs.io/>`_ library.
    
-   Modifying a subgraph (i.e. adding, updating or removing nodes) replaces its old state with a new state, which is built upon the previous state. The old subgraph state remains unchanged. Due to this, logical copies of subgraphs are very cheap, as the underlying data structures are immutable and thus do not need to be copied.
+   Modifying a subgraph (i.e. adding, updating or removing nodes) replaces its old state with a new state, which is built upon the previous state. The old subgraph state remains unchanged. Due to this, logical copies of subgraphs are very cheap, as the underlying data does not need to be copied until it is modified.
    
    Persistence allows highly similar subgraphs to share memory. Examples: very similar symbols such as resistors with different values where only captions differ; evolving a schematic or layout for cross-technology mapping; placement or routing steps that evolve layouts; power grid generation; separate copies of the SimHierarchy when performing different simulations; reverting incremental changes.
 
