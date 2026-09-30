@@ -29,6 +29,30 @@ class MyNode(Node):
     in_subgraphs=[MyHead]
     label = Attr(str)
 
+class MyArrayNode(Node):
+    in_subgraphs=[MyHead]
+    arrayable = True
+    val = Attr(int)
+
+def test_insert_array_at_interleaved():
+    """Array rows with nids between those of earlier array rows."""
+    import numpy as np
+    s = MyHead()
+    def insert(nids):
+        with s.updater() as u:
+            u.insert_array_at(MyArrayNode, np.array(nids), {'val': np.array(nids) * 2})
+    insert([10, 20])
+    insert([15])
+    assert [n.nid for n in s.all(MyArrayNode)] == [10, 15, 20]
+    for nid in (10, 15, 20):
+        assert nid in s.subgraph.nodes
+        assert s.subgraph.cursor_at(nid).val == 2 * nid
+    with pytest.raises(OrdbException, match="Duplicate nid"):
+        insert([14, 15])
+    for nid in (10, 15, 20):
+        s.subgraph.cursor_at(nid).remove()
+    assert list(s.all(MyArrayNode)) == []
+
 def test_backend_in_effect(ordb_backend):
     """Guard the fixture itself: if use_backend ever stopped reaching newly
     built subgraphs, every parametrization here would silently collapse into

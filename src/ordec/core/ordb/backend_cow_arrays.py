@@ -35,7 +35,7 @@ import numpy as np
 
 from .backend import StorageBackend, StorageTxn, BucketKind
 from .backend_cow import CowTxn, CowNodes, _new_cow_index
-from .base import ExternalRefIndex
+from .base import ExternalRefIndex, OrdbException
 from .arrays import make_tuple, row_values, columns
 
 class Chunk:
@@ -81,7 +81,11 @@ def _materialize(ntuple, chunk, i, values=None):
     return make_tuple(ntuple._cursor_type, fields, values)
 
 def _locate(tables, nid):
-    """(ntuple, chunk, row) of a live chunk row with nid, or None."""
+    """
+    (ntuple, chunk, row) of a live chunk row with nid, or None. Relies on the
+    nid ranges [first, last] of the chunks of one type being disjoint (one
+    candidate chunk per type), which CowArraysTxn.insert_array ensures.
+    """
     for ntuple, chunks in tables.items():
         k = bisect.bisect_right(chunks, nid, key=lambda c: c.first) - 1
         if k < 0:
@@ -301,20 +305,25 @@ class CowArraysTxn(StorageTxn):
     def bucket_add_sorted(self, key, value, sortval, sortval_of):
         self.cow.bucket_add_sorted(key, value, sortval, sortval_of)
 
-    def insert_array(self, ntype, nids, cols) -> bool:
+    def insert_array(self, ntype, nids, cols, fresh=False) -> bool:
         ntuple = ntype.Tuple
         if not all(isinstance(idx, ExternalRefIndex) for idx in ntuple.indices):
             return False
-        lo, hi = int(nids[0]), int(nids[-1])
-        if any(lo <= nid <= hi for nid in self.cow.nodes) \
-                or any(c.first <= hi and lo <= c.nids[-1]
-                    for tables in (self.tables, self.new)
-                    for chunks in tables.values() for c in chunks):
-            # Overlapping nid ranges are rare (insert_array allocates fresh
-            # nids; only wire_decode passes explicit ones); check precisely.
-            for nid in nids.tolist():
-                if nid in self.nodes:
-                    raise KeyError(f"Duplicate nid {nid}.")
+        if not fresh:
+            # Explicit nids (wire_decode) may lie within the nid range of
+            # existing nodes.
+            lo, hi = int(nids[0]), int(nids[-1])
+            overlapping = [t for tables in (self.tables, self.new)
+                for t, chunks in tables.items() for c in chunks
+                if c.first <= hi and lo <= c.nids[-1]]
+            if ntuple in overlapping:
+                # Keeps the chunk ranges of one type disjoint (see _locate):
+                # these rows are stored in the dict part instead.
+                return False
+            if overlapping or any(lo <= nid <= hi for nid in self.cow.nodes):
+                for nid in nids.tolist():
+                    if nid in self.nodes:
+                        raise OrdbException("Duplicate nid.")
         # Always copy: the columns may alias caller arrays or be read-only
         # broadcast views, and chunks owned by the subgraph are edited in place.
         cols = {k: np.array(v, dtype=np.int64) for k, v in cols.items()}
@@ -450,6 +459,13 @@ class CowArraysBackend(StorageBackend):
                 arrays[ntuple] = cols
         return plain, arrays
 
+    # TODO: content_hash uses its own scheme (array digests), while
+    # content_equal falls back to the generic comparison for subgraphs of
+    # other backends. Equal subgraphs built under cow-arrays and under
+    # another backend therefore compare equal but hash differently, which
+    # breaks dict/set lookups if backends are mixed in one process.
+    # backend.py only requires consistent hashing within one backend; to be
+    # resolved with the v2 backend.
     def content_hash(self, subgraph):
         plain, arrays = self._decompose(subgraph)
         digests = []

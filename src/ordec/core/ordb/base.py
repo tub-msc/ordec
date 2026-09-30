@@ -1546,19 +1546,22 @@ class SubgraphUpdater(SubgraphQueryMixin):
         if n > 0 and start + n - 1 not in self.target_subgraph.nid_alloc:
             raise OrdbException("nid allocation exhausted.")
         nids = range(start, start + n)
-        self.insert_array_at(ntype, np.arange(start, start + n, dtype=np.int64), cols)
+        self.insert_array_at(ntype, np.arange(start, start + n, dtype=np.int64), cols,
+            fresh=True)
         return nids
 
-    def insert_array_at(self, ntype: type, nids, cols):
+    def insert_array_at(self, ntype: type, nids, cols, fresh: bool=False):
         """
         Like insert_array, with given nids (ascending int64 array) and
-        normalized columns. Used by insert_array and wire_decode.
+        normalized columns. Used by insert_array and wire_decode. fresh
+        states that the nids are newly generated (see
+        StorageTxn.insert_array).
         """
         if not self.valid:
             raise TypeError("Invalid SubgraphUpdater.")
         if len(nids) == 0:
             return
-        if self.txn.insert_array(ntype, nids, cols):
+        if self.txn.insert_array(ntype, nids, cols, fresh):
             nid_max = int(nids[-1])
             self.nid_max_encountered = max(self.nid_max_encountered, nid_max)
             self.nid_gen_counter = max(self.nid_gen_counter, self.nid_max_encountered+1)

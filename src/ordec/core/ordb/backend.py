@@ -170,13 +170,17 @@ class StorageTxn(ABC):
         already in the bucket (via this txn's node state).
         """
 
-    def insert_array(self, ntype, nids, cols) -> bool:
+    def insert_array(self, ntype, nids, cols, fresh=False) -> bool:
         """
         Optionally stores array rows natively (see ordec.core.ordb.arrays):
-        nids is an ascending int64 array of unused nids, cols the validated
-        int64 columns. A backend that stores them maintains their index
-        entries itself. Returns False if the backend does not store rows of
-        ntype as arrays; SubgraphUpdater then inserts them row by row.
+        nids is an ascending int64 array of nids, cols the validated int64
+        columns. fresh states that the nids are above every nid of the
+        subgraph and of this transaction, so they cannot collide; otherwise
+        the backend raises OrdbException for a nid that is in use. A backend
+        that stores the rows maintains their index entries itself. Returns
+        False if the backend does not store these rows as arrays (which may
+        depend on ntype and on the nids); SubgraphUpdater then inserts them
+        row by row.
         """
         return False
 
