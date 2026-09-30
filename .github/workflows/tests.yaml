@@ -11,7 +11,7 @@ jobs:
     name: pytest
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/tub-msc/ordec-base:sha-eb30724
+      image: ghcr.io/tub-msc/ordec-base:sha-778b195
       options: --user root
     steps:
       - name: check out repository
@@ -25,6 +25,17 @@ jobs:
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: pip install
         run: pip install .[test]
+      # The extension is optional in setup.py: without a compiler, the build
+      # succeeds without it and the tests pass on the slow Python fallback.
+      - name: check that C extensions were built
+        run: python3 -c "import ordec.layout._gdsrecords"
+      # The models in ordec-base were compiled for the CPU of the machine that
+      # built the image (see base.Dockerfile); this runner may have another.
+      - name: compile IHP Verilog-A models for this machine
+        run: |
+          cd "$ORDEC_PDK_IHP_SG13G2/libs.tech/verilog-a"
+          ./openvaf-compile-va.sh
+          test -f ../ngspice/osdi/psp103.osdi
       - name: run tests
         run: COVERAGE_FILE=/tmp/coverage pytest -v --cov-report=html:/tmp/htmlcov -o cache_dir=/tmp/pytestcache --junit-xml=/tmp/test-results.xml
       - name: display test results
