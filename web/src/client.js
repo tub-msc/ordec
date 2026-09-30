@@ -27,6 +27,11 @@ export class OrdecClient {
         // Course mode: epilogue source binding the lesson's check as the
         // lesson() view, executed server-side after src (see course.js).
         this.checkSrc = null;
+        // True from connect() until the server answers the build with a
+        // viewlist or an exception (or the socket fails). Keeps the status
+        // at 'busy' meanwhile: without it, the status would read 'ready'
+        // while the views of the previous build are still listed.
+        this.buildPending = false;
         this.registerResultViewers(resultViewers);
         this.setStatus = setStatus;
         // Called when a hub-hosted instance is culled and cannot be
@@ -68,6 +73,8 @@ export class OrdecClient {
         this.sock.onclose = (ev) => this.wsOnClose(ev);
         this.sock.onerror = (ev) => this.wsOnError(ev);
         this.inflight.clear();
+        this.buildPending = true;
+        this.updateStatus();
     }
 
     wsOnMessage(messageEvent) {
@@ -77,6 +84,7 @@ export class OrdecClient {
         const msg = cbor.decode(new Uint8Array(messageEvent.data));
         //console.log(msg)
         if (msg['msg'] == 'viewlist') {
+            this.buildPending = false;
             this.exception = null;
             // Successful build: clear the error annotation in the editor.
             this.app?.eventBus.emit('editor:build-exception', null);
@@ -92,6 +100,7 @@ export class OrdecClient {
         } else if (msg['msg'] == 'exception') {
             // Structured exception dict (see server.py
             // format_user_exception / message_exception).
+            this.buildPending = false;
             this.exception = msg['exception'];
             this.setStatus('exception');
             // Build errors annotate the failing line in the editor (main.js).
@@ -131,6 +140,7 @@ export class OrdecClient {
         // reconnect doesn't get stuck waiting for responses that will never
         // arrive.
         this.inflight.clear();
+        this.buildPending = false;
         if (session.hubMode && !this.sockOpened) {
             // Hub-hosted and the socket never opened: the server instance
             // was culled or stopped; reconnecting is futile. A page reload
@@ -149,6 +159,7 @@ export class OrdecClient {
         }
         console.error("WebSocket error:", errorEvent);
         this.inflight.clear();
+        this.buildPending = false;
         if (!this.exception) {
             this.setStatus('disconnected');
         }
@@ -160,7 +171,6 @@ export class OrdecClient {
         }
         this.sockOpened = true;
         let msg;
-        this.setStatus('busy');
         if(this.localModule) {
             // Local mode:
             this.srcBuilt = null;
@@ -219,7 +229,9 @@ export class OrdecClient {
     }
 
     updateStatus() {
-        if (this.exception) {
+        if (this.buildPending) {
+            this.setStatus('busy');
+        } else if (this.exception) {
             this.setStatus('exception');
         } else if (this.inflight.size > 0) {
             this.setStatus('busy');
