@@ -9,6 +9,11 @@ from .helpers import path_to_poly_vertices, check_ref_layers, _interior_point
 INT32_MIN = -2**31
 INT32_MAX = 2**31 - 1
 
+# Whether LayoutPins of instantiated cells are shown (pin shape and name at
+# every placement). False matches the viewer before the hierarchical webdata,
+# which showed the pins of the requested layout only.
+SUBCELL_PINS = False
+
 def int32(values) -> np.ndarray:
     a = np.asarray(values, dtype=np.int64)
     if a.size and (a.min() < INT32_MIN or a.max() > INT32_MAX):
@@ -89,7 +94,8 @@ class WebdataBuilder:
             add_poly(poly.layer.nid, poly.vertices())
         for path in layout.all(LayoutPath):
             add_poly(path.layer.nid, path_to_poly_vertices(path))
-        for pin in layout.all(LayoutPin):
+        pins = layout.all(LayoutPin) if cell_id == 0 or SUBCELL_PINS else ()
+        for pin in pins:
             ref = pin.ref
             if isinstance(ref, LayoutPoly):
                 vertices = ref.vertices()
