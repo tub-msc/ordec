@@ -441,15 +441,21 @@ svg = ET.Element(
 )
 group = ET.SubElement(svg, "g", transform=f"matrix(1 0 0 -1 0 {ly + uy})")
 
-for layer in layout_data["layers"]:
+# LayoutDemo has no instances: all geometry is in the first (top) cell.
+styles = {layer["nid"]: layer for layer in layout_data["layers"]}
+for entry in layout_data["cells"][0]["layers"]:
     layer_group = ET.SubElement(group, "g")
-    fill = layer["styleFill"] or "none"
-    stroke = layer["styleStroke"] or "none"
-    for poly in layer["polys"]:
-        vertices = poly["vertices"]
+    fill = styles[entry["layer"]]["styleFill"] or "none"
+    stroke = styles[entry["layer"]]["styleStroke"] or "none"
+    for x0, y0, x1, y1 in entry["rects"].reshape(-1, 4).tolist():
+        ET.SubElement(layer_group, "rect", x=str(x0), y=str(y0),
+            width=str(x1 - x0), height=str(y1 - y0), fill=fill, stroke=stroke)
+    offsets = entry["polyOffsets"].tolist()
+    coords = entry["polyCoords"].tolist()
+    for start, end in zip(offsets, offsets[1:]):
         d = "M" + " L".join(
-            f"{vertices[i]} {vertices[i + 1]}"
-            for i in range(0, len(vertices), 2)
+            f"{coords[2 * i]} {coords[2 * i + 1]}"
+            for i in range(start, end)
         ) + " Z"
         ET.SubElement(layer_group, "path", d=d, fill=fill, stroke=stroke)
 

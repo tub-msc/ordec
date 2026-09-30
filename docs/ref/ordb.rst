@@ -161,6 +161,7 @@ Node types declaring ``arrayable = True`` (e.g. :class:`~ordec.core.schema.Layou
 .. automethod:: SubgraphUpdater.insert_array
 
 .. automethod:: Subgraph.arrays
+  :no-index:
 
 Low-level stuff
 ---------------
