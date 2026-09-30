@@ -38,12 +38,15 @@ HASH_DOMAIN)::
                      NodeTuple._layout order
     wire_hash(sg)  = SHA256(HASH_DOMAIN + wire_bytes(sg))
 
-Nodes of arrayable node types (Node.arrayable) without None values are
-encoded in the fourth element instead of as rows, whatever backend stores
-them: per type, byte strings of int64 little-endian values, first the nids
-(ascending), then one column per attribute in ordb.arrays layout order,
-value types such as Rect4I row-major (n x width). All other nodes, including
-arrayable ones with None values, are rows.
+Nodes of arrayable node types (Node.arrayable) whose values are all set
+(not None) and within the int64 range are encoded in the fourth element
+instead of as rows, whatever backend stores them: per type, byte strings of
+int64 little-endian values, first the nids (ascending), then one column per
+attribute in ordb.arrays layout order, value types such as Rect4I row-major
+(n x width). All other nodes are rows, including arrayable ones with a None
+value or an integer outside the int64 range. A node type can thus occur in
+both elements. Which element a node belongs in follows from its values
+alone, so the encoding stays canonical.
 
 The blob table holds the data buffers referenced by SimColumn values,
 verbatim (no repacking or transpose), deduplicated by buffer object

@@ -18,6 +18,18 @@ Domain prefixes:
 - 8<<16: report
 - 15<<16: tests
 
+Rows and arrays
+---------------
+
+A subgraph's nodes are encoded in two elements (see the format above):
+rows, one CBOR array per node with tagged values as listed below, and
+arrays, int64 columns per arrayable node type (see "Array rows" in
+:doc:`../ref/ordb`). Bulk geometry such as the ``LayoutRect`` nodes of an
+imported GDS cell goes into arrays, which keeps encoding and hashing of
+large layouts fast. The array columns are plain integers without CBOR tags:
+references are nids, ``Vec2I``/``Rect4I`` values are 2 or 4 integers per
+node.
+
 CBOR tags
 ---------
 
