@@ -112,16 +112,22 @@ class WebdataBuilder:
         for label in layout.all(LayoutLabel):
             add_label(label.layer.nid, label.pos, label.text)
 
+        # Rects grouped by layer with one stable sort (nid order within a
+        # layer is kept).
         rects = layout.arrays(LayoutRect)
-        rect_layers = rects['layer']
-        for nid in np.unique(rect_layers).tolist():
+        order = np.argsort(rects['layer'], kind='stable')
+        rect_layers, starts = np.unique(rects['layer'][order], return_index=True)
+        rects_of_layer = dict(zip(rect_layers.tolist(),
+            np.split(rects['rect'][order], starts[1:])))
+        for nid in rects_of_layer:
             self.weblayer(nid)
 
         extent = None
         cell['layers'] = []
-        for nid in sorted(set(rect_layers.tolist()) | polys.keys() | labels.keys()):
+        no_rects = np.empty((0, 4), dtype=np.int64)
+        for nid in sorted(rects_of_layer.keys() | polys.keys() | labels.keys()):
             entry = {'layer': nid}
-            r = rects['rect'][rect_layers == nid]
+            r = rects_of_layer.get(nid, no_rects)
             entry['rects'] = int32(r.reshape(-1))
             if len(r):
                 extent = union_extent(extent, (int(r[:, 0].min()), int(r[:, 1].min()),
