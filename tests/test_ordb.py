@@ -1307,3 +1307,43 @@ def test_gc_shared_blocks():
     del h, root, frozen
     gc.collect()
     assert [r() for r in refs] == [None, None]
+
+class KeyNode(Node):
+    in_subgraphs = [MyHead]
+    key = Attr(object)
+    key_idx = Index(key)
+
+def test_concurrent_writes_rejected():
+    """Writes from a second thread while an updater is open, and writes
+    from Python code running inside an ORDB operation, raise instead of
+    corrupting the storage."""
+    import threading
+    s = MyHead()
+
+    class Key:
+        armed = False
+        def __hash__(self):
+            if self.armed:
+                s % MyNode(label='from __hash__')
+            return 1
+    key = Key()
+    node = KeyNode(key=key)
+    key.armed = True
+    with pytest.raises(OrdbException, match="while ORDB is modifying it"):
+        s % node
+    assert list(s.all(KeyNode)) == [] and list(s.all(MyNode)) == []
+
+    errors = []
+    def other_thread():
+        try:
+            s % MyNode(label='other')
+        except OrdbException as e:
+            errors.append(e)
+        errors.append(len(list(s.all(MyNode)))) # reading is allowed
+    with s.updater() as u:
+        u.add_single(MyNode(label='owner'), u.nid_generate())
+        t = threading.Thread(target=other_thread)
+        t.start()
+        t.join()
+    assert "another thread" in str(errors[0]) and errors[1] == 1
+    assert [n.label for n in s.all(MyNode)] == ['owner']

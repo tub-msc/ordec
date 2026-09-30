@@ -66,6 +66,7 @@
 #define CB_MISSING_ROOT 6
 
 #define MAXKEY 4
+#define MAXWIDTH 8 // slots of one attribute
 #define H_NONE 0x9E3779B97F4A7C15ull
 
 #define DIR_DEAD ((slot_t)1 << 62)
@@ -573,7 +574,9 @@ typedef struct Sg {
     PyObject *arrays_memo; // memo slot used by arrays.py (frozen only)
     PyObject *weakreflist;
     Py_hash_t hash;
+    unsigned long owner; // thread with open transactions
     char hash_valid, frozen;
+    char writing; // a write operation of the core is in progress
 } Sg;
 
 static PyTypeObject Sg_Type, Node_Type, Upd_Type, AttrDesc_Type, CurIter_Type;
@@ -594,6 +597,37 @@ static PyObject *sg_cursors(Sg *sg, PyObject *nids);
 static PyObject *sg_child(Sg *sg, PyObject *args);
 
 #define SG_FLAT(sg) ((sg)->st.dir.flat)
+
+// Concurrency rules (see docs/dev/ordb_core.rst, "Threads"): one thread at a
+// time may write a subgraph (the thread that opened the outermost updater),
+// and no write may start while a write operation of the core is in progress
+// (from a __hash__, a factory, a finalizer). Violations raise. Readers are
+// not restricted; they never keep pointers into storage across Python code.
+static int
+sg_write_begin(Sg *sg)
+{
+    unsigned long me = PyThread_get_thread_ident();
+    if ((sg->txn || sg->writing) && sg->owner != me) {
+        PyErr_SetString(OrdbException,
+            "Subgraph is being modified by another thread.");
+        return -1;
+    }
+    if (sg->writing) {
+        PyErr_SetString(OrdbException, "Subgraph cannot be modified while"
+            " ORDB is modifying it (e.g. from __hash__, __eq__, an attribute"
+            " factory or a finalizer).");
+        return -1;
+    }
+    sg->owner = me;
+    sg->writing = 1;
+    return 0;
+}
+
+static inline void
+sg_write_end(Sg *sg)
+{
+    sg->writing = 0;
+}
 
 static int
 undo_log(Txn *tx, int is_dir, int tab, uint64_t i, const slot_t *rec,
@@ -837,19 +871,20 @@ slot_is_none(const AttrInfo *ai, const slot_t *p)
     return ai->kind == K_OBJ ? p[ai->slot] == 0 : p[ai->slot] == SLOT_NONE;
 }
 
-// Value of one attribute (new reference).
+// Value of an attribute from a stable copy of its slots and, if boxed,
+// its boxed value (new reference).
 static PyObject *
-attr_value(const State *st, const NType *nt, int i, const slot_t *p,
-    int64_t nid)
+slots_value(const AttrInfo *ai, const slot_t *s, PyObject *boxed)
 {
-    const AttrInfo *ai = &nt->attrs[i];
-    const slot_t *s = p + ai->slot;
     if (ai->kind == K_OBJ)
         return Py_NewRef(s[0] ? (PyObject *)s[0] : Py_None);
     if (s[0] == SLOT_NONE)
         Py_RETURN_NONE;
-    if (s[0] == SLOT_BOXED)
-        return Py_XNewRef(boxed_get(st, nid, i));
+    if (s[0] == SLOT_BOXED) {
+        if (!boxed)
+            PyErr_SetString(PyExc_SystemError, "ORDB: missing boxed value");
+        return Py_XNewRef(boxed);
+    }
     if (ai->kind == K_INT)
         return PyLong_FromLongLong(s[0]);
     PyTypeObject *vt = (PyTypeObject *)ai->vtype;
@@ -867,22 +902,104 @@ attr_value(const State *st, const NType *nt, int i, const slot_t *p,
     return v;
 }
 
+// Value of one attribute of a stored record (new reference). Everything is
+// read from storage before allocating: allocation can run Python code
+// (garbage collection), which can let another thread write to the
+// subgraph and move the storage.
+static PyObject *
+attr_value(const State *st, const NType *nt, int i, const slot_t *p,
+    int64_t nid)
+{
+    const AttrInfo *ai = &nt->attrs[i];
+    slot_t s[MAXWIDTH];
+    memcpy(s, p + ai->slot, sizeof(slot_t) * ai->width);
+    if (ai->kind == K_OBJ)
+        return Py_NewRef(s[0] ? (PyObject *)s[0] : Py_None);
+    PyObject *boxed = NULL;
+    if (s[0] == SLOT_BOXED && !(boxed = boxed_get(st, nid, i)))
+        return NULL;
+    return slots_value(ai, s, boxed);
+}
+
+// A record taken out of storage: a copy of its slots that owns references
+// to its objects (object slots and boxed values). Code that may run Python
+// (hashing, comparing, allocating) works on a Rec, never on a pointer into
+// storage, which that Python code may invalidate.
+typedef struct {
+    const NType *nt;
+    int64_t nid;
+    slot_t s[64];
+    PyObject *box[64]; // per attribute: boxed value or NULL
+} Rec;
+
+static void
+rec_drop(Rec *r)
+{
+    const NType *nt = r->nt;
+    recs_clear(r->s, nt->objmask, nt->rec, 1);
+    for (int i = 0; i < nt->nattr; i++)
+        Py_CLEAR(r->box[i]);
+}
+
+// Copies a stored record into r (no Python code runs in between).
+static int
+rec_take(Rec *r, const State *st, const NType *nt, const slot_t *p,
+    int64_t nid)
+{
+    r->nt = nt;
+    r->nid = nid;
+    memcpy(r->s, p, sizeof(slot_t) * nt->rec);
+    recs_incref(r->s, nt->objmask, nt->rec, 1);
+    memset(r->box, 0, sizeof(PyObject *) * nt->nattr);
+    for (int i = 0; i < nt->nattr; i++) {
+        const AttrInfo *ai = &nt->attrs[i];
+        if (ai->kind == K_OBJ || r->s[ai->slot] != SLOT_BOXED)
+            continue;
+        PyObject *v = boxed_get(st, nid, i);
+        if (!v) {
+            rec_drop(r);
+            return -1;
+        }
+        r->box[i] = Py_NewRef(v);
+    }
+    return 0;
+}
+
+static inline PyObject *
+rec_value(const Rec *r, int i)
+{
+    const AttrInfo *ai = &r->nt->attrs[i];
+    return slots_value(ai, r->s + ai->slot, r->box[i]);
+}
+
 // The NodeTuple of a record (new reference).
 static PyObject *
-row_load(const State *st, const NType *nt, const slot_t *p, int64_t nid)
+rec_load(const Rec *r)
 {
+    const NType *nt = r->nt;
     PyTypeObject *tc = (PyTypeObject *)nt->tuple_cls;
     PyObject *t = tc->tp_alloc(tc, nt->nattr);
     if (!t)
         return NULL;
     for (int i = 0; i < nt->nattr; i++) {
-        PyObject *v = attr_value(st, nt, i, p, nid);
+        PyObject *v = rec_value(r, i);
         if (!v) {
             Py_DECREF(t);
             return NULL;
         }
         PyTuple_SET_ITEM(t, i, v);
     }
+    return t;
+}
+
+static PyObject *
+row_load(const State *st, const NType *nt, const slot_t *p, int64_t nid)
+{
+    Rec r;
+    if (rec_take(&r, st, nt, p, nid) < 0)
+        return NULL;
+    PyObject *t = rec_load(&r);
+    rec_drop(&r);
     return t;
 }
 
@@ -937,13 +1054,12 @@ pyval_hash(PyObject *v, uint64_t *out)
     return 0;
 }
 
-// Hash of one stored attribute. Returns 1 if the value is None.
+// Hash of one attribute of a record. Returns 1 if the value is None.
 static int
-slot_hash(const State *st, const NType *nt, int i, const slot_t *p,
-    int64_t nid, uint64_t *out)
+rec_slot_hash(const Rec *r, int i, uint64_t *out)
 {
-    const AttrInfo *ai = &nt->attrs[i];
-    const slot_t *s = p + ai->slot;
+    const AttrInfo *ai = &r->nt->attrs[i];
+    const slot_t *s = r->s + ai->slot;
     if (ai->kind == K_OBJ) {
         if (!s[0])
             return 1;
@@ -951,10 +1067,8 @@ slot_hash(const State *st, const NType *nt, int i, const slot_t *p,
     }
     if (s[0] == SLOT_NONE)
         return 1;
-    if (s[0] == SLOT_BOXED) {
-        PyObject *v = boxed_get(st, nid, i);
-        return v ? pyval_hash(v, out) : -1;
-    }
+    if (s[0] == SLOT_BOXED)
+        return pyval_hash(r->box[i], out);
     *out = ai->kind == K_INT ? (uint64_t)s[0] : mix_ints(ai->width, s);
     return 0;
 }
@@ -962,18 +1076,17 @@ slot_hash(const State *st, const NType *nt, int i, const slot_t *p,
 // Index entry (h, s) of a record for one index. Returns 1 if the record
 // is indexed, 0 if not (single key that is None), -1 on error.
 static int
-row_hs(const State *st, const NType *nt, const IdxUse *u, const slot_t *p,
-    int64_t nid, uint64_t *h, int64_t *s)
+rec_hs(const Rec *r, const IdxUse *u, uint64_t *h, int64_t *s)
 {
     if (!u->combined) {
-        int r = slot_hash(st, nt, u->key[0], p, nid, h);
-        if (r != 0)
-            return r < 0 ? -1 : 0;
+        int ok = rec_slot_hash(r, u->key[0], h);
+        if (ok != 0)
+            return ok < 0 ? -1 : 0;
     } else {
         uint64_t acc = 0x27D4EB2F165667C5ull;
         for (int k = 0; k < u->nkey; k++) {
             uint64_t hc = H_NONE;
-            if (slot_hash(st, nt, u->key[k], p, nid, &hc) < 0)
+            if (rec_slot_hash(r, u->key[k], &hc) < 0)
                 return -1;
             acc = mix(acc, hc);
         }
@@ -981,7 +1094,7 @@ row_hs(const State *st, const NType *nt, const IdxUse *u, const slot_t *p,
     }
     *s = 0;
     if (u->sort >= 0) {
-        slot_t v = p[nt->attrs[u->sort].slot];
+        slot_t v = r->s[r->nt->attrs[u->sort].slot];
         *s = v == SLOT_BOXED ? 0 : v;
     }
     return 1;
@@ -1009,54 +1122,51 @@ key_hash(PyObject *key, int combined, uint64_t *h)
     return 1;
 }
 
-// Compares a stored attribute with a Python value.
+// Compares an attribute of a record with a Python value.
 static int
-attr_eq_pyval(const State *st, const NType *nt, int i, const slot_t *p,
-    int64_t nid, PyObject *v)
+rec_eq_pyval(const Rec *r, int i, PyObject *v)
 {
-    const AttrInfo *ai = &nt->attrs[i];
-    slot_t x;
-    if (ai->kind == K_INT && p[ai->slot] > SLOT_BOXED && long_as_slot(v, &x))
-        return p[ai->slot] == x;
-    if (ai->kind == K_OBJ && (PyObject *)p[ai->slot] == v)
+    const AttrInfo *ai = &r->nt->attrs[i];
+    slot_t mine = r->s[ai->slot], x;
+    if (ai->kind == K_INT && mine > SLOT_BOXED && long_as_slot(v, &x))
+        return mine == x;
+    if (ai->kind == K_OBJ && (PyObject *)mine == v)
         return 1;
-    PyObject *mine = attr_value(st, nt, i, p, nid);
-    if (!mine)
+    PyObject *val = rec_value(r, i);
+    if (!val)
         return -1;
-    int r = PyObject_RichCompareBool(mine, v, Py_EQ);
-    Py_DECREF(mine);
-    return r;
+    int ret = PyObject_RichCompareBool(val, v, Py_EQ);
+    Py_DECREF(val);
+    return ret;
 }
 
 // Compares one attribute of two records (possibly of different subgraphs
 // and, for index keys, of different node types).
 static int
-attr_eq_rows(const State *sa, const NType *na, int ia, const slot_t *pa,
-    int64_t nida, const State *sb, const NType *nb, int ib, const slot_t *pb,
-    int64_t nidb)
+rec_eq(const Rec *ra, int ia, const Rec *rb, int ib)
 {
-    const AttrInfo *a = &na->attrs[ia], *b = &nb->attrs[ib];
+    const AttrInfo *a = &ra->nt->attrs[ia], *b = &rb->nt->attrs[ib];
+    const slot_t *pa = ra->s + a->slot, *pb = rb->s + b->slot;
     if (a->kind == b->kind && a->width == b->width && a->vtype == b->vtype) {
         if (a->kind == K_OBJ) {
-            if (pa[a->slot] == pb[b->slot])
+            if (pa[0] == pb[0])
                 return 1;
-        } else if (pa[a->slot] != SLOT_BOXED && pb[b->slot] != SLOT_BOXED) {
-            return memcmp(pa + a->slot, pb + b->slot,
-                sizeof(slot_t) * a->width) == 0;
+        } else if (pa[0] != SLOT_BOXED && pb[0] != SLOT_BOXED) {
+            return memcmp(pa, pb, sizeof(slot_t) * a->width) == 0;
         }
     }
-    PyObject *va = attr_value(sa, na, ia, pa, nida);
+    PyObject *va = rec_value(ra, ia);
     if (!va)
         return -1;
-    PyObject *vb = attr_value(sb, nb, ib, pb, nidb);
+    PyObject *vb = rec_value(rb, ib);
     if (!vb) {
         Py_DECREF(va);
         return -1;
     }
-    int r = PyObject_RichCompareBool(va, vb, Py_EQ);
+    int ret = PyObject_RichCompareBool(va, vb, Py_EQ);
     Py_DECREF(va);
     Py_DECREF(vb);
-    return r;
+    return ret;
 }
 
 // ---------------------------------------------------------------------------
@@ -1077,10 +1187,16 @@ ent_valid(const State *st, const PyObject *index, const Ent *e)
         return 0;
     uint64_t h;
     int64_t s;
-    int r = row_hs(st, nt, u, p, e->nid, &h, &s);
-    if (r < 0) {
+    Rec rec;
+    if (rec_take(&rec, st, nt, p, e->nid) < 0) {
         PyErr_Clear();
         return 1; // cannot tell: keep the entry
+    }
+    int r = rec_hs(&rec, u, &h, &s);
+    rec_drop(&rec);
+    if (r < 0) {
+        PyErr_Clear();
+        return 1;
     }
     return r == 1 && h == e->h && s == e->s;
 }
@@ -1306,19 +1422,21 @@ st_query(const State *st, PyObject *index, PyObject *key)
         IdxUse *u = ntype_find_use(nt, index);
         if (!u)
             continue;
-        uint64_t rh;
-        int64_t rs;
-        int ok = row_hs(st, nt, u, p, e->nid, &rh, &rs);
-        if (ok < 0)
-            goto fail_buf;
-        if (ok == 0 || rh != h || rs != e->s)
-            continue;
         if (u->combined && PyTuple_GET_SIZE(key) != u->nkey)
             continue;
+        uint64_t rh;
+        int64_t rs;
+        Rec rec;
+        if (rec_take(&rec, st, nt, p, e->nid) < 0)
+            goto fail_buf;
+        int ok = rec_hs(&rec, u, &rh, &rs);
+        if (ok == 1 && (rh != h || rs != e->s))
+            ok = 0;
         for (int k = 0; k < u->nkey && ok == 1; k++) {
             PyObject *comp = u->combined ? PyTuple_GET_ITEM(key, k) : key;
-            ok = attr_eq_pyval(st, nt, u->key[k], p, e->nid, comp);
+            ok = rec_eq_pyval(&rec, u->key[k], comp);
         }
+        rec_drop(&rec);
         if (ok < 0)
             goto fail_buf;
         if (ok == 0)
@@ -1339,16 +1457,15 @@ fail:
     return NULL;
 }
 
-// Is there another live node with the same key as this record?
+// Is there another live node with the same key as the record r?
 static int
-unique_violated(const State *st, const NType *nt, const IdxUse *u,
-    const slot_t *p, int64_t nid)
+unique_violated(const State *st, const Rec *r, const IdxUse *u)
 {
     uint64_t h;
     int64_t s;
-    int r = row_hs(st, nt, u, p, nid, &h, &s);
-    if (r <= 0)
-        return r;
+    int ok = rec_hs(r, u, &h, &s);
+    if (ok <= 0)
+        return ok;
     int xi = st_find_idx(st, u->index);
     if (xi < 0)
         return 0;
@@ -1360,7 +1477,7 @@ unique_violated(const State *st, const NType *nt, const IdxUse *u,
     int found = 0;
     for (size_t i = 0; i < b.n && found == 0; i++) {
         int64_t other = b.e[i].nid;
-        if (other == nid)
+        if (other == r->nid)
             continue;
         int ti;
         const slot_t *q = st_row(st, other, &ti);
@@ -1370,14 +1487,19 @@ unique_violated(const State *st, const NType *nt, const IdxUse *u,
         IdxUse *ou = ntype_find_use(ont, u->index);
         if (!ou || ou->nkey != u->nkey)
             continue;
+        Rec orec;
+        if (rec_take(&orec, st, ont, q, other) < 0) {
+            found = -1;
+            break;
+        }
         uint64_t oh;
         int64_t os;
-        int ok = row_hs(st, ont, ou, q, other, &oh, &os);
+        ok = rec_hs(&orec, ou, &oh, &os);
         if (ok == 1 && oh != h)
             ok = 0;
         for (int k = 0; k < u->nkey && ok == 1; k++)
-            ok = attr_eq_rows(st, nt, u->key[k], p, nid, st, ont, ou->key[k],
-                q, other);
+            ok = rec_eq(r, u->key[k], &orec, ou->key[k]);
+        rec_drop(&orec);
         found = ok;
     }
     entbuf_free(&b);
@@ -1461,21 +1583,27 @@ refs_adjust(Sg *sg, const NType *nt, const slot_t *p, int delta)
 static int
 index_row(Sg *sg, NType *nt, const slot_t *p, int64_t nid)
 {
-    for (int i = 0; i < nt->nuse; i++) {
+    if (!nt->nuse)
+        return 0;
+    Rec rec;
+    if (rec_take(&rec, &sg->st, nt, p, nid) < 0)
+        return -1;
+    int ret = 0;
+    for (int i = 0; i < nt->nuse && ret == 0; i++) {
         IdxUse *u = &nt->uses[i];
         Ent e = {0, 0, nid};
-        int r = row_hs(&sg->st, nt, u, p, nid, &e.h, &e.s);
-        if (r < 0)
-            return -1;
-        if (r == 0)
+        int r = rec_hs(&rec, u, &e.h, &e.s);
+        if (r <= 0) {
+            ret = r;
             continue;
+        }
         int xi = st_find_idx(&sg->st, u->index);
-        if (xi < 0 && (xi = st_add_idx(&sg->st, u->index, u->combined)) < 0)
-            return -1;
-        if (idx_insert(sg, &sg->st.idxs[xi], e) < 0)
-            return -1;
+        if ((xi < 0 && (xi = st_add_idx(&sg->st, u->index, u->combined)) < 0)
+                || idx_insert(sg, &sg->st.idxs[xi], e) < 0)
+            ret = -1;
     }
-    return 0;
+    rec_drop(&rec);
+    return ret;
 }
 
 static void
@@ -1626,10 +1754,16 @@ op_update(Sg *sg, int64_t nid, PyObject *node)
     int64_t os[16];
     int oi[16];
     int nuse = nt->nuse < 16 ? nt->nuse : 16;
-    for (int i = 0; i < nuse; i++) {
-        oi[i] = row_hs(st, nt, &nt->uses[i], cp, nid, &oh[i], &os[i]);
-        if (oi[i] < 0)
+    Rec rec;
+    if (nt->nuse) {
+        if (rec_take(&rec, st, nt, cp, nid) < 0)
             return -1;
+        for (int i = 0; i < nuse; i++)
+            oi[i] = rec_hs(&rec, &nt->uses[i], &oh[i], &os[i]);
+        rec_drop(&rec);
+        for (int i = 0; i < nuse; i++)
+            if (oi[i] < 0)
+                return -1;
     }
     uint64_t row = DIR_ROW(st_dir(st, nid)[0]);
     slot_t *p = tab_row_w(sg, ti, row);
@@ -1640,23 +1774,32 @@ op_update(Sg *sg, int64_t nid, PyObject *node)
     recs_clear(p, nt->objmask, nt->rec, 1);
     if (row_store(sg, nt, p, node, nid) < 0 || refs_adjust(sg, nt, p, 1) < 0)
         return -1;
-    for (int i = 0; i < nt->nuse; i++) {
+    if (nt->nuse && rec_take(&rec, st, nt, p, nid) < 0)
+        return -1;
+    int ret = 0;
+    for (int i = 0; i < nt->nuse && ret == 0; i++) {
         IdxUse *u = &nt->uses[i];
         Ent e = {0, 0, nid};
-        int r = row_hs(st, nt, u, p, nid, &e.h, &e.s);
-        if (r < 0)
-            return -1;
+        int r = rec_hs(&rec, u, &e.h, &e.s);
+        if (r < 0) {
+            ret = -1;
+            break;
+        }
         if (i < nuse && r == oi[i] && (r == 0 || (e.h == oh[i] && e.s == os[i])))
             continue;
         int xi = st_find_idx(st, u->index);
-        if (xi < 0 && (xi = st_add_idx(st, u->index, u->combined)) < 0)
-            return -1;
+        if (xi < 0 && (xi = st_add_idx(st, u->index, u->combined)) < 0) {
+            ret = -1;
+            break;
+        }
         if (i >= nuse || oi[i] == 1)
             st->idxs[xi].garbage++;
         if (r == 1 && idx_insert(sg, &st->idxs[xi], e) < 0)
-            return -1;
+            ret = -1;
     }
-    return chk_add(tx, nid);
+    if (nt->nuse)
+        rec_drop(&rec);
+    return ret < 0 ? -1 : chk_add(tx, nid);
 }
 
 // Inserts n rows of an all-integer node type from int64 columns (one
@@ -1701,13 +1844,21 @@ op_insert_rows(Sg *sg, NType *nt, const int64_t *nids, Py_ssize_t n,
         }
         if (refs_adjust(sg, nt, p, 1) < 0)
             goto fail;
-        for (int i = 0; i < nuse; i++) {
-            Ent e = {0, 0, nid};
-            int ok = row_hs(st, nt, &nt->uses[i], p, nid, &e.h, &e.s);
+        if (nuse) {
+            // All-integer rows: hashing runs no Python code.
+            Rec rec;
+            if (rec_take(&rec, st, nt, p, nid) < 0)
+                goto fail;
+            int ok = 1;
+            for (int i = 0; i < nuse && ok >= 0; i++) {
+                Ent e = {0, 0, nid};
+                ok = rec_hs(&rec, &nt->uses[i], &e.h, &e.s);
+                if (ok == 1)
+                    runs[i]->e[runs[i]->n++] = e;
+            }
+            rec_drop(&rec);
             if (ok < 0)
                 goto fail;
-            if (ok)
-                runs[i]->e[runs[i]->n++] = e;
         }
         if (chk_add(tx, nid) < 0)
             goto fail;
@@ -1860,6 +2011,9 @@ sg_maintain(Sg *sg, int freezing)
 static Txn *
 txn_begin(Sg *sg)
 {
+    if (sg_write_begin(sg) < 0)
+        return NULL;
+    sg_write_end(sg);
     Txn *tx = PyMem_Calloc(1, sizeof(Txn));
     if (!tx) {
         PyErr_NoMemory();
@@ -1878,6 +2032,8 @@ txn_begin(Sg *sg)
         tx->nid_max = sg->st.nid_start - 1;
     }
     tx->parent = sg->txn;
+    if (!sg->txn)
+        sg->owner = PyThread_get_thread_ident();
     sg->txn = tx;
     return tx;
 }
@@ -2018,6 +2174,8 @@ txn_check(Sg *sg, Txn *tx, PyObject *sgu)
                             || PyDict_SetItem(nt->permitted,
                                 (PyObject *)root_nt, Py_True) < 0)
                         return -1;
+                    if (!(p = st_row(st, nid, &ti)))
+                        continue;
                 }
             }
             for (int i = 0; i < nt->nattr; i++) {
@@ -2035,7 +2193,11 @@ txn_check(Sg *sg, Txn *tx, PyObject *sgu)
                     break;
                 if (ci->kind == CHK_UNIQUE) {
                     IdxUse *u = &nt->uses[ci->i];
-                    int v = unique_violated(st, nt, u, p, nid);
+                    Rec rec;
+                    if (rec_take(&rec, st, nt, p, nid) < 0)
+                        return -1;
+                    int v = unique_violated(st, &rec, u);
+                    rec_drop(&rec);
                     if (v < 0 || (v && call_check(CB_UNIQUE, sgu, nid,
                             u->index) < 0))
                         return -1;
@@ -2856,9 +3018,15 @@ sg_get_root_cursor(Sg *sg, void *closure)
         int ti;
         if (!st_row(&sg->st, 0, &ti))
             Py_RETURN_NONE;
-        sg->root_cursor = sg_cursor(sg, 0, NPATH_NONE);
-        if (!sg->root_cursor)
+        PyObject *c = sg_cursor(sg, 0, NPATH_NONE);
+        if (!c)
             return NULL;
+        // Allocating the cursor can run Python code, which may have filled
+        // the cache meanwhile.
+        if (sg->root_cursor)
+            Py_DECREF(c);
+        else
+            sg->root_cursor = c;
     }
     return Py_NewRef(sg->root_cursor);
 }
@@ -2907,8 +3075,14 @@ sg_snapshot(Sg *sg, PyObject *args)
     }
     if (sg_no_txn(sg, frozen ? "freeze" : "copy") < 0)
         return NULL;
-    if (!sg->frozen && sg_maintain(sg, frozen) < 0)
-        return NULL;
+    if (!sg->frozen) {
+        if (sg_write_begin(sg) < 0)
+            return NULL;
+        int r = sg_maintain(sg, frozen);
+        sg_write_end(sg);
+        if (r < 0)
+            return NULL;
+    }
     Sg *n = (Sg *)((PyTypeObject *)cls)->tp_alloc((PyTypeObject *)cls, 0);
     if (!n)
         return NULL;
@@ -2941,18 +3115,37 @@ sg_set_nid_start(Sg *sg, PyObject *arg)
 static PyObject *
 sg_compact(Sg *sg, PyObject *noarg)
 {
-    if (sg_no_txn(sg, "compact") < 0)
+    if (sg_no_txn(sg, "compact") < 0 || sg_write_begin(sg) < 0)
         return NULL;
-    for (int ti = 0; ti < sg->st.ntab; ti++)
-        if (tab_compact(sg, ti) < 0)
-            return NULL;
-    for (int xi = 0; xi < sg->st.nidx; xi++)
-        if (idx_compact(&sg->st, &sg->st.idxs[xi]) < 0)
-            return NULL;
+    int r = 0;
+    for (int ti = 0; ti < sg->st.ntab && r == 0; ti++)
+        r = tab_compact(sg, ti);
+    for (int xi = 0; xi < sg->st.nidx && r == 0; xi++)
+        r = idx_compact(&sg->st, &sg->st.idxs[xi]);
+    sg_write_end(sg);
+    if (r < 0)
+        return NULL;
     Py_RETURN_NONE;
 }
 
+// Hash of a record whose hashing runs no Python code: no object slots
+// and no boxed values.
+static uint64_t
+plain_row_hash(const NType *nt, const slot_t *p)
+{
+    uint64_t h = mix((uint64_t)(uintptr_t)nt->tuple_cls, (uint64_t)p[0]);
+    for (int i = 0; i < nt->nattr; i++) {
+        const AttrInfo *ai = &nt->attrs[i];
+        const slot_t *s = p + ai->slot;
+        h = mix(h, s[0] == SLOT_NONE ? H_NONE
+            : ai->kind == K_INT ? (uint64_t)s[0] : mix_ints(ai->width, s));
+    }
+    return h;
+}
+
 // Content hash: order-independent sum of record hashes plus nid_alloc.
+// Tables are looked up again for every row: hashing values can run Python
+// code, during which another thread may write to a mutable subgraph.
 static PyObject *
 sg_content_hash(Sg *sg, PyObject *noarg)
 {
@@ -2961,20 +3154,28 @@ sg_content_hash(Sg *sg, PyObject *noarg)
     const State *st = &sg->st;
     uint64_t acc = mix((uint64_t)st->nid_start, (uint64_t)st->nid_stop);
     for (int ti = 0; ti < st->ntab; ti++) {
-        const Tab *t = &st->tabs[ti];
-        NType *nt = t->nt;
-        uint64_t th = (uint64_t)(uintptr_t)nt->tuple_cls;
-        for (uint64_t r = 0; r < t->rows.count; r++) {
-            const slot_t *p = vec_get(&t->rows, r);
+        for (uint64_t r = 0; ti < st->ntab && r < st->tabs[ti].rows.count; r++) {
+            NType *nt = st->tabs[ti].nt;
+            const slot_t *p = vec_get(&st->tabs[ti].rows, r);
             if (p[0] < 0)
                 continue;
-            uint64_t h = mix(th, (uint64_t)p[0]);
-            for (int i = 0; i < nt->nattr; i++) {
+            if (!nt->objmask && !st->boxed) {
+                acc += plain_row_hash(nt, p);
+                continue;
+            }
+            Rec rec;
+            if (rec_take(&rec, st, nt, p, p[0]) < 0)
+                return NULL;
+            uint64_t h = mix((uint64_t)(uintptr_t)nt->tuple_cls, (uint64_t)p[0]);
+            int ok = 0;
+            for (int i = 0; i < nt->nattr && ok >= 0; i++) {
                 uint64_t hc = H_NONE;
-                if (slot_hash(st, nt, i, p, p[0], &hc) < 0)
-                    return NULL;
+                ok = rec_slot_hash(&rec, i, &hc);
                 h = mix(h, hc);
             }
+            rec_drop(&rec);
+            if (ok < 0)
+                return NULL;
             acc += h;
         }
     }
@@ -2986,6 +3187,28 @@ sg_content_hash(Sg *sg, PyObject *noarg)
         sg->hash_valid = 1;
     }
     return PyLong_FromSsize_t(h);
+}
+
+// Compares two live records of the same node type.
+static int
+rows_equal(const State *sa, const State *sb, NType *nt, const slot_t *p,
+    const slot_t *q)
+{
+    if (!nt->objmask && !sa->boxed && !sb->boxed)
+        return memcmp(p, q, sizeof(slot_t) * nt->rec) == 0;
+    Rec ra, rb;
+    if (rec_take(&ra, sa, nt, p, p[0]) < 0)
+        return -1;
+    if (rec_take(&rb, sb, nt, q, q[0]) < 0) {
+        rec_drop(&ra);
+        return -1;
+    }
+    int eq = 1;
+    for (int i = 0; i < nt->nattr && eq == 1; i++)
+        eq = rec_eq(&ra, i, &rb, i);
+    rec_drop(&ra);
+    rec_drop(&rb);
+    return eq;
 }
 
 static PyObject *
@@ -3003,35 +3226,32 @@ sg_content_eq(Sg *a, PyObject *arg)
             || sa->nid_stop != sb->nid_stop)
         Py_RETURN_FALSE;
     for (int ti = 0; ti < sa->ntab; ti++) {
-        const Tab *t = &sa->tabs[ti];
-        NType *nt = t->nt;
+        NType *nt = sa->tabs[ti].nt;
         int tj = st_find_tab(sb, nt);
-        if (tj < 0 || sb->tabs[tj].live != t->live) {
-            if (t->live == 0)
+        if (tj < 0 || sb->tabs[tj].live != sa->tabs[ti].live) {
+            if (sa->tabs[ti].live == 0)
                 continue;
             Py_RETURN_FALSE;
         }
-        if (t->rows.root == sb->tabs[tj].rows.root
-                && t->rows.count == sb->tabs[tj].rows.count
+        if (sa->tabs[ti].rows.root == sb->tabs[tj].rows.root
+                && sa->tabs[ti].rows.count == sb->tabs[tj].rows.count
                 && sa->boxed == sb->boxed)
             continue; // shared storage
-        for (uint64_t r = 0; r < t->rows.count; r++) {
-            const slot_t *p = vec_get(&t->rows, r);
+        for (uint64_t r = 0; ti < sa->ntab && r < sa->tabs[ti].rows.count; r++) {
+            const slot_t *p = vec_get(&sa->tabs[ti].rows, r);
             if (p[0] < 0)
                 continue;
             int tk;
             const slot_t *q = st_row(sb, p[0], &tk);
-            if (!q || tk != tj)
+            if (!q || sb->tabs[tk].nt != nt)
                 Py_RETURN_FALSE;
             if (p == q)
                 continue;
-            for (int i = 0; i < nt->nattr; i++) {
-                int eq = attr_eq_rows(sa, nt, i, p, p[0], sb, nt, i, q, p[0]);
-                if (eq < 0)
-                    return NULL;
-                if (!eq)
-                    Py_RETURN_FALSE;
-            }
+            int eq = rows_equal(sa, sb, nt, p, q);
+            if (eq < 0)
+                return NULL;
+            if (!eq)
+                Py_RETURN_FALSE;
         }
     }
     Py_RETURN_TRUE;
@@ -3275,12 +3495,16 @@ static void
 upd_dealloc(Upd *u)
 {
     PyObject_GC_UnTrack(u);
-    if (u->tx && u->sg) {
+    if (u->tx && u->sg && !u->sg->writing) {
         // Abandoned without __exit__: undo it and everything opened after.
+        // (During a write operation of the core it stays open instead.)
+        u->sg->owner = PyThread_get_thread_ident();
+        u->sg->writing = 1;
         while (u->sg->txn && u->sg->txn != u->tx)
             txn_abort(u->sg, u->sg->txn);
         if (u->sg->txn == u->tx)
             txn_abort(u->sg, u->tx);
+        u->sg->writing = 0;
     }
     Py_XDECREF(u->sg);
     Py_TYPE(u)->tp_free((PyObject *)u);
@@ -3313,14 +3537,27 @@ upd_finish(Upd *u, int commit)
 {
     Txn *tx = u->tx;
     Sg *sg = u->sg;
+    PyObject *et, *ev, *etb;
+    PyErr_Fetch(&et, &ev, &etb);
+    if (sg_write_begin(sg) < 0) {
+        // Not to be closed from here: the transaction stays open.
+        Py_XDECREF(et);
+        Py_XDECREF(ev);
+        Py_XDECREF(etb);
+        return -1;
+    }
+    PyErr_Restore(et, ev, etb);
     u->tx = NULL;
     u->valid = 0;
-    PyObject *et, *ev, *etb;
-    if (commit && txn_check(sg, tx, (PyObject *)u) == 0)
-        return txn_commit(sg, tx);
+    if (commit && txn_check(sg, tx, (PyObject *)u) == 0) {
+        int r = txn_commit(sg, tx);
+        sg_write_end(sg);
+        return r;
+    }
     PyErr_Fetch(&et, &ev, &etb);
     txn_abort(sg, tx);
     PyErr_Restore(et, ev, etb);
+    sg_write_end(sg);
     return commit ? -1 : 0;
 }
 
@@ -3358,6 +3595,12 @@ upd_usable(Upd *u)
             "SubgraphUpdater is not the innermost open updater.");
         return -1;
     }
+    if (u->sg->owner != PyThread_get_thread_ident()) {
+        PyErr_SetString(OrdbException,
+            "SubgraphUpdater is used by another thread than the one that"
+            " opened it.");
+        return -1;
+    }
     return 0;
 }
 
@@ -3393,7 +3636,11 @@ upd_add_single(Upd *u, PyObject *args, PyObject *kwds)
             nid, (long long)st->nid_start, (long long)st->nid_stop);
         return NULL;
     }
-    if (op_add(u->sg, nid, node) < 0)
+    if (sg_write_begin(u->sg) < 0)
+        return NULL;
+    int r = op_add(u->sg, nid, node);
+    sg_write_end(u->sg);
+    if (r < 0)
         return NULL;
     return PyLong_FromLongLong(nid);
 }
@@ -3406,7 +3653,11 @@ upd_remove_nid(Upd *u, PyObject *arg)
     long long nid = PyLong_AsLongLong(arg);
     if (nid == -1 && PyErr_Occurred())
         return NULL;
-    if (op_remove(u->sg, nid) < 0)
+    if (sg_write_begin(u->sg) < 0)
+        return NULL;
+    int r = op_remove(u->sg, nid);
+    sg_write_end(u->sg);
+    if (r < 0)
         return NULL;
     Py_RETURN_NONE;
 }
@@ -3421,7 +3672,11 @@ upd_update(Upd *u, PyObject *args, PyObject *kwds)
         return NULL;
     if (upd_usable(u) < 0)
         return NULL;
-    if (op_update(u->sg, nid, node) < 0)
+    if (sg_write_begin(u->sg) < 0)
+        return NULL;
+    int r = op_update(u->sg, nid, node);
+    sg_write_end(u->sg);
+    if (r < 0)
         return NULL;
     Py_RETURN_NONE;
 }
@@ -3467,8 +3722,11 @@ upd_insert_rows(Upd *u, PyObject *args)
         }
         cols[i] = cb[i].buf;
     }
+    if (sg_write_begin(u->sg) < 0)
+        goto done;
     if (op_insert_rows(u->sg, nt, nb.buf, n, cols) == 0)
         ret = Py_NewRef(Py_None);
+    sg_write_end(u->sg);
 done:
     for (int i = 0; i < ncb; i++)
         PyBuffer_Release(&cb[i]);
@@ -3698,8 +3956,11 @@ sg_add1(Sg *sg, PyObject *args)
     if (nid < sg->st.nid_start || nid >= sg->st.nid_stop) {
         PyErr_SetString(OrdbException, "nid allocation exhausted.");
         ok = 0;
-    } else {
+    } else if (sg_write_begin(sg) == 0) {
         ok = op_add(sg, nid, node) == 0;
+        sg_write_end(sg);
+    } else {
+        ok = 0;
     }
     Py_DECREF(node);
     if (upd_close(u, ok) < 0)
@@ -3735,7 +3996,11 @@ sg_set1(Sg *sg, int64_t nid, NType *nt, int index, PyObject *value)
         Py_DECREF(row);
         return -1;
     }
-    int ok = op_update(sg, nid, row) == 0;
+    int ok = sg_write_begin(sg) == 0;
+    if (ok) {
+        ok = op_update(sg, nid, row) == 0;
+        sg_write_end(sg);
+    }
     Py_DECREF(row);
     return upd_close(u, ok);
 }

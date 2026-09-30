@@ -110,6 +110,34 @@ live rows are rewritten, and indices whose entries are mostly stale are
 compacted. Freezing also rewrites tables whose rows are out of nid order, so
 frozen tables scan in nid order.
 
+Threads
+-------
+
+The core relies on the GIL, but the GIL alone does not protect it: whenever
+the core calls Python code (a ``__hash__`` or ``__eq__`` of a value, an
+attribute factory, a check callback, a finalizer run by the garbage
+collector), another thread can run. Two rules and one coding discipline
+keep the storage consistent:
+
+- **One writing thread per subgraph.** The thread that opens the outermost
+  updater (or starts a write such as ``freeze()`` maintenance) owns the
+  subgraph until it is done. A write from another thread in that time raises
+  :class:`~ordec.core.ordb.OrdbException`; it does not wait, so that code
+  taking several subgraphs in different orders cannot deadlock.
+- **No write while a write operation is in progress.** Python code called
+  from inside a core operation (e.g. a ``__hash__`` during an insert) cannot
+  modify the same subgraph; it raises.
+- **Readers never keep a pointer into storage across Python code.** Before
+  anything that can run Python, a reader copies the record it needs
+  (``Rec`` in ``_ordb.c``), and loops look tables up again for every row.
+  Reads from other threads are therefore always allowed; they see the
+  current, possibly uncommitted state (a nid list from a query may name
+  nodes removed meanwhile).
+
+Free-threaded Python is not supported: it would need the module to declare
+GIL-free operation, the lock released around every call into Python,
+atomic reference counts for the shared index runs, and per-subgraph locks.
+
 Garbage collection
 ------------------
 
