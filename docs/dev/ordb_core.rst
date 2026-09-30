@@ -146,6 +146,13 @@ GC-tracked Python objects (as are all inner tree nodes), so the cycle
 collector sees every reference exactly once. Blocks of tables without object
 slots are plain memory. The core needs the GIL.
 
+Memory measurements (the ``retained`` figures of the benchmark suite) sum
+``sys.getsizeof`` over ``gc.get_referents``. They see the storage only
+because inner tree nodes are GC objects (so leaves are reachable) and flat
+blocks and subgraphs implement ``__sizeof__`` (index runs are counted as a
+share by reference count). A new block type needs the same, or memory
+figures silently undercount.
+
 Cursors
 -------
 
@@ -154,3 +161,161 @@ holds (subgraph, nid) and the lazily resolved NPath nid. Attribute
 descriptors read the slots directly; LocalRef attributes return cursors
 without a Python call. Two cursors are equal if they select the same node of
 equal subgraphs; cursors of one subgraph are ordered by nid.
+
+Testing changes to the core
+---------------------------
+
+Bugs in C code crash or corrupt memory rather than fail a test cleanly.
+Besides ``pytest`` under both engines (``ORDEC_ORDB_BACKEND=flat``), a
+change to the core should pass:
+
+- **Sanitizers.** Build the core with AddressSanitizer and UBSan and run the
+  ORDB-heavy tests and the fuzz with the sanitizer runtimes preloaded::
+
+      gcc -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer \
+          -shared -fPIC -I$(python3 -c "import sysconfig; print(sysconfig.get_paths()['include'])") \
+          src/ordec/core/ordb/_ordb.c \
+          -o src/ordec/core/ordb/_ordb$(python3 -c "import sysconfig; print(sysconfig.get_config_var('EXT_SUFFIX'))")
+      ASAN_OPTIONS=detect_leaks=0 PYTHONMALLOC=malloc \
+          LD_PRELOAD=$(gcc -print-file-name=libasan.so):$(gcc -print-file-name=libubsan.so) \
+          pytest -n 0 tests/test_ordb.py tests/test_wire.py tests/test_benchmarks.py \
+          tests/test_layout.py tests/test_schematic.py
+
+  Rebuild normally afterwards.
+- **Equivalence with the previous version.** In a worktree of the previous
+  commit (``git worktree add``), ``benchmarks.equivalence.check_equivalence``
+  must print the same workload checksums as in the working tree.
+- **Leaks.** Repeating a mixed workload (build, freeze, thaw, remove, abort)
+  must keep RSS and ``len(gc.get_objects())`` flat.
+- **Threads.** ``python -m benchmarks.thread_stress`` (one writer, readers
+  and an intruder on one subgraph, thread switches every microsecond), under
+  the sanitizers: no crash, and every rejected write says "another thread".
+
+History & rationale
+-------------------
+
+Before the native core, subgraph storage was pure Python behind a pluggable
+backend interface (persistent HAMT maps with pyrsistent, copy-on-write
+dicts, delta chains, and ``cow-arrays``, which added numpy chunks for rows
+inserted with ``insert_array``). Profiles showed that 50 to 70 % of the time
+per node was spent in ``base.py`` (cursors, NodeTuple construction, index
+maintenance, checks) and only 15 to 20 % in the backend, so no Python
+storage could be made substantially faster. ``cow-arrays`` fixed bulk
+geometry, but as a second storage form for a single node type without
+indices.
+
+The replacement had to keep ORDB's value semantics (immutable snapshots,
+cheap freeze/thaw/copy, equal content hashes equally) while storing all
+node types in tables and running the per-node paths natively. Two designs
+were explored, built and measured against each other:
+
+- **Contiguous tables copied before the first write** (``flat``): the
+  simplest form, but every generation that touches a table copies it, e.g.
+  48 MB and 20 ms per generation of a table with a million rows.
+- **Persistent pages** (``paged``): about as fast as ``flat`` per operation
+  (both are 10 to 35 times faster than the Python backends), no undo log,
+  and chains of generations stay small (3 MiB instead of 9.6 GB for 200
+  generations of a million rows with 10 changes each). It became the
+  default; ``flat`` stays as the simpler engine that the fuzz checks
+  ``paged`` against.
+
+The page size decides how much snapshots share: with 2 % random updates
+per generation, pages of 64 rows shared almost nothing (148 MiB against
+192 MiB for full copies), pages of 8 to 16 rows shared well (29 to 50
+MiB) at no measurable cost for reads through Python. Hence 16-row leaves.
+
+Indices are sorted runs verified against the rows because hash indices
+degrade on keys with many duplicates (all rectangles on one layer), while
+an order on (key hash, sort value, nid) serves plain, sorted and unique
+indices alike; immutable runs are shared by snapshots without extra
+machinery, and a bulk insert builds a run with one sort.
+
+Rejected alternatives:
+
+- One reference-counted row object per node behind a persistent nid map
+  (pyrsistent's layout in C): best sharing, but no tables (type scans chase
+  pointers, about 50 % more memory); 16-row pages get most of its sharing.
+- A flat base plus a delta overlay per generation (delta chains of depth
+  one): reads pay the overlay lookup and overlays grow until a full copy.
+- In-place updates with reverse deltas for older generations: readers of a
+  frozen subgraph would depend on a writer in another thread.
+- Kernel copy-on-write (memfd and private mappings): Linux only, 4 KiB
+  granularity per table, unusable for thousands of small subgraphs.
+- Existing engines (SQLite, DuckDB, LMDB, Apache Arrow): none offers cheap
+  branching snapshots that behave as values.
+- A core without ``Python.h`` behind a binding layer: object slots and the
+  GC rule tie the storage to CPython anyway.
+- C++ instead of C: reference-counting wrappers and ``std::sort`` would
+  help somewhat, but the hot paths need the raw CPython API regardless.
+
+Decisions taken with the new core: C with the CPython API and no
+pure-Python fallback; transactions are not isolated (reads see uncommitted
+changes, freeze and copy are refused while an updater is open); explicit
+schema forms (``sortkey=order``, ``of_subgraph=('root', 'ref_layers')``);
+``Subgraph.nodes`` is a read-only view and ``Subgraph.index`` is gone;
+cursors are equal by (subgraph, nid); sorted index results break ties by
+nid.
+
+Values are rebuilt from the tables on every access: ``subgraph.nodes[n]``,
+``cursor.tuple`` and reads of ``Vec2I``, ``Rect4I`` or boxed values return
+equal but new objects each time. Code relying on object identity (``is``,
+``id()``-keyed caches) does not work with node values.
+
+Next steps
+----------
+
+Performance:
+
+- Named insertion (``root.x = Node(...)``, about 1.8 us) still runs through
+  the Python updater; a C path like the one for ``%`` would cut it.
+- The constructors of ``Rect4I``, ``Vec2I`` and ``R`` are now the largest
+  per-node cost in user code.
+- ``arrays()`` always copies: strided zero-copy views for clean ``flat``
+  tables, or leaves of any length ("extents") for bulk rows in ``paged``.
+- ExternalRef paths other than ``('root', name)`` are checked in Python;
+  ``SimHierarchy`` still uses a callable ``of_subgraph``.
+- Tables whose rows are out of nid order are sorted on every ``all(T)`` until
+  the next freeze.
+- Index entries take 24 bytes; 16 would do.
+
+Correctness and semantics:
+
+- A LocalRef or explicit nid more than 2^24 past the end of the nid
+  directory raises ``OrdbException`` immediately, where the old backends
+  raised ``DanglingLocalRef`` at commit and allowed sparse nids up to 2^32.
+- ``arrays()`` uses the private ``_PyBytes_Resize``.
+
+Portability and packaging:
+
+- ``__builtin_ctzll`` has no MSVC equivalent under that name; the core is
+  only built and tested with gcc on Linux and Python 3.13 so far.
+- Wheels for macOS and Windows, and builds against Python 3.11 and 3.12.
+- Optional: the Limited API (one abi3 wheel per platform). This needs heap
+  types instead of the 12 static types, about 30 accesses to type object
+  fields and 45 macros replaced, and the same for ``_gdsrecords.c``.
+
+Threads:
+
+- If concurrent writers to one subgraph become a use case: a
+  transaction-scoped, reentrant lock per subgraph that releases the GIL
+  while waiting, instead of raising.
+- Free-threaded Python (see "Threads" above).
+
+Design questions:
+
+- Bringing back lambdas for index declarations (``sortkey=lambda node:
+  node.order``, ``of_subgraph=lambda c: c.root.ref_layers``), which read
+  better than attributes and name tuples. The core would call them per
+  node: to be costed is the Python call per insert (sort keys) and per
+  check (ExternalRef), for the affected types.
+- A portable pure-Python version for installs without a compiler: about
+  1,500 to 2,000 lines, Python equivalents of the four C types (cursor,
+  attribute descriptor, subgraph, updater), chosen at import time, and every
+  change to ORDB made twice. The fuzz could compare it with the core across
+  processes.
+- Removing ``flat``: less code (no undo log, no second vector engine) and
+  half the test runs, but the fuzz would lose the engine it compares
+  ``paged`` against, and ``flat`` is somewhat faster for single-row updates.
+
+Documentation: the Sphinx build was not verified after the switch to the
+native core.
