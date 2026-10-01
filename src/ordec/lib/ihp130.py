@@ -612,6 +612,24 @@ class SG13G2(Cell):
 
         return rs
 
+def draw_cont_array(layout: Layout, rect: Rect4I) -> Rect4I:
+    """Contact array in an Activ rect as DrawContArray in the PDK PCells, returns its bbox."""
+    layers = SG13G2().layers
+
+    # Contact array replicating the PDK tap PCells (DrawContArray).
+    cont = VIA_RULES["SG13G2_CONT_ACTIV_M1"]
+    spacing = cont.space
+    cols = (rect.width - 2*cont.enc_bottom + spacing) // (cont.size + spacing)
+    rows = (rect.height - 2*cont.enc_bottom + spacing) // (cont.size + spacing)
+    if min(cols, rows) >= 4:
+        spacing = cont.space_dense  # Cnt.b1: spacing in arrays of 4 x 4 or more
+
+    return makevias(layout, rect, layers.Cont,
+        size=Vec2I(cont.size, cont.size),
+        spacing=Vec2I(spacing, spacing),
+        margin=Vec2I(cont.enc_bottom, cont.enc_bottom),
+        )
+
 def contact_array(layout: Layout, rect: Rect4I, layer: Layer, size: int, spacing: int,
     margin: Vec2I):
     """
@@ -1088,9 +1106,10 @@ class RfPmosHv(PmosHv):
     def discoverable_instances(cls):
         return [cls(w=R("1u"), l=R("0.72u"))]
 
-def layoutgen_tap(cell: Cell, length: R, width: R, nwell: bool):
+def layoutgen_tap(cell: Cell, length: R, width: R, nwell: bool, label: str = None):
+    """With label ("well" or "sub!"), LVS extracts the tap as a device."""
     layers = SG13G2().layers
-    l = Layout(ref_layers=layers, cell=cell)
+    l = Layout(ref_layers=layers, cell=cell, symbol=cell.symbol if label else None)
     s = Solver(l)
 
     L = int(length/R("1n"))
@@ -1120,22 +1139,18 @@ def layoutgen_tap(cell: Cell, length: R, width: R, nwell: bool):
     # solved geometry; defer the undefined-attribute check until then.
     s.solve(allow_undefined=True)
 
-    # Contact array replicating the PDK tap PCells (DrawContArray).
-    cont_size = 160    # Cnt.a
-    cont_margin = 70   # Cnt.c: Activ enclosure of Cont
-    spacing = 180      # Cnt.b
-    cols = (W - 2*cont_margin + spacing) // (cont_size + spacing)
-    rows = (L - 2*cont_margin + spacing) // (cont_size + spacing)
-    if min(cols, rows) >= 4:
-        spacing = 200  # Cnt.b1: spacing in arrays of 4 x 4 or more
-
-    vias_rect = makevias(l, l.activ.rect, layers.Cont,
-        size=Vec2I(cont_size, cont_size),
-        spacing=Vec2I(spacing, spacing),
-        margin=Vec2I(cont_margin, cont_margin),
-        )
+    vias_rect = draw_cont_array(l, l.activ.rect)
     # Shrink M1 to via stack, with 50 nm extension north and south:
     l.m1.rect = (vias_rect.lx, vias_rect.ly - 50, vias_rect.ux, vias_rect.uy + 50)
+
+    if label:
+        if nwell:
+            l.nwell.create_pin(cell.symbol.well)
+        else:
+            l.substrate = LayoutRect(layer=layers.Substrate, rect=l.activ.rect)
+        for layer in (layers.TEXT, layers.NWell if nwell else layers.Substrate):
+            l % LayoutLabel(layer=layer, pos=Vec2I(W // 2, 10), text=label)
+        l.m1.create_pin(cell.symbol.tie)
 
     return l
 
@@ -1165,6 +1180,81 @@ class Ptap(Cell):
     @classmethod
     def discoverable_instances(cls):
         return [cls(l=R("0.7u"), w=R("0.7u"))]
+
+
+class Tap1(SimLeafCell):
+    """
+    Tap devices ntap1 and ptap1: the resistance from ``tie`` into the well or
+    substrate. Unlike :class:`Ntap` and :class:`Ptap`, they show up in
+    netlists and LVS.
+    """
+    l = Parameter(R)
+    w = Parameter(R)
+
+    def check_size(self):
+        if self.w < R("0.78u") or self.l < R("0.78u"):
+            raise ParameterError(f"w and l must be at least 0.78u ({self.model_name}_minLW).")
+
+    def resistance(self) -> R:
+        """As the PDK's xschem symbol computes it."""
+        return 1 / (self.w * self.l / R("9.8e-10") + 2 * (self.w + self.l) / R("9.8e-4"))
+
+    @viewgen_noctx
+    def symbol(self) -> Symbol:
+        s = Symbol(cell=self)
+
+        s.tie = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
+        s[self.bulk] = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
+
+        s % SymbolPoly(vertices=resistor_zigzag())
+        s % SymbolPoly(vertices=[Vec2R(1.4, 1), Vec2R(2.6, 1)])
+
+        s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
+        return s
+
+    def ngspice_netlist(self, netlister, inst):
+        netlister.require_netlist_setup(netlister_setup)
+        netlister.require_ngspice_setup(ngspice_setup)
+
+        pins = [inst.symbol.tie, inst.symbol[self.bulk]]
+        if netlister.lvs:
+            prefix = "R"
+            params = {"A": self.w * self.l, "P": 2 * (self.w + self.l)}
+        else:
+            prefix = "x"
+            params = {"R": self.resistance(), "w": self.w, "l": self.l}
+        netlister.add(
+            netlister.name_obj(inst, prefix=prefix),
+            netlister.portmap(inst, pins),
+            self.model_name,
+            *spice_params(params),
+        )
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls(l=R("0.78u"), w=R("0.78u"))]
+
+@public
+class Ntap1(Tap1):
+    """Tap device from Metal1 into an NWell, pins ``tie`` and ``well``."""
+    model_name = "ntap1"
+    bulk = "well"
+
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        self.check_size()
+        return layoutgen_tap(self, self.l, self.w, nwell=True, label="well")
+
+@public
+class Ptap1(Tap1):
+    """Tap device from Metal1 into the substrate, pins ``tie`` and ``sub``."""
+    model_name = "ptap1"
+    bulk = "sub"
+
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        self.check_size()
+        return layoutgen_tap(self, self.l, self.w, nwell=False, label="sub!")
 
 
 @dataclass(frozen=True)
@@ -1478,6 +1568,25 @@ def cmim_min_side_for_tm1(mim_d: int, tv1_size: int, tv1_gap: int,
     return side
 
 
+def resistor_zigzag() -> list[Vec2R]:
+    """Resistor line of a 4 x 4 symbol, from pin (2, 0) to pin (2, 4)."""
+    zigzag_height = R(2)
+    zigzag_width_half = R(0.625)
+    zigzag_start = (R(4) - zigzag_height) / R(2)
+    return [
+        Vec2R(2, 0),
+        Vec2R(2, zigzag_start),
+        Vec2R(2 - zigzag_width_half, zigzag_start + zigzag_height * R(1) / R(12)),
+        Vec2R(2 + zigzag_width_half, zigzag_start + zigzag_height * R(3) / R(12)),
+        Vec2R(2 - zigzag_width_half, zigzag_start + zigzag_height * R(5) / R(12)),
+        Vec2R(2 + zigzag_width_half, zigzag_start + zigzag_height * R(7) / R(12)),
+        Vec2R(2 - zigzag_width_half, zigzag_start + zigzag_height * R(9) / R(12)),
+        Vec2R(2 + zigzag_width_half, zigzag_start + zigzag_height * R(11) / R(12)),
+        Vec2R(2, zigzag_start + zigzag_height),
+        Vec2R(2, 4),
+    ]
+
+
 class Res(SimLeafCell):
     """
     Shared base class for SG13G2 resistors.
@@ -1509,21 +1618,7 @@ class Res(SimLeafCell):
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
         s.bn = Pin(pos=Vec2R(4, 2), pintype=PinType.In, align=East)
 
-        zigzag_height = R(2)
-        zigzag_width_half = R(0.625)
-        zigzag_start = (R(4) - zigzag_height) / R(2)
-        s % SymbolPoly(vertices=[
-            Vec2R(2, 0),
-            Vec2R(2, zigzag_start),
-            Vec2R(2 - zigzag_width_half, zigzag_start + zigzag_height * R(1) / R(12)),
-            Vec2R(2 + zigzag_width_half, zigzag_start + zigzag_height * R(3) / R(12)),
-            Vec2R(2 - zigzag_width_half, zigzag_start + zigzag_height * R(5) / R(12)),
-            Vec2R(2 + zigzag_width_half, zigzag_start + zigzag_height * R(7) / R(12)),
-            Vec2R(2 - zigzag_width_half, zigzag_start + zigzag_height * R(9) / R(12)),
-            Vec2R(2 + zigzag_width_half, zigzag_start + zigzag_height * R(11) / R(12)),
-            Vec2R(2, zigzag_start + zigzag_height),
-            Vec2R(2, 4),
-        ])
+        s % SymbolPoly(vertices=resistor_zigzag())
         s % SymbolPoly(vertices=[Vec2R(2.6, 2), Vec2R(4, 2)])
 
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
@@ -1701,6 +1796,8 @@ device_map = {
     "rfpmos": DeviceMapping(RfPmos, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("ng", "m")),
     "rfnmoshv": DeviceMapping(RfNmosHv, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("ng", "m")),
     "rfpmoshv": DeviceMapping(RfPmosHv, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("ng", "m")),
+    "ntap1": DeviceMapping(Ntap1, ("tie", "well"), real_params=("l", "w")),
+    "ptap1": DeviceMapping(Ptap1, ("tie", "sub"), real_params=("l", "w")),
 }
 # TODO: In the future, this device_map dictionary should be automatically derived
 # from the PDK's cell definitions?!
