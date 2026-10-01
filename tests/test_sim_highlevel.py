@@ -236,6 +236,15 @@ def test_source_ac_spec_netlist():
     assert f" ac {src.ac_mag.compat_str()} {src.ac_phase.compat_str()} " in nl.out()
 
 
+def test_lvs_netlist_short():
+    """An LVS netlist has no 0 V source: the nets it shorts are one."""
+    nl = Netlister(Directory(), lvs=True)
+    nl.netlist_hier_symbol(lib_test.ResShorted().symbol)
+    cards = [line.split()[:3] for line in nl.out().splitlines()]
+    assert ["ri0", "a", "b"] in cards
+    assert not any(card and card[0].startswith("v") for card in cards)
+
+
 def test_sim_acrc_ac():
     tb = lib_test.AcRC()
     r = float(tb.schematic.res.symbol.cell.r)

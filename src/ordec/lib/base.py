@@ -270,6 +270,10 @@ class Vdc(AcStimulusMixin, SimLeafCell):
             self.ngspice_ac_spec(),
         )
 
+    def lvs_shorted_pins(self):
+        # A 0 V source is a short.
+        return ["p", "n"] if not self.dc else []
+
     @classmethod
     def discoverable_instances(cls):
         return [cls('1')]

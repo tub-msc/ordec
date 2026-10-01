@@ -542,6 +542,11 @@ class SimLeafCell(Cell, ABC):
         """Return device parameter names to save via ngspice."""
         return []
 
+    def lvs_shorted_pins(self) -> list[str]:
+        """Symbol pin attribute names whose nets this cell joins in an LVS
+        netlist, where it is left out (KLayout reads no sources)."""
+        return []
+
     def ngspice_internal_device(self) -> str | None:
         """
         Name of the real device inside the model subcircuit that
