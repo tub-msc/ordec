@@ -476,67 +476,81 @@ def check_solution_uniqueness(res, A_eq, A_ub, b_ub, variables: tuple[Variable])
     Returns:
         None if solution is unique, AmbiguityInfo if solution has degrees of freedom
     """
-    from scipy.linalg import null_space
-
     n_variables = len(variables)
 
-    # Build active constraint matrix
-    active_parts = []
-
     # Equality constraints are always active
-    if A_eq.size > 0:
-        active_parts.append(A_eq)
+    active = [A_eq]
 
     # Find inequality constraints that are active (slack ≈ 0)
-    if A_ub.size > 0:
+    if A_ub.shape[0] > 0:
         slack = b_ub - A_ub @ res.x
         tolerance = 1e-7
-        active_mask = np.abs(slack) < tolerance
+        active.append(A_ub[np.abs(slack) < tolerance])
 
-        if np.any(active_mask):
-            active_parts.append(A_ub[active_mask])
+    # Compute rank of active constraints by Gaussian elimination on sparse
+    # rows (a dense SVD is cubic in the number of variables).
+    pivots = {} # pivot variable -> its row, 1 at the pivot
+    order = {}  # pivot variable -> when it was chosen
+    for A in active:
+        A = A.tolil()
+        for cols, values in zip(A.rows, A.data):
+            row = dict(zip(cols, values))
+            # Earliest pivot first: a pivot row holds only pivots chosen after it.
+            while eliminate := [j for j in row if j in pivots]:
+                j = min(eliminate, key=order.get)
+                factor = row[j]
+                for k, v in pivots[j].items():
+                    value = row.get(k, 0.0) - factor * v
+                    if abs(value) > 1e-10: # rank tolerance
+                        row[k] = value
+                    else:
+                        row.pop(k, None)
+            if row:
+                p = max(row, key=lambda k: abs(row[k]))
+                order[p] = len(order)
+                pivots[p] = {k: v / row[p] for k, v in row.items()}
 
-    # Build active constraint matrix
-    if active_parts:
-        active_matrix = np.vstack(active_parts)
-    else:
-        # No active constraints - completely unconstrained
-        active_matrix = np.zeros((0, n_variables), dtype=np.float64)
-
-    if active_matrix.shape[0] == 0:
-        # No constraints - completely unconstrained
-        return AmbiguityInfo(
-            variables=variables,
-            constraint_rank=0,
-            degrees_of_freedom=n_variables,
-            null_space=np.eye(n_variables)
-        )
-
-    # Compute rank of active constraints
-    rank = np.linalg.matrix_rank(active_matrix, tol=1e-10)
-    dof = max(0, n_variables - rank)
+    rank = len(pivots)
+    dof = n_variables - rank
     if dof == 0:
         return None # Solution is unique!
+
+    # Null space: one direction per free variable, moving it by 1. Back
+    # substitution, latest pivot first, gives the pivot variables.
+    free = [j for j in range(n_variables) if j not in pivots]
+    null_space = np.zeros((n_variables, dof))
+    null_space[free, range(dof)] = 1
+    for p in reversed(order):
+        for k, v in pivots[p].items():
+            if k != p:
+                null_space[p] -= v * null_space[k]
+    null_space /= np.linalg.norm(null_space, axis=0)
 
     # Solution is not unique!
     return AmbiguityInfo(
         variables=variables,
         constraint_rank=rank,
         degrees_of_freedom=dof,
-        null_space=null_space(active_matrix, rcond=1e-10)
+        null_space=null_space
     )
 
 def constraints_to_Ab(constraints: list[Constraint], n_variables: int, idx_of_var: dict[Variable,int]):
-    A = np.zeros((len(constraints), n_variables), dtype=np.float64)
+    from scipy.sparse import csr_array
+
+    # Sparse, since each constraint uses only a few of the variables.
+    rows, cols, values = [], [], []
     b = np.zeros(len(constraints), dtype=np.float64)
 
     for i, e in enumerate(constraints):
         for variable, coefficient in zip(e.term.variables, e.term.coefficients):
-            j = idx_of_var[variable]
-            A[i, j] = coefficient
+            rows.append(i)
+            cols.append(idx_of_var[variable])
+            values.append(coefficient)
 
         b[i] = -e.term.constant
 
+    A = csr_array((np.array(values, dtype=np.float64), (rows, cols)), shape=(len(constraints), n_variables))
+    A.eliminate_zeros()
     return A, b
 
 @public
@@ -633,8 +647,7 @@ class Solver:
             # (c * variables) is minimized. By subtracting each row of A_ub, the
             # speicified inequalities are optimized towards equality. Each
             # inequality is given the same weight in this process.
-            for x in A_ub:
-                c -= x
+            np.subtract.at(c, A_ub.indices, A_ub.data)
 
             bounds = n_variables*[(None, None)]
             res = linprog(c=c, A_eq=A_eq, b_eq=b_eq, A_ub=A_ub, b_ub=b_ub, bounds=bounds)
