@@ -1103,9 +1103,6 @@ class Rsil(Res):
     :ref:`ihp130_substrate_lvs`.
     """
     model_name = "rsil"
-    l = Parameter(R, default=R("0.50u"), hide_default=False)
-    w = Parameter(R, default=R("0.50u"), hide_default=False)
-
     # Typical-corner model constants (rsh_rsil, weff, rzspec), see nominal_resistance:
     model_rsh = 7.0
     model_dw = 0.01e-6
@@ -1125,7 +1122,7 @@ class Rsil(Res):
 
     @classmethod
     def discoverable_instances(cls):
-        return [cls()]
+        return [cls(l=R("0.50u"), w=R("0.50u"))]
 
 
 @public
@@ -1136,9 +1133,6 @@ class Rppd(Res):
     :ref:`ihp130_substrate_lvs`.
     """
     model_name = "rppd"
-    l = Parameter(R, default=R("0.50u"), hide_default=False)
-    w = Parameter(R, default=R("0.50u"), hide_default=False)
-
     # Typical-corner model constants (rsh_rppd, weff, rzspec), see nominal_resistance:
     model_rsh = 260.0
     model_dw = 0.006e-6
@@ -1158,7 +1152,7 @@ class Rppd(Res):
 
     @classmethod
     def discoverable_instances(cls):
-        return [cls()]
+        return [cls(l=R("0.50u"), w=R("0.50u"))]
 
 
 @public
@@ -1169,9 +1163,6 @@ class Rhigh(Res):
     :ref:`ihp130_substrate_lvs`.
     """
     model_name = "rhigh"
-    l = Parameter(R, default=R("0.96u"), hide_default=False)
-    w = Parameter(R, default=R("0.50u"), hide_default=False)
-
     # Typical-corner model constants (rsh_rhigh, weff, rzspec), see nominal_resistance:
     model_rsh = 1360.0
     model_dw = -0.04e-6
@@ -1191,14 +1182,14 @@ class Rhigh(Res):
 
     @classmethod
     def discoverable_instances(cls):
-        return [cls()]
+        return [cls(l=R("0.96u"), w=R("0.50u"))]
 
 
 @public
 class Cmim(SimLeafCell):
     """Fixed SG13G2 MIM capacitor."""
-    l = Parameter(R, default=R("6.99u"), hide_default=False)
-    w = Parameter(R, default=R("6.99u"), hide_default=False)
+    l = Parameter(R)
+    w = Parameter(R)
     m = Parameter(int, default=1)
     ic = Parameter(R, optional=True)
 
@@ -1249,7 +1240,7 @@ class Cmim(SimLeafCell):
 
     @classmethod
     def discoverable_instances(cls):
-        return [cls()]
+        return [cls(l=R("6.99u"), w=R("6.99u"))]
 
 
 #: Device map for spice_in:
