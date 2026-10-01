@@ -158,6 +158,12 @@ def netlister_setup_mos_hv(netlister):
     model_lib = pdk().ngspice_models_dir / "cornerMOShv.lib"
     netlister.add(".lib", f"\"{model_lib}\" mos_{netlister_corner(netlister).mos.value}")
 
+def netlister_setup_bondpad(netlister):
+    """The bondpad model, which no corner library includes."""
+    if netlister.lvs:
+        return
+    netlister.add(".include", f"\"{pdk().ngspice_models_dir / 'sg13g2_bondpad.lib'}\"")
+
 @dataclass(frozen=True)
 class ViaRule:
     """One via type of the PDK's via PCells (sg13_tech_info.py), in nm."""
@@ -2103,6 +2109,170 @@ class Cpara(SimLeafCell):
     def discoverable_instances(cls):
         return [cls(c=R("10f"))]
 
+def layoutgen_bondpad(cell: Cell) -> Layout:
+    """
+    Generate the SG13G2 bond pad layout, as the PCell bondpad_code.py with
+    TopMetal2 on top: an octagon (shape=0) or a square (shape=1), with stack
+    metal rings and vias from Metal<bottom_metal> up, with fill full plates
+    instead of the rings, with add_filler_ex fill blocking 10 um around.
+    """
+    if cell.shape not in (0, 1) or cell.padtype != 0:
+        raise ParameterError("Layout supports the octagon and square bondpad (shape=0 or 1, padtype=0) only.")
+    if not 1 <= cell.bottom_metal <= 6:
+        raise ParameterError("bottom_metal must be 1 to 6 (TopMetal1).")
+    layers = SG13G2().layers
+    l = Layout(ref_layers=layers, cell=cell, symbol=cell.symbol)
+
+    def to_grid(v):  # tog in the PCell
+        return 5 * math.floor(v / 5 + 0.001)
+
+    def octagon(rx, ry, off):
+        return [Vec2I(-rx, -ry + off), Vec2I(-rx, ry - off), Vec2I(-rx + off, ry),
+            Vec2I(rx - off, ry), Vec2I(rx, ry - off), Vec2I(rx, -ry + off),
+            Vec2I(rx - off, -ry), Vec2I(-rx + off, -ry)]
+
+    def corner(r):
+        return to_grid(r * (1 - 1 / (math.sqrt(2) + 1)))
+
+    met_over = 1400       # Pad.gR
+    met_over_pass = 2100  # Pas.c
+    rad = to_grid(int(cell.size / R("1n")) / 2)
+    stripe_width = 2 * to_grid(met_over + math.sqrt(2) * VIA_RULES["SG13G2_VIA_TM1_TM2"].size * 0.5)
+    # The via rules from Metal1 up, the stack has those from bottom_metal.
+    rules = [VIA_RULES[k] for k in ("SG13G2_VIA_M1_M2", "SG13G2_VIA_M2_M3", "SG13G2_VIA_M3_M4",
+        "SG13G2_VIA_M4_M5", "SG13G2_VIA_M5_TM1", "SG13G2_VIA_TM1_TM2")]
+    stack = rules[cell.bottom_metal - 1:] if cell.stack else []
+    nofill_layers = (layers.Activ, layers.GatPoly, layers.Metal1, layers.Metal2, layers.Metal3,
+        layers.Metal4, layers.Metal5, layers.TopMetal1, layers.TopMetal2) if cell.add_filler_ex else ()
+    nofill_rad = rad + 10000
+
+    if cell.shape == 1:
+        box = Rect4I(-rad, -rad, rad, rad)
+        for layer in nofill_layers:
+            l % LayoutRect(layer=layer.nofill, rect=Rect4I(-nofill_rad, -nofill_rad, nofill_rad, nofill_rad))
+        l.term_pad = LayoutRect(layer=layers.TopMetal2, rect=box)
+        l % LayoutRect(layer=layers.dfpad, rect=box)
+        half = rad - met_over_pass
+        l % LayoutRect(layer=layers.Passiv, rect=Rect4I(-half, -half, half, half))
+        half = rad - stripe_width
+        ring_vertices = [Vec2I(-rad, -rad), Vec2I(-rad, rad), Vec2I(rad, rad), Vec2I(rad, -rad),
+            Vec2I(-rad, -rad), Vec2I(-half, -half), Vec2I(half, -half), Vec2I(half, half),
+            Vec2I(-half, half), Vec2I(-half, -half)]
+        for metal, rule in enumerate(stack, cell.bottom_metal):
+            via, vs, vd = getattr(layers, rule.cut), rule.size, rule.space
+            if cell.fill:
+                l % LayoutRect(layer=getattr(layers, rule.bottom), rect=box)
+                # Via field inside the ring, shifted on every other level
+                shift = 0 if metal % 2 else 2 * vd
+                half = rad - stripe_width - 4000
+                contact_array(l, Rect4I(-half, -half, half, half), via, vs, 4 * vd, Vec2I(shift, shift))
+            else:
+                l % LayoutPoly(layer=getattr(layers, rule.bottom), vertices=ring_vertices)
+            margin = to_grid((stripe_width - vs) / 2)
+            contact_array(l, Rect4I(-rad, rad - stripe_width, rad, rad), via, vs, vd, Vec2I(margin, margin))
+            contact_array(l, Rect4I(-rad, -rad, rad, -rad + stripe_width), via, vs, vd, Vec2I(margin, margin))
+            contact_array(l, Rect4I(-rad, -rad, -rad + stripe_width, rad), via, vs, vd,
+                Vec2I(margin, margin + vs + vd + 10))
+            contact_array(l, Rect4I(rad - stripe_width, -rad, rad, rad), via, vs, vd,
+                Vec2I(margin, margin + vs + vd + 10))
+        l.term_pad.create_pin(cell.symbol.pad)
+        return l
+
+    offset = corner(rad)
+    for layer in nofill_layers:
+        l % LayoutPoly(layer=layer.nofill, vertices=octagon(nofill_rad, nofill_rad, corner(nofill_rad)))
+    l % LayoutPoly(layer=layers.TopMetal2, vertices=octagon(rad, rad + 5, offset))
+    l.term_pad = LayoutRect(layer=layers.TopMetal2,
+        rect=Rect4I(-rad + offset, -rad + offset, rad - offset, rad - offset))
+    l % LayoutPoly(layer=layers.dfpad, vertices=octagon(rad, rad + 5, offset))
+    inner_rad = rad - met_over_pass
+    l % LayoutPoly(layer=layers.Passiv, vertices=octagon(inner_rad, inner_rad, corner(inner_rad)))
+
+    # Metal ring as one polygon: the outer octagon, then the inner one
+    # backwards.
+    inner_rad = rad - stripe_width
+    outer = octagon(rad, rad + 5, offset)
+    inner = octagon(inner_rad, inner_rad, corner(inner_rad))
+    ring_vertices = [Vec2I(-rad, 0), *outer[1:], outer[0], Vec2I(-rad, 0),
+        Vec2I(-inner_rad, 0), inner[0], *inner[:0:-1], Vec2I(-inner_rad, 0)]
+    if stack and cell.fill:
+        # The PCell's via field inside the plates does not come out, its
+        # mask stays on Activ (with the field's squares inside it).
+        l % LayoutPoly(layer=layers.Activ, vertices=inner)
+    for rule in stack:
+        via, vs, vd = getattr(layers, rule.cut), rule.size, rule.space
+        l % LayoutPoly(layer=getattr(layers, rule.bottom), vertices=outer if cell.fill else ring_vertices)
+        off = offset + vd
+        margin = stripe_width // 2 - vd
+        contact_array(l, Rect4I(-rad, -rad + off, -rad + stripe_width, rad - off), via, vs, vd,
+            Vec2I(margin, 0))
+        contact_array(l, Rect4I(rad - stripe_width, -rad + off, rad, rad - off), via, vs, vd,
+            Vec2I(margin, 0))
+        contact_array(l, Rect4I(-rad + off, rad - stripe_width, rad - off, rad), via, vs, vd,
+            Vec2I(0, margin))
+        contact_array(l, Rect4I(-rad + off, -rad, rad - off, -rad + stripe_width), via, vs, vd,
+            Vec2I(0, margin))
+        # Vias on the diagonal edges, mirrored into all four corners
+        step = vs + to_grid(vd / math.sqrt(2) + 5)
+        x, y = -rad + to_grid(stripe_width / math.sqrt(2)), rad - offset
+        while y < rad - stripe_width / 2 - 1.5 * vs - vd:
+            l % LayoutRect(layer=via, rect=Rect4I(x, y, x + vs, y + vs))
+            l % LayoutRect(layer=via, rect=Rect4I(x, -y - vs, x + vs, -y))
+            l % LayoutRect(layer=via, rect=Rect4I(-x - vs, y, -x, y + vs))
+            l % LayoutRect(layer=via, rect=Rect4I(-x - vs, -y - vs, -x, -y))
+            x, y = x + step, y + step
+
+    l.term_pad.create_pin(cell.symbol.pad)
+    return l
+
+@public
+class Bondpad(SimLeafCell):
+    """Bond pad on ``pad``, a placeholder model in simulation and plain metal in LVS."""
+    size = Parameter(R)  #: Diameter
+    shape = Parameter(int, default=0)  #: 0 octagon, 1 square, 2 circle (layout: 0 and 1)
+    padtype = Parameter(int, default=0)  #: 0 bond pad, 1 probe pad (layout: 0)
+    stack = Parameter(bool, default=True)  #: Metal rings with vias from bottom_metal up
+    fill = Parameter(bool, default=False)  #: Full metal plates instead of the rings
+    bottom_metal = Parameter(int, default=3)  #: Lowest metal of the stack, 1 to 6 (TopMetal1)
+    add_filler_ex = Parameter(bool, default=False)  #: Fill blocking around the pad
+
+    @viewgen_noctx
+    def symbol(self) -> Symbol:
+        s = Symbol(cell=self)
+
+        s.pad = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
+
+        s % SymbolPoly(vertices=[Vec2R(1.5, 1), Vec2R(2.5, 1), Vec2R(3.5, 2), Vec2R(3.5, 3),
+            Vec2R(2.5, 4), Vec2R(1.5, 4), Vec2R(0.5, 3), Vec2R(0.5, 2), Vec2R(1.5, 1)])
+        s % SymbolPoly(vertices=[Vec2R(1, 1.5), Vec2R(3, 3.5)])
+        s % SymbolPoly(vertices=[Vec2R(1, 3.5), Vec2R(3, 1.5)])
+        s % SymbolPoly(vertices=[Vec2R(2, 0), Vec2R(2, 1)])
+
+        s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
+        return s
+
+    def ngspice_netlist(self, netlister, inst):
+        if netlister.lvs:
+            return
+        netlister.require_netlist_setup(netlister_setup)
+        netlister.require_netlist_setup(netlister_setup_bondpad)
+        netlister.require_ngspice_setup(ngspice_setup)
+
+        netlister.add(
+            netlister.name_obj(inst, prefix="x"),
+            netlister.portmap(inst, [inst.symbol.pad]),
+            "bondpad",
+            *spice_params({"size": self.size, "shape": self.shape, "padtype": self.padtype}),
+        )
+
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        return layoutgen_bondpad(self)
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls(size=R("80u"))]
+
 
 #: Device map for spice_in:
 device_map = {
@@ -2124,6 +2294,7 @@ device_map = {
     "rfcmim": DeviceMapping(Rfcmim, ("p", "n", "bn"), real_params=("w", "l", "wfeed")),
     "sg13_hv_svaricap": DeviceMapping(Svaricap, ("g1", "nw", "g2", "bn"), real_params=("w", "l"), int_params=("nx",)),
     "cparasitic": DeviceMapping(Cpara, ("p", "n"), real_params=("c",)),
+    "bondpad": DeviceMapping(Bondpad, ("pad",), real_params=("size",), int_params=("shape", "padtype")),
 }
 # TODO: In the future, this device_map dictionary should be automatically derived
 # from the PDK's cell definitions?!
