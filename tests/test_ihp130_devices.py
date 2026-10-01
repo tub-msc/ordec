@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: 2026 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+import math
+
 import pytest
 
 from ordec.core import *
@@ -11,8 +13,9 @@ from .lib.ihp130_inv import Inv
 
 # One gallery for a single DRC and a single LVS run (deck startup dominates).
 # MOS devices come in the inverter fixture, whose body tap ties the
-# substrate to its vss, as the guard ring of RF NMOS does. NWell devices
-# alternate with others (NBL.c, NBL.d).
+# substrate to its vss, as the guard rings of RF NMOS and rfcmim do. NWell
+# devices alternate with others (NBL.c, NBL.d). Svaricap with w=3.74u fails
+# NW.e, as the foundry PCell does.
 GALLERY = [
     ihp130.Rsil(l="0.5u", w="0.5u"), ihp130.Rppd(l="0.5u", w="0.5u"), ihp130.Rhigh(l="0.96u", w="0.5u"),
     ihp130.Cmim(l="6.99u", w="6.99u"),
@@ -21,11 +24,12 @@ GALLERY = [
     ihp130.Rhigh(l="2.0u", w="0.5u", b=5, ps="400n"),
     ihp130.Ntap1(w="0.78u", l="0.78u"), ihp130.Ptap1(w="0.78u", l="0.78u"), ihp130.Ntap1(w="1u", l="2u"),
     ihp130.Ptap1(w="3u", l="0.8u"),
-    ihp130.RfPmosHv(w="1u", l="0.72u"), ihp130.RfNmos(w="1u", l="0.72u"),
+    ihp130.Svaricap(w="9.74u", l="0.3u"),
+    ihp130.RfPmosHv(w="1u", l="0.72u"), ihp130.RfNmos(w="1u", l="0.72u"), ihp130.Rfcmim(w="7u", l="7u", wfeed="3u"),
     Inv(variant="hv"),
 ]
 SUBSTRATE = f"inv{len(GALLERY) - 1}_vss"
-TIES = ("rfnmos12_b",)
+TIES = ("rfnmos13_b", "rfcmim14_bn")
 
 
 def test_device_gallery_drc_clean():
@@ -76,4 +80,15 @@ def supply_current(cell, volts, freq=None, **conns):
 ])
 def test_device_op(cell, volts, conns, expected):
     assert supply_current(cell, volts, **conns) == pytest.approx(expected, rel=0.02)
+
+
+# Capacitance from the AC current at 1 MHz, C = |I| / (2 pi f) for 1 V.
+@pytest.mark.parametrize("cell,conns,expected", [
+    (ihp130.Svaricap(w="9.74u", l="0.3u"), dict(g1="vdd", nw="vss", g2="vss", bn="vss"), 12.883e-15),
+    (ihp130.Cpara(c="20f"), dict(p="vdd", n="vss"), 20e-15),
+    (ihp130.Rfcmim(w="7u", l="7u", wfeed="3u"), dict(p="vdd", n="vss", bn="vss"), 74.621e-15),
+])
+def test_device_ac(cell, conns, expected):
+    freq = 1e6
+    assert supply_current(cell, "1", freq, **conns) / (2 * math.pi * freq) == pytest.approx(expected, rel=0.02)
 

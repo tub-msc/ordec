@@ -1802,6 +1802,308 @@ class Cmim(SimLeafCell):
         return [cls(l=R("6.99u"), w=R("6.99u"))]
 
 
+def layoutgen_rfcmim(cell: Cell) -> Layout:
+    """Generate the SG13G2 RF MiM capacitor layout, as the PCell rfcmim_code.py."""
+    if not (R("7u") <= cell.w <= R("1m") and R("7u") <= cell.l <= R("1m")):
+        raise ParameterError("w and l must be within rfcmim_minLW and rfcmim_maxLW.")
+    layers = SG13G2().layers
+    l = Layout(ref_layers=layers, cell=cell, symbol=cell.symbol)
+
+    lu = 5 * (int(cell.l / R("1n")) // 5)
+    wu = 5 * (int(cell.w / R("1n")) // 5)
+    wf = 5 * (int(cell.wfeed / R("1n")) // 5)
+    feed = 5 * ((wu - wf) // 10)       # lower edge of the centered feeds
+    mim_c = 600                        # Mim.c: Metal5 enclosure of MIM
+    mim_d = 360                        # Mim.d: MIM enclosure of Vmim
+    tv1 = VIA_RULES["SG13G2_VIA_M5_TM1"]
+    cont = VIA_RULES["SG13G2_CONT_ACTIV_M1"]
+    ring_in, ring_out = 3600, 5600     # inner and outer edge of the guard ring
+    ring_mid = (ring_in + ring_out) // 2
+
+    l.mim = LayoutRect(layer=layers.MIM, rect=Rect4I(0, 0, lu, wu))
+    contact_array(l, l.mim.rect, layers.Vmim, tv1.size, tv1.space,
+        Vec2I(mim_d + tv1.enc_top, mim_d + tv1.enc_top))
+    l % LayoutRect(layer=layers.TopMetal1, rect=Rect4I(mim_d, mim_d, lu - mim_d, wu - mim_d))
+    l % LayoutRect(layer=layers.Metal5, rect=Rect4I(-mim_c, -mim_c, lu + mim_c, wu + mim_c))
+    l % LayoutRect(layer=layers.PWell.block, rect=Rect4I(-3000, -3000, lu + 3000, wu + 3000))
+    l.term_p = LayoutRect(layer=layers.TopMetal1, rect=Rect4I(-ring_out, feed, mim_d, feed + wf))
+    l.term_n = LayoutRect(layer=layers.Metal5,
+        rect=Rect4I(lu + mim_c, feed, lu + ring_out, feed + wf))
+    for layer in (layers.Activ, layers.Metal1, layers.Metal2, layers.Metal3, layers.Metal4,
+        layers.Metal5, layers.TopMetal1):
+        l % LayoutRect(layer=layer.noqrc,
+            rect=Rect4I(-ring_out, -ring_out, lu + ring_out, wu + ring_out))
+
+    # Guard ring, open where the Metal5 feed leaves on the right
+    # pSD 30 over the Activ ring on both sides (the PCell's 3.57 and 5.63)
+    ring(l, layers.pSD,
+        Rect4I(-ring_out - 30, -ring_out - 30, lu + ring_out + 30, wu + ring_out + 30),
+        Rect4I(-ring_in + 30, -ring_in + 30, lu + ring_in - 30, wu + ring_in - 30))
+    l.term_bn = PathNode()
+    for i, rect in enumerate((
+        Rect4I(-ring_out, -ring_out, lu + ring_out, -ring_in),
+        Rect4I(-ring_out, wu + ring_in, lu + ring_out, wu + ring_out),
+        Rect4I(-ring_out, -ring_in, -ring_in, wu + ring_in),
+        Rect4I(lu + ring_in, -ring_in, lu + ring_out, feed),
+        Rect4I(lu + ring_in, feed + wf, lu + ring_out, wu + ring_in))):
+        l % LayoutRect(layer=layers.Activ, rect=rect)
+        l.term_bn[i] = LayoutRect(layer=layers.Metal1, rect=rect)
+        contact_array(l, rect, layers.Cont, cont.size, cont.space, Vec2I(360, 360))
+
+    l_um, w_um = float(cell.l / R("1u")) + 0.01, float(cell.w / R("1u")) + 0.01
+    c = l_um * w_um * 1.5e-15 + 2 * (l_um + w_um) * 4e-17  # for the label, as in the PCell
+    l % LayoutLabel(layer=layers.TEXT, pos=Vec2I(-ring_mid, feed + wf // 2), text="PLUS")
+    l % LayoutLabel(layer=layers.TEXT, pos=Vec2I(lu + ring_mid, feed + wf // 2), text="MINUS")
+    l % LayoutLabel(layer=layers.TEXT, pos=Vec2I(lu // 2, -ring_mid), text="TIE")
+    l % LayoutLabel(layer=layers.TEXT, pos=Vec2I(lu // 2, wu + 2000), text="rfcmim")
+    l % LayoutLabel(layer=layers.TEXT, pos=Vec2I(lu // 2, -2000), text=f"C={eng_string(c)}")
+
+    l.term_p.create_pin(cell.symbol.p)
+    l.term_n.create_pin(cell.symbol.n)
+    l.term_bn[0].create_pin(cell.symbol.bn)
+    return l
+
+@public
+class Rfcmim(SimLeafCell):
+    """
+    RF MiM capacitor: plate ``p`` fed by TopMetal1, plate ``n`` fed by
+    Metal5, in a guard ring on the substrate ``bn``.
+    """
+    w = Parameter(R)
+    l = Parameter(R)
+    wfeed = Parameter(R)  #: Feed width
+
+    @viewgen_noctx
+    def symbol(self) -> Symbol:
+        s = Symbol(cell=self)
+
+        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
+        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
+        s.bn = Pin(pos=Vec2R(0, 2), pintype=PinType.Inout, align=West)
+
+        s % SymbolPoly(vertices=[Vec2R(1.25, 1.8), Vec2R(2.75, 1.8)])
+        s % SymbolPoly(vertices=[Vec2R(1.25, 2.2), Vec2R(2.75, 2.2)])
+        s % SymbolPoly(vertices=[Vec2R(2, 2.2), Vec2R(2, 4)])
+        s % SymbolPoly(vertices=[Vec2R(2, 1.8), Vec2R(2, 0)])
+        s % SymbolPoly(vertices=[Vec2R(0, 2), Vec2R(1, 2)])
+
+        s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
+        return s
+
+    def ngspice_netlist(self, netlister, inst):
+        netlister.require_netlist_setup(netlister_setup)
+        netlister.require_ngspice_setup(ngspice_setup)
+
+        netlister.add(
+            netlister.name_obj(inst, prefix="C" if netlister.lvs else "x"),
+            netlister.portmap(inst, [inst.symbol.p, inst.symbol.n, inst.symbol.bn]),
+            "rfcmim" if netlister.lvs else "cap_rfcmim",
+            *spice_params({"w": self.w, "l": self.l, "wfeed": self.wfeed}),
+        )
+
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        return layoutgen_rfcmim(self)
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls(w=R("10u"), l=R("10u"), wfeed=R("5u"))]
+
+def layoutgen_svaricap(cell: Cell) -> Layout:
+    """
+    Generate the SG13G2 HV varicap layout, as the PCell SVaricap_code.py: nx
+    pairs of gate fingers in one NWell, the g2 fingers hanging from a gate
+    rail above them, the g1 fingers from a rail below. The NWell contacts
+    are a column left of the fingers.
+    """
+    if cell.w not in (R("3.74u"), R("9.74u")) or cell.l not in (R("0.3u"), R("0.8u")):
+        raise ParameterError("w must be 3.74u or 9.74u, l 0.3u or 0.8u.")
+    if not 1 <= cell.nx <= 10:
+        raise ParameterError("nx must be 1 to 10.")
+    layers = SG13G2().layers
+    l = Layout(ref_layers=layers, cell=cell, symbol=cell.symbol)
+
+    W = int(cell.w / R("1n"))
+    L = int(cell.l / R("1n"))
+    nx = cell.nx
+    gate_s = 250                 # space between the fingers
+    rail = 500                   # height of the gate rails
+    x1, y1 = 730, 390 + gate_s   # lower left corner of the first finger
+    step = 2 * (gate_s + L)      # a g2 and a g1 finger
+    xr = x1 - gate_s + nx*step   # right end of the rails
+    yb, yt = y1 - gate_s - rail, y1 + W + rail  # outer edges of the rails
+    # How far the Activ, NWell and nBuLay edges lie inside the rails' outer
+    # edges (gate_o_*), and beyond the rails' right end (*_o_gate).
+    gate_o_activ = 350
+    gate_o_nwell, gate_o_nbulay = (110, 350) if W == 3740 else (-145, 100)
+    nwell_o_gate, nbulay_o_gate = 570, 330
+    cont = VIA_RULES["SG13G2_CONT_GATPOLY_M1"]
+    cont_w, cont_s = cont.size, cont.space
+    met_w = cont_w + 2*cont.endcap_top
+    # Each finger's Metal1 runs into its rail up to the rail's contact line,
+    # which lies on the rail's middle.
+    to_line = rail // 2 - met_w // 2
+
+    for i in range(nx):
+        x = x1 + i*step
+        xg = x + step - gate_s
+        l % LayoutRect(layer=layers.GatPoly, rect=Rect4I(x, y1, x + L, y1 + W))
+        l % LayoutRect(layer=layers.GatPoly, rect=Rect4I(xg - L, y1 - gate_s, xg, y1 - gate_s + W))
+        # Contacts along each finger, ending 80 before its free end
+        xc = x + L // 2
+        metal_cont(l, layers.Metal1, layers.Cont, xc, y1 + 80, xc, y1 + W - 10,
+            met_w, cont_w, 50, cont_s)
+        l % LayoutRect(layer=layers.Metal1,
+            rect=Rect4I(xc - met_w // 2, y1 + W - 10, xc + met_w // 2, y1 + W + to_line))
+        xc = xg - L // 2
+        metal_cont(l, layers.Metal1, layers.Cont, xc, y1 - gate_s + 10, xc, y1 - gate_s + W - 80,
+            met_w, cont_w, 50, cont_s)
+        l % LayoutRect(layer=layers.Metal1,
+            rect=Rect4I(xc - met_w // 2, y1 - gate_s - to_line, xc + met_w // 2, y1 - gate_s + 10))
+
+    # Activ islands with pSD at the outer edge of each rail: one per 10 um of
+    # finger span, centered on the fingers, one less if the outer ones would
+    # reach over the first finger.
+    tap_w, tap_h, psd_over = 240, 760, 100
+    psd_step = 10000
+    span = 2*nx*L + (2*nx - 1)*gate_s
+    nr_psd = (span - tap_w) // psd_step + 1
+    if nr_psd > 1:
+        x_psd = (span - (nr_psd - 1)*psd_step) // 2 + x1 - tap_w // 2
+        if x_psd < x1 + L + 5:
+            nr_psd -= 1
+            x_psd = (span - (nr_psd - 1)*psd_step) // 2 + x1 - tap_w // 2
+    else:
+        x_psd = x1 + (span - tap_w) // 2
+    for k in range(nr_psd):
+        x = x_psd + k*psd_step
+        l % LayoutRect(layer=layers.Activ,
+            rect=Rect4I(x, yt - gate_o_activ, x + tap_w, yt - gate_o_activ + tap_h))
+        l % LayoutRect(layer=layers.Activ,
+            rect=Rect4I(x, yb + gate_o_activ - tap_h, x + tap_w, yb + gate_o_activ))
+        l % LayoutRect(layer=layers.pSD, rect=Rect4I(x - psd_over, yt + psd_over - gate_o_activ,
+            x + tap_w + psd_over, yt + psd_over - gate_o_activ + tap_h))
+        l % LayoutRect(layer=layers.pSD, rect=Rect4I(x - psd_over, yb - psd_over + gate_o_activ - tap_h,
+            x + tap_w + psd_over, yb - psd_over + gate_o_activ))
+
+    l % LayoutRect(layer=layers.GatPoly, rect=Rect4I(x1, y1 + W, xr, yt))
+    l % LayoutRect(layer=layers.GatPoly, rect=Rect4I(x1, yb, xr, y1 - gate_s))
+    l.term_g1 = metal_cont(l, layers.Metal1, layers.Cont, x1 + 20, yb + rail // 2, xr - 20, yb + rail // 2,
+        met_w, cont_w, 50, cont_s)
+    l.term_g2 = metal_cont(l, layers.Metal1, layers.Cont, x1 + 20, yt - rail // 2, xr - 20, yt - rail // 2,
+        met_w, cont_w, 50, cont_s)
+    # The NWell contacts: a column 340 left of the fingers, at their middle
+    yc = y1 + (W - gate_s) // 2
+    l.term_nw = metal_cont(l, layers.Metal1, layers.Cont, x1 - 340, yc - 480, x1 - 340, yc + 480,
+        cont_w + 2*20, cont_w, 50, cont_s)
+
+    # Activ and nBuLay start 490 left of the fingers, the NWell at the
+    # cell's origin.
+    l % LayoutRect(layer=layers.Activ,
+        rect=Rect4I(x1 - 490, yb + gate_o_activ, xr + nbulay_o_gate, yt - gate_o_activ))
+    l % LayoutRect(layer=layers.NWell,
+        rect=Rect4I(x1 - 730, yb + gate_o_nwell, xr + nwell_o_gate, yt - gate_o_nwell))
+    l % LayoutRect(layer=layers.nBuLay,
+        rect=Rect4I(x1 - 490, yb + gate_o_nbulay, xr + nbulay_o_gate, yt - gate_o_nbulay))
+    l % LayoutLabel(layer=layers.TEXT, pos=Vec2I(x1 - 490, yb + gate_o_nbulay + gate_o_activ),
+        text="SVaricap")
+
+    l.term_g1.create_pin(cell.symbol.g1)
+    l.term_g2.create_pin(cell.symbol.g2)
+    l.term_nw.create_pin(cell.symbol.nw)
+    return l
+
+@public
+class Svaricap(SimLeafCell):
+    """
+    HV MOS varicap: gates ``g1`` and ``g2`` against their common NWell
+    ``nw``, ``bn`` the substrate.
+    """
+    w = Parameter(R)  #: Width, 3.74u or 9.74u
+    l = Parameter(R)  #: Length, 0.3u or 0.8u
+    nx = Parameter(int, default=1)  #: Number of columns (Nx)
+
+    @viewgen_noctx
+    def symbol(self) -> Symbol:
+        s = Symbol(cell=self)
+
+        # Same places as in the PDK symbol. Its pin names don't match the
+        # drawing, xschem netlists the pins by their order.
+        s.g1 = Pin(pos=Vec2R(0, 2), pintype=PinType.Inout, align=West)
+        s.g2 = Pin(pos=Vec2R(4, 2), pintype=PinType.Inout, align=East)
+        s.nw = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
+        s.bn = Pin(pos=Vec2R(2, 0), pintype=PinType.In, align=South)
+
+        s % SymbolPoly(vertices=[Vec2R(0, 2), Vec2R(1.2, 2)])
+        s % SymbolPoly(vertices=[Vec2R(4, 2), Vec2R(2.8, 2)])
+        for x in (1.2, 1.6, 2.4, 2.8):
+            s % SymbolPoly(vertices=[Vec2R(x, 1.4), Vec2R(x, 2.6)])
+        s % SymbolPoly(vertices=[Vec2R(1.6, 2), Vec2R(2.4, 2)])
+        s % SymbolPoly(vertices=[Vec2R(2, 2), Vec2R(2, 4)])
+        s % SymbolPoly(vertices=[Vec2R(2, 0), Vec2R(2, 0.8)])
+
+        s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
+        return s
+
+    def ngspice_netlist(self, netlister, inst):
+        netlister.require_netlist_setup(netlister_setup)
+        netlister.require_netlist_setup(netlister_setup_mos_hv)
+        netlister.require_ngspice_setup(ngspice_setup)
+
+        netlister.add(
+            netlister.name_obj(inst, prefix="C" if netlister.lvs else "x"),
+            netlister.portmap(inst,
+                [inst.symbol.g1, inst.symbol.nw, inst.symbol.g2, inst.symbol.bn]),
+            "sg13_hv_svaricap",
+            *spice_params({"w": self.w, "l": self.l, "Nx": self.nx}),
+        )
+
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        return layoutgen_svaricap(self)
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls(w=R("3.74u"), l=R("0.3u"))]
+
+@public
+class Cpara(SimLeafCell):
+    """Parasitic capacitance for simulation only: no LVS device, no layout."""
+    c = Parameter(R)  #: Capacitance (C)
+
+    @viewgen_noctx
+    def symbol(self) -> Symbol:
+        s = Symbol(cell=self)
+
+        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
+        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
+
+        s % SymbolPoly(vertices=[Vec2R(1.25, 2.2), Vec2R(2.75, 2.2)])
+        s % SymbolArc(pos=Vec2R(2, 0.4), radius=R(1.4), angle_start=R(0.17), angle_end=R(0.33))
+        s % SymbolPoly(vertices=[Vec2R(2, 2.2), Vec2R(2, 4)])
+        s % SymbolPoly(vertices=[Vec2R(2, 1.8), Vec2R(2, 0)])
+
+        s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
+        return s
+
+    def ngspice_netlist(self, netlister, inst):
+        if netlister.lvs:
+            return
+        netlister.require_netlist_setup(netlister_setup)
+        netlister.require_ngspice_setup(ngspice_setup)
+
+        netlister.add(
+            netlister.name_obj(inst, prefix="x"),
+            netlister.portmap(inst, [inst.symbol.p, inst.symbol.n]),
+            "cparasitic",
+            *spice_params({"C": self.c}),
+        )
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls(c=R("10f"))]
+
+
 #: Device map for spice_in:
 device_map = {
     "sg13_lv_nmos": DeviceMapping(Nmos, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("ng", "m")),
@@ -1818,6 +2120,10 @@ device_map = {
     "rppd": DeviceMapping(Rppd, ("p", "n", "bn"), real_params=("l", "w", "ps"), int_params=("b", "m")),
     "rhigh": DeviceMapping(Rhigh, ("p", "n", "bn"), real_params=("l", "w", "ps"), int_params=("b", "m")),
     "cap_cmim": DeviceMapping(Cmim, ("p", "n"), real_params=("l", "w"), int_params=("m",)),
+    "cap_rfcmim": DeviceMapping(Rfcmim, ("p", "n", "bn"), real_params=("w", "l", "wfeed")),
+    "rfcmim": DeviceMapping(Rfcmim, ("p", "n", "bn"), real_params=("w", "l", "wfeed")),
+    "sg13_hv_svaricap": DeviceMapping(Svaricap, ("g1", "nw", "g2", "bn"), real_params=("w", "l"), int_params=("nx",)),
+    "cparasitic": DeviceMapping(Cpara, ("p", "n"), real_params=("c",)),
 }
 # TODO: In the future, this device_map dictionary should be automatically derived
 # from the PDK's cell definitions?!
