@@ -630,6 +630,38 @@ def contact_array(layout: Layout, rect: Rect4I, layer: Layer, size: int, spacing
         for y in positions(rect.ly, rect.height, margin.y):
             layout % LayoutRect(layer=layer, rect=Rect4I(x, y, x + size, y + size))
 
+def metal_cont(layout: Layout, metal: Layer, via: Layer, x1: int, y1: int, x2: int, y2: int,
+    width: int, size: int, offset: int, space: int, dy: int = 0) -> LayoutRect:
+    """
+    Metal line from (x1, y1) to (x2, y2) with vias along it, shifted by dy,
+    as MetalCont in the PDK PCells. Returns the metal rect.
+    """
+    def to_grid(v):  # tog in the PCells
+        return v - v % 5
+
+    horizontal = y1 == y2
+    lo, hi = sorted((x1, x2) if horizontal else (y1, y2))
+    center = y1 if horizontal else x1
+    # One row of vias along the line, spread as contactArray spreads them.
+    across = to_grid(center - size // 2)
+    if horizontal:
+        contact_array(layout, Rect4I(lo, across + dy, hi, across + size + dy), via, size, space,
+            Vec2I(offset, 0))
+    else:
+        contact_array(layout, Rect4I(across, lo + dy, across + size, hi + dy), via, size, space,
+            Vec2I(0, offset))
+    across_lo, across_hi = to_grid(center - width // 2), to_grid(center + width // 2)
+    rect = Rect4I(to_grid(lo), across_lo, to_grid(hi), across_hi) if horizontal \
+        else Rect4I(across_lo, to_grid(lo), across_hi, to_grid(hi))
+    return layout % LayoutRect(layer=metal, rect=Rect4I(rect.lx, rect.ly + dy, rect.ux, rect.uy + dy))
+
+def ring(layout: Layout, layer: Layer, outer: Rect4I, inner: Rect4I):
+    """Insert the area between the rects outer and inner as four rects."""
+    layout % LayoutRect(layer=layer, rect=Rect4I(outer.lx, outer.ly, outer.ux, inner.ly))
+    layout % LayoutRect(layer=layer, rect=Rect4I(outer.lx, inner.uy, outer.ux, outer.uy))
+    layout % LayoutRect(layer=layer, rect=Rect4I(outer.lx, inner.ly, inner.lx, inner.uy))
+    layout % LayoutRect(layer=layer, rect=Rect4I(inner.ux, inner.ly, outer.ux, inner.uy))
+
 def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool,
     contact_sd_odd: bool=True, contact_sd_even: bool=True, hv: bool=False) -> Layout:
     """
@@ -781,6 +813,7 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool,
 
 class Mos(SimLeafCell):
     hv = False
+    rf_model = None
 
     l = Parameter(R)  #: Length
     w = Parameter(R)  #: Width
@@ -808,16 +841,23 @@ class Mos(SimLeafCell):
             netlister.require_netlist_setup(netlister_setup_mos_hv)
         netlister.require_ngspice_setup(ngspice_setup)
         pins = [inst.symbol.d, inst.symbol.g, inst.symbol.s, inst.symbol.b]
+        model = self.model_name
+        params = {
+            'l': self.l,
+            'w': self.w,
+            'm': self.m,
+            'ng': self.ng,
+        }
+        if self.rf_model:
+            if netlister.lvs:
+                model = self.rf_model
+            else:
+                params['rfmode'] = 1
         netlister.add(
             netlister.name_obj(inst, prefix="M" if netlister.lvs else "x"),
             netlister.portmap(inst, pins),
-            self.model_name,
-            *spice_params({
-                'l': self.l,
-                'w': self.w,
-                'm': self.m,
-                'ng': self.ng,
-            }))
+            model,
+            *spice_params(params))
 
 @public
 class Nmos(Mos):
@@ -896,6 +936,157 @@ class PmosHv(Mos):
     @classmethod
     def discoverable_instances(cls):
         return [cls(w=R("0.3u"), l=R("0.4u"))]
+
+def layoutgen_rfmos(cell: Cell, nwell: bool, hv: bool) -> Layout:
+    """
+    Layout generation function shared for the RF Nmos and Pmos cells, as the
+    PCell rfmosfet_base_code.py with its default options: one contact row,
+    Metal2 on the source/drain rows, gate ring and guard ring.
+    """
+    if cell.m != 1:
+        raise ParameterError("m != 1 not supported for layout.")
+    if not (cell.contact_sd_odd and cell.contact_sd_even):
+        raise ParameterError("RF MOS layouts contact all source/drain regions.")
+    layers = SG13G2().layers
+    l = Layout(ref_layers=layers, cell=cell, symbol=cell.symbol)
+
+    ng = cell.ng
+    W = 5 * math.floor(cell.w / ng / R("5n") + R("0.001"))  # GridFix as in the PCell
+    L = int(cell.l / R("1n"))
+    # Space between the gates and at both ends
+    dc, ec = (390, 350) if L < 140 and W >= 1000 else (380, 345)
+    hact = 2*ec + (ng - 1)*dc + ng*L
+    cont, via1 = VIA_RULES["SG13G2_CONT_ACTIV_M1"], VIA_RULES["SG13G2_VIA_M1_M2"]
+    via_space = via1.space if W < 1520 else via1.space_dense
+    row = 155                    # y of the first source/drain contact line
+    dgatx, dgaty = 130, 235      # Activ to gate ring
+    wgat = 300                   # gate ring width
+    dguard, wguard = 360, 320    # gate ring to guard ring, guard ring width
+
+    l % LayoutRect(layer=layers.Activ, rect=Rect4I(0, 0, W, hact))
+    l.poly = PathNode()
+    for i in range(ng):
+        y = ec + i*(dc + L)
+        l.poly[i] = LayoutRect(layer=layers.GatPoly, rect=Rect4I(-dgatx, y, W + dgatx, y + L))
+    # Poly bars left and right of the Activ join the fingers, ending 75 inside
+    # the Activ's ends (the PCell's u for one contact row).
+    for x in (-dgatx - wgat, W + dgatx):
+        l % LayoutRect(layer=layers.GatPoly, rect=Rect4I(x, 75, x + wgat, hact - 75))
+
+    # Source/drain rows: metal 280 wide (the PCell's metWidth - 0.02), 50 in from the Activ ends
+    l.sd = PathNode()
+    for k in range(ng + 1):
+        dy = k*(dc + L)
+        l.sd[k] = metal_cont(l, layers.Metal1, layers.Cont, 50, row, W - 50, row,
+            280, cont.size, 50, cont.space, dy)
+        metal_cont(l, layers.Metal2, layers.Via1, 50, row, W - 50, row, 200, via1.size, 50, via_space, dy)
+    l % LayoutLabel(layer=layers.TEXT, pos=Vec2I(W // 2, ec // 2), text="S")
+    l % LayoutLabel(layer=layers.TEXT, pos=Vec2I(W // 2, ec // 2 + dc + L), text="D")
+
+    gate_ring = Rect4I(-dgatx - wgat, -dgaty - wgat, W + dgatx + wgat, hact + dgaty + wgat)
+    ring(l, layers.Metal1, gate_ring, Rect4I(-dgatx, -dgaty, W + dgatx, hact + dgaty))
+    x_gate = dgatx + wgat // 2
+    # Contacts join the poly bars to the gate ring's Metal1, starting 95 in
+    # from the bars' ends (the PCell's u + 20), Metal1 200 wide (viaW + 10).
+    l.term_g = metal_cont(l, layers.Metal1, layers.Cont, -x_gate, 95, -x_gate, hact - 95,
+        200, cont.size, 50, via_space)
+    metal_cont(l, layers.Metal1, layers.Cont, W + x_gate, 95, W + x_gate, hact - 95,
+        200, cont.size, 50, via_space)
+    l % LayoutLabel(layer=layers.TEXT, pos=Vec2I(-x_gate, hact // 2), text="G")
+
+    xl, yb = gate_ring.lx - dguard - wguard, gate_ring.ly - dguard - wguard
+    xr, yt = gate_ring.ux + dguard + wguard, gate_ring.uy + dguard + wguard
+    guard_half = wguard // 2
+    # The guard ring's contacts start 80 in from the ends of the lower and
+    # upper bars, 110 on the side bars.
+    l.term_b = metal_cont(l, layers.Metal1, layers.Cont, xl, yb + guard_half, xr, yb + guard_half,
+        wguard, cont.size, 80, cont.space)
+    metal_cont(l, layers.Metal1, layers.Cont, xl, yt - guard_half, xr, yt - guard_half,
+        wguard, cont.size, 80, cont.space)
+    for x in (xl + guard_half, xr - guard_half):
+        metal_cont(l, layers.Metal1, layers.Cont, x, yb + wguard, x, yt - wguard,
+            wguard, cont.size, 110, cont.space)
+    ring(l, layers.Activ, Rect4I(xl, yb, xr, yt),
+        Rect4I(xl + wguard, yb + wguard, xr - wguard, yt - wguard))
+    l % LayoutLabel(layer=layers.TEXT, pos=Vec2I(W // 2, yb + guard_half), text="TIE")
+    name = ("rfpmos" if nwell else "rfnmos") + ("HV" if hv else "")
+    l % LayoutLabel(layer=layers.TEXT, pos=Vec2I(W // 2, yt - guard_half), text=name)
+
+    def around_guard(dist):
+        return Rect4I(xl - dist, yb - dist, xr + dist, yt + dist)
+
+    # A PMOS sits in an NWell with pSD over its source and drain. An NMOS's
+    # guard ring ties the substrate, so its pSD is a ring over the guard
+    # ring. HV devices add ThickGateOx.
+    if nwell:
+        l % LayoutRect(layer=layers.pSD, rect=Rect4I(xl + 500, yb + 600, xr - 500, yt - 600))
+        if hv:
+            l % LayoutRect(layer=layers.ThickGateOx, rect=around_guard(310))
+        l % LayoutRect(layer=layers.NWell, rect=around_guard(660 if hv else 310))
+    else:
+        wpsd = 380  # pSD ring width, centered on the guard ring
+        psd_over = (wpsd - wguard) // 2
+        ring(l, layers.pSD, around_guard(psd_over), around_guard(psd_over - wpsd))
+        if hv:
+            l % LayoutRect(layer=layers.ThickGateOx, rect=around_guard(psd_over + 350))
+
+    l.sd[0].create_pin(cell.symbol.s)
+    l.sd[1].create_pin(cell.symbol.d)
+    l.term_g.create_pin(cell.symbol.g)
+    l.term_b.create_pin(cell.symbol.b)
+    return l
+
+@public
+class RfNmos(Nmos):
+    """RF NMOS with gate ring and guard ring."""
+    rf_model = "rfnmos"
+
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        return layoutgen_rfmos(self, nwell=False, hv=False)
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls(w=R("1u"), l=R("0.72u"))]
+
+@public
+class RfPmos(Pmos):
+    """RF PMOS with gate ring and guard ring."""
+    rf_model = "rfpmos"
+
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        return layoutgen_rfmos(self, nwell=True, hv=False)
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls(w=R("1u"), l=R("0.72u"))]
+
+@public
+class RfNmosHv(NmosHv):
+    """High-voltage RF NMOS with gate ring and guard ring."""
+    rf_model = "rfnmoshv"
+
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        return layoutgen_rfmos(self, nwell=False, hv=True)
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls(w=R("1u"), l=R("0.72u"))]
+
+@public
+class RfPmosHv(PmosHv):
+    """High-voltage RF PMOS with gate ring and guard ring."""
+    rf_model = "rfpmoshv"
+
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        return layoutgen_rfmos(self, nwell=True, hv=True)
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls(w=R("1u"), l=R("0.72u"))]
 
 def layoutgen_tap(cell: Cell, length: R, width: R, nwell: bool):
     layers = SG13G2().layers
@@ -1506,6 +1697,10 @@ device_map = {
     "sg13_lv_pmos": DeviceMapping(Pmos, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("ng", "m")),
     "sg13_hv_nmos": DeviceMapping(NmosHv, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("ng", "m")),
     "sg13_hv_pmos": DeviceMapping(PmosHv, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("ng", "m")),
+    "rfnmos": DeviceMapping(RfNmos, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("ng", "m")),
+    "rfpmos": DeviceMapping(RfPmos, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("ng", "m")),
+    "rfnmoshv": DeviceMapping(RfNmosHv, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("ng", "m")),
+    "rfpmoshv": DeviceMapping(RfPmosHv, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("ng", "m")),
 }
 # TODO: In the future, this device_map dictionary should be automatically derived
 # from the PDK's cell definitions?!
