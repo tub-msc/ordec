@@ -16,7 +16,8 @@ from ..schematic import spice_params, Netlister
 from ..sim.ngspice import NgspiceSetup
 from . import generic_mos
 from .pdk_common import PdkDict, check_dir, check_file, rundir
-from ..layout import makevias, write_gds
+from ..layout import makevias, write_gds, flatten
+from ..extlibrary import ExtLibrary
 from ..layout import klayout
 from ..layout.pnr import GridConfig
 
@@ -43,6 +44,7 @@ def pdk() -> PdkDict:
     pdk.stdcell_gds              = check_file(pdk.root / "libs.ref/sg13g2_stdcell/gds/sg13g2_stdcell.gds")
     pdk.stdcell_spice            = check_file(pdk.root / "libs.ref/sg13g2_stdcell/spice/sg13g2_stdcell.spice")
     pdk.iocell_spice_dir         =  check_dir(pdk.root / "libs.ref/sg13g2_io/spice")
+    pdk.pr_gds                   = check_file(pdk.root / "libs.ref/sg13g2_pr/gds/sg13g2_pr.gds")
     pdk.klayout_lvs_deck         = check_file(pdk.root / "libs.tech/klayout/tech/lvs/sg13g2.lvs")
     pdk.klayout_drc_main_deck    = check_file(pdk.root / "libs.tech/klayout/tech/drc/ihp-sg13g2.drc")
     pdk.klayout_drc_decks_dir    =  check_dir(pdk.root / "libs.tech/klayout/tech/drc/rule_decks")
@@ -2915,6 +2917,13 @@ class PnpMPA(SimLeafCell):
         return [cls(w=R("1u"), l=R("2u"))]
 
 
+@functools.cache
+def pr_library() -> ExtLibrary:
+    """The fixed cells of the PDK's primitive library sg13g2_pr.gds."""
+    lib = ExtLibrary()
+    lib.read_gds(pdk().pr_gds, SG13G2().layers)
+    return lib
+
 def layoutgen_antenna(cell: Cell, pdiode: bool) -> Layout:
     """
     Layout generation function shared for Dantenna and Dpantenna, as the
@@ -3242,6 +3251,82 @@ class SchottkyNbl1(Diode):
     def layout(self) -> Layout:
         return layoutgen_schottky(self)
 
+def layoutgen_esd(cell: Cell) -> Layout:
+    """
+    Generate an SG13G2 ESD device layout: the fixed cell of the PDK's
+    sg13g2_pr.gds with pins at its pin shapes.
+    """
+    if cell.m != 1:
+        raise ParameterError("m != 1 not supported for layout.")
+    layers = SG13G2().layers
+    l = Layout(ref_layers=layers, cell=cell, symbol=cell.symbol)
+    l % LayoutInstance(ref=pr_library()[cell.model_name].layout, pos=Vec2I(0, 0))
+    flatten(l)
+
+    # Each pin shape of the cell holds a TEXT label naming the pin.
+    labels = [label for label in l.all(LayoutLabel)
+        if label.layer == layers.TEXT and label.text.lower() in cell.netlist_pins]
+    for shape in list(l.all(LayoutRect)):
+        if not shape.layer.is_pinlayer:
+            continue
+        rect = shape.rect
+        name = next(label.text.lower() for label in labels
+            if rect.lx <= label.pos.x <= rect.ux and rect.ly <= label.pos.y <= rect.uy)
+        metal = layers.one(Layer.pin_idx.query(shape.layer))
+        (l % LayoutRect(layer=metal, rect=rect)).create_pin(cell.symbol[name])
+        shape.remove()
+    return l
+
+class Esd(Diode):
+    """
+    Shared base class of the SG13G2 ESD devices. Their layouts are the
+    fixed cells of the PDK's sg13g2_pr.gds.
+    """
+    m = Parameter(int, default=1)
+
+    def netlist_params(self, lvs: bool) -> dict:
+        return {"m": self.m}
+
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        return layoutgen_esd(self)
+
+@public
+class Diodevdd2kv(Esd):
+    """ESD diode from ``pad`` to ``vdd`` (2 kV), ``vss`` on the substrate."""
+    model_name = "diodevdd_2kv"
+    cathode, anode, side = "vdd", "pad", "vss"
+    netlist_pins = ("vdd", "pad", "vss")
+
+@public
+class Diodevdd4kv(Diodevdd2kv):
+    """ESD diode from ``pad`` to ``vdd`` (4 kV), ``vss`` on the substrate."""
+    model_name = "diodevdd_4kv"
+
+@public
+class Diodevss2kv(Esd):
+    """ESD diode from ``vss`` to ``pad`` (2 kV), ``vss`` on the substrate."""
+    model_name = "diodevss_2kv"
+    cathode, anode, side = "pad", "vss", "vdd"
+    netlist_pins = ("vdd", "pad", "vss")
+
+@public
+class Diodevss4kv(Diodevss2kv):
+    """ESD diode from ``vss`` to ``pad`` (4 kV), ``vss`` on the substrate."""
+    model_name = "diodevss_4kv"
+
+@public
+class Nmoscl2(Esd):
+    """ESD clamp from ``vdd`` to ``vss`` (2 kV), ``vss`` an isolated p-region over nBuLay."""
+    model_name = "nmoscl_2"
+    cathode, anode = "vdd", "vss"
+    netlist_pins = ("vdd", "vss")
+
+@public
+class Nmoscl4(Nmoscl2):
+    """ESD clamp from ``vdd`` to ``vss`` (4 kV), ``vss`` an isolated p-region over nBuLay."""
+    model_name = "nmoscl_4"
+
 
 #: Device map for spice_in:
 device_map = {
@@ -3275,6 +3360,12 @@ device_map = {
     "isolbox": DeviceMapping(Isolbox, ("isosub", "nwell", "sub"), real_params=("l", "w")),
     "dantenna": DeviceMapping(Dantenna, ("d0", "d1"), real_params=("l", "w")),
     "dpantenna": DeviceMapping(Dpantenna, ("d0", "d1"), real_params=("l", "w")),
+    "diodevdd_2kv": DeviceMapping(Diodevdd2kv, ("vdd", "pad", "vss"), int_params=("m",)),
+    "diodevdd_4kv": DeviceMapping(Diodevdd4kv, ("vdd", "pad", "vss"), int_params=("m",)),
+    "diodevss_2kv": DeviceMapping(Diodevss2kv, ("vdd", "pad", "vss"), int_params=("m",)),
+    "diodevss_4kv": DeviceMapping(Diodevss4kv, ("vdd", "pad", "vss"), int_params=("m",)),
+    "nmoscl_2": DeviceMapping(Nmoscl2, ("vdd", "vss"), int_params=("m",)),
+    "nmoscl_4": DeviceMapping(Nmoscl4, ("vdd", "vss"), int_params=("m",)),
 }
 # TODO: In the future, this device_map dictionary should be automatically derived
 # from the PDK's cell definitions?!
