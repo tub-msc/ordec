@@ -30,6 +30,7 @@ GALLERY = [
     ihp130.Npn13G2v(nx=2, el=2),
     ihp130.Svaricap(w="9.74u", l="0.3u"),
     ihp130.RfPmosHv(w="1u", l="0.72u"), ihp130.RfNmos(w="1u", l="0.72u"), ihp130.Rfcmim(w="7u", l="7u", wfeed="3u"),
+    ihp130.Dpantenna(w="1.5u", l="4u"), ihp130.Dantenna(w="0.78u", l="0.78u"),
     ihp130.Inductor3(w="2u", s="2.1u", d="25.84u", nr_r=2),
     Inv(variant="hv"),
 ]
@@ -85,6 +86,7 @@ def supply_current(cell, volts, freq=None, **conns):
     (ihp130.Npn13G2(), "0.8", dict(c="vdd", b="vdd", e="vss", bn="vss"), 138.62e-6),
     (ihp130.PnpMPA(w="1u", l="2u"), "0.8", dict(e="vdd", b="vss", c="vss"), 10.142e-6),
     (ihp130.RfNmos(w="1u", l="0.72u"), "1.2", dict(d="vdd", g="vdd", s="vss", b="vss"), 179.91e-6),
+    (ihp130.Dantenna(w="0.78u", l="0.78u"), "0.8", dict(d0="vdd", d1="vss"), 389.91e-9),
 ])
 def test_device_op(cell, volts, conns, expected):
     assert supply_current(cell, volts, **conns) == pytest.approx(expected, rel=0.02)
