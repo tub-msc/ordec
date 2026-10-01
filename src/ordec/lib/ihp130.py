@@ -303,6 +303,10 @@ class SG13G2(Cell):
                 )
         for m in (s.Metal1, s.Metal2, s.Metal3, s.Metal4, s.Metal5, s.TopMetal1, s.TopMetal2):
             n = m.gdslayer_shapes.layer
+            m.mask = Layer(
+                gdslayer_shapes=GdsLayer(layer=n, data_type=20),
+                style_fill=m.style_fill,
+                )
             m.nofill = Layer(
                 gdslayer_shapes=GdsLayer(layer=n, data_type=23),
                 style_fill=m.style_fill,
@@ -434,6 +438,10 @@ class SG13G2(Cell):
         s.Recog.diode = Layer(
             gdslayer_shapes=GdsLayer(layer=99, data_type=31),
             style_fill=rgb_color("#5e00e6"),
+            )
+        s.Recog.mom = Layer(
+            gdslayer_shapes=GdsLayer(layer=99, data_type=39),
+            style_fill=rgb_color("#268c6b"),
             )
 
         s.Vmim = Layer(
