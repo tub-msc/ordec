@@ -1266,6 +1266,18 @@ class ResistorRules:
     minPS: int          #: minimum stripe spacing of bent resistors
     cont_to_body: int   #: terminal contact to body distance
     met_over_cont: int  #: Metal1 enclosure of the terminal contact along the stripe
+    # For the resistance label, as the PCell computes it
+    rspec: float        #: body sheet resistance in Ohm
+    rzspec: float       #: body to contact transition resistance in Ohm um
+    lwd: float          #: width delta in um
+
+def eng_string(x: float) -> str:
+    """Format x > 0 with three digits and an SI prefix, as eng_string in the PDK PCells."""
+    exp3 = 3 * (math.floor(math.log10(x)) // 3)
+    mant = x / 10**exp3
+    mant = round(mant, 2 - math.floor(math.log10(mant)))
+    prefix = "yzafpnum kMGTPEZY"[exp3 // 3 + 8] if exp3 else ""
+    return f"{int(mant) if mant == int(mant) else mant}{prefix}"
 
 def layoutgen_resistor(
         cell: Cell,
@@ -1433,42 +1445,45 @@ def layoutgen_resistor(
         # SalBlock defines the resistor core, so it covers stripes and bend
         # connectors but stays flush where a terminal head attaches (keeps
         # the spacing to the terminal contact).
-        if bends == 0:
-            l.salblock = LayoutRect(
-                layer=layers.SalBlock,
-                rect=(body_x_lo - sal_enc, 0, body_x_hi + sal_enc, stripe_len),
-            )
-        else:
-            l.salblock = PathNode()
-            l.salblock[0] = LayoutRect(
-                layer=layers.SalBlock,
-                rect=(body_x_lo - sal_enc, 0, body_x_hi + sal_enc, stripe_len),
-            )
+        sal_rects = [Rect4I(body_x_lo - sal_enc, 0, body_x_hi + sal_enc, stripe_len)]
+        if bends:
             top_bends = [r for r in bend_rects if r.ly == stripe_len]
             bot_bends = [r for r in bend_rects if r.uy == 0]
-            l.salblock[1] = LayoutRect(
-                layer=layers.SalBlock,
-                rect=(min(r.lx for r in top_bends) - sal_enc, stripe_len,
-                      max(r.ux for r in top_bends) + sal_enc,
-                      stripe_len + width + sal_enc),
-            )
+            sal_rects.append(Rect4I(
+                min(r.lx for r in top_bends) - sal_enc, stripe_len,
+                max(r.ux for r in top_bends) + sal_enc, stripe_len + width + sal_enc))
             if bot_bends:
-                l.salblock[2] = LayoutRect(
-                    layer=layers.SalBlock,
-                    rect=(min(r.lx for r in bot_bends) - sal_enc,
-                          -width - sal_enc,
-                          max(r.ux for r in bot_bends) + sal_enc, 0),
-                )
-        l.extblock = LayoutRect(
-            layer=layers.EXTBlock,
-            rect=(total_x_lo - sal_enc, total_y_lo - sal_enc, total_x_hi + sal_enc, total_y_hi + sal_enc),
-        )
+                sal_rects.append(Rect4I(
+                    min(r.lx for r in bot_bends) - sal_enc, -width - sal_enc,
+                    max(r.ux for r in bot_bends) + sal_enc, 0))
+        if bends == 0:
+            l.salblock = LayoutRect(layer=layers.SalBlock, rect=sal_rects[0])
+        else:
+            l.salblock = PathNode()
+            for i, rect in enumerate(sal_rects):
+                l.salblock[i] = LayoutRect(layer=layers.SalBlock, rect=rect)
+        l.extblock = PathNode()
+        for i, rect in enumerate([(l.psd if add_psd else l.nsd).rect] + sal_rects):
+            l.extblock[i] = LayoutRect(layer=layers.EXTBlock, rect=rect)
     else:
         ext_enc = 180  # Rsil.e: EXTBlock enclosure
         l.extblock = LayoutRect(
             layer=layers.EXTBlock,
             rect=(total_x_lo - ext_enc, total_y_lo - ext_enc, total_x_hi + ext_enc, total_y_hi + ext_enc),
         )
+
+    for rect in body_rects + bend_rects:
+        l % LayoutRect(layer=layers.HeatRes, rect=rect)
+        l % LayoutLabel(layer=layers.HeatRes, pos=rect.center, text=kind)
+    # Resistance label, computed as in the PCell
+    kappa = 1.85  # the same for all resistors
+    w_um = width / 1000
+    weff = w_um + rules.lwd
+    r = (length / 1000 / weff * (bends + 1) * rules.rspec
+        + (2 / kappa * weff + ps / 1000) * bends / weff * rules.rspec
+        + 2 / w_um * rules.rzspec)
+    r_text = eng_string(r) if kind == "rsil" else f"{r:.3f}"
+    l % LayoutLabel(layer=layers.TEXT, pos=body_rects[0].center, text=f"{kind} r={r_text}")
 
     l.term_n.create_pin(cell.symbol.n)
     l.term_p.create_pin(cell.symbol.p)
@@ -1668,6 +1683,9 @@ class Rsil(Res):
             minPS=180,
             cont_to_body=120,
             met_over_cont=30,
+            rspec=7.0,
+            rzspec=4.5,
+            lwd=0.01,
         )
         return layoutgen_resistor(self, rules, add_res=True)
 
@@ -1694,6 +1712,9 @@ class Rppd(Res):
             minPS=180,
             cont_to_body=200,
             met_over_cont=70,
+            rspec=260.0,
+            rzspec=35.0,
+            lwd=0.006,
         )
         return layoutgen_resistor(self, rules, add_psd=True, add_salblock=True)
 
@@ -1720,6 +1741,9 @@ class Rhigh(Res):
             minPS=180,
             cont_to_body=200,
             met_over_cont=30,
+            rspec=1360.0,
+            rzspec=80.0,
+            lwd=-0.04,
         )
         return layoutgen_resistor(self, rules, add_psd=True, add_nsd=True, add_salblock=True)
 
