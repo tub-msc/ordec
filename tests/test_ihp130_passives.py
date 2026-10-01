@@ -17,7 +17,8 @@ from .lib.thinwrap import gallery_wrapper_cell
 # parities (even and odd counts place the p terminal at opposite ends) and
 # a high bend count.
 GALLERY = [
-    ihp130.Rsil(), ihp130.Rppd(), ihp130.Rhigh(), ihp130.Cmim(),
+    ihp130.Rsil(l="0.5u", w="0.5u"), ihp130.Rppd(l="0.5u", w="0.5u"), ihp130.Rhigh(l="0.96u", w="0.5u"),
+    ihp130.Cmim(l="6.99u", w="6.99u"),
     ihp130.Rsil(l="2.0u", w="0.5u", b=1, ps="180n"),
     ihp130.Rppd(l="2.0u", w="0.5u", b=2, ps="400n"),
     ihp130.Rhigh(l="2.0u", w="0.5u", b=5, ps="400n"),

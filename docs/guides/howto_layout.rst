@@ -27,13 +27,13 @@ In ORD syntax, named child nodes are created with declaration blocks; in Python,
 .. code-block:: text
 
     # ORD: instance of the Rsil cell's layout, named r1
-    Rsil(l='1u') r1:
+    Rsil(l='1u', w='0.5u') r1:
         ! .pos == (0, 3000)
 
 .. code-block:: python
 
     # Python equivalent
-    l.r1 = LayoutInstance(ref=ihp130.Rsil(l='1u').layout)
+    l.r1 = LayoutInstance(ref=ihp130.Rsil(l='1u', w='0.5u').layout)
     s.constrain(l.r1.pos == (0, 3000))
 
 Orientations
@@ -63,7 +63,7 @@ Positions and dimensions are usually not given as absolute numbers but as linear
 
 .. code-block:: text
 
-    Rsil(l='1u') r3:
+    Rsil(l='1u', w='0.5u') r3:
         .orientation = FlippedNorth
         ! .term_n.cx == r1.term_n.cx          # align centers horizontally
         ! r1.term_n.cy == .term_n.cy + 2500   # 2.5 µm vertical spacing

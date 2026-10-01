@@ -1058,8 +1058,6 @@ class Rsil(Res):
     :ref:`ihp130_substrate_lvs`.
     """
     model_name = "rsil"
-    l = Parameter(R, default=R("0.50u"))
-    w = Parameter(R, default=R("0.50u"))
 
     @viewgen_noctx
     def layout(self) -> Layout:
@@ -1075,7 +1073,7 @@ class Rsil(Res):
 
     @classmethod
     def discoverable_instances(cls):
-        return [cls()]
+        return [cls(l=R("0.50u"), w=R("0.50u"))]
 
 
 @public
@@ -1086,8 +1084,6 @@ class Rppd(Res):
     :ref:`ihp130_substrate_lvs`.
     """
     model_name = "rppd"
-    l = Parameter(R, default=R("0.50u"))
-    w = Parameter(R, default=R("0.50u"))
 
     @viewgen_noctx
     def layout(self) -> Layout:
@@ -1103,7 +1099,7 @@ class Rppd(Res):
 
     @classmethod
     def discoverable_instances(cls):
-        return [cls()]
+        return [cls(l=R("0.50u"), w=R("0.50u"))]
 
 
 @public
@@ -1114,8 +1110,6 @@ class Rhigh(Res):
     :ref:`ihp130_substrate_lvs`.
     """
     model_name = "rhigh"
-    l = Parameter(R, default=R("0.96u"))
-    w = Parameter(R, default=R("0.50u"))
 
     @viewgen_noctx
     def layout(self) -> Layout:
@@ -1131,14 +1125,14 @@ class Rhigh(Res):
 
     @classmethod
     def discoverable_instances(cls):
-        return [cls()]
+        return [cls(l=R("0.96u"), w=R("0.50u"))]
 
 
 @public
 class Cmim(SimLeafCell):
     """Fixed SG13G2 MIM capacitor."""
-    l = Parameter(R, default=R("6.99u"))
-    w = Parameter(R, default=R("6.99u"))
+    l = Parameter(R)
+    w = Parameter(R)
     m = Parameter(int, default=1)
     ic = Parameter(R, optional=True)
 
@@ -1189,7 +1183,7 @@ class Cmim(SimLeafCell):
 
     @classmethod
     def discoverable_instances(cls):
-        return [cls()]
+        return [cls(l=R("6.99u"), w=R("6.99u"))]
 
 
 #: Device map for spice_in:

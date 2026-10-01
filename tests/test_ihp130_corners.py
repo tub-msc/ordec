@@ -24,10 +24,10 @@ class CornerTb(Cell):
                 d=s.vdd, g=s.vdd, s=s.vss, b=s.vss),
             pos=Vec2R(12, 5))
         s.r = SchemInstance(
-            ihp130.Rsil().symbol.portmap(p=s.vdd, n=s.vss, bn=s.vss),
+            ihp130.Rsil(l="0.5u", w="0.5u").symbol.portmap(p=s.vdd, n=s.vss, bn=s.vss),
             pos=Vec2R(18, 5))
         s.c = SchemInstance(
-            ihp130.Cmim().symbol.portmap(p=s.vdd, n=s.vss),
+            ihp130.Cmim(l="6.99u", w="6.99u").symbol.portmap(p=s.vdd, n=s.vss),
             pos=Vec2R(24, 5))
         s.auto_wire()
         s.check(add_conn_points=True, add_terminal_taps=True)

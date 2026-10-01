@@ -35,6 +35,7 @@ L_RZ = 1u     # A_Default.r3, z-arm
 L_RP1 = 500n  # B_Hier.rp1, in the z-chain
 L_RP2 = 1u    # B_Hier.rp2, in the y-loop
 L_RS = 2u     # C_Hier.rs, in parallel to the two B_Hier instances
+W_R = 500n    # width of all resistors
 
 cell A_Default:
     """Star of three Rsil resistors around internal net c."""
@@ -53,9 +54,9 @@ cell A_Default:
         port z: .pos=(5,2)
         port sub: .pos=(1,8)
 
-        Rsil r1: .$l=L_RX; .pos=(3,12); .n -- c; .p -- x; .bn -- sub
-        Rsil r2: .$l=L_RY; .pos=(8,12); .orientation=East; .n -- c; .p -- y; .bn -- sub
-        Rsil r3: .$l=L_RZ; .pos=(3,9); .orientation=FlippedNorth; .n -- c; .p -- z; .bn -- sub
+        Rsil r1: .$l=L_RX; .$w=W_R; .pos=(3,12); .n -- c; .p -- x; .bn -- sub
+        Rsil r2: .$l=L_RY; .$w=W_R; .pos=(8,12); .orientation=East; .n -- c; .p -- y; .bn -- sub
+        Rsil r3: .$l=L_RZ; .$w=W_R; .pos=(3,9); .orientation=FlippedNorth; .n -- c; .p -- z; .bn -- sub
 
     viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
@@ -63,13 +64,13 @@ cell A_Default:
 
         # r1 and r3 form a vertical column (x pin up, z pin down), r2 lies
         # horizontally east of the column (y pin to the east).
-        Rsil(l=L_RX) r1:
+        Rsil(l=L_RX, w=W_R) r1:
             ! .pos == (0, 3000)
-        Rsil(l=L_RZ) r3:
+        Rsil(l=L_RZ, w=W_R) r3:
             .orientation = FlippedNorth  # term_p faces south
             ! .term_n.cx == r1.term_n.cx
             ! r1.term_n.cy == .term_n.cy + 2500
-        Rsil(l=L_RY) r2:
+        Rsil(l=L_RY, w=W_R) r2:
             .orientation = East  # term_n west (star side), term_p east
             ! .term_n.lx == r1.poly_body.ux + 1500
             ! .term_n.cy == 0.5*r1.term_n.cy + 0.5*r3.term_n.cy
@@ -116,9 +117,9 @@ cell B_Hier:
         port sub: .pos=(1,13)
 
         A_Default a1: .pos=(4,4); .x -- i1; .y -- y1; .z -- z; .sub -- sub
-        Rppd rp1: .$l=L_RP1; .pos=(8,11); .orientation=FlippedSouth; .n -- i1; .p -- i2; .bn -- sub
+        Rppd rp1: .$l=L_RP1; .$w=W_R; .pos=(8,11); .orientation=FlippedSouth; .n -- i1; .p -- i2; .bn -- sub
         A_Default a2: .pos=(4,18); .x -- x; .y -- y2; .z -- i2; .sub -- sub
-        Rppd rp2: .$l=L_RP2; .pos=(15,11); .orientation=FlippedSouth; .n -- y1; .p -- y2; .bn -- sub
+        Rppd rp2: .$l=L_RP2; .$w=W_R; .pos=(15,11); .orientation=FlippedSouth; .n -- y1; .p -- y2; .bn -- sub
 
     viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
@@ -128,13 +129,13 @@ cell B_Hier:
         # vertical channel east of the column for the y-loop.
         A_Default() a1:
             ! .pos == (0, 0)
-        Rppd(l=L_RP1) rp1:
+        Rppd(l=L_RP1, w=W_R) rp1:
             ! .term_n.cx == a1.x.cx
             ! .term_n.cy == a1.x.cy + 1500
         A_Default() a2:
             ! .pos.x == a1.pos.x
             ! .z.cy == rp1.term_p.cy + 1500
-        Rppd(l=L_RP2) rp2:
+        Rppd(l=L_RP2, w=W_R) rp2:
             ! .term_n.cx == a1.y.ux + 1500
             ! 0.5*.term_n.cy + 0.5*.term_p.cy == 0.5*a1.y.cy + 0.5*a2.y.cy
 
@@ -177,7 +178,7 @@ cell C_Hier:
 
         B_Hier b1: .pos=(4,4); .z -- z; .x -- x; .sub -- sub
         B_Hier b2: .pos=(10,4); .z -- z; .x -- x; .sub -- sub
-        Rsil rs: .$l=L_RS; .pos=(20,4); .orientation=FlippedSouth; .n -- z; .p -- x; .bn -- sub
+        Rsil rs: .$l=L_RS; .$w=W_R; .pos=(20,4); .orientation=FlippedSouth; .n -- z; .p -- x; .bn -- sub
 
     viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
@@ -191,7 +192,7 @@ cell C_Hier:
         B_Hier() b2:
             ! .pos.y == b1.pos.y
             ! .pos.x == b1.pos.x + 9000
-        Rsil(l=L_RS) rs:
+        Rsil(l=L_RS, w=W_R) rs:
             ! .term_n.cx == b2.z.cx + 9000
             ! .term_n.cy == b1.z.cy
 
@@ -252,7 +253,7 @@ cell C_FlatLayout:
 
         B_Hier b1: .pos=(4,4); .z -- z; .x -- x; .sub -- sub
         B_Hier b2: .pos=(10,4); .z -- z; .x -- x; .sub -- sub
-        Rsil rs: .$l=L_RS; .pos=(20,4); .orientation=FlippedSouth; .n -- z; .p -- x; .bn -- sub
+        Rsil rs: .$l=L_RS; .$w=W_R; .pos=(20,4); .orientation=FlippedSouth; .n -- z; .p -- x; .bn -- sub
 
     viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
@@ -263,14 +264,14 @@ cell C_FlatLayout:
         for k in range(2):
             for j in range(2):
                 i = 2*k + j
-                Rsil(l=L_RX) r1[i]:
+                Rsil(l=L_RX, w=W_R) r1[i]:
                     if j == 0:
                         ! .pos == (9000*k, 3000)
-                Rsil(l=L_RZ) r3[i]:
+                Rsil(l=L_RZ, w=W_R) r3[i]:
                     .orientation = FlippedNorth
                     ! .term_n.cx == r1[i].term_n.cx
                     ! r1[i].term_n.cy == .term_n.cy + 2500
-                Rsil(l=L_RY) r2[i]:
+                Rsil(l=L_RY, w=W_R) r2[i]:
                     .orientation = East
                     ! .term_n.lx == r1[i].poly_body.ux + 1500
                     ! .term_n.cy == 0.5*r1[i].term_n.cy + 0.5*r3[i].term_n.cy
@@ -280,13 +281,13 @@ cell C_FlatLayout:
                 sr.move(layers.Metal1, r2[i].term_n.center)
                 sr.wire_x(r1[i].term_n.cx)
 
-            Rppd(l=L_RP1) rp1[k]:
+            Rppd(l=L_RP1, w=W_R) rp1[k]:
                 ! .term_n.cx == r1[2*k].term_p.cx
                 ! .term_n.cy == r1[2*k].term_p.cy + 1500
             # The upper star (j=1) hangs off the z-chain (cf. cell B_Hier).
             ! r1[2*k+1].pos.x == r1[2*k].pos.x
             ! r3[2*k+1].term_p.cy == rp1[k].term_p.cy + 1500
-            Rppd(l=L_RP2) rp2[k]:
+            Rppd(l=L_RP2, w=W_R) rp2[k]:
                 ! .term_n.cx == r2[2*k].term_p.ux + 1500
                 ! 0.5*.term_n.cy + 0.5*.term_p.cy == 0.5*r2[2*k].term_p.cy + 0.5*r2[2*k+1].term_p.cy
 
@@ -303,7 +304,7 @@ cell C_FlatLayout:
             sr.wire_x(rp2[k].term_p.cx)
             sr.wire_y(rp2[k].term_p.cy)
 
-        Rsil(l=L_RS) rs:
+        Rsil(l=L_RS, w=W_R) rs:
             ! .term_n.cx == r3[2].term_p.cx + 9000
             ! .term_n.cy == r3[0].term_p.cy
         Ptap(l='0.7u', w='0.7u') tap:
@@ -370,19 +371,19 @@ cell C_FlatSchematic:
             net y2[k]
 
             # lower star (was b<k+1>.a1)
-            Rsil a1r1[k]: .$l=L_RX; .pos=(3+xo,12); .n -- c1[k]; .p -- i1[k]; .bn -- sub
-            Rsil a1r2[k]: .$l=L_RY; .pos=(8+xo,12); .orientation=East; .n -- c1[k]; .p -- y1[k]; .bn -- sub
-            Rsil a1r3[k]: .$l=L_RZ; .pos=(3+xo,9); .orientation=FlippedNorth; .n -- c1[k]; .p -- z; .bn -- sub
+            Rsil a1r1[k]: .$l=L_RX; .$w=W_R; .pos=(3+xo,12); .n -- c1[k]; .p -- i1[k]; .bn -- sub
+            Rsil a1r2[k]: .$l=L_RY; .$w=W_R; .pos=(8+xo,12); .orientation=East; .n -- c1[k]; .p -- y1[k]; .bn -- sub
+            Rsil a1r3[k]: .$l=L_RZ; .$w=W_R; .pos=(3+xo,9); .orientation=FlippedNorth; .n -- c1[k]; .p -- z; .bn -- sub
             # z-chain resistor (was b<k+1>.rp1)
-            Rppd rp1[k]: .$l=L_RP1; .pos=(3+xo,18); .n -- i1[k]; .p -- i2[k]; .bn -- sub
+            Rppd rp1[k]: .$l=L_RP1; .$w=W_R; .pos=(3+xo,18); .n -- i1[k]; .p -- i2[k]; .bn -- sub
             # upper star (was b<k+1>.a2)
-            Rsil a2r3[k]: .$l=L_RZ; .pos=(3+xo,27); .orientation=FlippedNorth; .n -- c2[k]; .p -- i2[k]; .bn -- sub
-            Rsil a2r1[k]: .$l=L_RX; .pos=(3+xo,30); .n -- c2[k]; .p -- x; .bn -- sub
-            Rsil a2r2[k]: .$l=L_RY; .pos=(8+xo,30); .orientation=East; .n -- c2[k]; .p -- y2[k]; .bn -- sub
+            Rsil a2r3[k]: .$l=L_RZ; .$w=W_R; .pos=(3+xo,27); .orientation=FlippedNorth; .n -- c2[k]; .p -- i2[k]; .bn -- sub
+            Rsil a2r1[k]: .$l=L_RX; .$w=W_R; .pos=(3+xo,30); .n -- c2[k]; .p -- x; .bn -- sub
+            Rsil a2r2[k]: .$l=L_RY; .$w=W_R; .pos=(8+xo,30); .orientation=East; .n -- c2[k]; .p -- y2[k]; .bn -- sub
             # y-loop resistor (was b<k+1>.rp2)
-            Rppd rp2[k]: .$l=L_RP2; .pos=(17+xo,17); .orientation=FlippedSouth; .n -- y1[k]; .p -- y2[k]; .bn -- sub
+            Rppd rp2[k]: .$l=L_RP2; .$w=W_R; .pos=(17+xo,17); .orientation=FlippedSouth; .n -- y1[k]; .p -- y2[k]; .bn -- sub
 
-        Rsil rs: .$l=L_RS; .pos=(42,12); .orientation=FlippedSouth; .n -- z; .p -- x; .bn -- sub
+        Rsil rs: .$l=L_RS; .$w=W_R; .pos=(42,12); .orientation=FlippedSouth; .n -- z; .p -- x; .bn -- sub
 
     viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
@@ -394,7 +395,7 @@ cell C_FlatSchematic:
         B_Hier() b2:
             ! .pos.y == b1.pos.y
             ! .pos.x == b1.pos.x + 9000
-        Rsil(l=L_RS) rs:
+        Rsil(l=L_RS, w=W_R) rs:
             ! .term_n.cx == b2.z.cx + 9000
             ! .term_n.cy == b1.z.cy
         Ptap(l='0.7u', w='0.7u') tap:
@@ -448,9 +449,9 @@ cell A_Moved:
         .ref_layers = SG13G2().layers
         layers = .ref_layers
 
-        Rsil(l=L_RX) r1:
+        Rsil(l=L_RX, w=W_R) r1:
             ! .pos == (0, 3000)
-        Rsil(l=L_RZ) r3:
+        Rsil(l=L_RZ, w=W_R) r3:
             .orientation = FlippedNorth
             ! .term_n.cx == r1.term_n.cx
             ! r1.term_n.cy == .term_n.cy + 2500
@@ -488,7 +489,7 @@ cell B_Moved:
 
         A_Moved() a1:
             ! .pos == (0, 0)
-        Rppd(l=L_RP1) rp1:
+        Rppd(l=L_RP1, w=W_R) rp1:
             ! .term_n.cx == a1.x.cx
             ! .term_n.cy == a1.x.cy + 1500
         A_Moved() a2:
@@ -497,16 +498,16 @@ cell B_Moved:
 
         # The two moved y-arm resistors, placed where A_Default.r2 sat inside a1/a2,
         # by referencing the nested resistor geometry directly (a1.r1.poly_body).
-        Rsil(l=L_RY) ry1:
+        Rsil(l=L_RY, w=W_R) ry1:
             .orientation = East
             ! .term_n.lx == a1.r1.poly_body.ux + 1500
             ! .term_n.cy == 0.5*a1.x.cy + 0.5*a1.z.cy
-        Rsil(l=L_RY) ry2:
+        Rsil(l=L_RY, w=W_R) ry2:
             .orientation = East
             ! .term_n.lx == a2.r1.poly_body.ux + 1500
             ! .term_n.cy == 0.5*a2.x.cy + 0.5*a2.z.cy
 
-        Rppd(l=L_RP2) rp2:
+        Rppd(l=L_RP2, w=W_R) rp2:
             ! .term_n.cx == ry1.term_p.ux + 1500
             ! 0.5*.term_n.cy + 0.5*.term_p.cy == 0.5*ry1.term_p.cy + 0.5*ry2.term_p.cy
 
@@ -560,7 +561,7 @@ cell C_Moved:
 
         B_Hier b1: .pos=(4,4); .z -- z; .x -- x; .sub -- sub
         B_Hier b2: .pos=(10,4); .z -- z; .x -- x; .sub -- sub
-        Rsil rs: .$l=L_RS; .pos=(20,4); .orientation=FlippedSouth; .n -- z; .p -- x; .bn -- sub
+        Rsil rs: .$l=L_RS; .$w=W_R; .pos=(20,4); .orientation=FlippedSouth; .n -- z; .p -- x; .bn -- sub
 
     viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
@@ -571,7 +572,7 @@ cell C_Moved:
         B_Moved() b2:
             ! .pos.y == b1.pos.y
             ! .pos.x == b1.pos.x + 9000
-        Rsil(l=L_RS) rs:
+        Rsil(l=L_RS, w=W_R) rs:
             ! .term_n.cx == b2.z.cx + 9000
             ! .term_n.cy == b1.z.cy
         Ptap(l='0.7u', w='0.7u') tap:
