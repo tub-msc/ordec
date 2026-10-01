@@ -28,6 +28,7 @@ GALLERY = [
     ihp130.Ptap1(w="3u", l="0.8u"),
     ihp130.Svaricap(w="9.74u", l="0.3u"),
     ihp130.RfPmosHv(w="1u", l="0.72u"), ihp130.RfNmos(w="1u", l="0.72u"), ihp130.Rfcmim(w="7u", l="7u", wfeed="3u"),
+    ihp130.Inductor3(w="2u", s="2.1u", d="25.84u", nr_r=2),
     Inv(variant="hv"),
 ]
 SUBSTRATE = f"inv{len(GALLERY) - 1}_vss"

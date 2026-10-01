@@ -2273,6 +2273,238 @@ class Bondpad(SimLeafCell):
     def discoverable_instances(cls):
         return [cls(size=R("80u"))]
 
+def layoutgen_inductor(cell: Cell, three: bool) -> Layout:
+    """
+    Layout generation function shared for Inductor2 and Inductor3, as the
+    PCell inductors_code.py with its defaults (QRC blocked, no substrate
+    etching). Uses um floats like the PCell and rounds to nm at the end.
+    """
+    if cell.m != 1:
+        raise ParameterError("m != 1 not supported for layout.")
+    if cell.w < R("2u") or cell.s < R("2.1u"):
+        raise ParameterError("w and s must be at least Wmin and Smin.")
+    if cell.nr_r < (2 if three else 1):
+        raise ParameterError("nr_r must be at least minNr_t.")
+    layers = SG13G2().layers
+    l = Layout(ref_layers=layers, cell=cell, symbol=cell.symbol)
+
+    def gridfix(v):
+        return math.floor(v * 200 + 0.001) * 0.005
+
+    def to_nm(v):
+        return int(math.copysign(math.floor(abs(v) * 1000 + 0.5), v))
+
+    def poly(layer, points):
+        l % LayoutPoly(layer=layer, vertices=[Vec2I(to_nm(x), to_nm(y)) for x, y in points])
+
+    def rect(layer, x1, y1, x2, y2):
+        return l % LayoutRect(layer=layer,
+            rect=Rect4I(to_nm(min(x1, x2)), to_nm(min(y1, y2)), to_nm(max(x1, x2)), to_nm(max(y1, y2))))
+
+    tv2 = VIA_RULES["SG13G2_VIA_TM1_TM2"]
+    cut, cut_space, pitch = tv2.size / 1000, tv2.space / 1000, (tv2.size + tv2.space) / 1000
+
+    def vias(x0, y0, dx, dy):
+        """Via array from (x0, y0), plus its mirror image at x = 0 shifted by (dx, dy)."""
+        for i in range(nr_vias):
+            for j in range(nr_vias):
+                x, y = x0 + j*pitch, y0 + i*pitch
+                rect(layers.TopVia2, x, y, x + cut, y + cut)
+                rect(layers.TopVia2, dx - x, y + dy, dx - x - cut, y + dy + cut)
+
+    sqrt2 = math.sqrt(2)
+    var = 1 + sqrt2
+    grid = 0.01
+    w = gridfix(float(cell.w / R("1u")) * 0.5) * 2
+    s = gridfix(float(cell.s / R("1u")))
+    d = d1 = gridfix(float(cell.d / R("1u")) * 0.5) * 2
+    nr_r = cell.nr_r
+    nr_vias = round((w + 0.06) / pitch - 0.5)
+    via_margin = (w - nr_vias*cut - (nr_vias - 1)*cut_space - 1) / 2
+    # Smallest inner diameter, as inductor_minD in the PCell
+    if nr_r == 1:
+        d_min = gridfix((s + w + w) * (1 + sqrt2) / 2 + grid * 2) * 2
+    elif nr_r == 2:
+        d_min = gridfix((gridfix(w / sqrt2 + s / 2) + gridfix(s * 0.4143) + 0.02 + w)
+            * 2 * (1 + sqrt2) + 0.01)
+    else:
+        d_min = gridfix(((gridfix(w / sqrt2 + s / 2) + gridfix(s * 0.4143)) * 2 + 2 * s + 4 * w)
+            * (1 + sqrt2))
+    d = max(d, d_min)
+    # A turn is an octagon of inner diameter d: lat_sm is the length of its
+    # sides, cateta_sm how far its 45 degree corners cut in.
+    lat_sm = gridfix(d / (2 * var)) * 2
+    cateta_sm = (d - lat_sm) / 2
+    lead_len = 30   # from the pins at y = 0 up to the coil
+
+    if three:
+        rect(layers.TopMetal2, -w / 2, -1, w / 2, lead_len)
+        l.term_lc = rect(layers.TopMetal2, -w / 2, -1, w / 2, 1)
+        rect(layers.IND.pin, -w / 2, -1, w / 2, 1)
+        l % LayoutLabel(layer=layers.IND.pin, pos=Vec2I(0, 0), text="LC")
+    x1 = gridfix(lat_sm / 2) - w
+    y2 = nr_r*w + (nr_r - 1)*s + lead_len - w
+    # The turns cross between x = -x_cross and x_cross. 0.4143 is tan(22.5
+    # degrees): how far a trace's corner shifts along the octagon's side.
+    x_cross = gridfix(w / sqrt2 + s / 2)
+    d1_via_cross = gridfix(w * 0.4143) + grid
+    x_via = x_cross + (gridfix(s * 0.4143) + grid) + grid
+    if three or nr_r % 2 == 0:
+        rect(layers.TopMetal2, -x_via, lead_len, x_via, w + lead_len)
+    if nr_r > 2:
+        x_start = x_via + s + w
+    else:
+        x_start = s + w / 2 if three else s / 2
+    if nr_r != 1:
+        vias(x_start + 0.5 + via_margin, y2 + 0.5 + via_margin, 0, 0)
+
+    for k in range(nr_r):
+        xs = x_start if k == 0 else x1
+        turn = [(xs, y2), (xs, y2 + w), (lat_sm / 2, y2 + w), (d / 2, y2 + w + cateta_sm),
+            (d / 2, y2 + w + cateta_sm + lat_sm), (lat_sm / 2, y2 + w + d), (x_via, y2 + w + d),
+            (x_via, y2 + w * 2 + d), (lat_sm / 2 + d1_via_cross, y2 + d + 2 * w),
+            ((d + 2 * w) / 2, y2 + w + cateta_sm + lat_sm + d1_via_cross),
+            ((d + 2 * w) / 2, y2 + w + cateta_sm - d1_via_cross), (lat_sm / 2 + d1_via_cross, y2)]
+        poly(layers.TopMetal2, turn)
+        poly(layers.TopMetal2, [(-x, y) for x, y in turn])
+        if k % 2 == 0:
+            if not three and nr_r % 2 == 1 and k == nr_r - 1:
+                poly(layers.TopMetal2, [(x_via, y2+w+d), (x_via, y2+w*2+d), (-x_via, y2+w*2+d),
+                    (-x_via, y2+w+d)])
+            else:
+                # Crossing to the next turn: TopMetal1 underpass, TopMetal2 overpass
+                poly(layers.TopMetal1, [(x_via+w, y2+w+d), (x_via+w, y2+w*2+d), (x_cross, y2+w*2+d),
+                    (x_cross-(w+s+2*grid), y2+w*3+s+d+2*grid), (-x_via-w, y2+w*3+s+d+2*grid),
+                    (-x_via-w, y2+w*2+s+d+2*grid), (-x_cross, y2+w*2+s+d+2*grid),
+                    (w+s+2*grid-x_cross, y2+w+d)])
+                poly(layers.TopMetal2, [(-x_via, y2+w+d), (-x_via, y2+w*2+d), (-x_cross, y2+w*2+d),
+                    (w+s+2*grid-x_cross, y2+w*3+s+d+2*grid), (x_via, y2+w*3+s+d+2*grid),
+                    (x_via, y2+w*2+s+d+2*grid), (x_cross+3*grid, y2+w*2+s+d+2*grid),
+                    (x_cross-(w+s-grid), y2+w+d)])
+                vias(x_via + 0.5 + via_margin, y2 + w + d + 0.5 + via_margin, 0, s + w)
+            if k != 0:
+                poly(layers.TopMetal2, [(x_via, y2), (x_via, y2 + w), (x_cross + grid, y2 + w),
+                    (x_cross - (w + s) + grid, y2 + 2 * w + s), (-x_via, y2 + 2 * w + s),
+                    (-x_via, y2 + w + s), (-x_cross, y2 + w + s), (-x_cross + w + s, y2)])
+                poly(layers.TopMetal1, [(-x_via - w, y2), (-x_via - w, y2 + w),
+                    (-x_cross - grid, y2 + w), (-x_cross + w + s - grid, y2 + 2 * w + s),
+                    (x_via + w + grid, y2 + 2 * w + s), (x_via + w + grid, y2 + w + s),
+                    (x_cross, y2 + w + s), (x_cross - (w + s), y2)])
+                vias(x_via + grid + 0.5 + via_margin, y2 + w + s + 0.5 + via_margin, grid, -(s + w))
+        y2 = y2 - w - s
+        x1 = x_via
+        d = d + 2 * (s + w + grid)
+        lat_sm = gridfix(d / (2 * var)) * 2
+        cateta_sm = (d - lat_sm) / 2
+
+    # Leads, with the pins at their ends on the IND edge as in the PCell
+    if nr_r <= 2:
+        x1 = w + s if three else (w + s) / 2
+    else:
+        x1 = x1 + w / 2 + s + w
+    lead = layers.TopMetal2 if not three and nr_r == 1 else layers.TopMetal1
+    y_end = nr_r * w + (nr_r - 1) * s + lead_len
+    for x, text in ((x1, "LB"), (-x1, "LA")):
+        rect(lead, x - w / 2, -1, x + w / 2, y_end)
+        rect(layers.IND.pin, x - w / 2, -1, x + w / 2, 1)
+        l % LayoutLabel(layer=layers.IND.pin, pos=Vec2I(to_nm(x), 0), text=text)
+    l.term_lb = rect(lead, x1 - w / 2, -1, x1 + w / 2, 1)
+    l.term_la = rect(lead, -x1 - w / 2, -1, -x1 + w / 2, 1)
+    l % LayoutLabel(layer=layers.TEXT, pos=Vec2I(0, to_nm(y2 + cateta_sm / 2 + lat_sm)),
+        text="inductor3" if three else "inductor2")
+    if three:
+        l.term_la.create_pin(cell.symbol.la)
+        l.term_lb.create_pin(cell.symbol.lb)
+        l.term_lc.create_pin(cell.symbol.lc)
+    else:
+        l.term_la.create_pin(cell.symbol.p)
+        l.term_lb.create_pin(cell.symbol.m)
+
+    # The marker and blocking layers reach 30 um beyond the outer turn.
+    d = d - 2 * s + 2 * 30
+    lat_sm = gridfix(d / (2 * var)) * 2
+    cateta_sm = (d - lat_sm) / 2
+    octagon = [(lat_sm / 2, 0), (d / 2, cateta_sm), (d / 2, cateta_sm + lat_sm), (lat_sm / 2, d),
+        (-lat_sm / 2, d), (-d / 2, cateta_sm + lat_sm), (-d / 2, cateta_sm), (-lat_sm / 2, 0)]
+    for layer in (layers.PWell.block, layers.Activ.nofill, layers.GatPoly.nofill,
+        layers.Metal1.nofill, layers.Metal2.nofill, layers.Metal3.nofill,
+        layers.Metal4.nofill, layers.Metal5.nofill, layers.TopMetal1.nofill,
+        layers.TopMetal2.nofill, layers.IND, layers.NoRCX):
+        poly(layer, octagon)
+    # Parameters for the LVS extraction
+    y = 2 * nr_r * w + 2 * (nr_r - 1) * s + (d1 - lat_sm) / 4 + lat_sm
+    l % LayoutLabel(layer=layers.TEXT, pos=Vec2I(to_nm(-d / 2), to_nm(y)),
+        text=f"  width={w:.1f}\n  space={s:.1f}\n  diameter={d1:.2f}\n  turns={nr_r:d}")
+    return l
+
+class Inductor(SimLeafCell):
+    """Shared base class of the octagonal inductors on TopMetal2, ``b`` the substrate."""
+    center_tap = False
+    w = Parameter(R)  #: Width
+    s = Parameter(R)  #: Space
+    d = Parameter(R)  #: Inner diameter
+    nr_r = Parameter(int)  #: Number of turns
+    m = Parameter(int, default=1)
+
+    @viewgen_noctx
+    def symbol(self) -> Symbol:
+        s = Symbol(cell=self)
+
+        top, bottom = self.ends
+        s[top] = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
+        s[bottom] = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
+        s.b = Pin(pos=Vec2R(4, 2), pintype=PinType.In, align=East)
+        if self.center_tap:
+            s.lc = Pin(pos=Vec2R(0, 2), pintype=PinType.Inout, align=West)
+            s % SymbolPoly(vertices=[Vec2R(0, 2), Vec2R(2, 2)])
+
+        s % SymbolPoly(vertices=[Vec2R(2, 4), Vec2R(2, 3.2)])
+        s % SymbolPoly(vertices=[Vec2R(2, 0.8), Vec2R(2, 0)])
+        for y in (1.1, 1.7, 2.3, 2.9):
+            s % SymbolArc(pos=Vec2R(2, y), radius=R(0.3), angle_start=R(-0.25), angle_end=R(0.25))
+        s % SymbolPoly(vertices=[Vec2R(3, 2), Vec2R(4, 2)])
+
+        s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
+        return s
+
+    def ngspice_netlist(self, netlister, inst):
+        netlister.add(
+            netlister.name_obj(inst, prefix="L" if netlister.lvs else "x"),
+            netlister.portmap(inst, [inst.symbol[p] for p in self.netlist_pins]),
+            self.model_name,
+            *spice_params({"w": self.w, "s": self.s, "d": self.d, "nr_r": self.nr_r, "m": self.m}),
+        )
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls(w=R("10u"), s=R("10u"), d=R("222u"), nr_r=2)]
+
+@public
+class Inductor2(Inductor):
+    """Inductor from ``p`` to ``m``. The PDK has no simulation model for it."""
+    model_name = "inductor"
+    ends = ("p", "m")
+    netlist_pins = ("p", "m", "b")
+
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        return layoutgen_inductor(self, three=False)
+
+@public
+class Inductor3(Inductor):
+    """
+    Inductor from ``la`` to ``lb`` with center tap ``lc``. The PDK has no simulation
+    model for it.
+    """
+    model_name = "inductor3"
+    ends = ("la", "lb")
+    center_tap = True
+    netlist_pins = ("la", "lc", "lb", "b")
+
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        return layoutgen_inductor(self, three=True)
+
 
 #: Device map for spice_in:
 device_map = {
@@ -2295,6 +2527,9 @@ device_map = {
     "sg13_hv_svaricap": DeviceMapping(Svaricap, ("g1", "nw", "g2", "bn"), real_params=("w", "l"), int_params=("nx",)),
     "cparasitic": DeviceMapping(Cpara, ("p", "n"), real_params=("c",)),
     "bondpad": DeviceMapping(Bondpad, ("pad",), real_params=("size",), int_params=("shape", "padtype")),
+    "inductor": DeviceMapping(Inductor2, ("p", "m", "b"), real_params=("w", "s", "d"), int_params=("nr_r", "m")),
+    "inductor3": DeviceMapping(Inductor3, ("la", "lc", "lb", "b"), real_params=("w", "s", "d"),
+        int_params=("nr_r", "m")),
 }
 # TODO: In the future, this device_map dictionary should be automatically derived
 # from the PDK's cell definitions?!
