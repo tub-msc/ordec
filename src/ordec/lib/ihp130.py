@@ -3123,6 +3123,125 @@ class Dpantenna(Antenna):
     def layout(self) -> Layout:
         return layoutgen_antenna(self, pdiode=True)
 
+def layoutgen_schottky(cell: Cell) -> Layout:
+    """
+    Generate the SG13G2 Schottky diode layout, as the PCell schottky_code.py:
+    an nx x ny array of 0.3 x 1 um contacts, each in an NWell ring over
+    nBuLay. Metal2 joins the contacts (plus), Metal1 the contact lines on
+    the NWell between the columns (minus), and a pSD guard ring ties the
+    substrate.
+    """
+    if not (1 <= cell.nx <= 10 and 1 <= cell.ny <= 10):
+        raise ParameterError("nx and ny must be 1 to 10.")
+    layers = SG13G2().layers
+    l = Layout(ref_layers=layers, cell=cell, symbol=cell.symbol)
+
+    L, W = 300, 1000             # the Schottky contact
+    nsdb_o_cont = 450            # SalBlock beyond the contact
+    nwell_s_cont = 250           # the NWell ring's inner edge from the contact
+    act_x, act_y = 1000, 850     # Activ beyond the contact
+    psd_width, psd_o_activ, activ_width = 500, 100, 300  # guard ring
+    gate_ox_o_psd = 170
+    cont, via1 = VIA_RULES["SG13G2_CONT_ACTIV_M1"], VIA_RULES["SG13G2_VIA_M1_M2"]
+    cont_w, cont_s = cont.size, cont.space
+    met_width = cont_w + 140
+    via_w, via_s = via1.size, via1.space
+    step_x, step_y = L + 2*act_x, W + 2*act_y  # the cells' Activ abuts
+    x_last, y_last = step_x * (cell.nx - 1), step_y * (cell.ny - 1)
+    act = Rect4I(nsdb_o_cont - act_x, nsdb_o_cont - act_y,
+        x_last + nsdb_o_cont + L + act_x, y_last + nsdb_o_cont + W + act_y)  # Activ of the array
+    bus_lo = nsdb_o_cont - 1145  # lower end of the plus buses on Metal2
+    for x in range(0, x_last + 1, step_x):
+        for y in range(0, y_last + 1, step_y):
+            # The contact, unsalicided and without nSD around it. Two Via1
+            # columns join its Metal1 to the column's plus bus.
+            c = Rect4I(x + nsdb_o_cont, y + nsdb_o_cont, x + nsdb_o_cont + L, y + nsdb_o_cont + W)
+            l % LayoutRect(layer=layers.Cont, rect=c)
+            l % LayoutRect(layer=layers.Metal1,
+                rect=Rect4I(c.lx - 50, c.ly - 70, c.ux + 50, c.uy + 70))
+            strip = via_w + 100  # Metal1 under a Via1 column
+            for xc in (c.lx + L // 2 - 205, c.lx + L // 2 + 205):
+                m1 = l % LayoutRect(layer=layers.Metal1,
+                    rect=Rect4I(xc - strip // 2, c.ly - 70, xc + strip // 2, c.uy + 70))
+                contact_array(l, m1.rect, layers.Via1, via_w, via_s, Vec2I(40, 50))
+            l % LayoutRect(layer=layers.nSD.block,
+                rect=Rect4I(x + 50, y + 50, c.ux + nsdb_o_cont - 50, c.uy + nsdb_o_cont - 50))
+            l % LayoutRect(layer=layers.SalBlock,
+                rect=Rect4I(x, y, c.ux + nsdb_o_cont, c.uy + nsdb_o_cont))
+            l % LayoutRect(layer=layers.Activ,
+                rect=Rect4I(c.lx - act_x, c.ly - act_y, c.ux + act_x, c.uy + act_y))
+            well = Rect4I(c.lx - nwell_s_cont, c.ly - nwell_s_cont,
+                c.ux + nwell_s_cont, c.uy + nwell_s_cont)
+            ring(l, layers.NWell,
+                Rect4I(well.lx - act_x, well.ly - act_y, well.ux + act_x, well.uy + act_y), well)
+            l % LayoutRect(layer=layers.PWell.block, rect=well)
+        # Minus: contact lines on the NWell left and right of the column,
+        # their Metal1 widened outward to the Activ edge
+        x_r = x + L + 2*nsdb_o_cont
+        for xc in (x - 370, x_r + 370):
+            metal_cont(l, layers.Metal1, layers.Cont, xc, act.ly, xc, act.uy,
+                met_width - 20, cont_w, 90, cont_s)
+        out = act_x - nsdb_o_cont
+        l % LayoutRect(layer=layers.Metal1, rect=Rect4I(x - out, act.ly, x - 510, act.uy))
+        l % LayoutRect(layer=layers.Metal1, rect=Rect4I(x_r + 510, act.ly, x_r + out, act.uy))
+        xc = x + nsdb_o_cont + L // 2
+        l % LayoutRect(layer=layers.Metal2,
+            rect=Rect4I(xc - 305, bus_lo, xc + 305, y_last + nsdb_o_cont + W + 555))
+
+    nwell = Rect4I(act.lx - nwell_s_cont, act.ly - nwell_s_cont,
+        act.ux + nwell_s_cont, act.uy + nwell_s_cont)
+    l % LayoutRect(layer=layers.Recog.diode, rect=nwell)
+    # The minus bar above the array joins the contact lines, the plus bar
+    # below it the buses.
+    l.term_minus = LayoutRect(layer=layers.Metal1,
+        rect=Rect4I(act.lx, act.uy, act.ux, act.uy + 1055))
+    l.term_plus = LayoutRect(layer=layers.Metal2, rect=Rect4I(nsdb_o_cont - 1030,
+        bus_lo - 1120, x_last + nsdb_o_cont + L + 1030, bus_lo))
+    l % LayoutRect(layer=layers.nBuLay, rect=Rect4I(act.lx, act.ly - 20, act.ux, act.uy + 20))
+    ring(l, layers.PWell.block, Rect4I(nsdb_o_cont - 2080, nsdb_o_cont - 2290,
+        x_last + nsdb_o_cont + L + 2080, y_last + nsdb_o_cont + W + 1930), nwell)
+
+    # Guard ring, g is the inner edge of its pSD
+    g = Rect4I(-1900, -1980, x_last + L + 2*nsdb_o_cont + 1900, y_last + W + 2*nsdb_o_cont + 1620)
+    p, a, t = psd_width, psd_o_activ, psd_o_activ + activ_width
+    ring(l, layers.pSD, Rect4I(g.lx - p, g.ly - p, g.ux + p, g.uy + p), g)
+    ring(l, layers.Activ, Rect4I(g.lx - t, g.ly - t, g.ux + t, g.uy + t),
+        Rect4I(g.lx - a, g.ly - a, g.ux + a, g.uy + a))
+    l.term_tie = metal_cont(l, layers.Metal1, layers.Cont, g.lx - p // 2, g.ly - a,
+        g.lx - p // 2, g.uy + a, met_width, cont_w, 90, cont_s)
+    metal_cont(l, layers.Metal1, layers.Cont, g.ux + p // 2, g.ly - a, g.ux + p // 2, g.uy + a,
+        met_width, cont_w, 90, cont_s)
+    t = psd_width + gate_ox_o_psd
+    l % LayoutRect(layer=layers.ThickGateOx, rect=Rect4I(g.lx - t, g.ly - t, g.ux + t, g.uy + t))
+    l % LayoutLabel(layer=layers.TEXT, pos=Vec2I(18, -590), text="schottky")
+
+    l.term_plus.create_pin(cell.symbol.plus)
+    l.term_minus.create_pin(cell.symbol.minus)
+    l.term_tie.create_pin(cell.symbol.tie)
+    return l
+
+@public
+class SchottkyNbl1(Diode):
+    """
+    Schottky diode array of nx x ny contacts of 0.3 x 1 um, from ``plus`` to
+    ``minus``, ``tie`` on the substrate.
+    """
+    model_name = "schottky_nbl1"
+    anode, cathode, side = "plus", "minus", "tie"
+    side_east = True
+    netlist_pins = ("plus", "minus", "tie")
+    nx = Parameter(int, default=1)  #: Number of columns (Nx)
+    ny = Parameter(int, default=1)  #: Number of rows (Ny)
+
+    def netlist_params(self, lvs: bool) -> dict:
+        if lvs:
+            return {"m": self.nx * self.ny}
+        return {"Nx": self.nx, "Ny": self.ny}
+
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        return layoutgen_schottky(self)
+
 
 #: Device map for spice_in:
 device_map = {
@@ -3148,6 +3267,7 @@ device_map = {
     "rfcmim": DeviceMapping(Rfcmim, ("p", "n", "bn"), real_params=("w", "l", "wfeed")),
     "sg13_hv_svaricap": DeviceMapping(Svaricap, ("g1", "nw", "g2", "bn"), real_params=("w", "l"), int_params=("nx",)),
     "cparasitic": DeviceMapping(Cpara, ("p", "n"), real_params=("c",)),
+    "schottky_nbl1": DeviceMapping(SchottkyNbl1, ("plus", "minus", "tie"), int_params=("nx", "ny")),
     "bondpad": DeviceMapping(Bondpad, ("pad",), real_params=("size",), int_params=("shape", "padtype")),
     "inductor": DeviceMapping(Inductor2, ("p", "m", "b"), real_params=("w", "s", "d"), int_params=("nr_r", "m")),
     "inductor3": DeviceMapping(Inductor3, ("la", "lc", "lb", "b"), real_params=("w", "s", "d"),
