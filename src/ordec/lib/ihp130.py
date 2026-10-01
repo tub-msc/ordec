@@ -159,6 +159,23 @@ class SG13G2(Cell):
         s.Activ = Layer(
             gdslayer_shapes=GdsLayer(layer=1, data_type=0),
             style_fill=rgb_color("#00ff00"),
+            pin=s % Layer(
+                gdslayer_shapes=GdsLayer(layer=1, data_type=2),
+                style_fill=rgb_color("#00ff00"),
+                is_pinlayer=True,
+            ),
+            )
+        s.Activ.mask = Layer(
+            gdslayer_shapes=GdsLayer(layer=1, data_type=20),
+            style_fill=rgb_color("#00ff00"),
+            )
+        s.Activ.noqrc = Layer(
+            gdslayer_shapes=GdsLayer(layer=1, data_type=28),
+            style_fill=rgb_color("#ff0000"),
+            )
+        s.Activ.nofill = Layer(
+            gdslayer_shapes=GdsLayer(layer=1, data_type=23),
+            style_fill=rgb_color("#00ff00"),
             )
 
         s.GatPoly = Layer(
@@ -170,6 +187,10 @@ class SG13G2(Cell):
                 is_pinlayer=True,
             ),
         )
+        s.GatPoly.nofill = Layer(
+            gdslayer_shapes=GdsLayer(layer=5, data_type=23),
+            style_fill=rgb_color("#bf4026"),
+            )
         
         s.Cont = Layer(
             gdslayer_shapes=GdsLayer(layer=6, data_type=0),
@@ -186,10 +207,21 @@ class SG13G2(Cell):
             gdslayer_shapes=GdsLayer(layer=7, data_type=0),
             style_fill=rgb_color("#99b8d9"),
             )
+        s.nSD.block = Layer(
+            gdslayer_shapes=GdsLayer(layer=7, data_type=21),
+            style_fill=rgb_color("#00cc66"),
+            )
 
         s.NWell = Layer(
             gdslayer_shapes=GdsLayer(layer=31, data_type=0),
+            gdslayer_text=GdsLayer(layer=31, data_type=0),
             style_fill=rgb_color("#268c6b"),
+            pin=s % Layer(
+                gdslayer_text=GdsLayer(layer=31, data_type=25),
+                gdslayer_shapes=GdsLayer(layer=31, data_type=2),
+                style_fill=rgb_color("#268c6b"),
+                is_pinlayer=True,
+            ),
             )
 
         s.nBuLay = Layer(
@@ -197,9 +229,33 @@ class SG13G2(Cell):
             style_fill=rgb_color("#8c8ca6"),
             )
 
+        s.PWell = Layer(
+            gdslayer_shapes=GdsLayer(layer=46, data_type=0),
+            style_fill=rgb_color("#ffff00"),
+            )
+        s.PWell.block = Layer(
+            gdslayer_shapes=GdsLayer(layer=46, data_type=21),
+            style_fill=rgb_color("#ff8000"),
+            )
+
         s.ThickGateOx = Layer(
             gdslayer_shapes=GdsLayer(layer=44, data_type=0),
             style_fill=rgb_color("#ffffcc"),
+            )
+
+        s.TRANS = Layer(
+            gdslayer_shapes=GdsLayer(layer=26, data_type=0),
+            style_fill=rgb_color("#00ffff"),
+            )
+
+        s.EmWind = Layer(
+            gdslayer_shapes=GdsLayer(layer=33, data_type=0),
+            style_fill=rgb_color("#00cc66"),
+            )
+
+        s.EmWiHV = Layer(
+            gdslayer_shapes=GdsLayer(layer=156, data_type=0),
+            style_fill=rgb_color("#00cc66"),
             )
 
         # Metal stack
@@ -240,6 +296,31 @@ class SG13G2(Cell):
         s.TopVia2 = via(133, rgb_color("#ff8000"))
         s.TopMetal2 = metal(134, rgb_color("#ff8000"))
 
+        for m in (s.Metal1, s.Metal2, s.Metal3, s.Metal4, s.Metal5, s.TopMetal1):
+            m.noqrc = Layer(
+                gdslayer_shapes=GdsLayer(layer=m.gdslayer_shapes.layer, data_type=28),
+                style_fill=rgb_color("#ff0000"),
+                )
+        for m in (s.Metal1, s.Metal2, s.Metal3, s.Metal4, s.Metal5, s.TopMetal1, s.TopMetal2):
+            n = m.gdslayer_shapes.layer
+            m.nofill = Layer(
+                gdslayer_shapes=GdsLayer(layer=n, data_type=23),
+                style_fill=m.style_fill,
+                )
+            # Metal resistor marker and probe points
+            m.res = Layer(
+                gdslayer_shapes=GdsLayer(layer=n, data_type=29),
+                style_fill=rgb_color("#bf4026"),
+                )
+            m.iprobe = Layer(
+                gdslayer_shapes=GdsLayer(layer=n, data_type=33),
+                style_fill=m.style_fill,
+                )
+            m.diffprb = Layer(
+                gdslayer_shapes=GdsLayer(layer=n, data_type=34),
+                style_fill=m.style_fill,
+                )
+
         # Other layers
         # ------------
 
@@ -265,11 +346,13 @@ class SG13G2(Cell):
 
         s.Substrate = Layer(
             gdslayer_shapes=GdsLayer(layer=40, data_type=0),
+            gdslayer_text=GdsLayer(layer=40, data_type=0),
             style_fill=rgb_color("#ffffff"),
             )
 
         s.HeatTrans = Layer(
             gdslayer_shapes=GdsLayer(layer=51, data_type=0),
+            gdslayer_text=GdsLayer(layer=51, data_type=0),
             style_fill=rgb_color("#8c8ca6"),
             )
 
@@ -277,6 +360,42 @@ class SG13G2(Cell):
             gdslayer_shapes=GdsLayer(layer=52, data_type=0),
             gdslayer_text=GdsLayer(layer=52, data_type=0),
             style_fill=rgb_color("#8c8ca6"),
+            )
+
+        s.IND = Layer(
+            gdslayer_shapes=GdsLayer(layer=27, data_type=0),
+            style_fill=rgb_color("#ffff00"),
+            pin=s % Layer(
+                gdslayer_text=GdsLayer(layer=27, data_type=25),
+                gdslayer_shapes=GdsLayer(layer=27, data_type=2),
+                style_fill=rgb_color("#ffff00"),
+                is_pinlayer=True,
+            ),
+            )
+
+        s.IND.boundary = Layer(
+            gdslayer_shapes=GdsLayer(layer=27, data_type=4),
+            style_fill=rgb_color("#ffff00"),
+            )
+
+        s.NoRCX = Layer(
+            gdslayer_shapes=GdsLayer(layer=148, data_type=0),
+            style_fill=rgb_color("#ff0000"),
+            )
+
+        s.DigiBnd = Layer(
+            gdslayer_shapes=GdsLayer(layer=16, data_type=0),
+            style_fill=rgb_color("#ff0000"),
+            )
+
+        s.SRAM = Layer(
+            gdslayer_shapes=GdsLayer(layer=25, data_type=0),
+            style_fill=rgb_color("#ffff00"),
+            )
+
+        s.MemCap = Layer(
+            gdslayer_shapes=GdsLayer(layer=69, data_type=0),
+            style_fill=rgb_color("#ff00ff"),
             )
 
         s.Passiv = Layer(
@@ -301,11 +420,20 @@ class SG13G2(Cell):
 
         s.TEXT = Layer(
             gdslayer_text=GdsLayer(layer=63, data_type=0),
+            gdslayer_shapes=GdsLayer(layer=63, data_type=0),
             )
 
         s.Recog = Layer(
-            gdslayer_shapes=GdsLayer(layer=99, data_type=31),
+            gdslayer_shapes=GdsLayer(layer=99, data_type=0),
             style_fill=rgb_color("#bdcccc"),
+            )
+        s.Recog.esd = Layer(
+            gdslayer_shapes=GdsLayer(layer=99, data_type=30),
+            style_fill=rgb_color("#ffff00"),
+            )
+        s.Recog.diode = Layer(
+            gdslayer_shapes=GdsLayer(layer=99, data_type=31),
+            style_fill=rgb_color("#5e00e6"),
             )
 
         s.Vmim = Layer(
@@ -328,6 +456,47 @@ class SG13G2(Cell):
             style_fill=rgb_color("#9900e6"),
             style_stroke=rgb_color("#ff00ff"),
             )
+        s.prBoundary.drawing = Layer(
+            gdslayer_shapes=GdsLayer(layer=189, data_type=0),
+            style_stroke=rgb_color("#ff00ff"),
+            )
+
+        s.NoMetFiller = Layer(
+            gdslayer_shapes=GdsLayer(layer=160, data_type=0),
+            style_fill=rgb_color("#ff0000"),
+            )
+        s.LBE = Layer(
+            gdslayer_shapes=GdsLayer(layer=157, data_type=0),
+            style_fill=rgb_color("#bfbfbf"),
+            )
+        s.DigiSub = Layer(
+            gdslayer_shapes=GdsLayer(layer=60, data_type=0),
+            style_fill=rgb_color("#ff00ff"),
+            )
+
+        # Further purposes of the PDK layers, as hand-drawn layouts use them:
+        # fill, labels, text shapes and boundaries.
+        metals = (s.Metal1, s.Metal2, s.Metal3, s.Metal4, s.Metal5, s.TopMetal1, s.TopMetal2)
+        vias = (s.Cont, s.Via1, s.Via2, s.Via3, s.Via4, s.TopVia1, s.TopVia2)
+        for l in (s.Activ, s.GatPoly) + metals:
+            l.filler = Layer(
+                gdslayer_shapes=GdsLayer(layer=l.gdslayer_shapes.layer, data_type=22),
+                style_fill=l.style_fill,
+                )
+        for l in (s.Activ, s.GatPoly, s.PolyRes, s.NWell, s.nBuLay, s.PWell, s.Passiv, s.RES, s.SRAM,
+            s.prBoundary) + metals:
+            l.label = Layer(gdslayer_text=GdsLayer(layer=l.gdslayer_shapes.layer, data_type=1))
+        for l in metals:
+            l.text = Layer(
+                gdslayer_shapes=GdsLayer(layer=l.gdslayer_shapes.layer, data_type=25),
+                style_fill=l.style_fill,
+                )
+        for l in (s.Activ, s.GatPoly, s.PolyRes, s.NWell, s.nBuLay, s.PWell, s.MIM, s.Passiv, s.SRAM) \
+            + metals + vias:
+            l.boundary = Layer(
+                gdslayer_shapes=GdsLayer(layer=l.gdslayer_shapes.layer, data_type=4),
+                style_stroke=l.style_fill or l.style_stroke,
+                )
 
         return s
 
