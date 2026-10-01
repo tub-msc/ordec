@@ -2948,6 +2948,103 @@ def layoutgen_antenna(cell: Cell, pdiode: bool) -> Layout:
         l.m1.create_pin(cell.symbol.d1)
     return l
 
+def layoutgen_isolbox(cell: Cell) -> Layout:
+    """
+    Generate the SG13G2 isolation box layout, as the PCell isolbox_code.py with
+    well width 1.05u and the diode layer, contacts on the NWell ring with
+    cont_ring ("O" all around, "U" open at the top).
+    """
+    if cell.l < R("3u") or cell.w < R("3u"):
+        raise ParameterError("l and w must be at least 3u.")
+    if cell.cont_ring not in (None, "O", "U"):
+        raise ParameterError('cont_ring must be "O", "U" or None.')
+    layers = SG13G2().layers
+    l = Layout(ref_layers=layers, cell=cell, symbol=cell.symbol)
+
+    L = int(cell.l / R("1n"))
+    W = int(cell.w / R("1n"))
+    nw_a, dd, nw_o_act = 1050, 400, 240  # wellwidth, nBuLay inset, nwOact
+    l % LayoutRect(layer=layers.nBuLay,
+        rect=Rect4I(dd - nw_a, dd - nw_a, L - nw_a - dd, W - nw_a - dd))
+    outer = Rect4I(-nw_a, -nw_a, L - nw_a, W - nw_a)
+    inner = Rect4I(0, 0, L - 2*nw_a, W - 2*nw_a)
+    ring(l, layers.NWell, outer, inner)
+    ring(l, layers.Recog.diode, outer, inner)
+    ring(l, layers.Activ,
+        Rect4I(nw_o_act - nw_a, nw_o_act - nw_a, L - nw_a - nw_o_act, W - nw_a - nw_o_act),
+        Rect4I(-nw_o_act, -nw_o_act, L - 2*nw_a + nw_o_act, W - 2*nw_a + nw_o_act))
+    l % LayoutLabel(layer=layers.TEXT, pos=Vec2I(0, -nw_a // 2), text="isolbox")
+    if cell.cont_ring:
+        cont_w, cont_s, off = 160, 180, 60
+        wm = cont_w + 2*60  # Metal1 over the contacts
+        xm = nw_a // 2 + 15  # ring center line
+        top, right = W - 2*nw_a + xm, L - 2*nw_a + xm
+        if cell.cont_ring == "O":
+            metal_cont(l, layers.Metal1, layers.Cont, -xm + wm // 2, top, right - wm // 2, top,
+                wm, cont_w, cont_s - off, cont_s)
+        metal_cont(l, layers.Metal1, layers.Cont, -xm + wm // 2, -xm, right - wm // 2, -xm,
+            wm, cont_w, cont_s - off, cont_s)
+        metal_cont(l, layers.Metal1, layers.Cont, -xm, -xm - wm // 2, -xm, top + wm // 2,
+            wm, cont_w, off, cont_s)
+        metal_cont(l, layers.Metal1, layers.Cont, right, -xm - wm // 2, right, top + wm // 2,
+            wm, cont_w, off, cont_s)
+    return l
+
+@public
+class Isolbox(SimLeafCell):
+    """
+    Isolation box: an NWell ring ``nwell`` over nBuLay separates the
+    p-region ``isosub`` from the substrate ``sub``. Without ``cont_ring``
+    (PCell default) the layout has no contacts, taps and devices inside
+    connect it. The PDK's LVS takes ``nwell`` from nBuLay, which connects to
+    nothing.
+    """
+    l = Parameter(R)
+    w = Parameter(R)
+    cont_ring = Parameter(str, optional=True, default=None)  #: Contacts on the NWell ring: "O", "U" (open at the top) or None
+
+    @viewgen_noctx
+    def symbol(self) -> Symbol:
+        s = Symbol(cell=self)
+
+        s.isosub = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
+        s.nwell = Pin(pos=Vec2R(0, 2), pintype=PinType.Inout, align=West)
+        s.sub = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
+
+        s % SymbolPoly(vertices=[Vec2R(2, 4), Vec2R(2, 3.5)])
+        s % SymbolPoly(vertices=[Vec2R(2, 3.5), Vec2R(1.4, 3.5), Vec2R(2, 2.5), Vec2R(2.6, 3.5),
+            Vec2R(2, 3.5)])
+        s % SymbolPoly(vertices=[Vec2R(1.4, 2.5), Vec2R(2.6, 2.5)])
+        s % SymbolPoly(vertices=[Vec2R(2, 0), Vec2R(2, 0.5)])
+        s % SymbolPoly(vertices=[Vec2R(2, 0.5), Vec2R(1.4, 0.5), Vec2R(2, 1.5), Vec2R(2.6, 0.5),
+            Vec2R(2, 0.5)])
+        s % SymbolPoly(vertices=[Vec2R(1.4, 1.5), Vec2R(2.6, 1.5)])
+        s % SymbolPoly(vertices=[Vec2R(2, 1.5), Vec2R(2, 2.5)])
+        s % SymbolPoly(vertices=[Vec2R(0, 2), Vec2R(2, 2)])
+
+        s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
+        return s
+
+    def ngspice_netlist(self, netlister, inst):
+        netlister.require_netlist_setup(netlister_setup)
+        netlister.require_netlist_setup(netlister_setup_dio)
+        netlister.require_ngspice_setup(ngspice_setup)
+
+        netlister.add(
+            netlister.name_obj(inst, prefix="D" if netlister.lvs else "x"),
+            netlister.portmap(inst, [inst.symbol.isosub, inst.symbol.nwell, inst.symbol.sub]),
+            "isolbox",
+            *spice_params({"l": self.l, "w": self.w}),
+        )
+
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        return layoutgen_isolbox(self)
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls(l=R("3u"), w=R("3u"))]
+
 class Diode(SimLeafCell):
     """
     Shared base class of the SG13G2 diodes, drawn from ``anode`` to
@@ -3055,6 +3152,7 @@ device_map = {
     "inductor": DeviceMapping(Inductor2, ("p", "m", "b"), real_params=("w", "s", "d"), int_params=("nr_r", "m")),
     "inductor3": DeviceMapping(Inductor3, ("la", "lc", "lb", "b"), real_params=("w", "s", "d"),
         int_params=("nr_r", "m")),
+    "isolbox": DeviceMapping(Isolbox, ("isosub", "nwell", "sub"), real_params=("l", "w")),
     "dantenna": DeviceMapping(Dantenna, ("d0", "d1"), real_params=("l", "w")),
     "dpantenna": DeviceMapping(Dpantenna, ("d0", "d1"), real_params=("l", "w")),
 }

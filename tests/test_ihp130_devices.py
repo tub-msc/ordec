@@ -102,3 +102,9 @@ def test_device_ac(cell, conns, expected):
     freq = 1e6
     assert supply_current(cell, "1", freq, **conns) / (2 * math.pi * freq) == pytest.approx(expected, rel=0.02)
 
+
+def test_layout_cells():
+    # An isolbox with cont_ring U has contacts on three sides of its ring.
+    layers = ihp130.SG13G2().layers
+    box = ihp130.Isolbox(l="8u", w="8u", cont_ring="U").layout
+    assert sum(1 for n in box.all(LayoutRect) if n.layer == layers.Metal1) == 3
