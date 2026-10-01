@@ -987,7 +987,8 @@ def parse_lvsdb(filename, layout: Layout, schematic: Schematic, directory=None) 
             if circuit_data is not None:
                 circuits_data.append(circuit_data)
 
-    if all(c['status'] in (LvsStatus.Match, LvsStatus.MatchWarning)
+    # Nothing compared (an empty comparison section) is no match.
+    if circuits_data and all(c['status'] in (LvsStatus.Match, LvsStatus.MatchWarning)
            for c in circuits_data):
         overall_status = LvsStatus.Match
     else:
