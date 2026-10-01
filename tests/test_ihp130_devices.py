@@ -14,9 +14,11 @@ from .lib.ihp130_inv import Inv
 # One gallery for a single DRC and a single LVS run (deck startup dominates).
 # MOS devices come in the inverter fixture, whose body tap ties the
 # substrate to its vss, as the guard rings of RF NMOS and rfcmim do. NWell
-# devices alternate with others (NBL.c, NBL.d). Svaricap with w=3.74u fails
-# NW.e, as the foundry PCell does.
+# devices alternate with others (NBL.c, NBL.d), the bondpad has no Activ
+# next to it (Pad.d1R). Svaricap with w=3.74u fails NW.e, as the foundry
+# PCell does.
 GALLERY = [
+    ihp130.Bondpad(size="80u"), ihp130.Bondpad(size="80u", shape=1, bottom_metal=1, add_filler_ex=True),
     ihp130.Rsil(l="0.5u", w="0.5u"), ihp130.Rppd(l="0.5u", w="0.5u"), ihp130.Rhigh(l="0.96u", w="0.5u"),
     ihp130.Cmim(l="6.99u", w="6.99u"),
     ihp130.Rsil(l="2.0u", w="0.5u", b=1, ps="180n"),
@@ -29,7 +31,7 @@ GALLERY = [
     Inv(variant="hv"),
 ]
 SUBSTRATE = f"inv{len(GALLERY) - 1}_vss"
-TIES = ("rfnmos13_b", "rfcmim14_bn")
+TIES = ("rfnmos15_b", "rfcmim16_bn")
 
 
 def test_device_gallery_drc_clean():
