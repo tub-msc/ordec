@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+import math
 import os
 import tempfile
 from pathlib import Path
@@ -599,6 +600,24 @@ class SG13G2(Cell):
 
         return rs
 
+def contact_array(layout: Layout, rect: Rect4I, layer: Layer, size: int, spacing: int,
+    margin: Vec2I):
+    """
+    Via array as contactArray in the PDK PCells: as many vias as fit, the
+    outer ones at margin from the edges, the rest spread evenly on the 5 nm
+    grid. A single via is centered.
+    """
+    def positions(lo, extent, margin):
+        count = (extent - 2*margin + spacing) // (size + spacing)
+        if count == 1:
+            return [lo + 5 * ((extent - size) // 10)]
+        return [lo + 5 * ((margin*(count - 1) + k*(extent - 2*margin - size)) // (5*(count - 1)))
+            for k in range(count)]
+
+    for x in positions(rect.lx, rect.width, margin.x):
+        for y in positions(rect.ly, rect.height, margin.y):
+            layout % LayoutRect(layer=layer, rect=Rect4I(x, y, x + size, y + size))
+
 def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool,
     contact_sd_odd: bool=True, contact_sd_even: bool=True) -> Layout:
     """
@@ -611,8 +630,6 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool,
     device with an even num_gates thus yields a series chain that is only
     contacted at both ends.
 
-    Notice: Placement of Cont vias differs slightly from the foundry-provieded PCell.
-
     See also: ihp-sg13g2/libs.tech/klayout/python/sg13g2_pycell_lib/ihp/nmos_code.py
     """
     layers = SG13G2().layers
@@ -621,8 +638,10 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool,
     l = Layout(ref_layers=layers, cell=cell)
     s = Solver(l)
 
-    L = int(length/R("1n"))
-    W = int(width/R("1n") / num_gates)
+    # Down to the 5 nm grid like the PCell's GridFix, whose epsilon absorbs
+    # float noise in the parameters.
+    L = 5 * math.floor(length / R("5n") + R("0.001"))
+    W = 5 * math.floor(width / num_gates / R("5n") + R("0.001"))
 
     l.poly = PathNode()
     l.sd = PathNode()
@@ -718,11 +737,18 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool,
     for i in range(num_gates + 1):
         if not sd_contacted(i):
             continue
-        makevias(l, l.sd[i].rect, layers.Cont,
-            size=Vec2I(cont.size, cont.size),
-            spacing=Vec2I(cont.space, cont.space),
-            margin=Vec2I(0, margin_y),
-            )
+        contact_array(l, l.sd[i].rect, layers.Cont, cont.size, cont.space, Vec2I(0, margin_y))
+
+    label = "pmos" if nwell else "nmos"
+    for i in range(num_gates):
+        poly = l.poly[i].rect
+        l % LayoutRect(layer=layers.HeatTrans, rect=poly)
+        l % LayoutLabel(layer=layers.HeatTrans, pos=poly.center, text=label)
+    l % LayoutLabel(layer=layers.TEXT, pos=l.poly[0].rect.center, text=label)
+    if nwell:
+        # The PCell's bulk pin shape
+        l % LayoutRect(layer=layers.Substrate, rect=Rect4I(
+            l.activ.rect.ux - 300, max_activ.rect.ly, l.activ.rect.ux, max_activ.rect.ly + 300))
 
     return l
 
