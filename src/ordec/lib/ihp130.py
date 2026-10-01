@@ -810,7 +810,7 @@ def layoutgen_tap(cell: Cell, length: R, width: R, nwell: bool):
     W = int(width/R("1n"))
 
     l.activ = LayoutRect(layer=layers.Activ)
-    s.constrain(l.activ.size == (L, W))
+    s.constrain(l.activ.size == (W, L))
     s.constrain(l.activ.southwest == (0, 0))
 
     l.m1 = LayoutRect(layer=layers.Metal1)
@@ -837,8 +837,8 @@ def layoutgen_tap(cell: Cell, length: R, width: R, nwell: bool):
     cont_size = 160    # Cnt.a
     cont_margin = 70   # Cnt.c: Activ enclosure of Cont
     spacing = 180      # Cnt.b
-    cols = (L - 2*cont_margin + spacing) // (cont_size + spacing)
-    rows = (W - 2*cont_margin + spacing) // (cont_size + spacing)
+    cols = (W - 2*cont_margin + spacing) // (cont_size + spacing)
+    rows = (L - 2*cont_margin + spacing) // (cont_size + spacing)
     if min(cols, rows) >= 4:
         spacing = 200  # Cnt.b1: spacing in arrays of 4 x 4 or more
 
