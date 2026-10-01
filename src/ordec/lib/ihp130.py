@@ -145,6 +145,37 @@ def netlister_setup(netlister):
     netlister.add(".option", "maxwarns=10")
     #netlister.add(".option", "savecurrents")
 
+@dataclass(frozen=True)
+class ViaRule:
+    """One via type of the PDK's via PCells (sg13_tech_info.py), in nm."""
+    bottom: str         #: Bottom layer
+    cut: str            #: Cut layer
+    top: str            #: Top layer
+    size: int           #: Cut width
+    space: int          #: Cut spacing
+    space_dense: int    #: x spacing with more than dense_nr cuts both ways
+    dense_nr: int
+    enc_bottom: int     #: Bottom enclosure at the sides
+    endcap_bottom: int  #: Bottom enclosure at the ends
+    enc_top: int        #: Top enclosure at the sides
+    endcap_top: int     #: Top enclosure at the ends
+    min_bottom: int     #: Minimum bottom plate width and height
+    min_top: int        #: Minimum top plate width and height
+
+# In the PDK's order, bottom to top.
+VIA_RULES = {
+    "SG13G2_CONT_GATPOLY_M1": ViaRule("GatPoly", "Cont", "Metal1", 160, 180, 200, 4, 70, 70, 0, 50, 160, 160),
+    "SG13G2_CONT_ACTIV_M1": ViaRule("Activ", "Cont", "Metal1", 160, 180, 200, 4, 70, 70, 0, 50, 160, 160),
+    "SG13G2_VIA_M1_M2": ViaRule("Metal1", "Via1", "Metal2", 190, 220, 290, 3, 10, 50, 5, 50, 160, 200),
+    "SG13G2_VIA_M2_M3": ViaRule("Metal2", "Via2", "Metal3", 190, 220, 290, 3, 5, 50, 5, 50, 200, 200),
+    "SG13G2_VIA_M3_M4": ViaRule("Metal3", "Via3", "Metal4", 190, 220, 290, 3, 5, 50, 5, 50, 200, 200),
+    "SG13G2_VIA_M4_M5": ViaRule("Metal4", "Via4", "Metal5", 190, 220, 290, 3, 5, 50, 5, 50, 200, 200),
+    "SG13G2_VIA_M5_TM1": ViaRule("Metal5", "TopVia1", "TopMetal1", 420, 420, 420, 0, 100, 100, 420, 420,
+        200, 1640),
+    "SG13G2_VIA_TM1_TM2": ViaRule("TopMetal1", "TopVia2", "TopMetal2", 900, 1060, 1060, 0, 500, 500, 500, 500,
+        1640, 2000),
+}
+
 @public
 class SG13G2(Cell):
     @viewgen_noctx
@@ -514,13 +545,17 @@ class SG13G2(Cell):
         rs = RoutingSpec(ref_layers=layers)
 
         route_id = 0
+        via1 = VIA_RULES["SG13G2_VIA_M1_M2"]
+        topvia1 = VIA_RULES["SG13G2_VIA_M5_TM1"]
+        topvia2 = VIA_RULES["SG13G2_VIA_TM1_TM2"]
 
         # route_pad is the 190nm via cut plus the 10nm enclosure that V1.c
         # demands on all sides (V2.c to V4.c ask for only 5nm). The endcap
         # enclosure (V1.c1 etc., 50nm) comes from the wire running into the
         # pad, so a pad this size widens a 200nm wire by just 5nm per side.
+        pad = via1.size + 2*via1.enc_bottom
         def addmetal(layer, route_width=200, route_ext=100+50, route_via=(480,300),
-            route_pad=(210,210)):
+            route_pad=(pad, pad)):
             nonlocal route_id
             rs % RoutingSpecLayer(
                 layer=layer,
@@ -534,31 +569,33 @@ class SG13G2(Cell):
             )
             route_id += 1
 
-        def addvia(layer, route_via=(190,190)):
+        def addvia(layer, rule):
             nonlocal route_id
             rs % RoutingSpecLayer(
                 layer=layer,
                 route_id=route_id,
-                route_via_width=route_via[0],
-                route_via_height=route_via[1],
+                route_via_width=rule.size,
+                route_via_height=rule.size,
             )
             route_id += 1
 
         addmetal(layers.Metal1)
-        addvia(layers.Via1)
+        addvia(layers.Via1, via1)
         addmetal(layers.Metal2)
-        addvia(layers.Via2)
+        addvia(layers.Via2, VIA_RULES["SG13G2_VIA_M2_M3"])
         addmetal(layers.Metal3)
-        addvia(layers.Via3)
+        addvia(layers.Via3, VIA_RULES["SG13G2_VIA_M3_M4"])
         addmetal(layers.Metal4)
-        addvia(layers.Via4)
-        addmetal(layers.Metal5, route_via=(620, 620), route_pad=(620, 620))
-        addvia(layers.TopVia1, route_via=(420, 420))
-        addmetal(layers.TopMetal1, route_width=1640, route_via=(1900, 1900),
-            route_pad=(1640, 1640))
-        addvia(layers.TopVia2, route_via=(900, 900))
-        addmetal(layers.TopMetal2, route_width=2000, route_via=(2000, 2000),
-            route_pad=(2000, 2000))
+        addvia(layers.Via4, VIA_RULES["SG13G2_VIA_M4_M5"])
+        m5_pad = topvia1.size + 2*topvia1.enc_bottom
+        addmetal(layers.Metal5, route_via=(m5_pad, m5_pad), route_pad=(m5_pad, m5_pad))
+        addvia(layers.TopVia1, topvia1)
+        tm1_via = topvia2.size + 2*topvia2.enc_bottom
+        addmetal(layers.TopMetal1, route_width=topvia1.min_top, route_via=(tm1_via, tm1_via),
+            route_pad=(topvia1.min_top, topvia1.min_top))
+        addvia(layers.TopVia2, topvia2)
+        tm2 = topvia2.min_top
+        addmetal(layers.TopMetal2, route_width=tm2, route_via=(tm2, tm2), route_pad=(tm2, tm2))
 
         return rs
 
@@ -579,6 +616,8 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool,
     See also: ihp-sg13g2/libs.tech/klayout/python/sg13g2_pycell_lib/ihp/nmos_code.py
     """
     layers = SG13G2().layers
+    cont = VIA_RULES["SG13G2_CONT_ACTIV_M1"]
+    patch = cont.size + 2*cont.enc_bottom  # Activ around a single Cont
     l = Layout(ref_layers=layers, cell=cell)
     s = Solver(l)
 
@@ -602,20 +641,20 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool,
             # omitted. The gate pitch is left unchanged, so the surrounding
             # geometry does not depend on which regions are contacted, and
             # devices abutting on the region place it via l.activ.
-            x_cur = x_cur + 160
+            x_cur = x_cur + cont.size
             return
         l.sd[i] = LayoutRect(layer=layers.Metal1)
         sd = l.sd[i]
         s.constrain(sd.west == (x_cur, l.activ.cy))
-        s.constrain(sd.width == 160)
-        if W >= 300:
+        s.constrain(sd.width == cont.size)
+        if W >= patch:
             s.constrain(sd.height == W)
         else:
-            s.constrain(sd.height == 260)
+            s.constrain(sd.height == cont.size + 2*cont.endcap_top)
 
             activ_ext = l % LayoutRect(layer=layers.Activ)
             s.constrain(activ_ext.center == sd.center)
-            s.constrain(activ_ext.size == (300, 300))
+            s.constrain(activ_ext.size == (patch, patch))
         x_cur = sd.ux
 
     # Cont to GatPoly spacing (Cnt_f, 110). For W < 300, the 300x300 activ_ext
@@ -623,7 +662,7 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool,
     # spacing must grow to Cnt_c + Gat_d = 140 to keep GatPoly 70 (Gat.d)
     # away from that patch. Same case split as the foundry PCell
     # (smallw_gatpoly_cont_dist in nmos_code.py/pmos_code.py).
-    sd_poly_dist = 110 if W >= 300 else 140
+    sd_poly_dist = 110 if W >= patch else 140
 
     def add_poly(i):
         nonlocal l, s, x_cur
@@ -638,7 +677,7 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool,
     l.activ = LayoutRect(layer=layers.Activ)
     s.constrain(l.activ.height == W)
     s.constrain(l.activ.lx == 0)
-    x_cur = l.activ.lx + 70
+    x_cur = l.activ.lx + cont.enc_bottom
 
     add_sd(0)
     for i in range(num_gates):
@@ -675,13 +714,13 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool,
     # In x the strip is exactly one via wide in both variants, so the Cont
     # sits flush with it (margin 0, which also yields cols=1 on its own) and
     # the Activ enclosure comes from activ/activ_ext.
-    margin_y = 70 if W >= 300 else 0
+    margin_y = cont.enc_bottom if W >= patch else 0
     for i in range(num_gates + 1):
         if not sd_contacted(i):
             continue
         makevias(l, l.sd[i].rect, layers.Cont,
-            size=Vec2I(160, 160),
-            spacing=Vec2I(180, 180),
+            size=Vec2I(cont.size, cont.size),
+            spacing=Vec2I(cont.space, cont.space),
             margin=Vec2I(0, margin_y),
             )
 
@@ -902,11 +941,12 @@ def layoutgen_resistor(
                 "(SalBlock enclosure plus spacing next to the terminal "
                 "contacts); set ps on the instance.")
 
-    cont_size = 160         # Cnt.a
-    poly_over_cont = 70     # Cnt.d: GatPoly enclosure of Cont
+    cont = VIA_RULES["SG13G2_CONT_GATPOLY_M1"]
+    cont_size = cont.size             # Cnt.a
+    poly_over_cont = cont.enc_bottom  # Cnt.d: GatPoly enclosure of Cont
     contbar_poly_over = 70  # CntB.d: GatPoly enclosure of the contact bar
     contbar_min_len = 340   # CntB.a1: minimum contact bar length
-    metal_x_enc = 50        # M1.c1: Metal1 enclosure of Cont
+    metal_x_enc = cont.endcap_top  # M1.c1: Metal1 enclosure of Cont
     metal_y_enc = max(metal_x_enc, rules.met_over_cont)
     cont_to_body = rules.cont_to_body
     head_len = cont_to_body + cont_size + poly_over_cont
@@ -1078,13 +1118,14 @@ def layoutgen_cmim(cell: Cell) -> Layout:
 
     mim_c = 600                 # Mim.c: Metal5 enclosure of MIM
     mim_d = 360                 # Mim.d: MIM enclosure of TopVia1
-    tv1_size = 420              # TV1.a
-    tv1_space = tv1_size + 420  # TV1.a + TV1.b (spacing), pitch of the via array
-    tv1_enc = 420               # TV1.d: TopMetal1 enclosure of TopVia1
+    tv1 = VIA_RULES["SG13G2_VIA_M5_TM1"]
+    tv1_size = tv1.size                # TV1.a
+    tv1_space = tv1_size + tv1.space   # TV1.a + TV1.b (spacing), pitch of the via array
+    tv1_enc = tv1.enc_top              # TV1.d: TopMetal1 enclosure of TopVia1
 
     # The TopMetal1 plate (via array plus enclosure) must meet TM1.a. At
     # cmim_minLW only one via fits and the plate is too narrow.
-    tm1_min = 1640  # TM1.a
+    tm1_min = tv1.min_top  # TM1.a
     for side, name in ((width, "w"), (length, "l")):
         if cmim_plate_span(side, mim_d, tv1_size, tv1_space, tv1_enc) < tm1_min:
             needed = cmim_min_side_for_tm1(mim_d, tv1_size, tv1_space, tv1_enc, tm1_min, min_lw, max_lw)
@@ -1517,15 +1558,16 @@ def run_lvs(layout: Layout, symbol: Symbol, use_tempdir: bool=True) -> LvsReport
 # landing, strap and rail dimensions and the manufacturing grid come from the
 # sign-off DRC rules. Frozen, so the engine derives its per-floorplan variants
 # with dataclasses.replace rather than mutating it.
+via1 = VIA_RULES["SG13G2_VIA_M1_M2"]   # the grid's via
 public(grid = GridConfig(
     # Routing grid (sg13g2 tech LEF):
     x_pitch=480,
     y_pitch=420,
     row_height=3780,
     tracks_per_row=9,
-    via_half=95,
-    encl=10,
-    encl_endcap=50,
+    via_half=via1.size // 2,
+    encl=via1.enc_bottom,
+    encl_endcap=via1.endcap_bottom,
     manufacturing_grid=5, # sg13g2 layout quantum (MANUFACTURINGGRID)
     # Supply naming (sg13g2 stdcell library pins + ORDeC net conventions):
     vdd_pin="VDD",
@@ -1534,10 +1576,10 @@ public(grid = GridConfig(
     vss_net="vss",
     # Emitted geometry (sg13g2 sign-off DRC rules):
     wire_width=210,       # Mn min width
-    wire_ext=150,         # via half 95 + 55 endcap (Mn.c1 / V*.c1)
+    wire_ext=via1.size // 2 + 55,  # via half + 55 endcap (Mn.c1 / V*.c1)
     strap_half_w=105,     # wire_width / 2
     land_half_h=345,      # 690 nm landing -> Mn min area
-    m1_land_half_h=145,   # Metal1 endcap landing under a Via1 (V1.c1)
+    m1_land_half_h=via1.size // 2 + via1.endcap_bottom,  # Metal1 endcap landing under a Via1 (V1.c1)
     min_area_tracks=2,    # 2 * pitch * 210 nm wire >= 0.144 um^2 Mn min area
     port_pad_inner=600,   # from the edge rail into the block
     port_pad_outer=360,   # from the edge rail into the parent's channel
