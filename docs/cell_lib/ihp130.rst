@@ -8,7 +8,7 @@ This cell library provides part of the `IHP Open PDK <https://github.com/IHP-Gmb
 Substrate handling in LVS
 -------------------------
 
-All SG13G2 resistors (``Rsil``, ``Rppd``, ``Rhigh``) have a third pin ``bn`` connecting the device's bulk/substrate node. In LVS netlists, the resistors are emitted as three-terminal SPICE elements, so substrate connectivity is part of the layout vs. schematic comparison.
+All SG13G2 resistors (``Rsil``, ``Rppd``, ``Rhigh``) have a third pin ``bn`` connecting the device's bulk/substrate node. In LVS netlists, the resistors are emitted as three-terminal SPICE elements, so substrate connectivity is part of the layout vs. schematic comparison. The same holds for the other devices on the substrate: ``bn`` of the npn HBTs, ``Rfcmim`` and ``Svaricap``, ``b`` of the inductors, and the substrate-tie pins of ``PnpMPA`` (``c``), the ESD diodes (``vss``), ``SchottkyNbl1`` (``tie``) and ``Isolbox`` (``sub``).
 
 On the layout side, the SG13G2 LVS deck merges the resistors' bulk into a single chip-wide substrate (pwell) net. For hierarchical designs, this has the following consequences:
 

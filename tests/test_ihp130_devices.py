@@ -13,10 +13,10 @@ from .lib.ihp130_inv import Inv
 
 # One gallery for a single DRC and a single LVS run (deck startup dominates).
 # MOS devices come in the inverter fixture, whose body tap ties the
-# substrate to its vss, as the pnp's collector and the guard rings of RF
-# NMOS and rfcmim do. NWell devices alternate with others (NBL.c, NBL.d),
-# the bondpad has no Activ next to it (Pad.d1R). Svaricap with w=3.74u fails
-# NW.e, as the foundry PCell does.
+# substrate to its vss, as the pnp's collector, the ESD diodes' vss and the
+# guard rings of RF NMOS and rfcmim do. NWell devices alternate with others
+# (NBL.c, NBL.d), the bondpad has no Activ next to it (Pad.d1R). Svaricap
+# with w=3.74u fails NW.e, as the foundry PCell does.
 GALLERY = [
     ihp130.Bondpad(size="80u"), ihp130.Bondpad(size="80u", shape=1, bottom_metal=1, add_filler_ex=True),
     ihp130.Rsil(l="0.5u", w="0.5u"), ihp130.Rppd(l="0.5u", w="0.5u"), ihp130.Rhigh(l="0.96u", w="0.5u"),
@@ -28,18 +28,19 @@ GALLERY = [
     ihp130.Ptap1(w="3u", l="0.8u"),
     ihp130.Npn13G2(nx=2), ihp130.PnpMPA(w="1u", l="2u"), ihp130.Npn13G2l(el=1, thermal=True),
     ihp130.Npn13G2v(nx=2, el=2),
-    ihp130.Svaricap(w="9.74u", l="0.3u"),
+    ihp130.Svaricap(w="9.74u", l="0.3u"), ihp130.Diodevdd2kv(), ihp130.Nmoscl2(), ihp130.Diodevss2kv(),
     ihp130.RfPmosHv(w="1u", l="0.72u"), ihp130.RfNmos(w="1u", l="0.72u"), ihp130.Rfcmim(w="7u", l="7u", wfeed="3u"),
     ihp130.Dpantenna(w="1.5u", l="4u"), ihp130.Dantenna(w="0.78u", l="0.78u"),
     ihp130.Inductor3(w="2u", s="2.1u", d="25.84u", nr_r=2),
     Inv(variant="hv"),
 ]
 SUBSTRATE = f"inv{len(GALLERY) - 1}_vss"
-TIES = ("pnpmpa14_c", "rfnmos19_b", "rfcmim20_bn")
+TIES = ("pnpmpa14_c", "diodevdd2kv18_vss", "diodevss2kv20_vss", "rfnmos22_b", "rfcmim23_bn")
 
 
 def test_device_gallery_drc_clean():
-    wrapper = gallery_wrapper_cell(GALLERY, "DeviceGallery", SUBSTRATE, TIES)
+    # Without the ESD devices, the PDK's fixed cells: they take a third of the run.
+    wrapper = gallery_wrapper_cell([c for c in GALLERY if not isinstance(c, ihp130.Esd)], "DeviceGallery")
     assert ihp130.run_drc(wrapper.layout, use_tempdir=True).summary() == {}
 
 
@@ -77,7 +78,7 @@ def supply_current(cell, volts, freq=None, **conns):
 
 # Reference values captured from ngspice. An LV Nmos of the HV size draws
 # 1.28 mA; the taps draw 1 V / R (262.85 and 98 Ohm); the HBTs are forward
-# biased diodes, npn13G2 base and collector joined.
+# biased diodes, npn13G2 base and collector joined; nmoscl_2 leaks at 1.2 V.
 @pytest.mark.parametrize("cell,volts,conns,expected", [
     (ihp130.NmosHv(w="1u", l="450n"), "3.3", dict(d="vdd", g="vdd", s="vss", b="vss"), 532.68e-6),
     (ihp130.PmosHv(w="1u", l="450n"), "3.3", dict(d="vss", g="vss", s="vdd", b="vdd"), 219.31e-6),
@@ -85,6 +86,8 @@ def supply_current(cell, volts, freq=None, **conns):
     (ihp130.Ptap1(w="3u", l="0.8u"), "1", dict(tie="vdd", sub="vss"), 10.204e-3),
     (ihp130.Npn13G2(), "0.8", dict(c="vdd", b="vdd", e="vss", bn="vss"), 138.62e-6),
     (ihp130.PnpMPA(w="1u", l="2u"), "0.8", dict(e="vdd", b="vss", c="vss"), 10.142e-6),
+    (ihp130.Diodevdd2kv(), "0.8", dict(pad="vdd", vdd="vss", vss="vss"), 133.90e-6),
+    (ihp130.Nmoscl2(), "1.2", dict(vdd="vdd", vss="vss"), 430.12e-9),
     (ihp130.RfNmos(w="1u", l="0.72u"), "1.2", dict(d="vdd", g="vdd", s="vss", b="vss"), 179.91e-6),
     (ihp130.Dantenna(w="0.78u", l="0.78u"), "0.8", dict(d0="vdd", d1="vss"), 389.91e-9),
     (ihp130.SchottkyNbl1(), "0.3", dict(plus="vdd", minus="vss", tie="vss"), 6.1977e-6),
