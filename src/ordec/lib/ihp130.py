@@ -1221,6 +1221,129 @@ class Ptap(Cell):
         return [cls(l=R("0.7u"), w=R("0.7u"))]
 
 
+def via_cuts(layout: Layout, rule: ViaRule, nx: int, ny: int) -> Vec2I:
+    """nx x ny cuts centered on the origin, returns the size of the array."""
+    # The PDK widens only the x spacing in dense arrays.
+    space_x = rule.space_dense if nx > rule.dense_nr and ny > rule.dense_nr else rule.space
+    pitch_x, pitch_y = rule.size + space_x, rule.size + rule.space
+    half = rule.size // 2
+    for i in range(nx):
+        for j in range(ny):
+            x, y = i*pitch_x - (nx - 1)*pitch_x // 2, j*pitch_y - (ny - 1)*pitch_y // 2
+            layout % LayoutRect(layer=getattr(layout.ref_layers, rule.cut),
+                rect=Rect4I(x - half, y - half, x + half, y + half))
+    return Vec2I(nx*rule.size + (nx - 1)*space_x, ny*rule.size + (ny - 1)*rule.space)
+
+def via_plate(rule: ViaRule, nx: int, ny: int, size: Vec2I, bottom: bool) -> Vec2I:
+    """The plate the cut array needs, end caps along the longer side."""
+    side, endcap = (rule.enc_bottom, rule.endcap_bottom) if bottom else (rule.enc_top, rule.endcap_top)
+    enc_x, enc_y = (side, endcap) if nx < ny else (endcap, side)
+    minimum = rule.min_bottom if bottom else rule.min_top
+    return Vec2I(max(size.x + 2*enc_x, minimum), max(size.y + 2*enc_y, minimum))
+
+def centered_rect(size: Vec2I) -> Rect4I:
+    """A rect of size centered on the origin, odd sizes rounded outward as KLayout does."""
+    hx, hy = (size.x + 1) // 2, (size.y + 1) // 2
+    return Rect4I(-hx, -hy, hx, hy)
+
+def layoutgen_via(cell: Cell) -> Layout:
+    """Generate a via array, as the PDK's native PCell Via (via_pcell.py)."""
+    if cell.via not in VIA_RULES:
+        raise ParameterError(f"via must be one of {', '.join(VIA_RULES)}.")
+    rule = VIA_RULES[cell.via]
+    layers = SG13G2().layers
+    l = Layout(ref_layers=layers, cell=cell)
+    size = via_cuts(l, rule, cell.nx, cell.ny)
+    for bottom, layer, w, h in ((True, rule.bottom, cell.w_bottom, cell.h_bottom),
+            (False, rule.top, cell.w_top, cell.h_top)):
+        plate = via_plate(rule, cell.nx, cell.ny, size, bottom)
+        plate = Vec2I(max(plate.x, int(w / R("1n"))), max(plate.y, int(h / R("1n"))))
+        l % LayoutRect(layer=getattr(layers, layer), rect=centered_rect(plate))
+    return l
+
+@public
+class Via(Cell):
+    """
+    Via array of one via type, as the PDK's native PCell Via: nx x ny cuts
+    centered on the origin, plates at least w/h_bottom and w/h_top.
+    """
+    via = Parameter(str, default="SG13G2_VIA_M1_M2")  #: Via type, a key of VIA_RULES
+    nx = Parameter(int, default=1)  #: Columns
+    ny = Parameter(int, default=1)  #: Rows
+    w_bottom = Parameter(R, default=R(0))  #: Minimum bottom plate width
+    h_bottom = Parameter(R, default=R(0))  #: Minimum bottom plate height
+    w_top = Parameter(R, default=R(0))  #: Minimum top plate width
+    h_top = Parameter(R, default=R(0))  #: Minimum top plate height
+
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        return layoutgen_via(self)
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls()]
+
+def layoutgen_via_stack(cell: Cell) -> Layout:
+    """Generate a via stack, as the PCell via_stack_code.py."""
+    rules = list(VIA_RULES.values())
+    if cell.b_layer not in [r.bottom for r in rules]:
+        raise ParameterError("b_layer must be Activ, GatPoly or a metal below TopMetal2.")
+    # Two device layers: the PCell stops at Metal1.
+    t_layer = "Metal1" if cell.t_layer in ("Activ", "GatPoly") else cell.t_layer
+    i = next(k for k, r in enumerate(rules) if r.bottom == cell.b_layer)
+    chain = [rules[i]]
+    for r in rules[i + 1:]:
+        if chain[-1].top == t_layer:
+            break
+        if r.cut != chain[-1].cut:  # not the other Cont
+            chain.append(r)
+    if chain[-1].top != t_layer:
+        raise ParameterError("t_layer must be a metal above b_layer.")
+
+    layers = SG13G2().layers
+    l = Layout(ref_layers=layers, cell=cell)
+    top = None
+    for rule in chain:
+        if rule.cut == "TopVia1":
+            nx, ny = cell.vt1_columns, cell.vt1_rows
+        elif rule.cut == "TopVia2":
+            nx, ny = cell.vt2_columns, cell.vt2_rows
+        else:
+            nx, ny = cell.vn_columns, cell.vn_rows
+        size = via_cuts(l, rule, nx, ny)
+        bottom = via_plate(rule, nx, ny, size, True)
+        if top is not None:
+            bottom = Vec2I(max(bottom.x, top.x), max(bottom.y, top.y))
+        l % LayoutRect(layer=getattr(layers, rule.bottom), rect=centered_rect(bottom))
+        top = via_plate(rule, nx, ny, size, False)
+    l % LayoutRect(layer=getattr(layers, chain[-1].top), rect=centered_rect(top))
+    return l
+
+@public
+class ViaStack(Cell):
+    """
+    Via stack from ``b_layer`` up to ``t_layer``, as the PCell
+    via_stack_code.py: ``vn_columns`` x ``vn_rows`` cuts on each level up to
+    Metal5, ``vt1_*`` and ``vt2_*`` for TopVia1 and TopVia2. Each plate covers
+    the one below.
+    """
+    b_layer = Parameter(str, default="Metal1")  #: Bottom layer (Activ, GatPoly or a metal)
+    t_layer = Parameter(str, default="Metal2")  #: Top layer
+    vn_columns = Parameter(int, default=2)
+    vn_rows = Parameter(int, default=2)
+    vt1_columns = Parameter(int, default=1)
+    vt1_rows = Parameter(int, default=1)
+    vt2_columns = Parameter(int, default=1)
+    vt2_rows = Parameter(int, default=1)
+
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        return layoutgen_via_stack(self)
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls()]
+
 class Tap1(SimLeafCell):
     """
     Tap devices ntap1 and ptap1: the resistance from ``tie`` into the well or
