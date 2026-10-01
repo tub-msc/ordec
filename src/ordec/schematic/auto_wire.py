@@ -24,6 +24,7 @@ Heuristics:
   of the removed route are rejected.
 """
 
+import math
 import numpy as np
 import heapq
 import sys
@@ -1136,10 +1137,13 @@ def calculate_vertices(outline: Rect4R, cells: Iterable[SchemInstance],
     Returns:
         dict: Schematic-space vertex paths keyed by Net.
     """
-    width = int(outline.ux - outline.lx)
-    height = int(outline.uy - outline.ly)
-    offset_x = (width  // 2) - int(outline.lx)
-    offset_y = (height // 2) - int(outline.ly)
+    # Port labels and symbol outlines can make the outline fractional.
+    # Round it outward so all pins stay inside the grid.
+    lx, ly = math.floor(outline.lx), math.floor(outline.ly)
+    width = math.ceil(outline.ux) - lx
+    height = math.ceil(outline.uy) - ly
+    offset_x = (width  // 2) - lx
+    offset_y = (height // 2) - ly
     grid = np.zeros((height * 2, width * 2), dtype=np.int8)
     place_cells_and_ports(grid, cells, ports, width * 2, height * 2,
                           offset_x, offset_y)

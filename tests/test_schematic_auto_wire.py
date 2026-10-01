@@ -387,3 +387,27 @@ def test_tap_point_routing_and_outline():
     # The outline covers the tap and the space for its label.
     assert s.outline.ux > 10
     assert s.outline.uy >= 2
+
+
+def test_fractional_outline():
+    """A symbol outline a quarter unit beyond its pins makes the initial
+    outline fractional: the routing grid still holds the ports at its edge
+    (here on the pins, as tests/lib/thinwrap.py places them)."""
+    sym = Symbol()
+    sym.t = Pin(pos=Vec2R(2, 4), align=North)
+    sym.b = Pin(pos=Vec2R(2, 0), align=South)
+    sym.outline = Rect4R(lx=0, ly=R("-0.25"), ux=4, uy=R("4.25"))
+    symf = sym.freeze()
+    top = Symbol()
+    top.t = Pin(align=North)
+    top.b = Pin(align=South)
+    topf = top.freeze()
+
+    s = Schematic(symbol=topf)
+    s.nt = Net(pin=topf.t)
+    s.nb = Net(pin=topf.b)
+    s.i = SchemInstance(symf.portmap(t=s.nt, b=s.nb), pos=Vec2R(4, 4))
+    s.nt % SchemPort(pos=Vec2R(6, 8), align=North)
+    s.nb % SchemPort(pos=Vec2R(6, 4), align=South)
+    s.auto_wire()
+    assert {w.ref for w in s.all(SchemWire)} == {s.nt, s.nb}
