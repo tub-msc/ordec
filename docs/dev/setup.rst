@@ -32,9 +32,9 @@ The **Skywater PDKs** 'sky130A' and 'sky130B' can for example be downloaded usin
 
 Then, configure the environment variable ORDEC_PDK_SKY130A to point to the skywater/sky130A directory and the environment variable ORDEC_PDK_SKY130B to point to the skywater/sky130B directory. You can for example do this in your .bashrc or .profile.
 
-The **IHP Open PDK** can be downloaded using the following shell command::
+The **IHP Open PDK** can be downloaded using the following shell command (release v0.3.0, as in the container image)::
 
-    git clone https://github.com/IHP-GmbH/IHP-Open-PDK.git
+    git clone --branch v0.3.0 https://github.com/IHP-GmbH/IHP-Open-PDK.git
 
 The IHP Open PDK includes Verilog-A models, which must be compiled before use using OpenVAF::
 
