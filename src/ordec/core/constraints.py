@@ -4,6 +4,7 @@
 from dataclasses import dataclass
 from public import public
 from itertools import chain
+from collections import defaultdict
 from abc import ABC, abstractmethod
 import numpy as np
 from .geoprim import *
@@ -476,67 +477,103 @@ def check_solution_uniqueness(res, A_eq, A_ub, b_ub, variables: tuple[Variable])
     Returns:
         None if solution is unique, AmbiguityInfo if solution has degrees of freedom
     """
-    from scipy.linalg import null_space
-
     n_variables = len(variables)
 
-    # Build active constraint matrix
-    active_parts = []
-
     # Equality constraints are always active
-    if A_eq.size > 0:
-        active_parts.append(A_eq)
+    active = [A_eq]
 
     # Find inequality constraints that are active (slack ≈ 0)
-    if A_ub.size > 0:
+    if A_ub.shape[0] > 0:
         slack = b_ub - A_ub @ res.x
         tolerance = 1e-7
-        active_mask = np.abs(slack) < tolerance
+        active.append(A_ub[np.abs(slack) < tolerance])
 
-        if np.any(active_mask):
-            active_parts.append(A_ub[active_mask])
+    # Compute rank of active constraints, by Gaussian elimination row by row
+    # (a dense SVD is cubic in the number of variables).
+    pivots = {}                 # pivot variable -> its row, 1 at the pivot
+    used_in = defaultdict(set)  # variable -> pivots whose rows have it
 
-    # Build active constraint matrix
-    if active_parts:
-        active_matrix = np.vstack(active_parts)
-    else:
-        # No active constraints - completely unconstrained
-        active_matrix = np.zeros((0, n_variables), dtype=np.float64)
+    def subtract(row, j, pivot_row):
+        """Removes variable j from row using the pivot row of j."""
+        factor = row[j]
+        for k, v in pivot_row.items():
+            value = row.get(k, 0.0) - factor * v
+            if abs(value) > 1e-10:  # rank tolerance
+                row[k] = value
+            else:
+                row.pop(k, None)
 
-    if active_matrix.shape[0] == 0:
-        # No constraints - completely unconstrained
-        return AmbiguityInfo(
-            variables=variables,
-            constraint_rank=0,
-            degrees_of_freedom=n_variables,
-            null_space=np.eye(n_variables)
-        )
+    for A in active:
+        A = A.tolil()
+        for cols, values in zip(A.rows, A.data):
+            row = dict(zip(cols, values))
+            for j in [j for j in row if j in pivots]:
+                subtract(row, j, pivots[j])
+            if not row:
+                continue # depends on the rows before
 
-    # Compute rank of active constraints
-    rank = np.linalg.matrix_rank(active_matrix, tol=1e-10)
-    dof = max(0, n_variables - rank)
+            # New pivot: among the larger coefficients (for stability), the
+            # variable in the fewest pivot rows (keeps them short).
+            largest = max(abs(v) for v in row.values())
+            p = min((len(used_in[j]), j) for j, v in row.items() if abs(v) >= largest / 10)[1]
+            row = {k: v / row[p] for k, v in row.items()}
+
+            # The other pivot rows lose variable p.
+            for q in used_in.pop(p, ()):
+                before = set(pivots[q])
+                subtract(pivots[q], p, row)
+                for k in set(pivots[q]) - before:
+                    used_in[k].add(q)
+                for k in before - set(pivots[q]) - {p}:
+                    used_in[k].discard(q)
+            pivots[p] = row
+            for k in row:
+                if k != p:
+                    used_in[k].add(p)
+
+    rank = len(pivots)
+    dof = n_variables - rank
     if dof == 0:
         return None # Solution is unique!
+
+    # Null space: per free variable a direction that moves it by 1, and the
+    # pivot variables with it as their rows say.
+    free = [j for j in range(n_variables) if j not in pivots]
+    column = {j: c for c, j in enumerate(free)}
+    null_space = np.zeros((n_variables, dof))
+    for j, c in column.items():
+        null_space[j, c] = 1
+    for p, row in pivots.items():
+        for k, v in row.items():
+            if k != p:
+                null_space[p, column[k]] = -v
+    null_space /= np.linalg.norm(null_space, axis=0)
 
     # Solution is not unique!
     return AmbiguityInfo(
         variables=variables,
         constraint_rank=rank,
         degrees_of_freedom=dof,
-        null_space=null_space(active_matrix, rcond=1e-10)
+        null_space=null_space
     )
 
 def constraints_to_Ab(constraints: list[Constraint], n_variables: int, idx_of_var: dict[Variable,int]):
-    A = np.zeros((len(constraints), n_variables), dtype=np.float64)
+    from scipy.sparse import csr_array
+
+    # Sparse, since each constraint uses only a few of the variables.
+    rows, cols, values = [], [], []
     b = np.zeros(len(constraints), dtype=np.float64)
 
     for i, e in enumerate(constraints):
         for variable, coefficient in zip(e.term.variables, e.term.coefficients):
-            j = idx_of_var[variable]
-            A[i, j] = coefficient
+            rows.append(i)
+            cols.append(idx_of_var[variable])
+            values.append(coefficient)
 
         b[i] = -e.term.constant
 
+    A = csr_array((np.array(values, dtype=np.float64), (rows, cols)), shape=(len(constraints), n_variables))
+    A.eliminate_zeros()
     return A, b
 
 @public
@@ -633,8 +670,7 @@ class Solver:
             # (c * variables) is minimized. By subtracting each row of A_ub, the
             # speicified inequalities are optimized towards equality. Each
             # inequality is given the same weight in this process.
-            for x in A_ub:
-                c -= x
+            np.subtract.at(c, A_ub.indices, A_ub.data)
 
             bounds = n_variables*[(None, None)]
             res = linprog(c=c, A_eq=A_eq, b_eq=b_eq, A_ub=A_ub, b_ub=b_ub, bounds=bounds)

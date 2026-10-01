@@ -99,6 +99,27 @@ def test_missing_variables():
     assert err.ambiguity_info.constraint_rank == 2
     assert err.ambiguity_info.null_space.shape == (4, 2)
 
+def test_large_system():
+    # A row of rects, each after the one before: thousands of variables.
+    layers = SG13G2().layers
+    l = Layout(ref_layers=layers)
+    rects = [l % LayoutRect(layer=layers.Metal1) for _ in range(1000)]
+
+    s = Solver(l)
+    for a, b in zip(rects, rects[1:]):
+        s.constrain(b.lx == a.ux + 100)
+        s.constrain(b.cy == a.cy)
+    for r in rects:
+        s.constrain(r.size == (200, 100))
+
+    with pytest.raises(UnderconstrainedError) as exc_info:
+        s.solve()
+    assert exc_info.value.ambiguity_info.degrees_of_freedom == 2  # the row can move
+
+    s.constrain(rects[0].southwest == (0, 0))
+    s.solve()
+    assert rects[-1].rect == Rect4I(lx=299700, ly=0, ux=299900, uy=100)
+
 def test_inequalities():
     layers = SG13G2().layers
     l = Layout(ref_layers=layers) 
