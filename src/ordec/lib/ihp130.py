@@ -1538,14 +1538,6 @@ def layoutgen_cmim(cell: Cell) -> Layout:
         spacing=Vec2I(tv1_space, tv1_space),
         margin=Vec2I(mim_d, mim_d),
     )
-    makevias(
-        l,
-        l.mim.rect,
-        layers.TopVia1,
-        size=Vec2I(tv1_size, tv1_size),
-        spacing=Vec2I(tv1_space, tv1_space),
-        margin=Vec2I(mim_d, mim_d),
-    )
     l.term_p = LayoutRect(
         layer=layers.TopMetal1,
         rect=(
