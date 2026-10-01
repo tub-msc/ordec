@@ -100,34 +100,43 @@ class HbtCorner(Enum):
     WCS = 'wcs' #: Worst case: slow
 
 @public
+class DioCorner(Enum):
+    """Diode corner (section dio_<value> of cornerDIO.lib)."""
+    TT = 'tt'
+    SS = 'ss'
+    FF = 'ff'
+
+@public
 class Corner:
     """
-    Process corner for simulation: one MOS, resistor, capacitor and HBT
-    corner each, which the PDK varies independently. The MOS corner applies
-    to LV and HV devices alike. Pass as ``corner`` to
+    Process corner for simulation: one MOS, resistor, capacitor, HBT and
+    diode corner each, which the PDK varies independently. The MOS corner
+    applies to LV and HV devices alike. Pass as ``corner`` to
     :meth:`SimHierarchy.simulate`. Strings are coerced to the enums, e.g.
     ``Corner(mos='ss', cap='wcs')``. The class attributes ``Corner.TT``,
     ``Corner.SS``, ``Corner.FF``, ``Corner.SF`` and ``Corner.FS`` are the
     MOS corners with the other devices typical.
     """
-    def __init__(self, mos='tt', res='typ', cap='typ', hbt='typ'):
+    def __init__(self, mos='tt', res='typ', cap='typ', hbt='typ', dio='tt'):
         self.mos = MosCorner(mos)
         self.res = ResCorner(res)
         self.cap = CapCorner(cap)
         self.hbt = HbtCorner(hbt)
+        self.dio = DioCorner(dio)
 
     def __repr__(self):
         return (f"Corner(mos={self.mos.value!r}, res={self.res.value!r}, "
-            f"cap={self.cap.value!r}, hbt={self.hbt.value!r})")
+            f"cap={self.cap.value!r}, hbt={self.hbt.value!r}, "
+            f"dio={self.dio.value!r})")
 
     def __eq__(self, other):
         if not isinstance(other, Corner):
             return NotImplemented
-        return ((self.mos, self.res, self.cap, self.hbt)
-            == (other.mos, other.res, other.cap, other.hbt))
+        return ((self.mos, self.res, self.cap, self.hbt, self.dio)
+            == (other.mos, other.res, other.cap, other.hbt, other.dio))
 
     def __hash__(self):
-        return hash((self.mos, self.res, self.cap, self.hbt))
+        return hash((self.mos, self.res, self.cap, self.hbt, self.dio))
 
 Corner.TT = Corner(mos='tt')
 Corner.SS = Corner(mos='ss')
@@ -172,6 +181,13 @@ def netlister_setup_hbt(netlister):
         return
     model_lib = pdk().ngspice_models_dir / "cornerHBT.lib"
     netlister.add(".lib", f"\"{model_lib}\" hbt_{netlister_corner(netlister).hbt.value}")
+
+def netlister_setup_dio(netlister):
+    """Diode, Schottky diode and ESD models."""
+    if netlister.lvs:
+        return
+    model_lib = pdk().ngspice_models_dir / "cornerDIO.lib"
+    netlister.add(".lib", f"\"{model_lib}\" dio_{netlister_corner(netlister).dio.value}")
 
 def netlister_setup_bondpad(netlister):
     """The bondpad model, which no corner library includes."""
@@ -2899,6 +2915,118 @@ class PnpMPA(SimLeafCell):
         return [cls(w=R("1u"), l=R("2u"))]
 
 
+def layoutgen_antenna(cell: Cell, pdiode: bool) -> Layout:
+    """
+    Layout generation function shared for Dantenna and Dpantenna, as the
+    PCells dantenna_code.py and dpantenna_code.py.
+    """
+    if cell.w < R("0.48u") or cell.l < R("0.48u"):
+        raise ParameterError("w and l must be at least 0.48u.")
+    layers = SG13G2().layers
+    l = Layout(ref_layers=layers, cell=cell, symbol=cell.symbol)
+
+    W = int(cell.w / R("1n"))
+    L = int(cell.l / R("1n"))
+    diods_over = 20  # dantenna_dov
+    psd_c = 180      # pSD.c
+    nw_c = 310       # NW.c
+    l.activ = LayoutRect(layer=layers.Activ, rect=Rect4I(0, 0, W, L))
+    vias_rect = draw_cont_array(l, l.activ.rect)
+    # Metal1 end caps (M1.c1) as in the taps. The antenna PCells miss them.
+    l.m1 = LayoutRect(layer=layers.Metal1,
+        rect=(vias_rect.lx, vias_rect.ly - 50, vias_rect.ux, vias_rect.uy + 50))
+    l % LayoutRect(layer=layers.Recog.diode,
+        rect=Rect4I(-diods_over, -diods_over, W + diods_over, L + diods_over))
+    l % LayoutLabel(layer=layers.TEXT, pos=Vec2I(W // 2, L // 2),
+        text="dpant" if pdiode else "dant")
+    if pdiode:
+        l % LayoutRect(layer=layers.pSD, rect=Rect4I(-psd_c, -psd_c, W + psd_c, L + psd_c))
+        l.nwell = LayoutRect(layer=layers.NWell, rect=Rect4I(-nw_c, -nw_c, W + nw_c, L + nw_c))
+        l.m1.create_pin(cell.symbol.d0)
+        l.nwell.create_pin(cell.symbol.d1)
+    else:
+        l.m1.create_pin(cell.symbol.d1)
+    return l
+
+class Diode(SimLeafCell):
+    """
+    Shared base class of the SG13G2 diodes, drawn from ``anode`` to
+    ``cathode``, with the models of cornerDIO.
+    """
+    side = None
+    side_east = False  # side pin on the right, as in the PDK's schottky symbol
+
+    @viewgen_noctx
+    def symbol(self) -> Symbol:
+        s = Symbol(cell=self)
+
+        s[self.cathode] = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
+        s[self.anode] = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
+        s % SymbolPoly(vertices=[Vec2R(2, 4), Vec2R(2, 2.65)])
+        s % SymbolPoly(vertices=[Vec2R(2, 1.35), Vec2R(2, 0)])
+        s % SymbolPoly(vertices=[Vec2R(1.25, 2.65), Vec2R(2.75, 2.65)])
+        s % SymbolPoly(vertices=[Vec2R(2, 2.65), Vec2R(1.25, 1.35), Vec2R(2.75, 1.35),
+            Vec2R(2, 2.65)])
+        if self.side:
+            x, stub = (4, 3.25) if self.side_east else (0, 0.75)
+            s[self.side] = Pin(pos=Vec2R(x, 2), pintype=PinType.Inout,
+                align=East if self.side_east else West)
+            s % SymbolPoly(vertices=[Vec2R(x, 2), Vec2R(stub, 2)])
+            s % SymbolPoly(vertices=[Vec2R(0.75, 0.75), Vec2R(3.25, 0.75), Vec2R(3.25, 3.25),
+                Vec2R(0.75, 3.25), Vec2R(0.75, 0.75)])
+
+        s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
+        return s
+
+    def ngspice_netlist(self, netlister, inst):
+        netlister.require_netlist_setup(netlister_setup)
+        netlister.require_netlist_setup(netlister_setup_dio)
+        netlister.require_ngspice_setup(ngspice_setup)
+
+        netlister.add(
+            netlister.name_obj(inst, prefix="D" if netlister.lvs else "x"),
+            netlister.portmap(inst, [inst.symbol[p] for p in self.netlist_pins]),
+            self.model_name,
+            *spice_params(self.netlist_params(netlister.lvs)),
+        )
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls()]
+
+class Antenna(Diode):
+    """Shared base class of the antenna diodes, from ``d0`` to ``d1``."""
+    anode, cathode = "d0", "d1"
+    netlist_pins = ("d0", "d1")
+    l = Parameter(R)
+    w = Parameter(R)
+
+    def netlist_params(self, lvs: bool) -> dict:
+        return {"l": self.l, "w": self.w}
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls(l=R("0.78u"), w=R("0.78u"))]
+
+@public
+class Dantenna(Antenna):
+    """Antenna diode from the substrate ``d0`` to N+Activ ``d1``."""
+    model_name = "dantenna"
+
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        return layoutgen_antenna(self, pdiode=False)
+
+@public
+class Dpantenna(Antenna):
+    """Antenna diode from P+Activ ``d0`` to its NWell ``d1``."""
+    model_name = "dpantenna"
+
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        return layoutgen_antenna(self, pdiode=True)
+
+
 #: Device map for spice_in:
 device_map = {
     "sg13_lv_nmos": DeviceMapping(Nmos, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("ng", "m")),
@@ -2927,6 +3055,8 @@ device_map = {
     "inductor": DeviceMapping(Inductor2, ("p", "m", "b"), real_params=("w", "s", "d"), int_params=("nr_r", "m")),
     "inductor3": DeviceMapping(Inductor3, ("la", "lc", "lb", "b"), real_params=("w", "s", "d"),
         int_params=("nr_r", "m")),
+    "dantenna": DeviceMapping(Dantenna, ("d0", "d1"), real_params=("l", "w")),
+    "dpantenna": DeviceMapping(Dpantenna, ("d0", "d1"), real_params=("l", "w")),
 }
 # TODO: In the future, this device_map dictionary should be automatically derived
 # from the PDK's cell definitions?!
