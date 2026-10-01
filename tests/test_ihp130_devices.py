@@ -110,8 +110,9 @@ def test_device_ac(cell, conns, expected):
 def test_layout_cells():
     # The PDK's layout-only PCells (geometry checked against them by the PCell
     # audit): a stack from Activ to Metal3 has one plate per layer, each
-    # covering the one below; a Via array takes a larger top plate. An
-    # isolbox with cont_ring U has contacts on three sides of its ring.
+    # covering the one below; a Via array takes a larger top plate; the seal
+    # ring's boundary includes its margin; NoFillerStack blocks the selected fill;
+    # an isolbox with cont_ring U has contacts on three sides of its ring.
     stack = ihp130.ViaStack(b_layer="Activ", t_layer="Metal3", vn_columns=1, vn_rows=3).layout
     layers = ihp130.SG13G2().layers
     plates = {n.layer: n.rect for n in stack.all(LayoutRect)
@@ -119,5 +120,9 @@ def test_layout_cells():
     assert len(plates) == 4 and plates[layers.Metal2] == plates[layers.Metal3]
     via = ihp130.Via(via="SG13G2_VIA_M2_M3", nx=4, ny=4, w_top="2u").layout
     assert next(n.rect.width for n in via.all(LayoutRect) if n.layer == layers.Metal3) == 2000
+    seal = ihp130.Sealring(l="150u", w="210u", edge_box="10u").layout
+    assert next(n.rect for n in seal.all(LayoutRect) if n.layer == layers.EdgeSealBoundary) \
+        == Rect4I(0, 0, 170000, 230000)
+    assert len(list(ihp130.NoFillerStack(w="10u", l="10u", no_m3=False).layout.all(LayoutRect))) == 8
     box = ihp130.Isolbox(l="8u", w="8u", cont_ring="U").layout
     assert sum(1 for n in box.all(LayoutRect) if n.layer == layers.Metal1) == 3
