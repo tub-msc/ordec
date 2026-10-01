@@ -93,32 +93,41 @@ class CapCorner(Enum):
     WCS = 'wcs' #: Worst case: high capacitance
 
 @public
+class HbtCorner(Enum):
+    """HBT corner (section hbt_<value> of cornerHBT.lib)."""
+    TYP = 'typ'
+    BCS = 'bcs' #: Best case: fast
+    WCS = 'wcs' #: Worst case: slow
+
+@public
 class Corner:
     """
-    Process corner for simulation: one MOS, resistor and capacitor corner
-    each, which the PDK varies independently. The MOS corner applies to LV
-    and HV devices alike. Pass as ``corner`` to
+    Process corner for simulation: one MOS, resistor, capacitor and HBT
+    corner each, which the PDK varies independently. The MOS corner applies
+    to LV and HV devices alike. Pass as ``corner`` to
     :meth:`SimHierarchy.simulate`. Strings are coerced to the enums, e.g.
     ``Corner(mos='ss', cap='wcs')``. The class attributes ``Corner.TT``,
     ``Corner.SS``, ``Corner.FF``, ``Corner.SF`` and ``Corner.FS`` are the
-    MOS corners with typical passives.
+    MOS corners with the other devices typical.
     """
-    def __init__(self, mos='tt', res='typ', cap='typ'):
+    def __init__(self, mos='tt', res='typ', cap='typ', hbt='typ'):
         self.mos = MosCorner(mos)
         self.res = ResCorner(res)
         self.cap = CapCorner(cap)
+        self.hbt = HbtCorner(hbt)
 
     def __repr__(self):
         return (f"Corner(mos={self.mos.value!r}, res={self.res.value!r}, "
-            f"cap={self.cap.value!r})")
+            f"cap={self.cap.value!r}, hbt={self.hbt.value!r})")
 
     def __eq__(self, other):
         if not isinstance(other, Corner):
             return NotImplemented
-        return (self.mos, self.res, self.cap) == (other.mos, other.res, other.cap)
+        return ((self.mos, self.res, self.cap, self.hbt)
+            == (other.mos, other.res, other.cap, other.hbt))
 
     def __hash__(self):
-        return hash((self.mos, self.res, self.cap))
+        return hash((self.mos, self.res, self.cap, self.hbt))
 
 Corner.TT = Corner(mos='tt')
 Corner.SS = Corner(mos='ss')
@@ -157,6 +166,12 @@ def netlister_setup_mos_hv(netlister):
         return
     model_lib = pdk().ngspice_models_dir / "cornerMOShv.lib"
     netlister.add(".lib", f"\"{model_lib}\" mos_{netlister_corner(netlister).mos.value}")
+
+def netlister_setup_hbt(netlister):
+    if netlister.lvs:
+        return
+    model_lib = pdk().ngspice_models_dir / "cornerHBT.lib"
+    netlister.add(".lib", f"\"{model_lib}\" hbt_{netlister_corner(netlister).hbt.value}")
 
 def netlister_setup_bondpad(netlister):
     """The bondpad model, which no corner library includes."""
@@ -2505,6 +2520,384 @@ class Inductor3(Inductor):
     def layout(self) -> Layout:
         return layoutgen_inductor(self, three=True)
 
+class Npn(SimLeafCell):
+    """
+    Base class of the SG13G2 npn HBTs: collector ``c``, base ``b``, emitter
+    ``e``, substrate ``bn``. With ``thermal``, simulation uses the ``_5t``
+    model, its extra pin ``t`` gives the temperature rise (not used in LVS).
+    """
+    nx = Parameter(int, default=1)  #: Number of emitters (Nx)
+    thermal = Parameter(bool, default=False)  #: Temperature output pin t
+
+    @viewgen_noctx
+    def symbol(self) -> Symbol:
+        s = Symbol(cell=self)
+
+        s.c = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
+        s.b = Pin(pos=Vec2R(0, 2), pintype=PinType.In, align=West)
+        s.e = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
+        s.bn = Pin(pos=Vec2R(4, 2), pintype=PinType.In, align=East)
+        if self.thermal:
+            s.t = Pin(pos=Vec2R(4, 3), pintype=PinType.Out, align=East)
+            s % SymbolPoly(vertices=[Vec2R(3.2, 3), Vec2R(4, 3)])
+
+        s % SymbolPoly(vertices=[Vec2R(0, 2), Vec2R(1.3, 2)])
+        s % SymbolPoly(vertices=[Vec2R(1.3, 1.25), Vec2R(1.3, 2.75)])
+        s % SymbolPoly(vertices=[Vec2R(2, 4), Vec2R(2, 3), Vec2R(1.3, 2.4)])
+        s % SymbolPoly(vertices=[Vec2R(2, 0), Vec2R(2, 1), Vec2R(1.3, 1.6)])
+        s % SymbolPoly(vertices=[Vec2R(1.66, 1.06), Vec2R(2, 1), Vec2R(1.88, 1.33)])
+        s % SymbolPoly(vertices=[Vec2R(2.6, 2), Vec2R(4, 2)])
+
+        s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
+        return s
+
+    def ngspice_netlist(self, netlister, inst):
+        netlister.require_netlist_setup(netlister_setup)
+        netlister.require_netlist_setup(netlister_setup_hbt)
+        netlister.require_ngspice_setup(ngspice_setup)
+
+        pins = [inst.symbol.c, inst.symbol.b, inst.symbol.e, inst.symbol.bn]
+        model = self.model_name
+        if netlister.lvs:
+            prefix = "Q"
+        else:
+            prefix = "x"
+            if self.thermal:
+                pins.append(inst.symbol.t)
+                model += "_5t"
+        netlister.add(
+            netlister.name_obj(inst, prefix=prefix),
+            netlister.portmap(inst, pins),
+            model,
+            *spice_params(self.netlist_params(netlister.lvs)),
+        )
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls()]
+
+def layoutgen_npn13g2(cell: Cell) -> Layout:
+    """
+    Generate the SG13G2 npn13G2 layout, as the PCell npn13G2_code.py. The
+    emitter size is fixed, so the PCell's coordinates are used as they are.
+    """
+    if not 1 <= cell.nx <= 10:
+        raise ParameterError("nx must be 1 to 10.")
+    layers = SG13G2().layers
+    l = Layout(ref_layers=layers, cell=cell, symbol=cell.symbol)
+
+    step_x = 1850
+    x_last = step_x * (cell.nx - 1)
+    for x in range(0, x_last + 1, step_x):
+        l % LayoutRect(layer=layers.EmWind, rect=Rect4I(x - 35, -450, x + 35, 450))
+        l % LayoutRect(layer=layers.HeatTrans, rect=Rect4I(x - 85, -500, x + 85, 500))
+        l % LayoutLabel(layer=layers.HeatTrans, pos=Vec2I(x, 0), text="npn13G2")
+        l % LayoutPoly(layer=layers.Activ.mask, vertices=[
+            Vec2I(x + 925, 980), Vec2I(x - 925, 980), Vec2I(x - 925, -620),
+            Vec2I(x - 445, -620), Vec2I(x - 235, -830), Vec2I(x + 235, -830),
+            Vec2I(x + 445, -620), Vec2I(x + 925, -620)])
+        l % LayoutRect(layer=layers.Activ, rect=Rect4I(x - 925, 980, x + 925, 1280))
+        l % LayoutPoly(layer=layers.nSD.block, vertices=[
+            Vec2I(x + 975, -2430), Vec2I(x + 975, -900), Vec2I(x + 555, -480),
+            Vec2I(x + 555, 690), Vec2I(x + 305, 940), Vec2I(x - 305, 940), Vec2I(x - 555, 690),
+            Vec2I(x - 555, -480), Vec2I(x - 975, -900), Vec2I(x - 975, -2430)])
+        l % LayoutRect(layer=layers.Cont, rect=Rect4I(x - 825, 1050, x + 825, 1210))
+        l % LayoutRect(layer=layers.Cont, rect=Rect4I(x - 760, -1220, x + 760, -1060))
+        l % LayoutRect(layer=layers.Metal1, rect=Rect4I(x - 350, -785, x + 350, 770))
+        for y in (510, 100, -310, -720):
+            l % LayoutRect(layer=layers.Via1, rect=Rect4I(x - 300, y, x - 110, y + 190))
+            l % LayoutRect(layer=layers.Via1, rect=Rect4I(x + 110, y, x + 300, y + 190))
+
+    if cell.nx == 1:
+        l.term_c = LayoutRect(layer=layers.Metal1, rect=Rect4I(-925, 1010, 925, 1250))
+    else:
+        l.term_c = LayoutRect(layer=layers.Metal1, rect=Rect4I(-925, 1020, x_last + 925, 1460))
+    l.term_b = LayoutRect(layer=layers.Metal1, rect=Rect4I(-975, -1260, x_last + 975, -1020))
+    l.term_e = LayoutRect(layer=layers.Metal2, rect=Rect4I(-925, -785, x_last + 925, 770))
+    l % LayoutRect(layer=layers.TRANS, rect=Rect4I(-2450, -2430, x_last + 2450, 2880))
+    ring(l, layers.pSD,
+        Rect4I(-3350, -3330, x_last + 3350, 3780), Rect4I(-2450, -2430, x_last + 2450, 2880))
+    ring(l, layers.Activ,
+        Rect4I(-3150, -3130, x_last + 3150, 3580), Rect4I(-2650, -2630, x_last + 2650, 3080))
+    l % LayoutLabel(layer=layers.TEXT, pos=Vec2I(15, 2310), text="npn13G2")
+    l % LayoutLabel(layer=layers.TEXT, pos=Vec2I(-1977, -2546), text=f"Ae={cell.nx}*1*0.07*0.90")
+
+    for node, pin, text in ((l.term_c, cell.symbol.c, "C"), (l.term_b, cell.symbol.b, "B"),
+        (l.term_e, cell.symbol.e, "E")):
+        node.create_pin(pin)
+        l % LayoutLabel(layer=layers.TEXT, pos=node.rect.center, text=text)
+    return l
+
+@public
+class Npn13G2(Npn):
+    """HBT with emitters of 0.07 x 0.9 um."""
+    model_name = "npn13G2"
+
+    def netlist_params(self, lvs: bool) -> dict:
+        # LVS needs Nx. xschem writes m=Nx instead, which LVS reads as
+        # parallel devices.
+        if lvs:
+            return {"le": R("900n"), "we": R("70n"), "Nx": self.nx}
+        return {"Nx": self.nx}
+
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        return layoutgen_npn13g2(self)
+
+def layoutgen_npn13g2l(cell: Cell, hv: bool) -> Layout:
+    """
+    Layout generation function shared for Npn13G2l and Npn13G2v (hv), as the
+    PCells npn13G2L_code.py and npn13G2V_code.py.
+    """
+    nx_max, el_max = (8, R(5)) if hv else (4, R("2.5"))
+    if not 1 <= cell.nx <= nx_max or not 1 <= cell.el <= el_max:
+        raise ParameterError(f"nx must be 1 to {nx_max}, el 1 to {el_max}.")
+    layers = SG13G2().layers
+    l = Layout(ref_layers=layers, cell=cell, symbol=cell.symbol)
+
+    le = int(cell.el * 1000)
+    we = int(cell.we / R("1n"))
+    em_x, em_y = (3810 if hv else 3865), 3100                # emWindOrigin
+    activ_enc_x, activ_enc_y = (1110 if hv else 1365), 280   # Activ_enc_hori, Activ_enc_vert
+    col_dist, col_w = (790, 320) if hv else (975, 390)       # Col_Metal1_distance, _width
+    bas_dist, bas_w = (295, 170) if hv else (320, 160)       # Bas_Metal1_distance, _width
+    emi_enc_x, emi_enc_y = (70, 280) if hv else (95, 200)    # Emi_Metal1_enc_hori, _vert
+    # Count the base contact rows in floats like the PCell, which gives
+    # one row less for some el (e.g. 1.15).
+    le_um = float(cell.el) * 1e-6 * 1e6
+    rows = int((le_um + 0.21) / (0.16 + 0.18)) + 1
+    if hv:
+        vias = (le + 460) // 410
+        if le + 2*emi_enc_y < 410*vias + 250:  # emitter Metal1 shorter than the via column
+            vias -= 1
+
+    pitch = we + 2*(col_dist + col_w)
+    x_last = pitch * (cell.nx - 1)
+    col_lo, col_hi = 2820, 4100 + le  # collector strips, at the PCell's heights
+    bas_lo, bas_hi = 2100, 3380 + le  # base strips
+    for dx in range(0, x_last + 1, pitch):
+        x0, x1 = em_x + dx, em_x + dx + we
+        l % LayoutRect(layer=layers.EmWiHV if hv else layers.EmWind,
+            rect=Rect4I(x0, em_y, x1, em_y + le))
+        l % LayoutRect(layer=layers.HeatTrans,
+            rect=Rect4I(x0 - 50, em_y - 50, x1 + 50, em_y + le + 50))
+        # Activ, masked between the emitter and the base
+        y0, y1 = em_y - activ_enc_y, em_y + le + activ_enc_y
+        for lx, ux in ((x0 - activ_enc_x, x0 - 705), (x0 - emi_enc_x, x1 + emi_enc_x),
+            (x1 + 705, x1 + activ_enc_x)):
+            l % LayoutRect(layer=layers.Activ, rect=Rect4I(lx, y0, ux, y1))
+        l % LayoutRect(layer=layers.Activ.mask, rect=Rect4I(x0 - 705, y0, x0 - emi_enc_x, y1))
+        l % LayoutRect(layer=layers.Activ.mask, rect=Rect4I(x1 + emi_enc_x, y0, x1 + 705, y1))
+        # Metal1 strips on both sides of the emitter: the outer collector
+        # strips reach up to the collector bar above the emitters, the inner
+        # base strips down to the base bar below them.
+        l % LayoutRect(layer=layers.Metal1,
+            rect=Rect4I(x0 - col_dist - col_w, col_lo, x0 - col_dist, col_hi))
+        l % LayoutRect(layer=layers.Metal1,
+            rect=Rect4I(x1 + col_dist, col_lo, x1 + col_dist + col_w, col_hi))
+        l % LayoutRect(layer=layers.Metal1,
+            rect=Rect4I(x0 - bas_dist - bas_w, bas_lo, x0 - bas_dist, bas_hi))
+        l % LayoutRect(layer=layers.Metal1,
+            rect=Rect4I(x1 + bas_dist, bas_lo, x1 + bas_dist + bas_w, bas_hi))
+        l % LayoutRect(layer=layers.Metal1,
+            rect=Rect4I(x0 - emi_enc_x, em_y - emi_enc_y, x1 + emi_enc_x, em_y + le + emi_enc_y))
+        # Contacts and vias at the PCell's coordinates
+        if hv:
+            for i in range(vias + 1):
+                y = 2870 + 410*i
+                l % LayoutRect(layer=layers.Via1, rect=Rect4I(dx + 3775, y, dx + 3965, y + 190))
+            l % LayoutRect(layer=layers.Cont, rect=Rect4I(dx + 3790, 3040, dx + 3950, 3160 + le))
+            cont_x = (2800, 3350, 4230, 4780)
+        else:
+            l % LayoutRect(layer=layers.Via1, rect=Rect4I(dx + 3805, 3000, dx + 3995, 3200 + le))
+            for x in (2680, 3820, 4960):
+                l % LayoutRect(layer=layers.Cont,
+                    rect=Rect4I(dx + x, 2950, dx + x + 160, 3250 + le))
+            cont_x = (3385, 4255)
+        for i in range(rows):
+            y = 2890 + 340*i
+            for x in cont_x:
+                l % LayoutRect(layer=layers.Cont, rect=Rect4I(dx + x, y, dx + x + 160, y + 160))
+
+    xc0, xc1 = em_x - col_dist - col_w, x_last + em_x + we + col_dist + col_w
+    l.term_c = LayoutRect(layer=layers.Metal1, rect=Rect4I(xc0, col_hi, xc1, col_hi + 650))
+    l.term_b = LayoutRect(layer=layers.Metal1,
+        rect=Rect4I(em_x - bas_dist - bas_w, bas_lo - 650, x_last + em_x + we + bas_dist + bas_w, bas_lo))
+    l.term_e = LayoutRect(layer=layers.Metal2,
+        rect=Rect4I(xc0, em_y - emi_enc_y, xc1, em_y + le + emi_enc_y))
+    # Guard ring along the cell's edge (the cell is symmetric around its
+    # emitters): pSD 900 wide, its Activ from 200 to 700 in from the edge,
+    # TRANS on the inside.
+    xr, yt = 2*em_x + we + x_last, 6200 + le
+
+    def inset(d):
+        return Rect4I(d, d, xr - d, yt - d)
+
+    l % LayoutRect(layer=layers.TRANS, rect=inset(900))
+    ring(l, layers.pSD, inset(0), inset(900))
+    ring(l, layers.Activ, inset(200), inset(700))
+
+    name = "npn13G2V" if hv else "npn13G2L"
+    # The PCell labels only the first emitter's HeatTrans.
+    l % LayoutLabel(layer=layers.HeatTrans, pos=Vec2I(em_x + we // 2, em_y + le // 2), text=name)
+    ae = f"Ae={cell.nx}*{le_um:.2f}*0.12" if hv else f"Ae={cell.nx}*1*{le_um:.2f}*0.07"
+    l % LayoutLabel(layer=layers.TEXT, pos=Vec2I(1500, 1000), text=ae)
+    l % LayoutLabel(layer=layers.TEXT, pos=Vec2I(1750, 1000), text=name)
+
+    for node, pin, text in ((l.term_c, cell.symbol.c, "C"), (l.term_b, cell.symbol.b, "B"),
+        (l.term_e, cell.symbol.e, "E")):
+        node.create_pin(pin)
+        l % LayoutLabel(layer=layers.TEXT, pos=node.rect.center, text=text)
+    return l
+
+@public
+class Npn13G2l(Npn):
+    """HBT with emitters of 0.07 um x ``el``."""
+    model_name = "npn13G2l"
+    we = R("70n")
+
+    el = Parameter(R)  #: Emitter length in um (El)
+
+    def netlist_params(self, lvs: bool) -> dict:
+        if lvs:
+            return {"le": self.el * R("1u"), "we": self.we, "Nx": self.nx}
+        return {"Nx": self.nx, "El": self.el}
+
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        return layoutgen_npn13g2l(self, hv=False)
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls(el=R(1))]
+
+@public
+class Npn13G2v(Npn13G2l):
+    """HBT with emitters of 0.12 um x ``el``."""
+    model_name = "npn13G2v"
+    we = R("120n")
+
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        return layoutgen_npn13g2l(self, hv=True)
+
+def layoutgen_pnpmpa(cell: Cell) -> Layout:
+    """
+    Generate the SG13G2 pnpMPA layout, as the PCell pnpMPA_code.py, centered on
+    the emitter.
+    """
+    if cell.m != 1:
+        raise ParameterError("m != 1 not supported for layout.")
+    if not (R("0.3u") <= cell.w <= R("2u") and R("0.68u") <= cell.l <= R("1m")):
+        raise ParameterError("w must be 0.3u to 2u, l 0.68u to 1m.")
+    layers = SG13G2().layers
+    l = Layout(ref_layers=layers, cell=cell, symbol=cell.symbol)
+
+    def box(x, y):
+        return Rect4I(-x, -y, x, y)
+
+    # Half sizes, named as in the PCell
+    wact = 5 * (int(cell.w / R("1n")) // 10)
+    hact = 5 * (int(cell.l / R("1n")) // 10)
+    wpsd, hpsd = wact + 210, hact + 180
+    w2act, h2act = wpsd + 180, hpsd + 180  # pSD.c
+    dw2act, dh2act = max(wact, 300), 290
+    wbulay, hbulay = w2act + dw2act + 50, h2act + dh2act + 50
+    wnwell, hnwell = wbulay + 260, hbulay + 260
+    w2psd, h2psd, d2psd = wnwell + 500, hnwell + 500, 750
+    w3act, h3act, d3act = w2psd + 200, h2psd + 200, 350
+    cont = VIA_RULES["SG13G2_CONT_ACTIV_M1"]
+    m1_c1 = cont.endcap_top  # M1.c1
+
+    # Wider contact spacing (Cnt.b1) from 4 x 4 contacts on. The base
+    # uses the emitter's spacing, as in the PCell.
+    vg4 = (cont.size + cont.space)*4 + cont.size + 2*m1_c1
+    spacing = cont.space_dense if 2 * (min(wact, hact) - 20) >= vg4 else cont.space
+    l.term_e = LayoutRect(layer=layers.Metal1, rect=box(wact - 20, hact - 20))
+    contact_array(l, l.term_e.rect, layers.Cont, cont.size, spacing, Vec2I(m1_c1, m1_c1))
+    l % LayoutRect(layer=layers.Activ, rect=box(wact, hact))
+    l % LayoutRect(layer=layers.pSD, rect=box(wpsd, hpsd))
+
+    ring(l, layers.Activ, box(w2act + dw2act, h2act + dh2act), box(w2act, h2act))
+    l.term_b = PathNode()
+    for i, x in enumerate((-w2act - dw2act + 20, w2act + 20)):
+        l.term_b[i] = LayoutRect(layer=layers.Metal1,
+            rect=Rect4I(x, -h2act - 20, x + dw2act - 40, h2act + 20))
+        contact_array(l, l.term_b[i].rect, layers.Cont, cont.size, spacing, Vec2I(m1_c1, m1_c1))
+    for y in (h2act + 20, -h2act - dh2act + 20):
+        l % LayoutRect(layer=layers.Metal1,
+            rect=Rect4I(-w2act - dw2act + 20, y, w2act + dw2act - 20, y + dh2act - 40))
+    l % LayoutRect(layer=layers.nBuLay, rect=box(wbulay, hbulay))
+    l % LayoutRect(layer=layers.NWell, rect=box(wnwell, hnwell))
+
+    ring(l, layers.pSD, box(w2psd + d2psd, h2psd + d2psd), box(w2psd, h2psd))
+    ring(l, layers.Activ, box(w3act + d3act, h3act + d3act), box(w3act, h3act))
+    l.term_c = PathNode()
+    for i, y in enumerate((h3act, -h3act - d3act)):
+        l.term_c[i] = LayoutRect(layer=layers.Metal1,
+            rect=Rect4I(-w3act - d3act, y, w3act + d3act, y + d3act))
+        contact_array(l, l.term_c[i].rect, layers.Cont, cont.size, cont.space, Vec2I(95, m1_c1))
+    for x in (-w3act - d3act, w3act):
+        m1 = l % LayoutRect(layer=layers.Metal1, rect=Rect4I(x, -h3act, x + d3act, h3act))
+        contact_array(l, m1.rect, layers.Cont, cont.size, cont.space, Vec2I(95, 85))
+
+    l % LayoutLabel(layer=layers.TEXT, pos=Vec2I(0, 0), text="PLUS")
+    l % LayoutLabel(layer=layers.TEXT, pos=Vec2I(-w2act - dw2act / 2, 0), text="MINUS")
+    l % LayoutLabel(layer=layers.TEXT, pos=Vec2I(0, -hnwell - 250), text="pnpMPA")
+    l % LayoutLabel(layer=layers.TEXT, pos=Vec2I(0, h3act + d3act // 2), text="TIE")
+
+    l.term_e.create_pin(cell.symbol.e)
+    l.term_b[0].create_pin(cell.symbol.b)
+    l.term_c[0].create_pin(cell.symbol.c)
+    return l
+
+@public
+class PnpMPA(SimLeafCell):
+    """
+    Substrate pnp: emitter ``e`` of ``w`` x ``l`` in an NWell as base ``b``,
+    the substrate as collector ``c``.
+    """
+    w = Parameter(R)
+    l = Parameter(R)
+    m = Parameter(int, default=1)
+
+    @viewgen_noctx
+    def symbol(self) -> Symbol:
+        s = Symbol(cell=self)
+
+        s.e = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
+        s.b = Pin(pos=Vec2R(0, 2), pintype=PinType.In, align=West)
+        s.c = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
+
+        s % SymbolPoly(vertices=[Vec2R(0, 2), Vec2R(1.3, 2)])
+        s % SymbolPoly(vertices=[Vec2R(1.3, 1.25), Vec2R(1.3, 2.75)])
+        s % SymbolPoly(vertices=[Vec2R(2, 4), Vec2R(2, 3), Vec2R(1.3, 2.4)])
+        s % SymbolPoly(vertices=[Vec2R(2, 0), Vec2R(2, 1), Vec2R(1.3, 1.6)])
+        s % SymbolPoly(vertices=[Vec2R(1.77, 3.03), Vec2R(1.65, 2.7), Vec2R(1.99, 2.76)])
+
+        s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
+        return s
+
+    def ngspice_netlist(self, netlister, inst):
+        netlister.require_netlist_setup(netlister_setup)
+        netlister.require_netlist_setup(netlister_setup_hbt)
+        netlister.require_ngspice_setup(ngspice_setup)
+
+        netlister.add(
+            netlister.name_obj(inst, prefix="Q" if netlister.lvs else "x"),
+            netlister.portmap(inst, [inst.symbol.c, inst.symbol.b, inst.symbol.e]),
+            "pnpMPA",
+            *spice_params({"a": self.w * self.l, "p": 2 * (self.w + self.l), "m": self.m}),
+        )
+
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        return layoutgen_pnpmpa(self)
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls(w=R("1u"), l=R("2u"))]
+
 
 #: Device map for spice_in:
 device_map = {
@@ -2522,6 +2915,10 @@ device_map = {
     "rppd": DeviceMapping(Rppd, ("p", "n", "bn"), real_params=("l", "w", "ps"), int_params=("b", "m")),
     "rhigh": DeviceMapping(Rhigh, ("p", "n", "bn"), real_params=("l", "w", "ps"), int_params=("b", "m")),
     "cap_cmim": DeviceMapping(Cmim, ("p", "n"), real_params=("l", "w"), int_params=("m",)),
+    "npn13G2": DeviceMapping(Npn13G2, ("c", "b", "e", "bn"), int_params=("nx",)),
+    "npn13G2l": DeviceMapping(Npn13G2l, ("c", "b", "e", "bn"), real_params=("el",), int_params=("nx",)),
+    "npn13G2v": DeviceMapping(Npn13G2v, ("c", "b", "e", "bn"), real_params=("el",), int_params=("nx",)),
+    "pnpMPA": DeviceMapping(PnpMPA, ("c", "b", "e"), int_params=("m",)),
     "cap_rfcmim": DeviceMapping(Rfcmim, ("p", "n", "bn"), real_params=("w", "l", "wfeed")),
     "rfcmim": DeviceMapping(Rfcmim, ("p", "n", "bn"), real_params=("w", "l", "wfeed")),
     "sg13_hv_svaricap": DeviceMapping(Svaricap, ("g1", "nw", "g2", "bn"), real_params=("w", "l"), int_params=("nx",)),

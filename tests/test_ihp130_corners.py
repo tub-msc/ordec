@@ -10,7 +10,7 @@ from ordec.sim import Simulator
 
 class CornerTb(Cell):
     """One device of each corner library (LV and HV MOS, resistor,
-    capacitor) across 1 V, so every .lib section is loaded by ngspice."""
+    capacitor, HBT) across 1 V, so every .lib section is loaded by ngspice."""
     @viewgen_noctx
     def schematic(self):
         s = Schematic(cell=self)
@@ -33,6 +33,9 @@ class CornerTb(Cell):
         s.c = SchemInstance(
             ihp130.Cmim(l="6.99u", w="6.99u").symbol.portmap(p=s.vdd, n=s.vss),
             pos=Vec2R(24, 5))
+        s.q = SchemInstance(
+            ihp130.Npn13G2().symbol.portmap(c=s.vdd, b=s.vss, e=s.vss, bn=s.vss),
+            pos=Vec2R(36, 5))
         s.auto_wire()
         s.check(add_conn_points=True, add_terminal_taps=True)
         return s
@@ -43,12 +46,14 @@ def test_netlist_corner_and_temp():
     h = SimHierarchy.from_schematic(CornerTb().schematic)
     nl = Simulator(h).netlister.out()
     assert " mos_tt\n" in nl and " res_typ\n" in nl and " cap_typ\n" in nl
+    assert "cornerHBT.lib\" hbt_typ\n" in nl
     assert ".option temp=" not in nl
 
     h = SimHierarchy.from_schematic(CornerTb().schematic)
-    corner = ihp130.Corner(mos="ss", res="typ", cap=ihp130.CapCorner.WCS)
+    corner = ihp130.Corner(mos="ss", res="typ", cap=ihp130.CapCorner.WCS, hbt="bcs")
     nl = Simulator(h, corner=corner, temp=125).netlister.out()
     assert " mos_ss\n" in nl and " res_typ\n" in nl and " cap_wcs\n" in nl
+    assert "cornerHBT.lib\" hbt_bcs\n" in nl
     assert "cornerMOShv.lib\" mos_ss\n" in nl
     assert f".option temp={R(125).compat_str()}\n" in nl
 
@@ -65,7 +70,7 @@ def test_corner_simulation():
     """Non-tt sections of all three corner libraries exist and
     simulate at a non-default temperature."""
     h = SimHierarchy.from_schematic(CornerTb().schematic)
-    corner = ihp130.Corner(mos="ss", res="wcs", cap="wcs")
+    corner = ihp130.Corner(mos="ss", res="wcs", cap="wcs", hbt="wcs")
     h.simulate(corner=corner, temp=125).op()
     assert h.vdd.voltage[0] == pytest.approx(1.0)
     assert 0 < abs(float(h.i_vdc.p.current[0])) < 1
