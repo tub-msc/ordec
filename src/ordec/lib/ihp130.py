@@ -1814,6 +1814,10 @@ device_map = {
     "rfpmoshv": DeviceMapping(RfPmosHv, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("ng", "m")),
     "ntap1": DeviceMapping(Ntap1, ("tie", "well"), real_params=("l", "w")),
     "ptap1": DeviceMapping(Ptap1, ("tie", "sub"), real_params=("l", "w")),
+    "rsil": DeviceMapping(Rsil, ("p", "n", "bn"), real_params=("l", "w", "ps"), int_params=("b", "m")),
+    "rppd": DeviceMapping(Rppd, ("p", "n", "bn"), real_params=("l", "w", "ps"), int_params=("b", "m")),
+    "rhigh": DeviceMapping(Rhigh, ("p", "n", "bn"), real_params=("l", "w", "ps"), int_params=("b", "m")),
+    "cap_cmim": DeviceMapping(Cmim, ("p", "n"), real_params=("l", "w"), int_params=("m",)),
 }
 # TODO: In the future, this device_map dictionary should be automatically derived
 # from the PDK's cell definitions?!
