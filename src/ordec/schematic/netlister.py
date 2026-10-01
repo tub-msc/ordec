@@ -23,12 +23,35 @@ class Netlister:
         self.ngspice_setup_funcs = []
         self.enable_savecurrents = enable_savecurrents
         self.lvs = lvs
+        self.joined = {}
 
     def name_obj(self, obj: Node, prefix: str = "") -> str:
         return self.directory.name_node(obj, prefix)
 
     def name_net(self, net: Net) -> str:
-        return self.name_obj(net)
+        return self.name_obj(self.joined.get(net, net))
+
+    def join_shorted_nets(self, schematic: Schematic, port_nets: set):
+        for inst in schematic.all(SchemInstance):
+            cell = inst.symbol.cell
+            if not (isinstance(cell, SimLeafCell) and cell.lvs_shorted_pins()):
+                continue
+            nets = []
+            for name in cell.lvs_shorted_pins():
+                conn = inst.subgraph.one(SchemInstanceConn.ref_pin_idx.query((inst, getattr(inst.symbol, name))))
+                net = self.joined.get(conn.here, conn.here)
+                if net not in nets:
+                    nets.append(net)
+            ports = [net for net in nets if net in port_nets]
+            if len(ports) > 1:
+                raise ValueError("An instance shorts two ports, which an LVS netlist cannot write.")
+            target = ports[0] if ports else nets[0]
+            for net, joined in list(self.joined.items()):
+                if joined in nets:
+                    self.joined[net] = target
+            for net in nets:
+                if net != target:
+                    self.joined[net] = target
 
     def require_netlist_setup(self, func):
         if func not in self.netlist_setup_funcs:
@@ -114,7 +137,9 @@ class Netlister:
         for inst in s.all(SchemInstance):
             cell = inst.symbol.cell
             if isinstance(cell, SimLeafCell):
-                cell.ngspice_netlist(self, inst)
+                # In LVS, a shorting instance is only its joined nets.
+                if not (self.lvs and cell.lvs_shorted_pins()):
+                    cell.ngspice_netlist(self, inst)
             else:
                 pins = self.pinlist(inst.symbol)
                 subckt_dep.add(inst.symbol)
@@ -161,6 +186,9 @@ class Netlister:
         while len(subckt_dep - subckt_done) > 0:
             symbol = next(iter(subckt_dep - subckt_done))
             schematic = symbol.cell.schematic
+            if self.lvs:
+                self.join_shorted_nets(schematic,
+                    {schematic.one(Net.pin_idx.query(pin)) for pin in self.pinlist(symbol)})
             self.add(
                 ".subckt",
                 self.directory.name_subgraph(symbol),

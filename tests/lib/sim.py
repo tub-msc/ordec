@@ -98,6 +98,27 @@ class ResdivHier2(Cell):
         return s
 
 
+class ResShorted(Cell):
+    """A resistor on port b, joined to port a by a 0 V source."""
+    @viewgen_noctx
+    def symbol(self):
+        s = Symbol(cell=self)
+        s.a = Pin(pintype=PinType.Inout, align=North)
+        s.b = Pin(pintype=PinType.Inout, align=South)
+        s.place_pins(vpadding=2, hpadding=2)
+        return s
+
+    @viewgen_noctx
+    def schematic(self):
+        s = Schematic(cell=self, symbol=self.symbol)
+        s.a = Net(pin=self.symbol.a)
+        s.b = Net(pin=self.symbol.b)
+        s.m = Net()
+        s.I0 = SchemInstance(Res(r=100).symbol.portmap(n=s.b, p=s.m), pos=Vec2R(0, 1))
+        s.I1 = SchemInstance(Vdc().symbol.portmap(n=s.a, p=s.m), pos=Vec2R(0, 7))
+        return s
+
+
 class ResdivHier1(Cell):
     @viewgen_noctx
     def symbol(self):
