@@ -1344,6 +1344,137 @@ class ViaStack(Cell):
     def discoverable_instances(cls):
         return [cls()]
 
+def layoutgen_no_filler_stack(cell: Cell) -> Layout:
+    """Generate fill blocking, as the PCell NoFillerStack_code.py."""
+    if min(cell.w, cell.l) < R("10n"):
+        raise ParameterError("w and l must be at least minLW (10n).")
+    layers = SG13G2().layers
+    l = Layout(ref_layers=layers, cell=cell)
+    rect = Rect4I(0, 0, int(cell.w / R("1n")), int(cell.l / R("1n")))
+    for block, layer in ((cell.no_act, layers.Activ), (cell.no_gp, layers.GatPoly),
+        (cell.no_m1, layers.Metal1), (cell.no_m2, layers.Metal2), (cell.no_m3, layers.Metal3),
+        (cell.no_m4, layers.Metal4), (cell.no_m5, layers.Metal5), (cell.no_tm1, layers.TopMetal1),
+        (cell.no_tm2, layers.TopMetal2)):
+        if block:
+            l % LayoutRect(layer=layer.nofill, rect=rect)
+    return l
+
+@public
+class NoFillerStack(Cell):
+    """Fill blocking of w x l on the selected layers, as the PCell NoFillerStack."""
+    w = Parameter(R)  #: Width (x)
+    l = Parameter(R)  #: Length (y)
+    no_act = Parameter(bool, default=True)  #: No Activ fill
+    no_gp = Parameter(bool, default=True)  #: No GatPoly fill
+    no_m1 = Parameter(bool, default=True)  #: No Metal1 fill
+    no_m2 = Parameter(bool, default=True)  #: No Metal2 fill
+    no_m3 = Parameter(bool, default=True)  #: No Metal3 fill
+    no_m4 = Parameter(bool, default=True)  #: No Metal4 fill
+    no_m5 = Parameter(bool, default=True)  #: No Metal5 fill
+    no_tm1 = Parameter(bool, default=True)  #: No TopMetal1 fill
+    no_tm2 = Parameter(bool, default=True)  #: No TopMetal2 fill
+
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        return layoutgen_no_filler_stack(self)
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls(w=R("10u"), l=R("10u"))]
+
+def layoutgen_sealring(cell: Cell) -> Layout:
+    """
+    Generate a seal ring around l x w, as the PCell sealring_code.py: bands
+    of Activ, pSD, EdgeSeal and all metals, via bands and a Passiv band,
+    with stepped corners.
+    """
+    if not (R("150u") <= cell.l <= R("25000u") and R("150u") <= cell.w <= R("32000u")):
+        raise ParameterError("l must be 150u to 25000u, w 150u to 32000u.")
+    layers = SG13G2().layers
+    l = Layout(ref_layers=layers, cell=cell)
+    edge = int(cell.edge_box / R("1n"))
+    L, W = int(cell.l / R("1n")) + 2*edge, int(cell.w / R("1n")) + 2*edge
+    corner_width, corner_steps = 4200, 4  # Seal_e: band width, corner steps
+    corner_length = 2*corner_width
+    # metalOffset, viaOffset and corner_end of the PCell
+    metal_off = 3000 + corner_width + edge
+    via_off = 5100 + corner_width + edge
+    corner_end = 28200 + edge
+    corner_startx = corner_width*(corner_steps + 1)
+    bands = ("Activ", "pSD", "EdgeSeal", "Metal1", "Metal2", "Metal3", "Metal4", "Metal5", "TopMetal1",
+        "TopMetal2")
+    cuts = {r.cut: r.size for r in VIA_RULES.values()}
+
+    def stairs(x, y, offset):
+        """generateCorner: steps of corner_width x corner_length up to the left, the last one up to
+        corner_end."""
+        rise = corner_length - corner_width
+        return [(x - corner_width*(k + 1), y + offset + rise*k, x - corner_width*k,
+            y + corner_length + offset + rise*k) for k in range(corner_steps)] \
+            + [(x - corner_width*(corner_steps + 1), y + offset + rise*corner_steps,
+            x - corner_width*corner_steps, corner_end)]
+
+    # The lower left corner, copied into the others.
+    corner = [("Passiv", b) for b in
+        [(corner_startx + edge, edge, corner_end + edge, corner_width + edge)]
+        + stairs(corner_startx + edge, edge, 0)]
+    for name in bands:
+        corner += [(name, b) for b in stairs(corner_startx + metal_off, 0, metal_off)]
+    for name, via_w in cuts.items():
+        via_startx = corner_startx + metal_off - corner_width // 2 - 100
+        first = (via_startx, via_off, via_startx + via_w, via_off + 4200)  # the PCell's viaLength
+        corner.append((name, first))
+        for k in range(1, corner_steps + 1):
+            t = TD4I(transl=Vec2I(2*via_off + 4200*k + via_w - 100, -4200*(k - 1)), d4=D4.R90)
+            a, b = t * Vec2I(first[0], first[1]), t * Vec2I(first[2], first[3])
+            corner.append((name, (a.x, a.y, b.x, b.y)))
+            dx, dy = -corner_width*(k - 1), corner_width*(k - 1) - 100
+            corner.append((name, (first[0] + dx, first[1] + dy, first[2] + dx, first[3] + dy)))
+        corner.append((name, (via_startx, via_off - 100, corner_end, via_off - 100 + via_w)))
+        corner.append((name,
+            (via_off - 100, corner_end - corner_width // 2 - 100, via_off - 100 + via_w, corner_end)))
+
+    def box(name, x1, y1, x2, y2):
+        l % LayoutRect(layer=getattr(layers, name),
+            rect=Rect4I(min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2)))
+
+    for t in (TD4I(), TD4I(transl=Vec2I(L, W), d4=D4.R180), TD4I(transl=Vec2I(L, 0), d4=D4.R90),
+        TD4I(transl=Vec2I(0, W), d4=D4.R270)):
+        for name, (x1, y1, x2, y2) in corner:
+            a, b = t * Vec2I(x1, y1), t * Vec2I(x2, y2)
+            box(name, a.x, a.y, b.x, b.y)
+
+    # Straight bands between the corners
+    for name, off, width in [("Passiv", edge, corner_width)] \
+        + [(n, metal_off, corner_width) for n in bands] \
+        + [(n, via_off - 100, via_w) for n, via_w in cuts.items()]:
+        box(name, off, corner_end, off + width, W - corner_end)
+        box(name, corner_end, off, L - corner_end, off + width)
+        box(name, L - off, corner_end, L - off - width, W - corner_end)
+        box(name, corner_end, W - off, L - corner_end, W - off - width)
+    l % LayoutRect(layer=layers.EdgeSealBoundary, rect=Rect4I(0, 0, L, W))
+    # The PCell's second label, the PDK's git commit, is left out.
+    lx, ly = L / 1000, W / 1000
+    l % LayoutLabel(layer=layers.TEXT, pos=Vec2I(5000, 5000),
+        text=f"Device registration size: x={lx:.1f} um ; y={ly:.1f} um\n"
+            f"Calculated area: {lx * ly / 1e12:.1e} sq mm")
+    return l
+
+@public
+class Sealring(Cell):
+    """Seal ring around l x w with the margin edge_box, as the PCell sealring."""
+    l = Parameter(R)  #: Length (x)
+    w = Parameter(R)  #: Width (y)
+    edge_box = Parameter(R)  #: Margin to the EdgeSeal boundary
+
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        return layoutgen_sealring(self)
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls(l=R("400u"), w=R("400u"), edge_box=R("25u"))]
+
 class Tap1(SimLeafCell):
     """
     Tap devices ntap1 and ptap1: the resistance from ``tie`` into the well or
