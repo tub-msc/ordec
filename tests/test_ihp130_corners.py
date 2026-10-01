@@ -9,8 +9,8 @@ from ordec.sim import Simulator
 
 
 class CornerTb(Cell):
-    """One device of each corner library (MOS, resistor, capacitor)
-    across 1 V, so every .lib section is loaded by ngspice."""
+    """One device of each corner library (LV and HV MOS, resistor,
+    capacitor) across 1 V, so every .lib section is loaded by ngspice."""
     @viewgen_noctx
     def schematic(self):
         s = Schematic(cell=self)
@@ -23,6 +23,10 @@ class CornerTb(Cell):
             ihp130.Nmos(l="130n", w="1u").symbol.portmap(
                 d=s.vdd, g=s.vdd, s=s.vss, b=s.vss),
             pos=Vec2R(12, 5))
+        s.mhv = SchemInstance(
+            ihp130.NmosHv(l="450n", w="1u").symbol.portmap(
+                d=s.vdd, g=s.vdd, s=s.vss, b=s.vss),
+            pos=Vec2R(30, 5))
         s.r = SchemInstance(
             ihp130.Rsil(l="0.5u", w="0.5u").symbol.portmap(p=s.vdd, n=s.vss, bn=s.vss),
             pos=Vec2R(18, 5))
@@ -45,6 +49,7 @@ def test_netlist_corner_and_temp():
     corner = ihp130.Corner(mos="ss", res="typ", cap=ihp130.CapCorner.WCS)
     nl = Simulator(h, corner=corner, temp=125).netlister.out()
     assert " mos_ss\n" in nl and " res_typ\n" in nl and " cap_wcs\n" in nl
+    assert "cornerMOShv.lib\" mos_ss\n" in nl
     assert f".option temp={R(125).compat_str()}\n" in nl
 
     h = SimHierarchy.from_schematic(CornerTb().schematic)

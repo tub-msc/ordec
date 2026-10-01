@@ -7,6 +7,11 @@ from ordec.lib import ihp130
 class Inv(Cell):
     variant = Parameter(str, default='clean')
 
+    def devices(self):
+        if self.variant == 'hv':
+            return ihp130.NmosHv(w="1u", l="450n"), ihp130.PmosHv(w="1u", l="450n")
+        return ihp130.Nmos(w="1u", l="130n"), ihp130.Pmos(w="1u", l="130n")
+
     @viewgen_noctx
     def symbol(self):
         s = Symbol(cell=self)
@@ -33,8 +38,7 @@ class Inv(Cell):
         s.vdd = Net(pin=self.symbol.vdd)
         s.vss = Net(pin=self.symbol.vss)
 
-        nmos = ihp130.Nmos(w="1u", l="130n").symbol
-        pmos = ihp130.Pmos(w="1u", l="130n").symbol
+        nmos, pmos = (device.symbol for device in self.devices())
 
         s.pd = SchemInstance(nmos.portmap(s=s.vss, b=s.vss, g=s.a, d=s.y), pos=(3, 2))
         s.pu = SchemInstance(pmos.portmap(s=s.vdd, b=s.vdd, g=s.a, d=s.y), pos=(3, 8))
@@ -56,8 +60,7 @@ class Inv(Cell):
 
         ntap = ihp130.Ntap(l="0.7u", w="0.7u")
         ptap = ihp130.Ptap(l="0.7u", w="0.7u")
-        nmos = ihp130.Nmos(w="1u", l="130n")
-        pmos = ihp130.Pmos(w="1u", l="130n")
+        nmos, pmos = self.devices()
 
         l.ntap =  LayoutInstance(ref=ntap.layout)
         l.ptap =  LayoutInstance(ref=ptap.layout)
@@ -65,7 +68,7 @@ class Inv(Cell):
         l.pmos =  LayoutInstance(ref=pmos.layout)
 
         s.constrain(l.nmos.pos == (0, 0))
-        s.constrain(l.pmos.pos.y == l.nmos.pos.y + 2500)
+        s.constrain(l.pmos.pos.y == l.nmos.pos.y + (3500 if self.variant == 'hv' else 2500))
 
         # Example use of the new LayoutInstanceSubcursor:
         l.m1_vdd = LayoutRect(layer=layers.Metal1)
@@ -74,13 +77,13 @@ class Inv(Cell):
 
         s.constrain(l.m1_vdd.ux == l.pmos.sd[0].lx)
         s.constrain(l.m1_vdd.height == (100 if self.variant=='thin_m1' else 160))
-        s.constrain(l.m1_vdd.width == 800)
+        s.constrain(l.m1_vdd.width == (1500 if self.variant == 'hv' else 800))
 
         l.m1_vss = LayoutRect(layer=layers.Metal1)
         s.constrain(l.m1_vss.southwest == l.ptap.m1.southeast)
         s.constrain(l.m1_vss.southeast == l.nmos.sd[0].southwest)
         s.constrain(l.m1_vss.height == (100 if self.variant=='thin_m1' else 160))
-        s.constrain(l.m1_vss.width == 800)
+        s.constrain(l.m1_vss.width == (1500 if self.variant == 'hv' else 800))
 
         if self.variant=="vss_vdd_pins_swapped":
             l.m1_vss % LayoutPin(pin=self.symbol.vdd)

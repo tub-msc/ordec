@@ -96,7 +96,8 @@ class CapCorner(Enum):
 class Corner:
     """
     Process corner for simulation: one MOS, resistor and capacitor corner
-    each, which the PDK varies independently. Pass as ``corner`` to
+    each, which the PDK varies independently. The MOS corner applies to LV
+    and HV devices alike. Pass as ``corner`` to
     :meth:`SimHierarchy.simulate`. Strings are coerced to the enums, e.g.
     ``Corner(mos='ss', cap='wcs')``. The class attributes ``Corner.TT``,
     ``Corner.SS``, ``Corner.FF``, ``Corner.SF`` and ``Corner.FS`` are the
@@ -125,14 +126,18 @@ Corner.FF = Corner(mos='ff')
 Corner.SF = Corner(mos='sf')
 Corner.FS = Corner(mos='fs')
 
-def netlister_setup(netlister):
-    if netlister.lvs:
-        return
-
+def netlister_corner(netlister) -> Corner:
     corner = Corner.TT if netlister.corner is None else netlister.corner
     if not isinstance(corner, Corner):
         raise TypeError(
             f"ihp130 expects an ihp130.Corner, not {netlister.corner!r}.")
+    return corner
+
+def netlister_setup(netlister):
+    if netlister.lvs:
+        return
+
+    corner = netlister_corner(netlister)
     model_lib = pdk().ngspice_models_dir / "cornerMOSlv.lib"
     netlister.add(".lib", f"\"{model_lib}\" mos_{corner.mos.value}")
     model_lib = pdk().ngspice_models_dir / "cornerRES.lib"
@@ -145,6 +150,13 @@ def netlister_setup(netlister):
     netlister.add(".option", "warn=1")
     netlister.add(".option", "maxwarns=10")
     #netlister.add(".option", "savecurrents")
+
+def netlister_setup_mos_hv(netlister):
+    """HV MOS and varicap models."""
+    if netlister.lvs:
+        return
+    model_lib = pdk().ngspice_models_dir / "cornerMOShv.lib"
+    netlister.add(".lib", f"\"{model_lib}\" mos_{netlister_corner(netlister).mos.value}")
 
 @dataclass(frozen=True)
 class ViaRule:
@@ -619,9 +631,9 @@ def contact_array(layout: Layout, rect: Rect4I, layer: Layer, size: int, spacing
             layout % LayoutRect(layer=layer, rect=Rect4I(x, y, x + size, y + size))
 
 def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool,
-    contact_sd_odd: bool=True, contact_sd_even: bool=True) -> Layout:
+    contact_sd_odd: bool=True, contact_sd_even: bool=True, hv: bool=False) -> Layout:
     """
-    Layout generation function shared for Nmos and Pmos cells.
+    Layout generation function shared for the LV and HV Nmos and Pmos cells.
 
     The num_gates+1 source/drain regions are numbered left to right, starting
     at 0. contact_sd_odd / contact_sd_even select which of them get a Cont
@@ -631,6 +643,7 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool,
     contacted at both ends.
 
     See also: ihp-sg13g2/libs.tech/klayout/python/sg13g2_pycell_lib/ihp/nmos_code.py
+    and nmosHV_code.py.
     """
     layers = SG13G2().layers
     cont = VIA_RULES["SG13G2_CONT_ACTIV_M1"]
@@ -706,18 +719,30 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool,
     s.constrain(l.activ.ux == x_cur + 70)
 
     if nwell:
+        psd_gate_enc = 400 if hv else 300  # pSD.i1 / pSD.i
         l.psd = LayoutRect(layer=layers.pSD)
         s.constrain(l.psd.center == l.activ.center)
-        s.constrain(l.psd.size == l.activ.size + Vec2I(360, 600))
+        s.constrain(l.psd.size == l.activ.size + Vec2I(360, 2 * psd_gate_enc))
 
         if activ_ext is None:
             max_activ = l.activ
         else:
             max_activ = activ_ext
+        nwell_enc = 620 if hv else 310  # NW.c1 / NW.c
         l.nwell = LayoutRect(layer=layers.NWell)
         s.constrain(l.nwell.center == l.activ.center)
-        s.constrain(l.nwell.ux == l.activ.ux + 310)
-        s.constrain(l.nwell.uy == max_activ.uy + 310)
+        s.constrain(l.nwell.ux == l.activ.ux + nwell_enc)
+        s.constrain(l.nwell.uy == max_activ.uy + nwell_enc)
+
+    if hv:
+        l.tgo = LayoutRect(layer=layers.ThickGateOx)
+        if nwell:
+            # ThickGateOx covers the whole NWell, as in the PCell.
+            s.constrain(l.tgo.rect == l.nwell.rect)
+        else:
+            # ThickGateOx around Activ (TGO.a) and the gate ends (TGO.c).
+            s.constrain(l.tgo.center == l.activ.center)
+            s.constrain(l.tgo.size == l.activ.size + Vec2I(2 * 270, 2 * (180 + 340)))
 
     # l.sd[i].rect/l.m1 are assigned after solve() via makevias, which needs
     # the solved geometry; defer the undefined-attribute check until then.
@@ -739,11 +764,12 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool,
             continue
         contact_array(l, l.sd[i].rect, layers.Cont, cont.size, cont.space, Vec2I(0, margin_y))
 
-    label = "pmos" if nwell else "nmos"
+    label = ("pmos" if nwell else "nmos") + ("HV" if hv else "")
+    # The pmosHV PCell labels its HeatTrans "pmos".
     for i in range(num_gates):
         poly = l.poly[i].rect
         l % LayoutRect(layer=layers.HeatTrans, rect=poly)
-        l % LayoutLabel(layer=layers.HeatTrans, pos=poly.center, text=label)
+        l % LayoutLabel(layer=layers.HeatTrans, pos=poly.center, text="pmos" if nwell else label)
     l % LayoutLabel(layer=layers.TEXT, pos=l.poly[0].rect.center, text=label)
     if nwell:
         # The PCell's bulk pin shape
@@ -754,6 +780,8 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool,
 
 
 class Mos(SimLeafCell):
+    hv = False
+
     l = Parameter(R)  #: Length
     w = Parameter(R)  #: Width
     m = Parameter(int, default=1)  #: Multiplier, i. e. number of devices with separate Activ areas in parallel)
@@ -776,6 +804,8 @@ class Mos(SimLeafCell):
 
     def ngspice_netlist(self, netlister, inst):
         netlister.require_netlist_setup(netlister_setup)
+        if self.hv:
+            netlister.require_netlist_setup(netlister_setup_mos_hv)
         netlister.require_ngspice_setup(ngspice_setup)
         pins = [inst.symbol.d, inst.symbol.g, inst.symbol.s, inst.symbol.b]
         netlister.add(
@@ -826,6 +856,46 @@ class Pmos(Mos):
     @classmethod
     def discoverable_instances(cls):
         return [cls(w=R("1u"), l=R("130n"))]
+
+@public
+class NmosHv(Mos):
+    """High-voltage (3.3 V) NMOS with thick gate oxide."""
+    model_name = "sg13_hv_nmos"
+    hv = True
+
+    symbol = generic_mos.Nmos.symbol
+
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        if self.m != 1:
+            raise ParameterError("m != 1 not supported for layout.")
+        return layoutgen_mos(self, self.l, self.w, self.ng, nwell=False, hv=True,
+            contact_sd_odd=self.contact_sd_odd,
+            contact_sd_even=self.contact_sd_even)
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls(w=R("0.6u"), l=R("0.45u"))]
+
+@public
+class PmosHv(Mos):
+    """High-voltage (3.3 V) PMOS with thick gate oxide."""
+    model_name = "sg13_hv_pmos"
+    hv = True
+
+    symbol = generic_mos.Pmos.symbol
+
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        if self.m != 1:
+            raise ParameterError("m != 1 not supported for layout.")
+        return layoutgen_mos(self, self.l, self.w, self.ng, nwell=True, hv=True,
+            contact_sd_odd=self.contact_sd_odd,
+            contact_sd_even=self.contact_sd_even)
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls(w=R("0.3u"), l=R("0.4u"))]
 
 def layoutgen_tap(cell: Cell, length: R, width: R, nwell: bool):
     layers = SG13G2().layers
@@ -1434,6 +1504,8 @@ class Cmim(SimLeafCell):
 device_map = {
     "sg13_lv_nmos": DeviceMapping(Nmos, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("ng", "m")),
     "sg13_lv_pmos": DeviceMapping(Pmos, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("ng", "m")),
+    "sg13_hv_nmos": DeviceMapping(NmosHv, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("ng", "m")),
+    "sg13_hv_pmos": DeviceMapping(PmosHv, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("ng", "m")),
 }
 # TODO: In the future, this device_map dictionary should be automatically derived
 # from the PDK's cell definitions?!
