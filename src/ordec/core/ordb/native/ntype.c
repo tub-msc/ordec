@@ -151,6 +151,12 @@ ntype_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
             "Node types are limited to 63 attribute slots.");
         return NULL;
     }
+    if (nt->nuse > MAXUSE) {
+        Py_DECREF(nt);
+        PyErr_Format(PyExc_TypeError,
+            "Node types are limited to %d indices.", MAXUSE);
+        return NULL;
+    }
     for (int i = 0; i < nt->nuse; i++) {
         IdxUse *u = &nt->uses[i];
         PyObject *index, *key, *sortfn;

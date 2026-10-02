@@ -42,10 +42,7 @@ state_copy(State *dst, const State *src)
     for (int i = 0; i < src->nidx; i++) {
         const Idx *ix = &src->idxs[i];
         Py_INCREF(ix->index);
-        for (int r = 0; r < ix->nruns; r++)
-            ix->runs[r]->rc++;
-        if (ix->tail)
-            ix->tail->rc++;
+        Py_XINCREF(ix->tree.root);
     }
     Py_XINCREF(src->boxed);
     return 0;
@@ -57,9 +54,7 @@ idxs_release(Idx *idxs, int nidx)
     for (int i = 0; i < nidx; i++) {
         Idx *ix = &idxs[i];
         Py_DECREF(ix->index);
-        for (int r = 0; r < ix->nruns; r++)
-            run_decref(ix->runs[r]);
-        run_decref(ix->tail);
+        Py_XDECREF(ix->tree.root);
     }
     PyMem_Free(idxs);
 }
@@ -108,7 +103,7 @@ st_add_tab(State *st, NType *nt)
     return st->ntab++;
 }
 
-static int
+int
 st_add_idx(State *st, PyObject *index, int combined)
 {
     Idx *idxs = PyMem_Realloc(st->idxs, sizeof(Idx) * (st->nidx + 1));
@@ -302,35 +297,28 @@ boxed_drop_row(Sg *sg, const NType *nt, const slot_t *p, int64_t nid)
 
 // -- values ------------------------------------------------------------------
 
-static inline int
-long_as_slot(PyObject *v, slot_t *out)
-{
-    if (!PyLong_CheckExact(v))
-        return 0;
-    int ovf;
-    long long x = PyLong_AsLongLongAndOverflow(v, &ovf);
-    if (ovf || x <= SLOT_BOXED)
-        return 0;
-    *out = x;
-    return 1;
-}
-
-// Writes the values of a NodeTuple into a cleared record.
+// The record of a NodeTuple as it is stored (boxed values in r->box),
+// without touching storage. No Python code runs.
 static int
-row_store(Sg *sg, const NType *nt, slot_t *p, PyObject *node, int64_t nid)
+rec_make(Rec *r, const NType *nt, PyObject *node, int64_t nid)
 {
+    r->nt = nt;
+    r->nid = nid;
+    memset(r->s, 0, sizeof(slot_t) * nt->rec);
+    memset(r->box, 0, sizeof(PyObject *) * nt->nattr);
+    r->s[0] = nid;
     for (int i = 0; i < nt->nattr; i++) {
         const AttrInfo *ai = &nt->attrs[i];
         PyObject *v = PyTuple_GetItem(node, i);
-        if (!v)
+        if (!v) {
+            rec_drop(r);
             return -1;
-        slot_t *s = p + ai->slot;
+        }
+        slot_t *s = r->s + ai->slot;
         if (ai->kind == K_OBJ) {
             s[0] = v == Py_None ? 0 : (slot_t)Py_NewRef(v);
             continue;
         }
-        for (int k = 1; k < ai->width; k++)
-            s[k] = 0;
         if (v == Py_None) {
             s[0] = SLOT_NONE;
             continue;
@@ -349,9 +337,21 @@ row_store(Sg *sg, const NType *nt, slot_t *p, PyObject *node, int64_t nid)
                 s[k] = 0;
         }
         s[0] = SLOT_BOXED;
-        if (boxed_set(sg, nid, i, v) < 0)
-            return -1;
+        r->box[i] = Py_NewRef(v);
     }
+    return 0;
+}
+
+// Writes a record into the cleared storage record p.
+static int
+rec_store(Sg *sg, const Rec *r, slot_t *p)
+{
+    const NType *nt = r->nt;
+    memcpy(p, r->s, sizeof(slot_t) * nt->rec);
+    recs_incref(p, nt->objmask, nt->rec, 1);
+    for (int i = 0; i < nt->nattr; i++)
+        if (r->box[i] && boxed_set(sg, r->nid, i, r->box[i]) < 0)
+            return -1;
     return 0;
 }
 
@@ -728,40 +728,57 @@ refs_adjust(Sg *sg, const NType *nt, const slot_t *p, int delta)
     return 0;
 }
 
+// The index keys of a record, one per index of its node type. Hashes and
+// sortkey functions may run Python code: callers compute keys before
+// their first write.
 static int
-index_row(Sg *sg, NType *nt, const slot_t *p, int64_t nid)
+rec_keys(const Rec *r, IdxKey *k)
+{
+    for (int i = 0; i < r->nt->nuse; i++) {
+        k[i].on = rec_hs(r, &r->nt->uses[i], &k[i].h, &k[i].s);
+        if (k[i].on < 0)
+            return -1;
+    }
+    return 0;
+}
+
+// The index keys of the stored record p of node nid.
+static int
+row_keys(const State *st, const NType *nt, const slot_t *p, int64_t nid,
+    IdxKey *k)
 {
     if (!nt->nuse)
         return 0;
     Rec rec;
-    if (rec_take(&rec, &sg->st, nt, p, nid) < 0)
+    if (rec_take(&rec, st, nt, p, nid) < 0)
         return -1;
-    int ret = 0;
-    for (int i = 0; i < nt->nuse && ret == 0; i++) {
-        IdxUse *u = &nt->uses[i];
-        Ent e = {0, 0, nid};
-        int r = rec_hs(&rec, u, &e.h, &e.s);
-        if (r <= 0) {
-            ret = r;
-            continue;
-        }
-        int xi = st_find_idx(&sg->st, u->index);
-        if ((xi < 0 && (xi = st_add_idx(&sg->st, u->index, u->combined)) < 0)
-                || idx_insert(sg, &sg->st.idxs[xi], e) < 0)
-            ret = -1;
-    }
+    int r = rec_keys(&rec, k);
     rec_drop(&rec);
-    return ret;
+    return r;
 }
 
-static void
-index_garbage(State *st, const NType *nt)
+// Replaces the index entries of node nid with the keys o by those with the
+// keys n (either may be NULL: no entries).
+static int
+index_change(Sg *sg, const NType *nt, const IdxKey *o, const IdxKey *n,
+    int64_t nid)
 {
     for (int i = 0; i < nt->nuse; i++) {
-        int xi = st_find_idx(st, nt->uses[i].index);
-        if (xi >= 0)
-            st->idxs[xi].garbage++;
+        int on_o = o && o[i].on, on_n = n && n[i].on;
+        if (on_o && on_n && o[i].h == n[i].h && o[i].s == n[i].s)
+            continue;
+        if (on_o) {
+            Ent e = {o[i].h, o[i].s, nid};
+            if (idx_remove(sg, &nt->uses[i], &e) < 0)
+                return -1;
+        }
+        if (on_n) {
+            Ent e = {n[i].h, n[i].s, nid};
+            if (idx_insert(sg, &nt->uses[i], &e) < 0)
+                return -1;
+        }
     }
+    return 0;
 }
 
 // Reserves the record for a new node nid of type nt: revives the node's
@@ -815,24 +832,33 @@ op_add(Sg *sg, int64_t nid, PyObject *node)
         PyErr_SetString(OrdbException, "Duplicate nid.");
         return -1;
     }
-    slot_t *p = node_place(sg, nt, nid);
-    if (!p)
+    Rec rec;
+    IdxKey k[MAXUSE];
+    if (rec_make(&rec, nt, node, nid) < 0)
         return -1;
-    if (row_store(sg, nt, p, node, nid) < 0
-            || refs_adjust(sg, nt, p, 1) < 0
-            || index_row(sg, nt, p, nid) < 0
-            || chk_add(tx, nid) < 0)
-        return -1;
-    txn_seen_nid(tx, nid);
-    return 0;
+    int ret = -1;
+    if (rec_keys(&rec, k) == 0) {
+        slot_t *p = node_place(sg, nt, nid);
+        if (p && rec_store(sg, &rec, p) == 0 && refs_adjust(sg, nt, p, 1) == 0
+                && index_change(sg, nt, NULL, k, nid) == 0
+                && chk_add(tx, nid) == 0) {
+            txn_seen_nid(tx, nid);
+            ret = 0;
+        }
+    }
+    rec_drop(&rec);
+    return ret;
 }
 
-// Removes a node without the root guard and without marking it removed.
+// Removes a node with the index keys k (computed beforehand), without the
+// root guard and without marking it removed.
 static int
-node_drop(Sg *sg, int64_t nid, int ti)
+node_drop(Sg *sg, int64_t nid, int ti, const IdxKey *k)
 {
     State *st = &sg->st;
     NType *nt = st->tabs[ti].nt;
+    if (index_change(sg, nt, k, NULL, nid) < 0)
+        return -1;
     const slot_t *d = st_dir(st, nid);
     uint64_t row = DIR_ROW(d[0]);
     slot_t *p = tab_row_w(sg, ti, row);
@@ -840,7 +866,6 @@ node_drop(Sg *sg, int64_t nid, int ti)
         return -1;
     if (refs_adjust(sg, nt, p, -1) < 0 || boxed_drop_row(sg, nt, p, nid) < 0)
         return -1;
-    index_garbage(st, nt);
     recs_clear(p, nt->objmask, nt->rec, 1);
     memset(p, 0, sizeof(slot_t) * nt->rec);
     p[0] = -1 - nid;
@@ -856,18 +881,22 @@ node_drop(Sg *sg, int64_t nid, int ti)
 int
 op_remove(Sg *sg, int64_t nid)
 {
+    State *st = &sg->st;
     int ti;
     if (nid == 0) {
         PyErr_SetString(OrdbException, "Cannot delete SubgraphRoot (nid=0).");
         return -1;
     }
-    if (!st_row(&sg->st, nid, &ti)) {
+    const slot_t *p = st_row(st, nid, &ti);
+    if (!p) {
         PyObject *k = PyLong_FromLongLong(nid);
         PyErr_SetObject(PyExc_KeyError, k);
         Py_XDECREF(k);
         return -1;
     }
-    if (node_drop(sg, nid, ti) < 0)
+    IdxKey k[MAXUSE];
+    if (row_keys(st, st->tabs[ti].nt, p, nid, k) < 0
+            || node_drop(sg, nid, ti, k) < 0)
         return -1;
     return rem_add(sg->txn, nid);
 }
@@ -886,98 +915,73 @@ op_update(Sg *sg, int64_t nid, PyObject *node)
         PyErr_Format(PyExc_KeyError, "nid %lld not found", (long long)nid);
         return -1;
     }
-    if (st->tabs[ti].nt != nt) {
-        // Type change: the node moves to another table.
-        if (node_drop(sg, nid, ti) < 0)
-            return -1;
-        slot_t *p = node_place(sg, nt, nid);
-        if (!p || row_store(sg, nt, p, node, nid) < 0
-                || refs_adjust(sg, nt, p, 1) < 0
-                || index_row(sg, nt, p, nid) < 0)
-            return -1;
-        return chk_add(tx, nid);
-    }
-    // Entries of indices whose (h, s) does not change stay valid.
-    uint64_t oh[16];
-    int64_t os[16];
-    int oi[16];
-    int nuse = nt->nuse < 16 ? nt->nuse : 16;
+    NType *ont = st->tabs[ti].nt;
+    IdxKey ok[MAXUSE], nk[MAXUSE];
     Rec rec;
-    if (nt->nuse) {
-        if (rec_take(&rec, st, nt, cp, nid) < 0)
-            return -1;
-        for (int i = 0; i < nuse; i++)
-            oi[i] = rec_hs(&rec, &nt->uses[i], &oh[i], &os[i]);
-        rec_drop(&rec);
-        for (int i = 0; i < nuse; i++)
-            if (oi[i] < 0)
-                return -1;
+    if (row_keys(st, ont, cp, nid, ok) < 0
+            || rec_make(&rec, nt, node, nid) < 0)
+        return -1;
+    int ret = -1;
+    if (rec_keys(&rec, nk) < 0)
+        goto done;
+    // Writes from here on.
+    if (ont != nt) {
+        // Type change: the node moves to another table.
+        slot_t *p;
+        if (node_drop(sg, nid, ti, ok) == 0
+                && (p = node_place(sg, nt, nid))
+                && rec_store(sg, &rec, p) == 0
+                && refs_adjust(sg, nt, p, 1) == 0
+                && index_change(sg, nt, NULL, nk, nid) == 0)
+            ret = chk_add(tx, nid);
+        goto done;
     }
     uint64_t row = DIR_ROW(st_dir(st, nid)[0]);
     slot_t *p = tab_row_w(sg, ti, row);
-    if (!p)
-        return -1;
-    if (refs_adjust(sg, nt, p, -1) < 0 || boxed_drop_row(sg, nt, p, nid) < 0)
-        return -1;
+    if (!p || refs_adjust(sg, nt, p, -1) < 0
+            || boxed_drop_row(sg, nt, p, nid) < 0)
+        goto done;
     recs_clear(p, nt->objmask, nt->rec, 1);
-    if (row_store(sg, nt, p, node, nid) < 0 || refs_adjust(sg, nt, p, 1) < 0)
-        return -1;
-    if (nt->nuse && rec_take(&rec, st, nt, p, nid) < 0)
-        return -1;
-    int ret = 0;
-    for (int i = 0; i < nt->nuse && ret == 0; i++) {
-        IdxUse *u = &nt->uses[i];
-        Ent e = {0, 0, nid};
-        int r = rec_hs(&rec, u, &e.h, &e.s);
-        if (r < 0) {
-            ret = -1;
-            break;
-        }
-        if (i < nuse && r == oi[i] && (r == 0 || (e.h == oh[i] && e.s == os[i])))
-            continue;
-        int xi = st_find_idx(st, u->index);
-        if (xi < 0 && (xi = st_add_idx(st, u->index, u->combined)) < 0) {
-            ret = -1;
-            break;
-        }
-        if (i >= nuse || oi[i] == 1)
-            st->idxs[xi].garbage++;
-        if (r == 1 && idx_insert(sg, &st->idxs[xi], e) < 0)
-            ret = -1;
-    }
-    if (nt->nuse)
-        rec_drop(&rec);
-    return ret < 0 ? -1 : chk_add(tx, nid);
+    if (rec_store(sg, &rec, p) == 0 && refs_adjust(sg, nt, p, 1) == 0
+            && index_change(sg, nt, ok, nk, nid) == 0)
+        ret = chk_add(tx, nid);
+done:
+    rec_drop(&rec);
+    return ret;
 }
 
 // Inserts n rows of an all-integer node type from int64 columns (one
-// buffer of n * width values per attribute).
+// buffer of n * width values per attribute). The index entries (which may
+// call sortkey functions) and the values are checked before the first
+// write.
 int
 op_insert_rows(Sg *sg, NType *nt, const int64_t *nids, Py_ssize_t n,
     const int64_t **cols)
 {
     State *st = &sg->st;
     Txn *tx = sg->txn;
-    Run *runs[16] = {NULL};
     int nuse = nt->nuse;
-    if (nuse > 16) {
-        PyErr_SetString(PyExc_TypeError, "too many indices for insert_array");
-        return -1;
-    }
+    Ent *ents[MAXUSE] = {NULL};
+    uint64_t nents[MAXUSE] = {0};
+    int ret = -1;
     for (int i = 0; i < nuse; i++) {
-        if (n > UINT32_MAX || !(runs[i] = run_new((uint32_t)n, 0)))
-            goto fail;
+        if (!(ents[i] = PyMem_Malloc(sizeof(Ent) * (n + 1)))) {
+            PyErr_NoMemory();
+            goto done;
+        }
     }
     for (Py_ssize_t r = 0; r < n; r++) {
         int64_t nid = nids[r];
         int ti;
         if (st_row(st, nid, &ti)) {
             PyErr_SetString(OrdbException, "Duplicate nid.");
-            goto fail;
+            goto done;
         }
-        slot_t *p = node_place(sg, nt, nid);
-        if (!p)
-            goto fail;
+        Rec rec;
+        rec.nt = nt;
+        rec.nid = nid;
+        rec.s[0] = nid;
+        memset(rec.box, 0, sizeof(PyObject *) * nt->nattr);
         for (int i = 0; i < nt->nattr; i++) {
             const AttrInfo *ai = &nt->attrs[i];
             for (int k = 0; k < ai->width; k++) {
@@ -985,60 +989,56 @@ op_insert_rows(Sg *sg, NType *nt, const int64_t *nids, Py_ssize_t n,
                 if (v <= SLOT_BOXED) {
                     PyErr_SetString(PyExc_ValueError,
                         "array value outside the supported int64 range.");
-                    goto fail;
+                    goto done;
                 }
-                p[ai->slot + k] = v;
+                rec.s[ai->slot + k] = v;
             }
         }
-        if (refs_adjust(sg, nt, p, 1) < 0)
-            goto fail;
-        if (nuse) {
-            // Hashing all-integer rows runs no Python code, but a sortkey
-            // that is not an attribute chain is called per row.
-            Rec rec;
-            if (rec_take(&rec, st, nt, p, nid) < 0)
-                goto fail;
-            int ok = 1;
-            for (int i = 0; i < nuse && ok >= 0; i++) {
-                Ent e = {0, 0, nid};
-                ok = rec_hs(&rec, &nt->uses[i], &e.h, &e.s);
-                if (ok == 1)
-                    runs[i]->e[runs[i]->n++] = e;
-            }
-            rec_drop(&rec);
-            if (ok < 0)
-                goto fail;
+        IdxKey k[MAXUSE];
+        if (rec_keys(&rec, k) < 0)
+            goto done;
+        for (int i = 0; i < nuse; i++)
+            if (k[i].on)
+                ents[i][nents[i]++] = (Ent){k[i].h, k[i].s, nid};
+    }
+    // Writes from here on.
+    for (Py_ssize_t r = 0; r < n; r++) {
+        int64_t nid = nids[r];
+        int ti;
+        if (st_row(st, nid, &ti)) { // the same nid twice in the batch
+            PyErr_SetString(OrdbException, "Duplicate nid.");
+            goto done;
         }
-        if (chk_add(tx, nid) < 0)
-            goto fail;
+        slot_t *p = node_place(sg, nt, nid);
+        if (!p)
+            goto done;
+        for (int i = 0; i < nt->nattr; i++) {
+            const AttrInfo *ai = &nt->attrs[i];
+            memcpy(p + ai->slot, cols[i] + r * ai->width,
+                sizeof(slot_t) * ai->width);
+        }
+        if (refs_adjust(sg, nt, p, 1) < 0 || chk_add(tx, nid) < 0)
+            goto done;
         txn_seen_nid(tx, nid);
     }
     for (int i = 0; i < nuse; i++) {
-        Run *run = runs[i];
-        runs[i] = NULL;
         int sorted = 1;
-        for (uint32_t k = 1; k < run->n && sorted; k++)
-            sorted = !ent_lt(&run->e[k], &run->e[k - 1]);
+        for (uint64_t k = 1; k < nents[i] && sorted; k++)
+            sorted = ent_lt(&ents[i][k - 1], &ents[i][k]);
         if (!sorted)
-            qsort(run->e, run->n, sizeof(Ent), ent_cmp);
-        IdxUse *u = &nt->uses[i];
-        int xi = st_find_idx(st, u->index);
-        if (xi < 0 && (xi = st_add_idx(st, u->index, u->combined)) < 0) {
-            run_decref(run);
-            goto fail;
-        }
-        if (idx_add_run(st, &st->idxs[xi], run) < 0)
-            goto fail;
+            qsort(ents[i], nents[i], sizeof(Ent), ent_cmp);
+        if (idx_insert_sorted(sg, &nt->uses[i], ents[i], nents[i]) < 0)
+            goto done;
     }
-    return 0;
-fail:
+    ret = 0;
+done:
     for (int i = 0; i < nuse; i++)
-        run_decref(runs[i]);
-    return -1;
+        PyMem_Free(ents[i]);
+    return ret;
 }
 
 // ---------------------------------------------------------------------------
-// Maintenance: compaction of tables and indices (no open transaction)
+// Maintenance: compaction of tables (no open transaction)
 // ---------------------------------------------------------------------------
 
 static int
@@ -1132,16 +1132,6 @@ sg_maintain(Sg *sg, int freezing)
         uint64_t dead = t->rows.count - t->live;
         if ((dead > t->live && dead >= 64) || (freezing && !t->sorted)) {
             if (tab_compact(sg, ti) < 0)
-                return -1;
-        }
-    }
-    for (int xi = 0; xi < st->nidx; xi++) {
-        Idx *ix = &st->idxs[xi];
-        uint64_t total = ix->tail_n;
-        for (int r = 0; r < ix->nruns; r++)
-            total += ix->runs[r]->n;
-        if (ix->garbage >= 64 && ix->garbage * 2 > total) {
-            if (idx_compact(st, ix) < 0)
                 return -1;
         }
     }

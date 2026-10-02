@@ -8,15 +8,14 @@
 //   (tombstone: -1 - nid), followed by the attribute slots,
 // - the nid directory: per nid the location (table, row) and the number of
 //   LocalRefs pointing at it,
-// - per index a set of sorted runs of (h, s, nid) plus an unsorted tail.
-//   The index is a hint: removals and key changes leave stale entries,
-//   every read verifies its candidates against the rows.
+// - per index a persistent B+tree with exactly one entry (h, s, nid) per
+//   indexed live node.
 //
 // Tables and the directory are persistent vectors of small pages (the
 // "paged" engine, see store.h): snapshots share pages, a transaction keeps
 // the previous state, and abort swaps it back.
 //
-// Files: store.h/store.c (persistent vectors, index runs), engine.c (state,
+// Files: store.h/store.c (persistent vectors, index trees), engine.c (state,
 // records, node operations, transactions and checks), index.c (indices),
 // and one file per Python type: ntype.c, cursor.c, subgraph.c, updater.c.
 // module.c defines the globals and initializes the module. This header holds
@@ -83,6 +82,7 @@
 #define CB_MISSING_ROOT 6
 
 #define MAXKEY 4
+#define MAXUSE 32 // indices per node type
 #define MAXWIDTH 8 // slots of one attribute
 #define H_NONE 0x9E3779B97F4A7C15ull
 
@@ -170,13 +170,17 @@ typedef struct {
 
 typedef struct {
     PyObject *index;
-    Run *runs[MAXRUNS];
-    int nruns;
-    Run *tail;
-    uint32_t tail_n;
-    uint64_t garbage; // stale entries (estimate)
+    BTree tree; // exactly one entry (h, s, nid) per indexed live node
     int combined;
 } Idx;
+
+// The entry of a record in one index: (h, s), or on == 0 if the record is
+// not indexed (single key that is None).
+typedef struct {
+    uint64_t h;
+    int64_t s;
+    int on;
+} IdxKey;
 
 typedef struct {
     Vec dir; // records [loc, refs]
@@ -303,6 +307,20 @@ st_row(const State *st, int64_t nid, int *ti)
     return vec_get(&st->tabs[*ti].rows, DIR_ROW(d[0]));
 }
 
+// The int64 slot value of an exact int that is representable unboxed.
+static inline int
+long_as_slot(PyObject *v, slot_t *out)
+{
+    if (!PyLong_CheckExact(v))
+        return 0;
+    int ovf;
+    long long x = PyLong_AsLongLongAndOverflow(v, &ovf);
+    if (ovf || x <= SLOT_BOXED)
+        return 0;
+    *out = x;
+    return 1;
+}
+
 static inline void
 sg_write_end(Sg *sg)
 {
@@ -332,6 +350,7 @@ mix_ints(int n, const slot_t *x)
 // engine.c
 void state_init(State *st);
 int state_copy(State *dst, const State *src);
+int st_add_idx(State *st, PyObject *index, int combined);
 void state_release(State *st);
 int sg_write_begin(Sg *sg);
 PyObject *boxed_get(const State *st, int64_t nid, int ai);
@@ -363,11 +382,12 @@ int txn_check(Sg *sg, Txn *tx, PyObject *sgu);
 int txn_commit(Sg *sg, Txn *tx);
 
 // index.c
-int idx_add_run(const State *st, Idx *ix, Run *r);
-int idx_insert(Sg *sg, Idx *ix, Ent e);
-int idx_compact(const State *st, Idx *ix);
+int idx_insert(Sg *sg, const IdxUse *u, const Ent *e);
+int idx_remove(Sg *sg, const IdxUse *u, const Ent *e);
+int idx_insert_sorted(Sg *sg, const IdxUse *u, const Ent *e, uint64_t n);
 PyObject *st_query(const State *st, PyObject *index, PyObject *key);
 int unique_violated(const State *st, const Rec *r, const IdxUse *u);
+PyObject *sg_check_indices(Sg *sg, PyObject *noarg);
 
 // ntype.c
 NType *ntype_of_cls(PyObject *cls);

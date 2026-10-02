@@ -13,9 +13,10 @@ Correctness gates for the storage engines:
    transactions) applied to every engine in lockstep. After every
    operation, every engine must hold exactly the nodes of a pure-Python
    reference model (a dict of nid to NodeTuple per subgraph, updated
-   alongside each operation), the engines must agree, every index query
-   must equal a brute-force scan of the nodes, and every snapshot must
-   still have the checksum and the nodes it had when it was taken.
+   alongside each operation), the engines must agree, every index must
+   hold exactly the entries computed from the live rows and every index
+   query must equal a brute-force scan of the nodes, and every snapshot
+   must still have the checksum and the nodes it had when it was taken.
 """
 
 from ordec.core import ordb
@@ -217,9 +218,11 @@ class _FuzzDriver:
                 if rows[nid].key is not None]
             if got != [nid for _, nid in expect]:
                 raise AssertionError(f"{self.name}: target index wrong for {target}")
+        sg._check_indices() # entries exactly as computed from the rows
         for snap, checksum, model in self.snaps:
             if checksum_subgraph(snap) != checksum or _typed(_rows(snap)) != _typed(model):
                 raise AssertionError(f"{self.name}: snapshot changed")
+            snap._check_indices()
 
     def state(self):
         return (checksum_subgraph(self.cur), self.cur.count(),

@@ -40,8 +40,10 @@ sg_traverse(Sg *sg, visitproc visit, void *arg)
         Py_VISIT(st->tabs[i].rows.root);
         Py_VISIT(st->tabs[i].nt);
     }
-    for (int i = 0; i < st->nidx; i++)
+    for (int i = 0; i < st->nidx; i++) {
         Py_VISIT(st->idxs[i].index);
+        Py_VISIT(st->idxs[i].tree.root);
+    }
     Py_VISIT(st->boxed);
     Py_VISIT(sg->root_cursor);
     Py_VISIT(sg->wire_hash);
@@ -343,8 +345,6 @@ sg_compact(Sg *sg, PyObject *noarg)
     int r = 0;
     for (int ti = 0; ti < sg->st.ntab && r == 0; ti++)
         r = tab_compact(sg, ti);
-    for (int xi = 0; xi < sg->st.nidx && r == 0; xi++)
-        r = idx_compact(&sg->st, &sg->st.idxs[xi]);
     sg_write_end(sg);
     if (r < 0)
         return NULL;
@@ -600,9 +600,8 @@ done:
     return ret;
 }
 
-// Size of the subgraph object with its private arrays and its share of
-// the index runs (bytes / number of sharing states). Blocks are separate
-// objects, reachable through gc.get_referents.
+// Size of the subgraph object with its private arrays. Table and index
+// nodes are separate objects, reachable through gc.get_referents.
 static PyObject *
 sg_sizeof(Sg *sg, PyObject *noarg)
 {
@@ -615,15 +614,6 @@ sg_sizeof(Sg *sg, PyObject *noarg)
     double n = PyLong_AsDouble(bs) + sizeof(Tab) * st->ntab
         + sizeof(Idx) * st->nidx;
     Py_DECREF(bs);
-    for (int i = 0; i < st->nidx; i++) {
-        const Idx *ix = &st->idxs[i];
-        for (int r = 0; r < ix->nruns; r++)
-            n += (double)(offsetof(Run, e) + sizeof(Ent) * ix->runs[r]->n)
-                / ix->runs[r]->rc;
-        if (ix->tail)
-            n += (double)(offsetof(Run, e) + sizeof(Ent) * TAIL_CAP)
-                / ix->tail->rc;
-    }
     return PyLong_FromDouble(n);
 }
 
@@ -632,24 +622,16 @@ static PyObject *
 sg_stats(Sg *sg, PyObject *noarg)
 {
     const State *st = &sg->st;
-    uint64_t rows = 0, entries = 0, runs = 0, garbage = 0;
+    uint64_t rows = 0, entries = 0;
     for (int i = 0; i < st->ntab; i++)
         rows += st->tabs[i].rows.count;
-    for (int i = 0; i < st->nidx; i++) {
-        const Idx *ix = &st->idxs[i];
-        runs += ix->nruns;
-        entries += ix->tail_n;
-        garbage += ix->garbage;
-        for (int r = 0; r < ix->nruns; r++)
-            entries += ix->runs[r]->n;
-    }
-    return Py_BuildValue("{s:K,s:K,s:i,s:i,s:K,s:K,s:K,s:K}",
+    for (int i = 0; i < st->nidx; i++)
+        entries += st->idxs[i].tree.count;
+    return Py_BuildValue("{s:K,s:K,s:i,s:i,s:K,s:K}",
         "nodes", (unsigned long long)st->nlive,
         "rows", (unsigned long long)rows,
         "tables", st->ntab, "indices", st->nidx,
         "index_entries", (unsigned long long)entries,
-        "index_runs", (unsigned long long)runs,
-        "index_garbage", (unsigned long long)garbage,
         "directory", (unsigned long long)st->dir.count);
 }
 
@@ -712,6 +694,7 @@ static PyMethodDef sg_methods[] = {
     {"_child", (PyCFunction)sg_child, METH_VARARGS, NULL},
     {"_set_nid_start", (PyCFunction)sg_set_nid_start, METH_O, NULL},
     {"_compact", (PyCFunction)sg_compact, METH_NOARGS, NULL},
+    {"_check_indices", (PyCFunction)sg_check_indices, METH_NOARGS, NULL},
     {"_content_hash", (PyCFunction)sg_content_hash, METH_NOARGS, NULL},
     {"_content_eq", (PyCFunction)sg_content_eq, METH_O, NULL},
     {"_arrays", (PyCFunction)sg_arrays, METH_VARARGS, NULL},

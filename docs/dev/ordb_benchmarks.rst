@@ -134,6 +134,12 @@ copies only the pages it touches, while ``flat`` copies every touched table.
 On the other workloads, both engines needed 2 to 6 times less memory than
 ``cow-arrays``.
 
+These numbers predate the exact index (see "History & rationale" in
+:doc:`ordb_core`). With it, ``snapshot_chain`` retains 48.6 MiB and
+``layout_flatten`` 156 MiB instead of 133 MiB: a generation that updates
+nodes with scattered keys copies every index leaf it touches. Queries
+became 5 to 10 % faster and builds up to 7 % slower.
+
 An example IO ring in SG13G2 (739,000 rectangles) builds in about
 0.3 s (``cow-arrays``: 0.58 s); it is dominated by GDS processing, ORDB takes
 about 40 ms of it.

@@ -43,12 +43,11 @@ A subgraph state consists of:
   the table and row of the node, and the number of LocalRefs pointing at the
   nid. The counter replaces reverse-reference buckets: a node can be removed
   if its counter is zero at commit.
-- **One index per declared** :class:`~ordec.core.ordb.Index`: sorted runs of
-  entries ``(h, s, nid)`` plus an unsorted tail of up to 64 entries. ``h`` is
-  the hash of the key (for a single int or LocalRef key, the value itself),
-  ``s`` the sort attribute (or 0). Runs are immutable and shared between
-  snapshots by reference count; runs of similar size are merged (amortized
-  O(log n) per insert).
+- **One index per declared** :class:`~ordec.core.ordb.Index`: a persistent
+  B+tree of entries ``(h, s, nid)``, exactly one per indexed live node.
+  ``h`` is the hash of the key (for a single int or LocalRef key, the value
+  itself), ``s`` the sort attribute (or 0). Leaves hold 32 entries, inner
+  nodes 32 children.
 
 Attribute values are stored by kind (decided per attribute when the node
 type is created):
@@ -62,14 +61,30 @@ outside the int64 range, a bool in an int attribute, a Vec2I subclass, ...)
 is kept in a small per-subgraph dict. Values therefore round-trip exactly;
 the common case costs one comparison.
 
-The index is a hint, the tables are the truth
----------------------------------------------
+The index is exact
+------------------
 
-Removing a node or changing an indexed attribute does not touch the index:
-the old entry becomes stale. Every read (queries, unique checks) verifies its
-candidates against the current row (node alive, same ``(h, s)``, key equal).
-Stale entries are dropped when runs are merged or when an index is compacted
-at commit (once they are the majority).
+Adding, removing or updating a node inserts and deletes exactly its
+entries. Before its first write, an operation computes everything that can
+call Python: the record of the new values, and the entries of the old and
+the new row (hashes of object keys, sortkey functions). The old entries are
+recomputed from the stored row, which is why a ``sortkey`` must depend only
+on the node's values (otherwise the entry is not found, and the operation
+raises :class:`~ordec.core.ordb.OrdbException`). A query is one range scan
+over the entries with hash ``h``, already ordered by ``(s, nid)``; rows are
+compared to the key only to rule out hash collisions (never for int and
+LocalRef keys, whose hash is the value). A unique check asks whether that
+range holds another node with an equal key. ``insert_array`` sorts its
+entries and inserts them in order, or rebuilds the tree bottom-up if the
+batch is at least as large as the index.
+
+The B+tree follows the rules of the table pages: nodes carry the token of
+the transaction that created them and are written in place only by it,
+other writes copy the path from the root. Leaves are plain Python objects
+and inner nodes GC objects, so that ``gc.get_referents`` reaches the whole
+tree for memory accounting. ``Subgraph._check_indices()`` (used by the
+fuzz after every step) checks the tree structure and compares every index
+with the entries computed from the live rows.
 
 Storage engine
 --------------
@@ -272,11 +287,27 @@ per generation, pages of 64 rows shared almost nothing (148 MiB against
 192 MiB for full copies), pages of 8 to 16 rows shared well (29 to 50
 MiB) at no measurable cost for reads through Python. Hence 16-row leaves.
 
-Indices are sorted runs verified against the rows because hash indices
+Indices are ordered by (key hash, sort value, nid) because hash indices
 degrade on keys with many duplicates (all rectangles on one layer), while
-an order on (key hash, sort value, nid) serves plain, sorted and unique
-indices alike; immutable runs are shared by snapshots without extra
-machinery, and a bulk insert builds a run with one sort.
+one order serves plain, sorted and unique indices alike. The first version
+kept them as immutable sorted runs plus an unsorted tail, shared by
+snapshots by reference count, and treated them as a hint: removals and key
+changes left stale entries, every read verified its candidates against the
+rows, merges and compaction dropped stale entries, and frozen snapshots
+kept theirs. The B+tree replaced it with exact entries: queries need no
+candidate sort, deduplication or liveness check, and none of the
+heuristics for stale entries. Measured against the runs (large scale):
+query phases 8 to 10 % faster (``render_scan.scan``,
+``sim_hierarchy.annotate``), ``layout_flatten`` 7 % slower, retained memory
+of ``snapshot_chain`` 48.6 instead of 31.6 MiB and of ``layout_flatten``
+156 instead of 133 MiB (a generation copies every index leaf it touches,
+where runs only grew a tail). Leaves of 32 entries beat 64 and 128 on time
+and memory. A leaf that gets an entry appended when full stays full and
+starts a new right sibling; splitting it evenly left ascending inserts
+(growing nids within one key) with half-empty leaves, which cost 11 % on
+``layout_flatten`` and 43 % more memory. A bounded per-transaction insert
+buffer, planned in case builds became more than about 10 % slower, was not
+needed.
 
 Rejected alternatives:
 
@@ -329,6 +360,8 @@ Performance:
 - Tables whose rows are out of nid order are sorted on every ``all(T)`` until
   the next freeze.
 - Index entries take 24 bytes; 16 would do.
+- An insert in a transaction of its own copies a leaf and its path (about
+  1 KiB per level) per index, where table rows are appended in place.
 
 Correctness and semantics:
 

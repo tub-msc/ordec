@@ -6,7 +6,7 @@
 // - Vec: a vector of fixed-size records of 8-byte slots, stored as a
 //   persistent radix tree with small leaves and edit tokens (the "paged"
 //   engine).
-// - Run: a sorted, immutable array of index entries (h, s, nid).
+// - BTree: a persistent B+tree of index entries (h, s, nid).
 //
 // Leaves that can hold Python object references (objmask != 0) are
 // GC-tracked Python objects: leaves are shared between subgraphs, and the
@@ -111,23 +111,13 @@ vec_get(const Vec *v, uint64_t i)
     return ((Leaf *)n)->data + (i & (LEAF_ROWS - 1)) * v->rec;
 }
 
-// -- index runs --------------------------------------------------------------
+// -- index trees -------------------------------------------------------------
 
 typedef struct {
     uint64_t h; // key hash
     int64_t s; // sort value
     int64_t nid;
 } Ent;
-
-typedef struct Run {
-    uint32_t rc;
-    uint32_t n;
-    uint64_t owner; // tails only: the subgraph that may append
-    Ent e[1];
-} Run;
-
-#define TAIL_CAP 64
-#define MAXRUNS 32
 
 static inline int
 ent_lt(const Ent *a, const Ent *b)
@@ -139,26 +129,57 @@ ent_lt(const Ent *a, const Ent *b)
     return a->nid < b->nid;
 }
 
-static inline void
-run_decref(Run *r)
+static inline int
+ent_eq(const Ent *a, const Ent *b)
 {
-    if (r && --r->rc == 0)
-        PyMem_Free(r);
+    return a->h == b->h && a->s == b->s && a->nid == b->nid;
 }
 
-static inline uint32_t
-run_lower_bound(const Run *r, uint64_t h)
-{
-    uint32_t lo = 0, hi = r->n;
-    while (lo < hi) {
-        uint32_t mid = lo + (hi - lo) / 2;
-        if (r->e[mid].h < h)
-            lo = mid + 1;
-        else
-            hi = mid;
-    }
-    return lo;
-}
+#ifndef BT_LEAF
+#define BT_LEAF 32 // entries per leaf
+#endif
+#ifndef BT_FAN
+#define BT_FAN 32 // children per inner node
+#endif
+#define BT_MAXH 12 // levels (BT_FAN^11 leaves)
+// Below these sizes, a node (other than the root) is merged with a sibling
+// or evened out with it. Inner nodes keep at least two children, so that
+// every leaf has a sibling to merge with.
+#define BT_LEAF_MIN (BT_LEAF / 4 > 1 ? BT_LEAF / 4 : 1)
+#define BT_FAN_MIN (BT_FAN / 4 > 2 ? BT_FAN / 4 : 2)
+
+typedef struct {
+    PyObject_HEAD
+    uint64_t owner;
+    uint32_t n;
+    Ent e[BT_LEAF];
+} BLeaf;
+
+typedef struct {
+    PyObject_HEAD
+    uint64_t owner;
+    uint32_t n;
+    // key[i] <= every entry below kids[i] and > every entry below
+    // kids[i - 1]: the separators.
+    Ent key[BT_FAN];
+    PyObject *kids[BT_FAN];
+} BInner;
+
+// A persistent B+tree of entries in ascending order. Like the table pages,
+// a node is written in place only by the transaction that created it
+// (owner == tok); any other write copies the path from the root.
+typedef struct {
+    PyObject *root; // BLeaf (height 0) or BInner; NULL when empty
+    uint64_t count;
+    int height; // inner levels above the leaves
+} BTree;
+
+// Position in a BTree for in-order iteration (bt_seek, bt_next).
+typedef struct {
+    int height;
+    PyObject *node[BT_MAXH + 1];
+    uint32_t pos[BT_MAXH + 1];
+} BIter;
 
 // store.c
 extern PyTypeObject *Leaf_Type, *LeafGC_Type, *InnerGC_Type;
@@ -166,7 +187,11 @@ int store_init(void);
 void obj_free(void *o);
 slot_t *vec_at_w(Vec *v, uint64_t i, uint64_t lin, uint64_t tx, int append);
 int ent_cmp(const void *a, const void *b);
-int ent_cmp_sn(const void *pa, const void *pb);
-Run *run_new(uint32_t cap, uint64_t owner);
+int bt_insert(BTree *t, const Ent *e, uint64_t tok);
+int bt_delete(BTree *t, const Ent *e, uint64_t tok);
+int bt_add_sorted(BTree *t, const Ent *e, uint64_t n, uint64_t tok);
+const Ent *bt_seek(BIter *it, const BTree *t, const Ent *key);
+const Ent *bt_next(BIter *it);
+int bt_check(const BTree *t);
 
 #endif
