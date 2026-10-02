@@ -343,7 +343,12 @@ sg_set_nid_start(Sg *sg, PyObject *arg)
     long long v = PyLong_AsLongLong(arg);
     if (v == -1 && PyErr_Occurred())
         return NULL;
-    if (sg->frozen || sg_no_txn(sg, "change nid_alloc of") < 0)
+    if (sg->frozen) {
+        PyErr_SetString(PyExc_TypeError,
+            "Unsupported operation on FrozenSubgraph.");
+        return NULL;
+    }
+    if (sg_no_txn(sg, "change nid_alloc of") < 0)
         return NULL;
     sg->st.nid_start = v;
     sg->hash_valid = 0;
