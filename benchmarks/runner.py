@@ -47,17 +47,11 @@ def _cpu_model():
     return platform.processor() or platform.machine()
 
 def _impl_info():
-    try:
-        import pvectorc # pyrsistent's C extension
-        c_ext = True
-    except ImportError:
-        c_ext = False
     return {
         'python': platform.python_version(),
         'ordec_git': _git_rev(),
         'cpu': _cpu_model(),
         'hostname': platform.node(),
-        'pyrsistent_c_ext': c_ext,
     }
 
 def run_one(wl, backend_name, scale, repeats, warmup, seed, measure_mem,

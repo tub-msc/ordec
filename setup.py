@@ -27,10 +27,22 @@ setup(
     cmdclass={
         'build_py': NpmBuildPy
     },
-    # Optional: without a C compiler, ordec.layout.gdsrecords falls back to
-    # its slow pure-Python implementation.
     ext_modules=[
+        # The native core of ORDB: required, there is no fallback.
+        Extension('ordec.core.ordb._ordb',
+            sources=[f'src/ordec/core/ordb/native/{f}.c' for f in ('module',
+                'store', 'engine', 'index', 'ntype', 'cursor', 'subgraph',
+                'updater')],
+            depends=['src/ordec/core/ordb/native/module.h',
+                'src/ordec/core/ordb/native/store.h'],
+            py_limited_api=True),
+        # Optional: without a C compiler, ordec.layout.gdsrecords falls back to
+        # its slow pure-Python implementation.
         Extension('ordec.layout._gdsrecords',
-            sources=['src/ordec/layout/_gdsrecords.c'], optional=True),
+            sources=['src/ordec/layout/_gdsrecords.c'], optional=True,
+            py_limited_api=True),
     ],
+    # Both extensions use the limited API of Python 3.11 (Py_LIMITED_API in
+    # the sources): one abi3 wheel serves all Python versions from 3.11.
+    options={'bdist_wheel': {'py_limited_api': 'cp311'}},
 )

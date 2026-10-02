@@ -5,22 +5,19 @@
 Array form of node rows, for node types declaring Node.arrayable = True.
 
 A row is array-representable if none of its attribute values is None (and
-all ints fit into int64). In
-array form, each attribute is an int64 column: shape (n,) for ints and nids,
-(n, width) for value types such as Rect4I. Rows are ordered by ascending
-nid, which is also the order of the node type's NType index bucket.
+all ints fit into int64). In array form, each attribute is an int64
+column: shape (n,) for ints and nids, (n, width) for value types such as
+Rect4I. Rows are ordered by ascending nid.
 
 SubgraphUpdater.insert_array() is equivalent to inserting the same rows one
 by one with add_single() in the same transaction; Subgraph.arrays() returns
-what iterating all(ntype) would read. Backends may store array rows natively
-(cow-arrays); for all other backends, the functions below implement both
-via the per-row path.
+what iterating all(ntype) would read. Both are served by the native core
+directly from and into its tables.
 """
 
 import numpy as np
 
-from .base import (NodeTuple, NodeTupleAttrDescriptor, LocalRef, ExternalRef,
-    Node, SubgraphRoot, ModelViolation, DanglingLocalRef, DanglingExternalRef)
+from .base import Node
 
 def array_fields(ntype):
     fields = ntype.Tuple._array_layout
@@ -85,24 +82,6 @@ def normalize(ntype, values: dict) -> tuple[int, dict]:
             check(cols[f.name])
     return n, cols
 
-def make_tuple(ntype, fields, values) -> NodeTuple:
-    """
-    Builds the NodeTuple of one array row from Python ints (values: one
-    list of ints per field). Bypasses the attribute factories: values were
-    validated by normalize().
-    """
-    vals = [None] * len(ntype.Tuple._layout)
-    for f, v in zip(fields, values):
-        vals[f.index] = v if f.width == 1 else tuple.__new__(f.vtype, v)
-    return tuple.__new__(ntype.Tuple, vals)
-
-def iter_tuples(ntype, cols) -> 'Iterable[NodeTuple]':
-    """NodeTuples of all rows of the given columns (without 'nid')."""
-    fields = array_fields(ntype)
-    per_field = [cols[f.name].tolist() for f in fields]
-    for values in zip(*per_field):
-        yield make_tuple(ntype, fields, values)
-
 INT64_MIN = -2**63
 INT64_MAX = 2**63 - 1
 
@@ -124,72 +103,35 @@ def row_values(fields, node) -> list|None:
         ret.append(v)
     return ret
 
-def gather(subgraph, ntype, partial: bool=False) -> dict:
+def array_columns(subgraph, ntype, partial: bool=False) -> tuple[bytes, list[bytes]]:
     """
-    Generic (per-row) implementation of Subgraph.arrays(). With partial,
-    rows that are not array-representable are skipped instead of raising
-    ValueError.
+    The nids and the attribute columns (layout order) of a node type as
+    bytes of native int64, rows ordered by nid; see arrays() for partial.
+    Memoized for frozen subgraphs.
+    """
+    array_fields(ntype)
+    if subgraph.mutable:
+        return subgraph._arrays(ntype.Tuple, partial)
+    memo = subgraph._cached_arrays
+    if memo is None:
+        memo = subgraph._cached_arrays = {}
+    key = (ntype.Tuple, partial)
+    try:
+        return memo[key]
+    except KeyError:
+        ret = memo[key] = subgraph._arrays(ntype.Tuple, partial)
+        return ret
+
+def arrays(subgraph, ntype, partial: bool=False) -> dict:
+    """
+    Backend of Subgraph.arrays(): read-only int64 arrays 'nid' plus one per
+    attribute, rows ordered by nid. With partial, rows that are not
+    array-representable are skipped instead of raising ValueError.
     """
     fields = array_fields(ntype)
-    nids = []
-    rows = []
-    for nid in subgraph.all(ntype, wrap_cursor=False):
-        values = row_values(fields, subgraph.nodes[nid])
-        if values is None:
-            if partial:
-                continue
-            raise ValueError(f"{ntype.__name__} nid={nid} has values that"
-                " are None or outside the int64 range and cannot be represented"
-                " as array.")
-        nids.append(nid)
-        rows.append(values)
-    return columns(fields, nids, rows)
-
-def columns(fields, nids, rows) -> dict:
-    """Builds read-only int64 columns from Python row lists."""
-    ret = {'nid': np.array(nids, dtype=np.int64)}
-    for i, f in enumerate(fields):
-        shape = (len(rows),) if f.width == 1 else (len(rows), f.width)
-        ret[f.name] = np.array([r[i] for r in rows], dtype=np.int64).reshape(shape)
-    for a in ret.values():
-        a.flags.writeable = False
+    nids, cols = array_columns(subgraph, ntype, partial)
+    ret = {'nid': np.frombuffer(nids, dtype=np.int64)}
+    for f, b in zip(fields, cols):
+        a = np.frombuffer(b, dtype=np.int64)
+        ret[f.name] = a if f.width == 1 else a.reshape(-1, f.width)
     return ret
-
-def check_rows(sgu, ntype, nids, cols):
-    """
-    Vectorized equivalent of NodeTuple.check_constraints plus the subgraph
-    membership check of SubgraphUpdater.__exit__, for array rows.
-    """
-    root_cls = sgu.nodes[0]._cursor_type
-    if not any(issubclass(root_cls, cls) for cls in ntype.in_subgraphs):
-        raise ModelViolation(f"{ntype.__name__} is not permitted in subgraph {root_cls.__name__}.")
-    if len(nids) == 0:
-        return
-    for f in array_fields(ntype):
-        attr = f.attr
-        if isinstance(attr, ExternalRef):
-            # of_subgraph is evaluated once for all rows: for array rows it
-            # must depend on the subgraph (root) only, not on the row.
-            cursor = sgu.cursor_at(int(nids[0]), lookup_npath=False)
-            root = attr.of_subgraph(cursor)
-            if not isinstance(root, SubgraphRoot):
-                raise ModelViolation(f"ExternalRef {ntype.__name__}.{f.name}"
-                    " could not resolve its referenced subgraph.")
-            target_nodes = root.subgraph.nodes
-            for ref in np.unique(cols[f.name]).tolist():
-                try:
-                    target = target_nodes[ref]
-                except KeyError:
-                    raise DanglingExternalRef(ref) from None
-                if not attr.refcheck(target._cursor_type):
-                    raise ModelViolation(f"ExternalRef invalid reference"
-                        f" {f.name}={ref} ({target._cursor_type.__name__}) in {ntype.__name__}.")
-        elif isinstance(attr, LocalRef):
-            for ref in np.unique(cols[f.name]).tolist():
-                try:
-                    target = sgu.nodes[ref]
-                except KeyError:
-                    raise DanglingLocalRef(ref) from None
-                if not attr.refcheck(target._cursor_type):
-                    raise ModelViolation(f"LocalRef invalid reference"
-                        f" {f.name}={ref} ({target._cursor_type.__name__}) in {ntype.__name__}.")

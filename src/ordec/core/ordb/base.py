@@ -2,15 +2,18 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from typing import Callable, Iterable, NamedTuple
+from collections.abc import Mapping
 from types import NoneType
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from abc import ABC, ABCMeta, abstractmethod
+import dis
+import inspect
 import string
 import warnings
-import numpy as np
 from public import public
 
-from .backend import BucketKind, StorageBackend, default_backend
+from . import _ordb
+from .backend import StorageBackend, default_backend, get_backend
 
 @public
 class OrdbException(Exception):
@@ -64,16 +67,12 @@ class IndexQuery(NamedTuple):
     index_key: IndexKey
 
 class GenericIndex(ABC):
-    @abstractmethod
-    def index_add(self, sgu: 'SubgraphUpdater', node, nid):
-        """This method must not fail on constraint violations!"""
-        pass
-
-    @abstractmethod
-    def index_remove(self, sgu: 'SubgraphUpdater', node, nid):
-        """This method must not fail on constraint violations!"""
-        pass
-    
+    """
+    Indices and reference checks of node types. They are declared in the
+    schema and evaluated by the native core; check_constraints is the
+    reference implementation that raises the exact exception once the core
+    has found a violation.
+    """
     @abstractmethod
     def check_constraints(self, sgu: 'SubgraphUpdater', node, nid):
         pass
@@ -133,6 +132,7 @@ class Attr:
         else:
             must_be_type(type)
             self.typecheck = lambda val: isinstance(val, type)
+        self._default_typecheck = typecheck_custom is None
 
         self.type = type
         self.default = default
@@ -171,7 +171,7 @@ class NodeTupleAttrDescriptor:
         return isinstance(self.attr, LocalRef)
 
     def __get__(self, obj, owner=None):
-        if obj is None: # for the class: return NodeAttrDescriptor object
+        if obj is None: # for the class: return the descriptor itself
             return self
         else: # for instances: return value of attribute
             assert owner == self.ntype.Tuple
@@ -179,28 +179,6 @@ class NodeTupleAttrDescriptor:
 
     def __repr__(self):
         return f"NodeTupleAttrDescriptor({self.ntype.__name__}.{self.name})"
-
-@dataclass(frozen=True, eq=False)
-class NodeAttrDescriptor:
-    """Like NodeTupleAttrDescriptor, but for the Node instead of the NodeTuple"""
-    ntype: type
-    index: int
-    name: str
-    attr: Attr
-
-    def __get__(self, cursor, owner=None):
-        if cursor is None: # for the class: return Attr object
-            return self.attr
-        else: # for instances: return value of attribute
-            assert issubclass(owner, self.ntype)
-            #return cursor.tuple[self.index]
-            return self.attr.read_hook(cursor.tuple[self.index], cursor)
-
-    def __set__(self, cursor, value):
-        cursor.subgraph.update(cursor.tuple.set_index(self.index, value), cursor.nid)
-
-    def __delete__(self, cursor):
-        raise TypeError("Attributes cannot be deleted.")
 
 @public
 class LocalRef(Attr):
@@ -282,6 +260,38 @@ class SubgraphRef(Attr):
             raise TypeError(f"Incorrect type {type(val.root_cursor).__name__} for SubgraphRef.")
         
         return val
+
+# Opcodes that load the first argument of a function (3.14 adds the BORROW
+# variant).
+_LOAD_ARG_OPS = ('LOAD_FAST', 'LOAD_FAST_CHECK', 'LOAD_FAST_BORROW')
+
+def _attr_chain(fn) -> 'tuple[str]|NoneType':
+    """
+    Names of the attributes read by fn if fn does nothing but read a chain of
+    attributes from its single argument and return the result, e.g.
+    ('root', 'ref_layers') for lambda c: c.root.ref_layers. None for any
+    other callable.
+
+    This is decided from the bytecode, without calling fn: the core
+    evaluates sortkey and of_subgraph functions of this form natively and
+    calls all other functions per node.
+    """
+    # Plain functions only: a bound method exposes the code of its function,
+    # whose first argument is self.
+    if not inspect.isfunction(fn):
+        return None
+    code = fn.__code__
+    if code.co_argcount != 1 or code.co_kwonlyargcount:
+        return None
+    if code.co_flags & (inspect.CO_VARARGS | inspect.CO_VARKEYWORDS):
+        return None
+    ops = [i for i in dis.get_instructions(code) if i.opname not in ('RESUME', 'NOP')]
+    if len(ops) < 3 or ops[0].opname not in _LOAD_ARG_OPS or ops[0].argval != code.co_varnames[0]:
+        return None
+    if ops[-1].opname != 'RETURN_VALUE' or any(i.opname != 'LOAD_ATTR' for i in ops[1:-1]):
+        return None
+    return tuple(i.argval for i in ops[1:-1])
+
 @public
 class ExternalRef(Attr):
     """
@@ -297,12 +307,16 @@ class ExternalRef(Attr):
         of_subgraph: Function receiving the current node as argument and
             returning the SubgraphRoot of the referenced subgraph by reading
             the SubgraphRef that corresponds to this instance of the
-            ExternalRef.
+            ExternalRef. Plain attribute chains (lambda c: c.root.ref_layers,
+            lambda c: c.ref.symbol, lambda c: c.subg) are checked natively;
+            other functions are called per node on commit (slower).
         optional: Specifies whether the reference can be None.
     """
 
     def __init__(self, refs_ntype: type, of_subgraph: 'Callable[[Node], SubgraphRoot]', optional: bool = True):
         super().__init__(type=int, optional=optional)
+        if not callable(of_subgraph):
+            raise TypeError("of_subgraph must be a function, e.g. lambda c: c.root.ref_layers.")
         self.refs_ntype = refs_ntype
         self.of_subgraph = of_subgraph
         self.refcheck = lambda val: issubclass(val, refs_ntype)
@@ -338,7 +352,7 @@ class ExternalRef(Attr):
             )
         target_subgraph = subgraph_root.subgraph
         try:
-            target = target_subgraph.nodes[ref]
+            target = target_subgraph.row(ref)
         except KeyError:
             raise DanglingExternalRef(ref) from None
 
@@ -410,54 +424,45 @@ class LiveRef(Attr):
 
 @public
 class Index(GenericIndex):
+    """
+    Index for equality queries on one attribute.
+
+    Args:
+        attr: Indexed attribute.
+        unique: At most one node may have each value (None excepted).
+        sortkey: Function receiving the node value (NodeTuple) and returning
+            the int (within 64 bits) or None by which query results are
+            ordered (None first, ties by nid). Without sortkey, results are
+            ordered by nid. A plain attribute read (lambda node: node.order)
+            is evaluated natively; other functions are called per index
+            update and per query result (slower). sortkey must depend only
+            on the values of the node: the index entry of a node is found
+            again by evaluating it, so changing or removing a node whose
+            sortkey result changed meanwhile raises OrdbException.
+    """
     def __init__(self, attr: Attr, unique:bool=False, sortkey: Callable=None):
+        if sortkey is not None and not callable(sortkey):
+            raise TypeError("sortkey must be a function, e.g. lambda node: node.order.")
         self.attr = attr
         self.unique = unique
         self.sortkey = sortkey
       
         attr.indices.append(self)
 
-    def index_key(self, node, nid, sgu: 'SubgraphUpdater' = None):
+    def index_key(self, node, nid=None):
         val = node[node._attrdesc_by_attr[self.attr].index]
         if val is None:
             return None
         return IndexKey(self, val)
 
-    def index_value(self, node, nid):
-        return nid
-
-    def index_add(self, sgu: 'SubgraphUpdater', node, nid):
-        # This method must not fail on constraint violations!
-        key = self.index_key(node, nid, sgu)
-        if key is None:
-            return
-        value = self.index_value(node, nid)
-        sortkey = self.sortkey
-        if sortkey is None:
-            sgu.txn.bucket_add(key, value, BucketKind.NID)
-        else:
-            sgu.txn.bucket_add_sorted(key, value, sortkey(node),
-                lambda nid_here: sortkey(sgu.nodes[nid_here]))
-
-    def index_remove(self, sgu: 'SubgraphUpdater', node, nid):
-        # This method must not fail on constraint violations!
-        key = self.index_key(node, nid, sgu)
-        if key is None:
-            return
-        value = self.index_value(node, nid)
-        kind = BucketKind.NID if self.sortkey is None else BucketKind.SORTED
-        sgu.txn.bucket_remove(key, value, kind)
-    
     def check_constraints(self, sgu: 'SubgraphUpdater', node, nid):
         if self.unique:
-            key = self.index_key(node, nid, sgu)
+            key = self.index_key(node, nid)
             if not key:
                 return
-            vals = sgu.index[key]
+            vals = sgu.target_subgraph.query(self, key.value)
             if len(vals) > 1:
                 raise UniqueViolation(self, key)
-            else:
-                assert self.index_value(node, nid) in vals
 
     def query(self, key) -> IndexQuery:
         """Returns IndexQuery object for equivalence query with key."""
@@ -467,14 +472,25 @@ class Index(GenericIndex):
 
 @public
 class CombinedIndex(Index):
+    """
+    Index for equality queries on a tuple of attributes.
+
+    Args:
+        attrs: Indexed attributes; query keys are tuples in this order.
+        unique: At most one node may have each key.
+        sortkey: As for :class:`Index` (in particular, it must depend only
+            on the values of the node).
+    """
     def __init__(self, attrs: list[Attr], unique:bool=False, sortkey: Callable=None):
+        if sortkey is not None and not callable(sortkey):
+            raise TypeError("sortkey must be a function, e.g. lambda node: node.order.")
         self.attrs = attrs
         self.unique = unique
         self.sortkey = sortkey
         for attr in self.attrs:
             attr.indices.append(self)
 
-    def index_key(self, node, nid, sgu: 'SubgraphUpdater' = None):
+    def index_key(self, node, nid=None):
         return IndexKey(self, tuple((node[node._attrdesc_by_attr[a].index] for a in self.attrs)))
 
     def query(self, key) -> IndexQuery:
@@ -484,46 +500,23 @@ class CombinedIndex(Index):
 
 
 class NTypeIndex(Index):
+    """Queries by node type (table)."""
     def __init__(self):
         self.sortkey = None
-
-    def index_key(self, node, nid, sgu: 'SubgraphUpdater' = None):
-        return type(node)
-
-    def index_value(self, node, nid):
-        return nid
+        self.unique = False
 
     def query(self, key):
         return IndexQuery(key)
 
-class LocalRefIndex(Index):
+class LocalRefIndex(GenericIndex):
     """
-    LocalRefIndex is meant for integrity checking only. For lookups, use a separate fine-grained index.
-
-    LocalRefIndex buckets are BucketKind.SET (unordered), as its values
-    cannot be ordered meaningfully.
+    Reference integrity of a LocalRef attribute: the target exists and has
+    a permitted type, and a node cannot be removed while it is referenced
+    (the native core counts the references per nid). For lookups, use a
+    separate Index.
     """
-    def index_key(self, node, nid, sgu: 'SubgraphUpdater' = None):
-        ref = node[node._attrdesc_by_attr[self.attr].index]
-        if ref is None:
-            return None
-        else:
-            return ref
-
-    def index_value(self, node, nid):
-        return IndexKey(self, nid)
-
-    def index_add(self, sgu: 'SubgraphUpdater', node, nid):
-        key = self.index_key(node, nid, sgu)
-        if key is None:
-            return
-        sgu.txn.bucket_add(key, self.index_value(node, nid), BucketKind.SET)
-
-    def index_remove(self, sgu: 'SubgraphUpdater', node, nid):
-        key = self.index_key(node, nid, sgu)
-        if key is None:
-            return
-        sgu.txn.bucket_remove(key, self.index_value(node, nid), BucketKind.SET)
+    def __init__(self, attr: LocalRef):
+        self.attr = attr
 
     def check_constraints(self, sgu: 'SubgraphUpdater', node, nid):
         attrdesc = node._attrdesc_by_attr[self.attr]
@@ -536,7 +529,7 @@ class LocalRefIndex(Index):
             return
         
         try:
-            target = sgu.nodes[ref]
+            target = sgu.target_subgraph.row(ref)
         except KeyError:
             raise DanglingLocalRef(ref) from None
         
@@ -549,12 +542,6 @@ class ExternalRefIndex(GenericIndex):
     """
     def __init__(self, attr: ExternalRef):
         self.attr = attr
-
-    def index_add(self, sgu: 'SubgraphUpdater', node, nid):
-        return
-
-    def index_remove(self, sgu: 'SubgraphUpdater', node, nid):
-        return
 
     def check_constraints(self, sgu: 'SubgraphUpdater', node, nid):
         self.attr.check_ref(sgu, node, nid)
@@ -569,8 +556,10 @@ class NPathIndex(CombinedIndex):
 @public
 class NodeTuple(tuple):
     """
-    NodeTuples store the node data of a subgraph in :attr:`Subgraph.nodes`.
-    It is recommended to acccess NodeTuples via the :class:`Node` interface.
+    NodeTuples are the values of nodes: calling a node type returns one,
+    inserting it into a subgraph (e.g. with '%') creates a node, and
+    :meth:`Subgraph.row` returns the NodeTuple of a node. Subgraphs do not
+    store NodeTuples; the native core keeps the values in tables.
     """
 
     __slots__ = ()
@@ -581,13 +570,8 @@ class NodeTuple(tuple):
         except TypeError:
             raise TypeError("All attributes of NodeTuple must be hashable.")
 
-    def __new__(cls, **kwargs):
-        ret=super().__new__(cls, (ad.attr.factory(kwargs.pop(ad.name, None)) for ad in cls._layout))
-        if len(kwargs) > 0:
-            unknown_attrs = ', '.join(kwargs.keys())
-            raise AttributeError(f"Unknown attributes provided: {unknown_attrs}")
-        ret.check_hashable()
-        return ret
+    # __new__(cls, **kwargs) is _ordb.ntuple_new (assigned below the class):
+    # it applies the attribute factories, standard ones in C.
 
     def vals_repr(self):
         return ', '.join([f"{ad.name}={self[ad.index]!r}" for ad in self._layout])
@@ -596,25 +580,8 @@ class NodeTuple(tuple):
         return f"{type(self).__name__}({self.vals_repr()})"
 
     def set(self, **kwargs):
-        # Bypasses NodeTuple.__new__:
-
-        def ensure_hashable(x):
-            hash(x) # Ensure new value is hashable.
-            return x
-
-        ret=super().__new__(
-            type(self),
-            (
-                (ensure_hashable(ad.attr.factory(kwargs.pop(ad.name))) if ad.name in kwargs else prev)
-                for ad, prev in zip(self._layout, tuple.__iter__(self))
-            ),
-        )
-
-        if len(kwargs) > 0:
-            unknown_attrs = ', '.join(kwargs.keys())
-            raise AttributeError(f"Unknown attributes provided: {unknown_attrs}")
-
-        return ret
+        """Copy with the given attributes replaced."""
+        return self._ntype.set(self, kwargs)
 
     def set_byattr(self, attr, value):
         # Bypasses NodeTuple.__new__:
@@ -658,17 +625,9 @@ class NodeTuple(tuple):
         ret=super().__new__(type(self), (nid_map[self[ad.index]] if ad.is_nid() and self[ad.index] is not None else self[ad.index] for ad in self._layout))
         return ret
 
-    def index_add(self, sgu: 'SubgraphUpdater', nid):
-        self.index_ntype.index_add(sgu, self, nid)
-        for ns in self.indices:
-            ns.index_add(sgu, self, nid)
-
-    def index_remove(self, sgu: 'SubgraphUpdater', nid):
-        self.index_ntype.index_remove(sgu, self, nid)
-        for ns in self.indices:
-            ns.index_remove(sgu, self, nid)
-
     def check_constraints(self, sgu: 'SubgraphUpdater', nid):
+        """Reference implementation of the per-node commit checks (the
+        native core runs them; see _check_callback)."""
         for attrdesc, val in zip(self._layout, tuple.__iter__(self)):
             if val is None and not attrdesc.attr.optional:
                 raise ModelViolation(f"{attrdesc.name!r} is not optional (but set to None).")
@@ -700,7 +659,9 @@ class NodeTuple(tuple):
     def __hash__(self):
         return hash((type(self), tuple.__hash__(self)))
 
-    index_ntype = NTypeIndex() #: Subgraph-wide index of nodes by their type (table)
+    index_ntype = NTypeIndex() #: Queries by node type (table)
+
+NodeTuple.__new__ = staticmethod(_ordb.ntuple_new)
 
 # Register NodeTuple as virtual subclass of Inserter. Combining tuple and ABC seems like it could cause problems.
 Inserter.register(NodeTuple)
@@ -718,25 +679,145 @@ class ArrayField:
     width: int
     vtype: type|NoneType
 
-def array_layout(name, layout, indices) -> tuple[ArrayField]:
+def _is_int_attr(attr) -> bool:
+    return isinstance(attr, (LocalRef, ExternalRef)) or attr.type is int
+
+def _vec_width(attr) -> int|NoneType:
+    """Slot width of a fixed-size integer value type (Vec2I, Rect4I). The
+    type must hash and compare like a tuple: the core hashes values stored
+    in slots as tuples."""
+    t = attr.type
+    width = getattr(t, 'array_width', None)
+    if isinstance(width, int) and isinstance(t, type) and issubclass(t, tuple) \
+            and t.__hash__ is tuple.__hash__ and t.__eq__ is tuple.__eq__ \
+            and not isinstance(attr, (SubgraphRef, LiveRef)):
+        return width
+    return None
+
+def array_layout(name, layout) -> tuple[ArrayField]:
     fields = []
     for ad in layout:
         attr = ad.attr
-        if isinstance(attr, (LocalRef, ExternalRef)) or attr.type is int:
+        if _is_int_attr(attr):
             fields.append(ArrayField(ad.name, ad.index, attr, 1, None))
-        elif isinstance(getattr(attr.type, 'array_width', None), int) \
-                and not isinstance(attr, (SubgraphRef, LiveRef)):
+        elif _vec_width(attr) is not None:
             fields.append(ArrayField(ad.name, ad.index, attr, attr.type.array_width, attr.type))
         else:
             raise TypeError(f"{name}.{ad.name}: attribute type"
                 f" {attr.type.__name__} is not array-representable.")
-    for idx in indices:
-        if getattr(idx, 'unique', False):
-            # Array rows are checked vectorized, which does not cover
-            # uniqueness yet.
-            raise TypeError(f"{name}: arrayable node types cannot have"
-                " unique indices.")
     return tuple(fields)
+
+def _read_mode(attr) -> int:
+    hook = type(attr).read_hook
+    if hook is Attr.read_hook:
+        return 0 # the stored value
+    if hook is LocalRef.read_hook:
+        return 1 # cursor at the stored nid
+    if hook is ExternalRef.read_hook:
+        return 3 # natively for attribute chains (see _ext_native), else as 2
+    return 2 # attr.read_hook(value, cursor)
+
+def _subgraph_refs(classes, name) -> 'tuple[SubgraphRef]|NoneType':
+    """The SubgraphRef attributes called name of the given node types, or
+    None if one of them has no such SubgraphRef."""
+    refs = tuple(getattr(c, '_raw_attrs', {}).get(name) for c in classes)
+    if refs and all(isinstance(a, SubgraphRef) for a in refs):
+        return refs
+    return None
+
+# Start node of a natively evaluated of_subgraph chain (else: position of a
+# LocalRef attribute of the node).
+_EXT_ROOT = -2
+_EXT_SELF = -1
+
+def _ext_native(cls, attr, by_name) -> 'tuple[int, tuple[SubgraphRef]]|NoneType':
+    """
+    The native form (start, SubgraphRefs) of an ExternalRef's of_subgraph, for
+    the attribute chains c.root.X, c.X and c.L.X (L a LocalRef of the node),
+    each ending in a SubgraphRef X. The core reads the SubgraphRef of the start
+    node that is one of the given attributes. None for other functions.
+    """
+    chain = _attr_chain(attr.of_subgraph)
+    if chain is None or len(chain) > 2:
+        return None
+    first_ad = by_name.get(chain[0])
+    first = first_ad.attr if first_ad else None
+    if len(chain) == 1:
+        if isinstance(first, SubgraphRef):
+            return _EXT_SELF, (first,)
+    elif first is None and chain[0] == 'root':
+        # Node.root, as no attribute of the node is called root.
+        refs = _subgraph_refs(cls.in_subgraphs, chain[1])
+        if refs:
+            return _EXT_ROOT, refs
+    elif isinstance(first, LocalRef) and isinstance(first.refs_ntype, type):
+        refs = _subgraph_refs((first.refs_ntype,), chain[1])
+        if refs:
+            return first_ad.index, refs
+    return None
+
+def _sort_native(index, by_name) -> 'int|NoneType':
+    """Position of the int attribute that the sortkey of index reads
+    (lambda node: node.order), or None if the sortkey must be called."""
+    chain = _attr_chain(index.sortkey)
+    if chain and len(chain) == 1 and chain[0] in by_name:
+        ad = by_name[chain[0]]
+        if _is_int_attr(ad.attr):
+            return ad.index
+    return None
+
+def _build_ntype(cls, ntuple, layout, attrdesc_by_attr, indices):
+    """Describes a node type to the native core."""
+    by_name = {ad.name: ad for ad in layout}
+    attrs = []
+    for ad in layout:
+        attr = ad.attr
+        width = _vec_width(attr)
+        if _is_int_attr(attr):
+            kind, width = _ordb.K_INT, 1
+        elif width is not None:
+            kind = _ordb.K_IVEC
+        else:
+            kind, width = _ordb.K_OBJ, 1
+        ref_kind = 1 if isinstance(attr, LocalRef) else 2 if isinstance(attr, ExternalRef) else 0
+        ext, ext_fn = None, None
+        if isinstance(attr, ExternalRef):
+            ext = _ext_native(cls, attr, by_name)
+            if ext is None:
+                ext_fn = attr.of_subgraph
+        factory = type(attr).factory
+        if factory is Attr.factory and attr.custom_factory is None and attr._default_typecheck:
+            fmode = 0 # in C: default, then isinstance check
+        elif factory in (LocalRef.factory, ExternalRef.factory) and attr.custom_factory is None:
+            fmode = 1 # in C: Node -> nid, int
+        else:
+            fmode = 2 # attr.factory(value)
+        attrs.append((ad.name, kind, width, attr.type if kind == _ordb.K_IVEC else None,
+            attr.optional, attr, _read_mode(attr), ref_kind, ext,
+            fmode, attr.type, attr.default, ext_fn))
+
+    uses = []
+    checks = []
+    position = {attr: ad.index for attr, ad in attrdesc_by_attr.items()}
+    for ns in indices:
+        if isinstance(ns, LocalRefIndex):
+            checks.append((1, position[ns.attr]))
+        elif isinstance(ns, ExternalRefIndex):
+            checks.append((2, position[ns.attr]))
+        elif isinstance(ns, Index) and not isinstance(ns, NTypeIndex):
+            combined = isinstance(ns, CombinedIndex)
+            key_attrs = ns.attrs if combined else [ns.attr]
+            if not all(a in position for a in key_attrs):
+                continue
+            sort, sortfn = -1, None
+            if ns.sortkey is not None:
+                sort = _sort_native(ns, by_name)
+                if sort is None:
+                    sort, sortfn = -1, ns.sortkey
+            if ns.unique:
+                checks.append((0, len(uses)))
+            uses.append((ns, tuple(position[a] for a in key_attrs), sort, ns.unique, combined, sortfn))
+    return _ordb.NType(ntuple, cls, attrs, uses, checks)
 
 #: Maps declared wire_ids to their Node classes (see ordec.core.wire). Node
 #: classes opt into wire serialization by declaring wire_id = WIRE_DOMAIN | n
@@ -793,7 +874,7 @@ class NodeMeta(type):
         if build_node:
             # Check that all non-Node bases define __slots__ to prevent __dict__
             for base in cls.__mro__:
-                if base in (object, tuple, cls):
+                if base in (object, _ordb.NodeBase, cls):
                     continue
                 if isinstance(base, NodeMeta):
                     continue
@@ -802,20 +883,16 @@ class NodeMeta(type):
                         f"{name}: mixin {base.__name__} must define __slots__ = ()"
                     )
 
-            # Build descriptors from raw attributes:
             attrdesc_by_attr = {}
             attrdesc_by_name = {}
             nodetuple_dict = {'_raw_attrs': cls._raw_attrs, '__slots__':()}
             layout = []
             attrs.setdefault('__annotations__', {})
-            #cls.__annotations__ = {}
             nt_indices = []
 
             for n, (k, v) in enumerate(cls._raw_attrs.items()):
                 nt_ad = NodeTupleAttrDescriptor(ntype=cls, index=n, name=k, attr=v)
                 nodetuple_dict[k] = nt_ad
-                c_ad = NodeAttrDescriptor(ntype=cls, index=n, name=k, attr=v)
-                setattr(cls, k, c_ad)
                 cls.__annotations__[k] = v.type # Not so nice; for Sphinx.
                 layout.append(nt_ad)
                 attrdesc_by_attr[v] = nt_ad
@@ -826,15 +903,22 @@ class NodeMeta(type):
 
             nodetuple_dict['indices'] = nt_indices
             # arrayable, like wire_id, applies to the declaring class only.
-            nodetuple_dict['_array_layout'] = array_layout(name, layout, nt_indices) \
+            nodetuple_dict['_array_layout'] = array_layout(name, layout) \
                 if attrs.get('arrayable', False) else None
             nodetuple_dict['_attrdesc_by_name'] = attrdesc_by_name
             nodetuple_dict['_attrdesc_by_attr'] = attrdesc_by_attr
             nodetuple_dict['_layout'] = layout
             nodetuple_dict['_cursor_type'] = cls
             cls.Tuple = type(name+'.Tuple', (NodeTuple,), nodetuple_dict)
+
+            ntype = _build_ntype(cls, cls.Tuple, layout, attrdesc_by_attr, nt_indices)
+            cls.Tuple._ntype = ntype
+            for ad in layout:
+                setattr(cls, ad.name, _ordb.AttrDescriptor(ad.attr, ntype, ad.index))
+
             cls.Mutable = type(name+'.Mutable', (cls, MutableNode), {'__slots__':()}, build_node=False)
             cls.Frozen = type(name+'.Frozen', (cls, FrozenNode), {'__slots__':()}, build_node=False)
+            ntype.set_cursors(cls.Mutable, cls.Frozen)
 
             # Not sure whether this is a good idea, but it is nice for the
             # inheritance diagrams in the docs.
@@ -863,7 +947,7 @@ class NodeMeta(type):
         return super().__init__(name, bases, attrs)
 
 @public
-class Node(tuple, metaclass=NodeMeta, build_node=False):
+class Node(_ordb.NodeBase, metaclass=NodeMeta, build_node=False):
     """
     Subclass this class to define own node types (tables) for ORDB.
 
@@ -873,60 +957,41 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
     the the X.Tuple object is attached to a subgraph, for example using the
     modulo ('%') operator.
 
-    Node objects provides a cursor-like access layer to the :class:`NodeTuple`
-    objects that are stored within :class:`Subgraph` objects. They are 3-tuples
-    (subgraph, nid, npath_nid).
+    Node objects are cursors: they select a node (subgraph, nid) and read
+    its attributes from the subgraph on access. The cursor of an empty path
+    (:class:`PathNode`) selects an NPath instead of a node.
 
-    The hash() and == behviour of Node is implemented by tuple.__hash__ and
-    tuple.__eq__. It relies on the hash() and == behavior of MutableSubgraph
-    (for MutableNodes) or FrozenSubgraph (for FrozenNodes).
+    Two cursors are equal if they select the same node of equal subgraphs:
+    mutable subgraphs are equal by identity, frozen subgraphs by content.
     """
 
     in_subgraphs = []
 
-    #: Declares that rows of this node type may be inserted, read and
-    #: stored as arrays (SubgraphUpdater.insert_array, Subgraph.arrays).
-    #: All attributes must be array-representable: int, LocalRef,
-    #: ExternalRef or a value type with array_width (Vec2I, Rect4I).
-    #: Rows with None values or ints outside the int64 range remain
-    #: possible, but are not representable in arrays. Like wire_id, it
-    #: applies to the declaring class only.
+    #: Declares that rows of this node type may be inserted and read as
+    #: arrays (SubgraphUpdater.insert_array, Subgraph.arrays) and are
+    #: encoded as arrays on the wire. All attributes must be
+    #: array-representable: int, LocalRef, ExternalRef or a value type with
+    #: array_width (Vec2I, Rect4I). Rows with None values or ints outside
+    #: the int64 range remain possible, but are not representable in
+    #: arrays. Like wire_id, it applies to the declaring class only.
     arrayable = False
-
-    @classmethod
-    def raw_cursor(cls, subgraph: 'Subgraph', nid: int|NoneType, npath_nid: int|NoneType):
-        return super().__new__(cls, (subgraph, nid, npath_nid))
 
     def __new__(self, **kwargs):
         return self.Tuple(**kwargs)
 
     @property
-    def subgraph(self) -> 'Subgraph':
-        """The subgraph of the selected node."""
-        return super().__getitem__(0)
-
-    @property
-    def nid(self) -> int|NoneType:
-        """The node ID (nid) of the selected node."""
-        return super().__getitem__(1)
-
-    @property
     def tuple(self) -> NodeTuple:
-        """The node's raw NodeTuple stored in subgraph."""
-        return self.subgraph.nodes[self.nid]
-
-    @property
-    def npath_nid(self) -> int|NoneType:
-        """The nid of the NPath node matching the selected node."""    
-        return super().__getitem__(2)
+        """The NodeTuple (values) of the selected node."""
+        return self.subgraph.row(self.nid)
 
     @property
     def npath(self) -> 'NPath.Tuple':
         """The raw NPath.Tuple matching the selected node."""
-        if self.npath_nid is None:
+        npath_nid = self.npath_nid
+        if npath_nid is None:
             return None
         else:
-            return self.subgraph.nodes[self.npath_nid]
+            return self.subgraph.row(npath_nid)
 
     def full_path_list(self) -> list[str|int]:
         """Hierarchial path of the selected node in NPath hierarchy as list."""
@@ -996,7 +1061,7 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
             return self.subgraph.root_cursor
         else:
             npath_next_nid = self.npath.parent
-            npath_next = self.subgraph.nodes[npath_next_nid]
+            npath_next = self.subgraph.row(npath_next_nid)
             return self.subgraph.cursor_at(npath_next.ref, npath_next_nid)
 
     def update(self, **kwargs):
@@ -1016,7 +1081,7 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
 
     def remove(self):
         """Removes selected node from subgraph, including NPath if applicable."""
-        with self.subgraph.updater() as sgu:
+        with self.subgraph._statement_updater() as sgu:
             if self.npath_nid is not None:
                 sgu.remove_nid(self.npath_nid)
             self.remove_node(sgu)
@@ -1038,10 +1103,11 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
                 raise OrdbException("Cannot replace non-leaf node that has children.")
                 # TODO: This error should really be raised by NPath.idx_parent, and only in case
                 # a non-leaf node is replaced by a leaf node.
-                # Apart from that, there are other data inconsistencies that could currently
-                # be introduced by replace() but that are not caught anywhere?!
 
-        with self.subgraph.updater() as u:
+        # The new node may be of another type. LocalRefs pointing at this nid
+        # are not checked against the new type (a known gap, see "Design
+        # questions" in docs/dev/ordb_core.rst).
+        with self.subgraph._statement_updater() as u:
             self.remove_node(u)
             new_nid = inserter.insert_into(u, self.nid)
 
@@ -1051,14 +1117,13 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
         the nid of the selected node.
         """
         if isinstance(node, NodeTuple):
-            # Simple case: just update the node before inserting:
-            # This could also be done by the complex case below, so this is a performance optimization:
-            nid_new = self.subgraph.add(node.set(ref=self.nid))
+            # Simple case, in one call of the native core:
+            return self.subgraph._add1(node, self.nid)
         else:
             # Complex case:
             def inserter_func(sgu, primary_nid):
                 main_nid = node.insert_into(sgu, primary_nid)
-                sgu.update(sgu.nodes[main_nid].set(ref=self.nid), main_nid)
+                sgu.update(sgu.target_subgraph.row(main_nid).set(ref=self.nid), main_nid)
                 return main_nid
             nid_new = self.subgraph.add(FuncInserter(inserter_func))
         # Optimization: lookup_npath is disabled, because this newly added node has no NPath.
@@ -1101,7 +1166,7 @@ class Node(tuple, metaclass=NodeMeta, build_node=False):
         return NodeContext(self)
 
     def __copy__(self) -> 'Self':
-        return self # tuple is immutable (at shallow level), thus no copy needed.
+        return self # Cursors are immutable.
 
 
 @public
@@ -1124,7 +1189,7 @@ class NonLeafNode(Node, build_node=False):
 
     def __setattr__(self, k, v):
         try:
-            # This triggers __set__ of descriptors such as NodeAttrDescriptor:
+            # This triggers __set__ of descriptors such as the attribute descriptors:
             # See https://stackoverflow.com/a/61550073 on why object is used instead of super().
             object.__setattr__(self, k, v)
         except AttributeError:
@@ -1141,7 +1206,7 @@ class NonLeafNode(Node, build_node=False):
     # The item handlers allow accessing children in the NPath hierarchy:
 
     def __setitem__(self, k, v):
-        with self.subgraph.updater() as u:
+        with self.subgraph._statement_updater() as u:
             if isinstance(v, Node):
                 # v is a cursor to a node already in the subgraph: name that
                 # existing node rather than inserting a copy. This is what makes
@@ -1163,12 +1228,7 @@ class NonLeafNode(Node, build_node=False):
     def __getitem__(self, k):
         """Returns cursor to a subpath."""
         
-        try:
-            npath_next_nid = self.subgraph.one(NPath.idx_parent_name.query((self.npath_nid, k)), wrap_cursor=False)
-        except QueryException:
-            raise QueryException(f"Attribute or path {k!r} not found.") from None
-        npath_next_ref = self.subgraph.nodes[npath_next_nid].ref
-        return self.subgraph.cursor_at(npath_next_ref, npath_next_nid)
+        return self.subgraph._child(self.npath_nid, k)
 
     def __delitem__(self, k):
         self.__getitem__(k).remove()
@@ -1184,7 +1244,7 @@ class NonLeafNode(Node, build_node=False):
             "mkpath() is deprecated. Use 'x.name = PathNode()' or 'x[i] = PathNode()' instead.",
             DeprecationWarning,
             stacklevel=2)
-        with self.subgraph.updater() as u:
+        with self.subgraph._statement_updater() as u:
             self._mkpath_addnode(k, ref, u)
 
     def _mkpath_addnode(self, k, ref, u: 'SubgraphUpdater'):
@@ -1196,8 +1256,9 @@ class NonLeafNode(Node, build_node=False):
 
     def children(self) -> Iterable[Node]:
         """Iterate over direct children in the NPath hierarchy."""
-        child_npath_nids = self.subgraph.all(NPath.idx_parent.query(self.npath_nid), wrap_cursor=False)
-        return (self.subgraph.cursor_at(self.subgraph.nodes[npath_nid].ref, npath_nid, lookup_npath=False)
+        sg = self.subgraph
+        child_npath_nids = sg.all(NPath.idx_parent.query(self.npath_nid), wrap_cursor=False)
+        return (sg.cursor_at(sg.row(npath_nid).ref, npath_nid, lookup_npath=False)
             for npath_nid in child_npath_nids)
 
 @public
@@ -1248,6 +1309,8 @@ class SubgraphRoot(NonLeafNode):
         This is a simpler version of Node.__mod__ that does not set the 'ref'
         attribute of the inserted node.
         """
+        if isinstance(node, NodeTuple):
+            return self.subgraph._add1(node)
         nid_new = self.subgraph.add(node)
         # Optimization: lookup_npath is disabled, because this newly added node has no NPath.
         return self.subgraph.cursor_at(nid_new, lookup_npath=False)
@@ -1257,7 +1320,7 @@ class SubgraphRoot(NonLeafNode):
 
     def updater(self) -> 'SubgraphUpdater':
         """Convenience wrapper for :meth:`Subgraph.updater`."""
-        return SubgraphUpdater(self.subgraph)
+        return self.subgraph.updater()
 
     def cursor_at(self, *args, **kwargs) -> Node:
         """Convenience wrapper for :meth:`Subgraph.cursor_at`."""
@@ -1344,142 +1407,82 @@ class SubgraphQueryMixin:
         Args:
             query: Query to run.
             wrap_cursor: If True, Nodes are returned, else nid ints are returned.
+                The list of nids is a snapshot: the subgraph may be changed
+                while it is iterated.
         """
+        sg = self.target_subgraph
         if isinstance(query, type):
             assert issubclass(query, Node)
-            query = NodeTuple.index_ntype.query(query.Tuple)
-        try:
-            nids = self.index[query.index_key]
-        except KeyError:
-            return ()
+            nids = sg.nids(query.Tuple)
         else:
-            if wrap_cursor:
-                return (self.cursor_at(nid) for nid in nids)
+            key = query.index_key
+            if isinstance(key, type): # NTypeIndex
+                nids = sg.nids(key)
             else:
-                return nids
+                nids = sg.query(key.index, key.value)
+        if wrap_cursor:
+            return sg._cursors(nids)
+        else:
+            return nids
 
     def one(self, query: IndexQuery, wrap_cursor: bool = True) -> Node|int:
         """
         Wrapper for :meth:`all` returning exactly one node. If zero or more
         than one node are found, a :class:`QueryException` is raised.
         """
-        def single(it):
-            try:
-                r = next(it)
-            except StopIteration:
-                raise QueryException("Query returned less than one element.")
-            try:
-                r = next(it)
-            except StopIteration:
-                return r
-            else:
-                raise QueryException("Query returned more than one element.")
+        nids = self.all(query, wrap_cursor=False)
+        if len(nids) < 1:
+            raise QueryException("Query returned less than one element.")
+        if len(nids) > 1:
+            raise QueryException("Query returned more than one element.")
+        if wrap_cursor:
+            return self.target_subgraph.cursor_at(nids[0])
+        return nids[0]
 
-        return single(iter(self.all(query, wrap_cursor)))
+class NodesView(Mapping):
+    """Read-only mapping of the nids of a subgraph to NodeTuples, materialized
+    on access (see Subgraph.nodes)."""
+    __slots__ = ('_sg',)
 
-    def cursor_at(self, nid: int, npath_nid: NoneType|int = None, lookup_npath: bool = True):
-        if nid is None:
-            # NPath without node
-            assert npath_nid is not None
-            cursor_cls = PathNode
-        else:
-            cursor_cls = self.nodes[nid]._cursor_type
-            if lookup_npath and npath_nid is None:
-                try:
-                    npath_nid = self.one(NPath.idx_path_of.query(nid), wrap_cursor=False)
-                except QueryException:
-                    pass
-        if self.mutable:
-            return cursor_cls.Mutable.raw_cursor(self, nid, npath_nid)
-        else:
-            return cursor_cls.Frozen.raw_cursor(self, nid, npath_nid)
+    def __init__(self, sg):
+        self._sg = sg
 
-class SubgraphUpdater(SubgraphQueryMixin):
+    def __getitem__(self, nid):
+        return self._sg.row(nid)
+
+    def __contains__(self, nid):
+        return self._sg.has(nid)
+
+    def __iter__(self):
+        return iter(self._sg.nids())
+
+    def __len__(self):
+        return self._sg.count()
+
+@public
+class SubgraphUpdater(SubgraphQueryMixin, _ordb.UpdaterBase):
     """
     A SubgraphUpdater collects changes to a subgraph as a kind of
     transaction. The SubgraphUpdater is used in a 'with' context. When this
     context is exited, the current state of SubgraphUpdater is checked for
-    consistency. When no problem is found, the MutableSubgraph from which the
-    SubgraphUpdater was created is updated.
+    consistency. When no problem is found, the changes are committed;
+    otherwise (or when the context exits with an exception, or when commit
+    is set to False) they are undone.
 
-    Each SubgraphUpdater drives exactly one StorageTxn (same lifetime,
-    obtained from the subgraph's storage backend): the updater owns the
-    backend-independent semantics (nid allocation, index maintenance order,
-    deferred constraint checks, commit/abort), while the txn applies the
-    resulting node/bucket operations to the backend's representation.
+    Changes are applied to the subgraph immediately: reads through the
+    subgraph see them while the updater is open. Freezing or copying the
+    subgraph is not possible while an updater is open. Updaters of the same
+    subgraph can be nested; they must be closed in reverse order of opening.
+
+    Statements such as ``%`` or attribute assignment run in the open updater
+    of the calling thread: their changes are checked at its exit.
     """
-    __slots__ = (
-        'target_subgraph',
-        'txn',
-        'commit',
-        'check_nids',
-        'removed_nids',
-        'check_arrays',
-        'valid',
-        'nid_gen_counter',
-        'nid_max_encountered',
-    )
-
-    def __init__(self, target_subgraph: 'Subgraph'):
-        self.target_subgraph = target_subgraph
-        self.valid = False
-
-    def __enter__(self):
-        #if not self.target_subgraph.mutable:
-        #    raise OrdbException("Frozen Subgraph is immutable.")
-        self.nid_gen_counter = self.target_subgraph.nid_alloc.start
-        self.nid_max_encountered = self.target_subgraph.nid_alloc.start-1
-
-        self.txn = self.target_subgraph.backend.begin(self.target_subgraph)
-        self.commit = True
-        self.check_nids = {} # used as ordered set
-        self.removed_nids = {} # used as ordered set
-        self.check_arrays = [] # (ntype, nids, cols) stored natively by the backend
-        self.valid = True
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        if exc_type:
-            self.commit = False
-        if self.commit:
-            try:
-                nodes = self.txn.nodes
-                if 0 not in nodes:
-                    raise ModelViolation("Missing root node (nid 0).")
-
-                subgraph_root_cls = nodes[0]._cursor_type
-                for nid in self.check_nids:
-                    if nid != 0:
-                        permitted_in_subgraphs = nodes[nid]._cursor_type.in_subgraphs
-                        if not any([issubclass(subgraph_root_cls, cls) for cls in permitted_in_subgraphs]):
-                            raise ModelViolation(f"{nodes[nid]._cursor_type.__name__} is not permitted in subgraph {subgraph_root_cls.__name__}.")
-                    nodes[nid].check_constraints(self, nid)
-                self.check_array_rows()
-
-                index = self.txn.index
-                for nid in self.removed_nids:
-                    if nid in index:
-                        raise DanglingLocalRef(nid)
-
-                nodes, index = self.txn.commit()
-            except:
-                self.txn.abort()
-                raise
-            self.target_subgraph.mutate(nodes, index, range(self.nid_max_encountered+1, self.target_subgraph.nid_alloc.stop))
-        else:
-            self.txn.abort()
-
-        self.valid = False
+    __slots__ = ()
 
     @property
     def nodes(self):
-        """Uncommitted node state of the transaction."""
-        return self.txn.nodes
-
-    @property
-    def index(self):
-        """Uncommitted index state of the transaction."""
-        return self.txn.index
+        """Node state of the subgraph (including uncommitted changes)."""
+        return NodesView(self.target_subgraph)
 
     @property
     def mutable(self):
@@ -1487,47 +1490,10 @@ class SubgraphUpdater(SubgraphQueryMixin):
 
     @property
     def root_cursor(self) -> Node:
-        return self.cursor_at(0)
+        return self.target_subgraph.root_cursor
 
-    def nid_generate(self):
-        if self.nid_gen_counter not in self.target_subgraph.nid_alloc:
-            raise OrdbException("nid allocation exhausted.")
-        ret = self.nid_gen_counter
-        self.nid_gen_counter += 1
-        return ret
-
-    def add_single(self, node: NodeTuple, nid: int, check_nid: bool=False) -> int:
-        """
-        Args:
-            relaxed: Set to True to relax nid insertion order.
-            check_nid: Check that requested nid is within nid_alloc of the
-                targeted subgraph. This check must be disabled when replacing
-                a node that already existed and was just deleted.
-        Returns:
-            nid of inserted node
-        """
-        if not self.valid:
-            raise TypeError("Invalid SubgraphUpdater.")
-        
-        if not isinstance(node, NodeTuple):
-            raise TypeError("node must be instance of NodeTuple.")
-
-        if check_nid and nid not in self.target_subgraph.nid_alloc:
-            raise OrdbException(f"selected nid {nid} is outside allocated {self.target_subgraph.nid_alloc}.")
-
-        if nid in self.txn.nodes:
-            raise OrdbException("Duplicate nid.")
-
-        self.nid_max_encountered = max(self.nid_max_encountered, nid)
-        self.nid_gen_counter = max(self.nid_gen_counter, self.nid_max_encountered+1)
-
-        self.txn.node_set(nid, node) # Add node first so indexing can resolve node-local context.
-        node.index_add(self, nid) # Then update metadata.
-        self.check_nids[nid] = True # Mark node for deferred constraint check.
-        # Remove from removed_nids, in case it was removed in same SubgraphUpdater and is now re-added:
-        self.removed_nids.pop(nid, None)
-
-        return nid
+    def cursor_at(self, *args, **kwargs):
+        return self.target_subgraph.cursor_at(*args, **kwargs)
 
     def insert_array(self, ntype: type, **values) -> range:
         """
@@ -1540,94 +1506,49 @@ class SubgraphUpdater(SubgraphQueryMixin):
         Returns:
             The nids of the inserted nodes.
         """
+        import numpy as np
         from .arrays import normalize
         n, cols = normalize(ntype, values)
         start = self.nid_gen_counter
         if n > 0 and start + n - 1 not in self.target_subgraph.nid_alloc:
             raise OrdbException("nid allocation exhausted.")
-        nids = range(start, start + n)
-        self.insert_array_at(ntype, np.arange(start, start + n, dtype=np.int64), cols,
-            fresh=True)
-        return nids
+        self.insert_array_at(ntype, np.arange(start, start + n, dtype=np.int64), cols)
+        return range(start, start + n)
 
-    def insert_array_at(self, ntype: type, nids, cols, fresh: bool=False):
+    def insert_array_at(self, ntype: type, nids, cols):
         """
-        Like insert_array, with given nids (ascending int64 array) and
-        normalized columns. Used by insert_array and wire_decode. fresh
-        states that the nids are newly generated (see
-        StorageTxn.insert_array).
+        Like insert_array, with given nids (int64 array) and normalized
+        columns (see ordec.core.ordb.arrays.normalize). Used by insert_array
+        and wire_decode.
         """
-        if not self.valid:
-            raise TypeError("Invalid SubgraphUpdater.")
+        import numpy as np
+        from .arrays import array_fields
+        fields = array_fields(ntype)
         if len(nids) == 0:
             return
-        if self.txn.insert_array(ntype, nids, cols, fresh):
-            nid_max = int(nids[-1])
-            self.nid_max_encountered = max(self.nid_max_encountered, nid_max)
-            self.nid_gen_counter = max(self.nid_gen_counter, self.nid_max_encountered+1)
-            if self.removed_nids:
-                for nid in nids.tolist():
-                    self.removed_nids.pop(nid, None)
-            self.check_arrays.append((ntype, nids, cols))
-        else:
-            from .arrays import iter_tuples
-            for nid, node in zip(nids.tolist(), iter_tuples(ntype, cols)):
-                self.add_single(node, nid)
-
-    def check_array_rows(self):
-        from .arrays import check_rows
-        for ntype, nids, cols in self.check_arrays:
-            # Rows removed or updated later in this transaction are not
-            # checked here (updated rows are checked per row via check_nids).
-            skip = self.removed_nids.keys() | self.check_nids.keys()
-            if skip:
-                keep = ~np.isin(nids, np.fromiter(skip, dtype=np.int64))
-                nids = nids[keep]
-                cols = {k: v[keep] for k, v in cols.items()}
-            check_rows(self, ntype, nids, cols)
-
-    def remove_nid(self, nid):
-        if not self.valid:
-            raise TypeError("Invalid SubgraphUpdater.")
-
-        if nid == 0:
-            raise OrdbException("Cannot delete SubgraphRoot (nid=0).")
-        node = self.txn.nodes[nid]
-
-        node.index_remove(self, nid) # Update metadata first.
-        self.txn.node_remove(nid) # Then remove node.
-        self.check_nids.pop(nid, None) # Skip constraint check for this node, if it was previously selected.
-        self.removed_nids[nid] = True # Mark nid as removed.
-
-    def update(self, node: NodeTuple, nid: int):
-        if not self.valid:
-            raise TypeError("Invalid SubgraphUpdater.")
-
-        nodes = self.txn.nodes
-        if nid not in nodes:
-            raise KeyError(f"nid {nid} not found in {self}")
-        nodes[nid].index_remove(self, nid)
-        self.txn.node_set(nid, node)
-        node.index_add(self, nid)
-
-        self.check_nids[nid] = True # Mark node for deferred constraint check.
+        nids = np.ascontiguousarray(nids, dtype=np.int64)
+        self._insert_rows(ntype.Tuple, nids,
+            [np.ascontiguousarray(cols[f.name], dtype=np.int64) for f in fields])
 
 @public
-class Subgraph(SubgraphQueryMixin, ABC):
-    # Using __slots__ to prevent accidental creation of 'stray' attributes.
-    __slots__ = (
-        '_nodes',
-        '_index',
-        '_nid_alloc',
-        '_root_cursor',
-        '_backend',
-    )
+class Subgraph(SubgraphQueryMixin, _ordb.SubgraphBase):
+    """
+    Subgraph state lives in the native core. Reading: :meth:`row`,
+    :meth:`nids`, :meth:`query`, :meth:`cursor_at`; writing through
+    :meth:`updater`.
+    """
+    __slots__ = ()
 
     # Non-mutating methods
     # --------------------
 
     def __repr__(self):
-        return f"<{type(self).__name__} {id(self)} root={self.nodes[0]!r}, {len(self.nodes)} nodes>"
+        root = self.row(0) if self.has(0) else None
+        return f"<{type(self).__name__} {id(self)} root={root!r}, {self.count()} nodes>"
+
+    @property
+    def target_subgraph(self):
+        return self
 
     def iter_tables(self):
         it = iter(self.node_dict('pretty').items())
@@ -1677,14 +1598,15 @@ class Subgraph(SubgraphQueryMixin, ABC):
             ret.append(table_str)
         return "\n".join(ret).replace('\n', '\n  ')
 
-    def arrays(self, ntype: type) -> 'dict[str, numpy.ndarray]':
+    def arrays(self, ntype: type, partial: bool=False) -> 'dict[str, numpy.ndarray]':
         """
         Returns all nodes of an arrayable node type (Node.arrayable) as
         read-only int64 arrays: 'nid' plus one array per attribute, rows
         ordered by nid. Raises ValueError if a node has values that are None
-        or outside the int64 range.
+        or outside the int64 range; with partial, such nodes are left out.
         """
-        return self.backend.arrays(self, ntype)
+        from .arrays import arrays
+        return arrays(self, ntype, partial)
 
     def node_dict(self, mode='canonical') -> dict[int,NodeTuple]:
         """
@@ -1695,21 +1617,18 @@ class Subgraph(SubgraphQueryMixin, ABC):
                 the return dict is ordered by node type and nid.
         """
         if mode == 'canonical':
-            # sort by nid:
-            sortkey = lambda item: item[0]
+            return {nid: self.row(nid) for nid in self.nids()}
         elif mode == 'pretty':
-            def sortkey_pretty(item):
-                nid, node = item
+            def sortkey(ntuple):
                 return (
-                    not isinstance(node, SubgraphRoot), # 1. Sort SubgraphRoot to front.
-                    type(node).__name__, # 2. Sort alphabetically by ntype name.
-                    nid, # 3. Sort by nid
+                    not issubclass(ntuple._cursor_type, SubgraphRoot), # 1. Sort SubgraphRoot to front.
+                    ntuple.__name__, # 2. Sort alphabetically by ntype name.
                 )
-            sortkey = sortkey_pretty
+            return {nid: self.row(nid)
+                for ntuple in sorted(self.ntuples(), key=sortkey)
+                for nid in self.nids(ntuple)} # 3. Sort by nid
         else:
             raise ValueError("mode must be 'canonical' or 'pretty'")
-        
-        return {k: v for k, v in sorted(self.nodes.items(), key=sortkey)}
 
     def matches(self, other: 'Subgraph') -> bool:
         """
@@ -1751,41 +1670,23 @@ class Subgraph(SubgraphQueryMixin, ABC):
     def internally_equal(self, other) -> bool:
         if not isinstance(other, Subgraph):
             raise TypeError("Expected Subgraph.")
-        return (self.nodes == other.nodes) and (self.nid_alloc == other.nid_alloc)
+        return self._content_eq(other)
 
     def dump(self) -> str:
         d = self.node_dict('canonical')
         return 'MutableSubgraph.load({\n' + ''.join([f'\t{k!r}: {v!r},\n' for k, v in d.items()]) + '})'
 
-    # The private _nodes, _index, _nid_alloc and _root_cursor are hidden behind
-    # properties to prevent accidental mutation.
-
     @property
-    def nodes(self):
-        """A read-only mapping of nids to :class:`NodeTuple` instances.
-        The concrete mapping type is owned by the storage backend."""
-        return self._nodes
-
-    @property
-    def index(self):
-        """A read-only mapping of index keys to index buckets. index[key]
-        returns an immutable snapshot of the bucket at access time."""
-        return self._index
+    def nodes(self) -> Mapping:
+        """A read-only mapping of nids to :class:`NodeTuple` instances,
+        materialized on access (slow for bulk use; see :meth:`row`,
+        :meth:`nids` and :meth:`arrays`)."""
+        return NodesView(self)
 
     @property
     def backend(self) -> StorageBackend:
-        """The storage backend this subgraph was created with."""
-        return self._backend
-
-    @property
-    def nid_alloc(self) -> range:
-        """An allocation range from which new nids must be generated."""
-        return self._nid_alloc
-
-    @property
-    def root_cursor(self) -> Node:
-        """Root cursor pointing to subgraph root."""
-        return self._root_cursor
+        """The storage engine this subgraph was created with."""
+        return get_backend(self.engine)
 
     # Abstract methods
     # ----------------
@@ -1825,29 +1726,31 @@ class Subgraph(SubgraphQueryMixin, ABC):
         """Returns a copy of the subgraph."""
         pass
 
-    @abstractmethod
-    def mutate(self, nodes, index, nid_alloc):
-        """Low-level function used by :class:`SubgraphUpdater` to update
-        state of :class:`MutableSubgraph`."""
-        pass
-
     # Mutating methods, disabled for FrozenSubgraph via SubgraphUpdater
     # -----------------------------------------------------------------
 
     def updater(self) -> SubgraphUpdater:
         return SubgraphUpdater(self)
 
+    # The following statements, like % and attribute assignment, run in the
+    # open updater of the calling thread if there is one, else in a
+    # transaction of their own (see _statement_updater).
+
     def remove_nid(self, nid: int):
-        with self.updater() as u:
+        with self._statement_updater() as u:
             u.remove_nid(nid)
 
     def update(self, node: NodeTuple, nid: int) -> int:
-        with self.updater() as u:
+        """Replaces the values of node nid by node, which must be of the
+        same node type (a type change takes Node.replace)."""
+        with self._statement_updater() as u:
             u.update(node, nid)
 
     def add(self, node: Inserter) -> int:
         """Inserts node and returns nid."""
-        with self.updater() as u:
+        if isinstance(node, NodeTuple):
+            return self._add1(node).nid
+        with self._statement_updater() as u:
             return node.insert_into(u, u.nid_generate())
 
 @public
@@ -1855,19 +1758,13 @@ class FrozenSubgraph(Subgraph):
     """
     FrozenSubgraph has custom __hash__ and __eq__ methods, which treat subgraphs
     with the equal nodes and nid_alloc as equal. Thus, its hash() and ==
-    behavior matches that of immutable types like tuple and str. 'index' is
-    not checked for equivalence, as it should be equal by construction.
+    behavior matches that of immutable types like tuple and str.
     """
 
-    __slots__=('_cached_hash', '_cached_wire_hash')
-    def __init__(self, nodes, index, nid_alloc, backend):
-        self._nodes = nodes
-        self._index = index
-        self._nid_alloc = nid_alloc
-        self._backend = backend
-        self._cached_hash = None
-        self._cached_wire_hash = None # (ept, hash) memoized by wire_hash()
-        self._root_cursor = self.cursor_at(0)
+    __slots__ = ()
+
+    def __new__(cls, *args, **kwargs):
+        raise TypeError("FrozenSubgraphs are created by MutableSubgraph.freeze().")
 
     def __copy__(self) -> 'FrozenSubgraph':
         return self # Since FrozenSubgraph is immutable, copies are never needed?!
@@ -1928,46 +1825,33 @@ class FrozenSubgraph(Subgraph):
         """
         Create new mutable subgraph existing immutable subgraph.
         """
-        ret = MutableSubgraph(backend=self._backend)
-        ret.mutate(*self._backend.thaw_state(self))
-        return ret
+        return self._snapshot(MutableSubgraph, False)
 
     def mutable_copy(self):
         return self.thaw()
 
     def compact(self) -> 'FrozenSubgraph':
         """
-        Return a content-equal FrozenSubgraph with flattened internal
-        storage. For flat storage backends this returns self; for delta
-        chains it collapses the parent chain into a single generation.
+        Return a content-equal FrozenSubgraph. Storage needs no compaction
+        (tables keyed by nid, exact indices); kept for compatibility.
         """
-        nodes, index, nid_alloc = self._backend.compact_state(self)
-        if nodes is self._nodes and index is self._index:
-            return self
-        return FrozenSubgraph(nodes, index, nid_alloc, self._backend)
+        return self._snapshot(FrozenSubgraph, True)
 
     def __eq__(self, other):
         if not isinstance(other, FrozenSubgraph):
             return False
         if self is other:
             return True
-        return self._backend.content_equal(self, other)
+        return self._content_eq(other)
 
     def __hash__(self):
-        h = self._cached_hash
-        if h is None:
-            h = self._backend.content_hash(self)
-            self._cached_hash = h
-        return h
+        return self._content_hash()
 
     def freeze(self) -> 'FrozenSubgraph':
         raise TypeError("Subgraph is already frozen.")
 
-    def mutate(self, nodes, index, nid_alloc):
-        raise TypeError("Unsupported operation on FrozenSubgraph.")
-
     def updater(self) -> SubgraphUpdater:
-        # This is not really needed, as mutate will prevent mutation anyway,
+        # This is not really needed, as the updater would refuse anyway,
         # but it will raise the error earlier.
         raise TypeError("Unsupported operation on FrozenSubgraph.")
 
@@ -1991,6 +1875,11 @@ class MutableSubgraph(Subgraph):
     """
     __slots__=()
 
+    def __new__(cls, backend: StorageBackend = None):
+        if backend is None:
+            backend = default_backend()
+        return super().__new__(cls, engine=backend.code)
+
     @property
     def mutable(self):
         return True
@@ -2009,28 +1898,8 @@ class MutableSubgraph(Subgraph):
                 u.add_single(node=node, nid=nid)
         return s.root_cursor
 
-    def __init__(self, backend: StorageBackend = None):
-        if backend is None:
-            backend = default_backend()
-        self._backend = backend
-        # nodes is the one true location at which data within the Subgraph is
-        # recorded; index is the combined index for fast lookups; invariant of
-        # nid_alloc: all nids in the range must be available (not in nodes).
-        self._nodes, self._index, self._nid_alloc = backend.empty_state()
-        self._root_cursor = None # Will be set in first call to mutate.
-
-    def mutate(self, nodes, index, nid_alloc):
-        self._nodes = nodes
-        self._index = index
-        self._nid_alloc = nid_alloc
-        if self._root_cursor is None:
-            self._root_cursor = self.cursor_at(0)
-
     def __copy__(self) -> 'MutableSubgraph': # For Python's copy module
-        # Alternative: return self.freeze().thaw(), but this might have disadvantages in the future (freeze as checkpoint).
-        ret = MutableSubgraph(backend=self._backend)
-        ret.mutate(*self._backend.fork_state(self))
-        return ret
+        return self._snapshot(MutableSubgraph, False)
 
     def copy(self) -> 'MutableSubgraph':
         """
@@ -2039,7 +1908,7 @@ class MutableSubgraph(Subgraph):
         return self.__copy__()
 
     def freeze(self):
-        return FrozenSubgraph(*self._backend.freeze_state(self), self._backend)
+        return self._snapshot(FrozenSubgraph, True)
 
 @public
 class PathNode(NonLeafNode):
@@ -2085,3 +1954,50 @@ class NPath(Node):
 
     in_subgraphs = [SubgraphRoot]
     wire_id = WIRE_DOMAIN | 1
+
+# Callbacks of the native core
+# ----------------------------
+
+def _check_callback(kind: int, sgu: SubgraphUpdater, nid: int, obj):
+    """
+    Called by the native core when a commit check did not pass its fast
+    path. Repeats the check in Python and raises the exact exception; if the
+    check passes here after all, the core accepts the node.
+    """
+    sg = sgu.target_subgraph
+    if kind == 6:
+        raise ModelViolation("Missing root node (nid 0).")
+    if kind == 5:
+        raise DanglingLocalRef(nid)
+    node = sg.row(nid)
+    try:
+        if kind == 0:
+            root_cls = sg.row(0)._cursor_type
+            if not any(issubclass(root_cls, cls) for cls in node._cursor_type.in_subgraphs):
+                raise ModelViolation(f"{node._cursor_type.__name__} is not permitted in subgraph {root_cls.__name__}.")
+        elif kind == 1:
+            raise ModelViolation(f"{node._attrdesc_by_attr[obj].name!r} is not optional (but set to None).")
+        elif kind in (2, 3):
+            next(ns for ns in obj.indices if isinstance(ns, (LocalRefIndex, ExternalRefIndex))) \
+                .check_constraints(sgu, node, nid)
+        elif kind == 4:
+            obj.check_constraints(sgu, node, nid)
+    except ModelViolation as e:
+        # Checks run when the updater exits, possibly long after the
+        # statement that caused the violation: name the node.
+        where = f"{node._cursor_type.__name__}(nid={nid})"
+        if kind in (1, 2, 3):
+            where += f", attribute {node._attrdesc_by_attr[obj].name!r}"
+        e.add_note(f"Found by the commit check of {where}.")
+        raise
+
+_ordb._setup(
+    OrdbException=OrdbException,
+    QueryException=QueryException,
+    check_callback=_check_callback,
+    updater_class=SubgraphUpdater,
+    pathnode_mutable=PathNode.Mutable,
+    pathnode_frozen=PathNode.Frozen,
+    npath_index=NPath.idx_path_of,
+    npath_child_index=NPath.idx_parent_name,
+)
