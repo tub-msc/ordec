@@ -399,7 +399,8 @@ node cost 1.6x on sorted queries and 5x on GDS import; explicit forms such
 as ``of_subgraph=('root', 'ref_layers')`` were tried and dropped);
 ``Subgraph.nodes`` is a read-only view and ``Subgraph.index`` is gone;
 cursors are equal by (subgraph, nid); sorted index results break ties by
-nid.
+nid; sort values (``sortkey`` results and sort attributes) are ints within
+64 bits or None, which sorts first.
 
 Values are rebuilt from the tables on every access: ``subgraph.nodes[n]``,
 ``cursor.tuple`` and reads of ``Vec2I``, ``Rect4I`` or boxed values return

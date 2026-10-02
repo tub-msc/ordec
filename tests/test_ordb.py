@@ -865,14 +865,17 @@ def test_index_custom_sort():
     with s.updater() as u:
         u.add_single(MyNode(), 1)
         u.add_single(MyItem(order=3, ref=1), 100)
-        u.add_single(MyItem(order=2, ref=1), 98)
-        u.add_single(MyItem(order=1, ref=1), 99)
+        u.add_single(MyItem(order=True, ref=1), 98) # stored boxed
+        u.add_single(MyItem(order=-2**63 + 1, ref=1), 99) # stored boxed
         u.add_single(MyItem(order=4, ref=1), 102)
         u.add_single(MyItem(order=5, ref=1), 101)
 
     index_values = s.all(MyItem.idx_ref.query(1), wrap_cursor=False)
     assert index_values == [99, 98, 100, 102, 101] # ordered by node.order
     assert s.all(MyItem.idx_desc.query(1), wrap_cursor=False) == index_values[::-1]
+    with pytest.raises(OverflowError):
+        with s.updater() as u:
+            u.add_single(MyItem(order=2**70, ref=1), 103)
 
 def test_subgraph_ntype():
     s = MyHead()

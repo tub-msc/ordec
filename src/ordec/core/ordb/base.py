@@ -427,15 +427,14 @@ class Index(GenericIndex):
         attr: Indexed attribute.
         unique: At most one node may have each value (None excepted).
         sortkey: Function receiving the node value (NodeTuple) and returning
-            the int (or None) by which query results are ordered (ties: by
-            nid). Without sortkey, results are ordered by nid. A plain
-            attribute read (lambda node: node.order) is evaluated natively;
-            other functions are called per index update and per query
-            result (slower). sortkey must depend only on the values of the
-            node: entries are validated by evaluating it again, so an entry
-            whose sortkey result changed without a change of the node looks
-            stale. Queries skip such entries, and merging index runs can
-            drop them permanently.
+            the int (within 64 bits) or None by which query results are
+            ordered (None first, ties by nid). Without sortkey, results are
+            ordered by nid. A plain attribute read (lambda node: node.order)
+            is evaluated natively; other functions are called per index
+            update and per query result (slower). sortkey must depend only
+            on the values of the node: the index entry of a node is found
+            again by evaluating it, so changing or removing a node whose
+            sortkey result changed meanwhile raises OrdbException.
     """
     def __init__(self, attr: Attr, unique:bool=False, sortkey: Callable=None):
         if sortkey is not None and not callable(sortkey):

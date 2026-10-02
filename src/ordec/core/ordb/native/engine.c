@@ -540,6 +540,35 @@ rec_slot_hash(const Rec *r, int i, uint64_t *out)
     return 0;
 }
 
+// The sort value of v (a sortkey result or a boxed sort attribute): an int
+// in the int64 range, or None, which sorts first like a None attribute.
+static int
+sort_value(PyObject *v, int64_t *s)
+{
+    if (v == Py_None) {
+        *s = SLOT_NONE;
+        return 0;
+    }
+    if (!PyLong_Check(v)) {
+        PyObject *n = PyType_GetName(Py_TYPE(v));
+        PyErr_Format(PyExc_TypeError,
+            "sortkey must return an int or None, not %S.", n);
+        Py_XDECREF(n);
+        return -1;
+    }
+    int ovf;
+    long long x = PyLong_AsLongLongAndOverflow(v, &ovf);
+    if (ovf) {
+        PyErr_Format(PyExc_OverflowError,
+            "sort value %R does not fit in 64 bits.", v);
+        return -1;
+    }
+    if (x == -1 && PyErr_Occurred())
+        return -1;
+    *s = x;
+    return 0;
+}
+
 // Index entry (h, s) of a record for one index. Returns 1 if the record
 // is indexed, 0 if not (single key that is None), -1 on error.
 int
@@ -568,23 +597,16 @@ rec_hs(const Rec *r, const IdxUse *u, uint64_t *h, int64_t *s)
         Py_DECREF(t);
         if (!v)
             return -1;
-        // None sorts like a None int attribute.
-        if (v != Py_None && !PyLong_Check(v)) {
-            PyObject *n = PyType_GetName(Py_TYPE(v));
-            PyErr_Format(PyExc_TypeError,
-                "sortkey must return an int or None, not %S.", n);
-            Py_XDECREF(n);
-            Py_DECREF(v);
-            return -1;
-        }
-        long long x = v == Py_None ? SLOT_NONE : PyLong_AsLongLong(v);
+        int ok = sort_value(v, s);
         Py_DECREF(v);
-        if (x == -1 && PyErr_Occurred())
+        if (ok < 0)
             return -1;
-        *s = x == SLOT_BOXED ? 0 : x;
     } else if (u->sort >= 0) {
         slot_t v = r->s[r->nt->attrs[u->sort].slot];
-        *s = v == SLOT_BOXED ? 0 : v;
+        if (v != SLOT_BOXED)
+            *s = v;
+        else if (sort_value(r->box[u->sort], s) < 0)
+            return -1;
     }
     return 1;
 }
