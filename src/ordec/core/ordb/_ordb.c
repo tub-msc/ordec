@@ -49,6 +49,7 @@
 #define READ_PLAIN 0 // return the stored value
 #define READ_LOCALREF 1 // return a cursor at the stored nid
 #define READ_HOOK 2 // call attr.read_hook(value, cursor)
+#define READ_EXTREF 3 // ExternalRef.read_hook, natively if possible
 
 // How NodeTuple construction applies the attribute factory:
 #define F_PLAIN 0 // Attr.factory with default and isinstance check, in C
@@ -2239,6 +2240,18 @@ subref_target(const State *st, int64_t nid, PyObject *refs)
     return NULL;
 }
 
+// The subgraph that the ExternalRef ai of the record p (node nid) points
+// into, resolved through ai->ext_refs (borrowed from the storage), or NULL.
+static Sg *
+ext_target(const State *st, const NType *nt, const AttrInfo *ai,
+    const slot_t *p, int64_t nid)
+{
+    int64_t start = ai->ext_start == EXT_ROOT ? 0
+        : ai->ext_start == EXT_SELF ? nid
+        : p[nt->attrs[ai->ext_start].slot];
+    return subref_target(st, start, ai->ext_refs);
+}
+
 // Deferred constraint checks of a transaction. The core only decides
 // "fine" on its fast paths; everything else goes to base.py, which raises.
 static int
@@ -2326,16 +2339,14 @@ txn_check(Sg *sg, Txn *tx, PyObject *sgu)
                         if (e < next) {
                             target = ext_sg[e];
                         } else {
-                            target = subref_target(st, 0, ai->ext_refs);
+                            target = ext_target(st, nt, ai, p, nid);
                             if (target && next < 8) {
                                 ext_attr[next] = ai;
                                 ext_sg[next++] = target;
                             }
                         }
                     } else {
-                        int64_t start = ai->ext_start == EXT_SELF ? nid
-                            : p[nt->attrs[ai->ext_start].slot];
-                        target = subref_target(st, start, ai->ext_refs);
+                        target = ext_target(st, nt, ai, p, nid);
                     }
                     int tti;
                     if (target && st_row(&target->st, v, &tti)) {
@@ -2889,6 +2900,22 @@ attrdesc_get(AttrDesc *d, PyObject *obj, PyObject *type)
         if (p[ai->slot] == SLOT_NONE)
             Py_RETURN_NONE;
         return sg_cursor(c->sg, p[ai->slot], NPATH_UNRESOLVED);
+    }
+    if (ai->read_mode == READ_EXTREF && ai->ext_refs) {
+        // of_subgraph(cursor).cursor_at(value) of ExternalRef.read_hook.
+        // Everything else (no target subgraph or root, a negative or boxed
+        // value) is left to the hook.
+        slot_t v = p[ai->slot];
+        if (v == SLOT_NONE)
+            Py_RETURN_NONE;
+        Sg *target = v >= 0 ? ext_target(st, nt, ai, p, c->nid) : NULL;
+        int rti;
+        if (target && st_row(&target->st, 0, &rti)) {
+            Py_INCREF((PyObject *)target);
+            PyObject *r = sg_cursor(target, v, NPATH_UNRESOLVED);
+            Py_DECREF((PyObject *)target);
+            return r;
+        }
     }
     PyObject *v = attr_value(st, nt, d->index, p, c->nid);
     if (!v || ai->read_mode == READ_PLAIN)

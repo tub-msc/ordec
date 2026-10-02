@@ -115,10 +115,11 @@ attributes themselves: the position of the sort attribute
 (``lambda node: node.order``), or the start node of the ExternalRef (the
 root, the node itself or the target of one of its LocalRefs) and the
 SubgraphRef attribute to read there (``lambda c: c.root.ref_layers``,
-``lambda c: c.subg``, ``lambda c: c.ref.symbol``). The core then sorts and
-checks without calling Python; a root SubgraphRef is resolved once per
-commit. Any other function is called per node (sort keys at every index
-update and query result, ExternalRef functions at every check); a
+``lambda c: c.subg``, ``lambda c: c.ref.symbol``). The core then sorts,
+checks and reads ExternalRefs (``rect.layer``) without calling Python; a
+root SubgraphRef is resolved once per commit. Any other function is called
+per node (sort keys at every index update and query result, ExternalRef
+functions at every check and read); a
 ``tests/test_ordb.py`` test makes sure that the schema's functions take the
 native path, except the computed ones of ``SimHierarchy``.
 

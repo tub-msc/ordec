@@ -974,6 +974,9 @@ def test_externalref_validation(of_subg):
 
     s.good = NodeExtRef(subg=s_ref, eref=s_ref.b.nid)
     s.good2 = NodeExtRefMandatory(subg=s_ref, eref=s_ref.b.nid)
+    s.unset = NodeExtRef(subg=s_ref)
+    assert s.good.eref == s_ref.b and type(s.good.eref) is type(s_ref.b)
+    assert s.unset.eref is None
 
     dangling_ref = 123456
     with pytest.raises(DanglingExternalRef) as exc_info:

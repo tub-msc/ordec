@@ -707,6 +707,8 @@ def _read_mode(attr) -> int:
         return 0 # the stored value
     if hook is LocalRef.read_hook:
         return 1 # cursor at the stored nid
+    if hook is ExternalRef.read_hook:
+        return 3 # natively for attribute chains (see _ext_native), else as 2
     return 2 # attr.read_hook(value, cursor)
 
 def _subgraph_refs(classes, name) -> 'tuple[SubgraphRef]|NoneType':
