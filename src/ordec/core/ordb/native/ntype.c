@@ -139,18 +139,24 @@ ntype_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
         }
         if (ai->kind != K_IVEC)
             ai->width = 1;
+        else if (ai->width < 1 || ai->width > MAXWIDTH) {
+            Py_DECREF(nt);
+            PyErr_Format(PyExc_TypeError,
+                "array_width must be between 1 and %d.", MAXWIDTH);
+            return NULL;
+        }
+        if (slot + ai->width > 64) {
+            Py_DECREF(nt);
+            PyErr_SetString(PyExc_TypeError,
+                "Node types are limited to 63 attribute slots.");
+            return NULL;
+        }
         ai->slot = slot;
         if (ai->kind == K_OBJ)
             nt->objmask |= (uint64_t)1 << slot;
         slot += ai->width;
     }
     nt->rec = slot;
-    if (slot > 64) {
-        Py_DECREF(nt);
-        PyErr_SetString(PyExc_TypeError,
-            "Node types are limited to 63 attribute slots.");
-        return NULL;
-    }
     if (nt->nuse > MAXUSE) {
         Py_DECREF(nt);
         PyErr_Format(PyExc_TypeError,

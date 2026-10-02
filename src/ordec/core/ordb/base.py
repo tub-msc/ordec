@@ -680,10 +680,13 @@ def _is_int_attr(attr) -> bool:
     return isinstance(attr, (LocalRef, ExternalRef)) or attr.type is int
 
 def _vec_width(attr) -> int|NoneType:
-    """Slot width of a fixed-size integer value type (Vec2I, Rect4I)."""
+    """Slot width of a fixed-size integer value type (Vec2I, Rect4I). The
+    type must hash and compare like a tuple: the core hashes values stored
+    in slots as tuples."""
     t = attr.type
     width = getattr(t, 'array_width', None)
     if isinstance(width, int) and isinstance(t, type) and issubclass(t, tuple) \
+            and t.__hash__ is tuple.__hash__ and t.__eq__ is tuple.__eq__ \
             and not isinstance(attr, (SubgraphRef, LiveRef)):
         return width
     return None

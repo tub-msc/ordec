@@ -1369,6 +1369,14 @@ def test_stored_values():
     t.subgraph.cursor_at(nids[2]).num = 2**80 # equal value, new object
     assert s.freeze() == t.freeze() and hash(s.freeze()) == hash(t.freeze())
 
+def test_array_width_checked():
+    class Vec9(tuple):
+        array_width = 9
+    with pytest.raises(TypeError, match="array_width"):
+        class Vec9Node(Node):
+            in_subgraphs = [MyHead]
+            v = Attr(Vec9)
+
 def test_gc_shared_blocks():
     """Cycles through storage shared by snapshots are collected."""
     import gc, weakref
