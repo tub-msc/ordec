@@ -190,6 +190,10 @@ kmap_shift(int level)
 
 // The leaf holding nid, writable for tok with room for extra more rows;
 // missing nodes are created (create) or NULL is returned.
+// nid must be in [0, 2^58): beyond, the level loops below would shift by
+// 64 bits or more (undefined) and not terminate. There is no check here:
+// a nid enters the tries only through dir_w (engine.c), which accepts nids
+// in [0, nid_stop) with nid_stop = 2^32; other writes target present nids.
 static Leaf *
 kmap_leaf_w(KMap *m, int64_t nid, uint64_t tok, uint32_t extra, int create)
 {
