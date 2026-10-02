@@ -30,8 +30,11 @@ setup(
     ext_modules=[
         # The native core of ORDB: required, there is no fallback.
         Extension('ordec.core.ordb._ordb',
-            sources=['src/ordec/core/ordb/_ordb.c'],
-            depends=['src/ordec/core/ordb/_ordb_store.h'],
+            sources=[f'src/ordec/core/ordb/native/{f}.c' for f in ('module',
+                'store', 'engine', 'index', 'ntype', 'cursor', 'subgraph',
+                'updater')],
+            depends=['src/ordec/core/ordb/native/module.h',
+                'src/ordec/core/ordb/native/store.h'],
             py_limited_api=True),
         # Optional: without a C compiler, ordec.layout.gdsrecords falls back to
         # its slow pure-Python implementation.

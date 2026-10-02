@@ -2,8 +2,13 @@ ORDB native core
 ================
 
 All subgraph storage, indices, transactions and constraint checks of ORDB
-are implemented in the C extension :mod:`ordec.core.ordb._ordb`
-(``src/ordec/core/ordb/_ordb.c``, storage primitives in ``_ordb_store.h``).
+are implemented in the C extension :mod:`ordec.core.ordb._ordb`, whose
+sources are in ``src/ordec/core/ordb/native/``: the storage primitives
+(``store.h``, ``store.c``), the engine below the Python types (``engine.c``:
+state, records, node operations, transactions and checks; ``index.c``), one
+file per Python type (``ntype.c``, ``cursor.c``, ``subgraph.c``,
+``updater.c``) and ``module.c``. ``module.h`` holds what the files share;
+functions shared between files are hidden from the extension's exports.
 :mod:`ordec.core.ordb.base` keeps the schema language, the public classes
 and all error messages. There is no pure-Python fallback; the benchmark
 suite's differential fuzz (``benchmarks/equivalence.py``) is the safety net.
@@ -142,7 +147,7 @@ keep the storage consistent:
   modify the same subgraph; it raises.
 - **Readers never keep a pointer into storage across Python code.** Before
   anything that can run Python, a reader copies the record it needs
-  (``Rec`` in ``_ordb.c``), and loops look tables up again for every row.
+  (``Rec`` in ``module.h``), and loops look tables up again for every row.
   Reads from other threads are therefore always allowed; they see the
   current, possibly uncommitted state (a nid list from a query may name
   nodes removed meanwhile).
@@ -186,7 +191,7 @@ Besides ``pytest``, a change to the core should pass:
 
       gcc -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer \
           -shared -fPIC -I$(python3 -c "import sysconfig; print(sysconfig.get_paths()['include'])") \
-          src/ordec/core/ordb/_ordb.c -o src/ordec/core/ordb/_ordb.abi3.so
+          src/ordec/core/ordb/native/*.c -o src/ordec/core/ordb/_ordb.abi3.so
       ASAN_OPTIONS=detect_leaks=0 PYTHONMALLOC=malloc \
           LD_PRELOAD=$(gcc -print-file-name=libasan.so):$(gcc -print-file-name=libubsan.so) \
           pytest -n 0 tests/test_ordb.py tests/test_wire.py tests/test_benchmarks.py \
