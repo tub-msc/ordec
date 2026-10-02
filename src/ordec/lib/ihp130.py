@@ -979,7 +979,7 @@ class Res(SimLeafCell):
 
     @viewgen_noctx
     def symbol(self) -> Symbol:
-        s = Symbol(cell=self)
+        s = Symbol(cell=self, rotate_pin_labels=False)
         s.add_default_annotations()
         s % SymbolAnnotation(kind=AnnotationKind.Param,
             text=f"r\u2248{R(f'{self.nominal_resistance():.3g}')}")
@@ -1146,7 +1146,7 @@ class Cmim(SimLeafCell):
 
     @viewgen_noctx
     def symbol(self) -> Symbol:
-        s = Symbol(cell=self)
+        s = Symbol(cell=self, rotate_pin_labels=False)
         s.add_default_annotations()
 
         s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South, show_arrow=False, show_label=False)

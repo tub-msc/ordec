@@ -52,8 +52,8 @@
       <path d="M1.7 1.8 L1.3 2.0 L1.7 2.2" transform="matrix(1 0 0 1 0.0 4.0)" class="symbolPoly" />
       <path d="M1.6 1.05 L2.0 1.25 L1.6 1.45" transform="matrix(1 0 0 1 0.0 4.0)" class="symbolPoly" />
       <text transform="matrix(0.045 0 0 -0.045 0.125 5.875)" dominant-baseline="hanging" text-anchor="start" class="pinLabel detail">g</text>
-      <text transform="matrix(0 0.045 0.045 0 1.875 4.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel detail">s</text>
-      <text transform="matrix(0 0.045 0.045 0 1.875 7.875)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel detail">d</text>
+      <text transform="matrix(0.045 0 0 -0.045 1.875 4.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel detail">s</text>
+      <text transform="matrix(0.045 0 0 -0.045 1.875 7.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel detail">d</text>
       <text transform="matrix(0.045 0 0 -0.045 3.875 5.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel detail">b</text>
     </g>
     <g>
