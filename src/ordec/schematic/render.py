@@ -400,16 +400,16 @@ class SchematicRenderer(Renderer):
             display: none;
         }
         .schemWire, .tapPoint {
-            stroke: #0066cc;
+            stroke: #1a80e6;
         }
         .schemWire {
             stroke-linecap: square;
         }
         .connPoint, .tapPointLabel {
-            fill: #0066cc;
+            fill: #1a80e6;
         }
         .portArrow, .portLabel {
-            fill: #0066cc;
+            fill: #1a80e6;
         }
         .errorMarker {
             fill: rgba(255, 0, 0, 0.25);
