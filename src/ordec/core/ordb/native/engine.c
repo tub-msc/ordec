@@ -1099,11 +1099,15 @@ txn_free(Txn *tx)
 void
 txn_abort(Sg *sg, Txn *tx)
 {
+    // The saved state is installed before the current one is released:
+    // releasing values can run finalizers, which must not see a
+    // half-restored subgraph.
+    State cur = sg->st;
+    sg->st = tx->saved;
     sg->txn = tx->parent;
     sg->hash_valid = 0;
-    state_release(&sg->st);
-    sg->st = tx->saved;
     txn_free(tx);
+    state_release(&cur);
 }
 
 // Aborts the abandoned transactions (see upd_dealloc) with all transactions
