@@ -21,7 +21,7 @@ import logging
 import math
 
 from ..core import *
-from .render import Renderer, VAlign, annotation_lines, annotation_rows, annotation_row_chars
+from .render import Renderer, SchematicRenderer, VAlign, annotation_lines, annotation_rows, annotation_row_chars
 
 logger = logging.getLogger(__name__)
 
@@ -81,11 +81,8 @@ def symbol_obstacles(s: Symbol, trans: TD4R, inst: SchemInstance|None = None) ->
             rects.append(trans_local * Rect4R(R(-0.2), R(-0.2), R(0.2), R(0.2)))
         if not pin.show_label:
             continue
-        if trans_local.d4.unflip() in (East, West):
-            valign = VAlign.Top
-        else:
-            valign = VAlign.Bottom
-        rects.append(Renderer.label_rect(trans_local, len(pin.full_path_label()), 1, valign=valign))
+        label_trans, valign = SchematicRenderer.pin_label_frame(pin, trans_local)
+        rects.append(Renderer.label_rect(label_trans, len(pin.full_path_label()), 1, valign=valign))
     for t in s.all(SymbolText):
         if t.kind == AnnotationKind.InstanceName:
             if inst is None:

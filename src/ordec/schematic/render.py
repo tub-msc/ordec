@@ -561,17 +561,30 @@ class SchematicRenderer(Renderer):
         if pin.show_arrow:
             self.draw_arrow(ArrowType.Pin, pin.pintype, trans_local)
 
-        label = pin.full_path_label()
+        label_trans, valign = self.pin_label_frame(pin, trans_local)
+        # Hidden labels stay in the SVG for the detail view (see css).
+        svg_class = 'pinLabel' if pin.show_label else 'pinLabel detail'
+        self.draw_label(pin.full_path_label(), label_trans, valign=valign, svg_class=svg_class)
+
+    @staticmethod
+    def pin_label_frame(pin: Pin, trans_local: TD4R) -> tuple[TD4R, VAlign]:
+        """
+        Frame and vertical alignment of the label of pin for draw_label and
+        label_rect, given the pin frame trans_local of draw_pin.
+        """
+        direction = trans_local.d4.unflip()
         # Labels go below horizontal stubs and left of vertical stubs. This
         # keeps the area above horizontal stubs free, where symbols like the
         # MOS place their annotation block.
-        if trans_local.d4.unflip() in (East, West):
-            valign = VAlign.Top
+        if direction in (East, West):
+            return trans_local, VAlign.Top
+        elif pin.root.rotate_pin_labels:
+            return trans_local, VAlign.Bottom
         else:
-            valign = VAlign.Bottom
-        # Hidden labels stay in the SVG for the detail view (see css).
-        svg_class = 'pinLabel' if pin.show_label else 'pinLabel detail'
-        self.draw_label(label, trans_local, valign=valign, svg_class=svg_class)
+            # Horizontal text left of the stub, starting at the pin end and
+            # extending towards the symbol (down for South, up for North).
+            valign = VAlign.Top if direction == South else VAlign.Bottom
+            return trans_local.transl.transl() * West, valign
 
     def draw_arrow(self, arrowtype: ArrowType, pt: PinType, trans: TD4R):
         if arrowtype == ArrowType.Pin:

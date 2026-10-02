@@ -48,7 +48,7 @@ class Mos(SimLeafCell):
 class Nmos(Mos):
     @viewgen_noctx
     def symbol(self) -> Symbol:
-        s = Symbol(cell=self)
+        s = Symbol(cell=self, rotate_pin_labels=False)
         s.add_default_annotations()
 
         s.g = Pin(pos=Vec2R(0, 2), pintype=PinType.In, align=West, show_arrow=False, show_label=False)
@@ -72,7 +72,7 @@ class Nmos(Mos):
 class Pmos(Mos):
     @viewgen_noctx
     def symbol(self) -> Symbol:
-        s = Symbol(cell=self)
+        s = Symbol(cell=self, rotate_pin_labels=False)
         s.add_default_annotations()
 
         s.g = Pin(pos=Vec2R(0, 2), pintype=PinType.In, align=West, show_arrow=False, show_label=False)
