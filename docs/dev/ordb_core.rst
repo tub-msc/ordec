@@ -143,9 +143,12 @@ pointing at them). The checks run in C; when one fails, the core calls
 exact exception.
 
 Updaters of one subgraph nest and must be closed in reverse order of
-opening; aborting an outer updater also undoes committed inner ones. Freezing
-or copying a subgraph with an open updater raises
-:class:`~ordec.core.ordb.OrdbException`.
+opening; aborting an outer updater also undoes committed inner ones. An
+updater deallocated without exit is aborted with the updaters opened inside
+it (at the end of a write operation in progress, if any), which then refuse
+further use; updaters remember the token of their transaction, so that they
+never use one that was freed. Freezing or copying a subgraph with an open
+updater raises :class:`~ordec.core.ordb.OrdbException`.
 
 Statements (``%`` and attribute assignment in C; ``Node.remove``,
 ``Node.replace``, named insertion, ``Subgraph.add``, ``update`` and

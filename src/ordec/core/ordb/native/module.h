@@ -196,6 +196,7 @@ typedef struct Txn {
     uint64_t tok;
     uint64_t writes; // record writes so far (tells whether a statement wrote)
     char failed; // a statement failed after writing: abort at exit
+    char abandoned; // its updater was deallocated without __exit__
     int64_t *chk; // [start, end) nid ranges to check at commit
     size_t nchk, capchk;
     int64_t *rem; // removed nids
@@ -215,6 +216,7 @@ typedef struct Sg {
     unsigned long owner; // thread with open transactions
     char hash_valid, frozen;
     char writing; // a write operation of the core is in progress
+    char abandoned; // a transaction in txn is abandoned
 } Sg;
 
 typedef struct {
@@ -224,6 +226,7 @@ typedef struct {
     char commit, valid;
     char joined; // statement handle on an open transaction (not its owner)
     uint64_t writes; // joined: tx->writes at enter
+    uint64_t tok; // tok of tx: tx is freed if an enclosing updater is abandoned
 } Upd;
 
 // A record taken out of storage: a copy of its slots that owns references
@@ -318,9 +321,13 @@ long_as_slot(PyObject *v, slot_t *out)
     return 1;
 }
 
+void txn_abort_abandoned(Sg *sg);
+
 static inline void
 sg_write_end(Sg *sg)
 {
+    if (sg->abandoned)
+        txn_abort_abandoned(sg);
     sg->writing = 0;
 }
 

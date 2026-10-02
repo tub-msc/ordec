@@ -1091,6 +1091,22 @@ txn_abort(Sg *sg, Txn *tx)
     txn_free(tx);
 }
 
+// Aborts the abandoned transactions (see upd_dealloc) with all transactions
+// opened inside them. Called at the end of a write operation.
+void
+txn_abort_abandoned(Sg *sg)
+{
+    Txn *outer = NULL;
+    for (Txn *t = sg->txn; t; t = t->parent)
+        if (t->abandoned)
+            outer = t;
+    sg->abandoned = 0;
+    for (int last = !outer; !last;) {
+        last = sg->txn == outer;
+        txn_abort(sg, sg->txn);
+    }
+}
+
 static int
 call_check(int kind, PyObject *sgu, int64_t nid, PyObject *obj)
 {

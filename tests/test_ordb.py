@@ -1327,6 +1327,20 @@ def test_open_updater():
         u.add_single(MyNode(label='post'), u.nid_generate())
     assert _labels(s) == ['mid', 'post', 'pre']
     assert _labels(snap) == ['mid', 'pre']
+    # An updater abandoned without __exit__ is rolled back with the updaters
+    # opened inside it, which refuse further use.
+    outer = s.updater()
+    outer.__enter__()
+    outer.add_single(MyNode(label='lost'), outer.nid_generate())
+    inner = s.updater()
+    inner.__enter__()
+    del outer
+    assert _labels(s) == ['mid', 'post', 'pre']
+    with pytest.raises(OrdbException, match="rolled back"):
+        inner.nid_generate()
+    with pytest.raises(OrdbException, match="rolled back"):
+        inner.__exit__(None, None, None)
+    s.freeze()
 
 class ValueNode(Node):
     in_subgraphs = [MyHead]

@@ -54,6 +54,33 @@ upd_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
     return (PyObject *)u;
 }
 
+// Whether transaction tx (with token tok) is still open. A transaction is
+// freed when an enclosing updater is abandoned (see upd_dealloc), and its
+// address may be reused, so tx is only dereferenced once found among the
+// open transactions.
+static int
+txn_live(Sg *sg, Txn *tx, uint64_t tok)
+{
+    for (Txn *t = sg->txn; t; t = t->parent)
+        if (t == tx)
+            return t->tok == tok;
+    return 0;
+}
+
+static int
+upd_live(Upd *u)
+{
+    return txn_live(u->sg, u->tx, u->tok);
+}
+
+static int
+upd_rolled_back(void)
+{
+    PyErr_SetString(OrdbException, "SubgraphUpdater was rolled back with an"
+        " enclosing updater that was abandoned without __exit__.");
+    return -1;
+}
+
 static int
 upd_traverse(Upd *u, visitproc visit, void *arg)
 {
@@ -66,16 +93,16 @@ static void
 upd_dealloc(Upd *u)
 {
     PyObject_GC_UnTrack(u);
-    if (u->tx && u->sg && !u->sg->writing && !u->joined) {
-        // Abandoned without __exit__: undo it and everything opened after.
-        // (During a write operation of the core it stays open instead.)
-        u->sg->owner = PyThread_get_thread_ident();
-        u->sg->writing = 1;
-        while (u->sg->txn && u->sg->txn != u->tx)
-            txn_abort(u->sg, u->sg->txn);
-        if (u->sg->txn == u->tx)
-            txn_abort(u->sg, u->tx);
-        u->sg->writing = 0;
+    if (u->tx && u->sg && !u->joined && upd_live(u)) {
+        // Abandoned without __exit__: its transaction is aborted with all
+        // transactions opened inside it, at the end of the write operation
+        // in progress or right away. The owner thread stays unchanged.
+        u->tx->abandoned = 1;
+        u->sg->abandoned = 1;
+        if (!u->sg->writing) {
+            u->sg->writing = 1;
+            sg_write_end(u->sg);
+        }
     }
     Py_XDECREF((PyObject *)u->sg);
     obj_free(u);
@@ -103,6 +130,7 @@ upd_enter(Upd *u, PyObject *noarg)
         if (txn_usable(tx) < 0)
             return NULL;
         u->tx = tx;
+        u->tok = tx->tok;
         u->writes = tx->writes;
         u->commit = 1;
         u->valid = 1;
@@ -111,6 +139,7 @@ upd_enter(Upd *u, PyObject *noarg)
     u->tx = txn_begin(u->sg);
     if (!u->tx)
         return NULL;
+    u->tok = u->tx->tok;
     u->commit = 1;
     u->valid = 1;
     return Py_NewRef((PyObject *)u);
@@ -158,6 +187,10 @@ upd_exit(Upd *u, PyObject *args)
         PyErr_SetString(PyExc_TypeError, "Invalid SubgraphUpdater.");
         return NULL;
     }
+    if (!upd_live(u)) {
+        upd_rolled_back();
+        return NULL;
+    }
     Sg *sg = u->sg;
     if (sg->txn != tx) {
         PyErr_SetString(OrdbException,
@@ -190,6 +223,8 @@ upd_usable(Upd *u)
         PyErr_SetString(PyExc_TypeError, "Invalid SubgraphUpdater.");
         return -1;
     }
+    if (!upd_live(u))
+        return upd_rolled_back();
     if (u->sg->txn != u->tx) {
         PyErr_SetString(OrdbException,
             "SubgraphUpdater is not the innermost open updater.");
@@ -240,31 +275,30 @@ upd_add_single(Upd *u, PyObject *args, PyObject *kwds)
         return NULL;
     uint64_t writes = u->tx->writes;
     int r = op_add(u->sg, nid, node);
-    sg_write_end(u->sg);
-    if (r < 0) {
+    if (r < 0)
         op_failed(u->tx, writes);
+    sg_write_end(u->sg);
+    if (r < 0)
         return NULL;
-    }
     return PyLong_FromLongLong(nid);
 }
 
 static PyObject *
 upd_remove_nid(Upd *u, PyObject *arg)
 {
-    if (upd_usable(u) < 0)
-        return NULL;
     long long nid = PyLong_AsLongLong(arg);
     if (nid == -1 && PyErr_Occurred())
         return NULL;
-    if (sg_write_begin(u->sg) < 0)
+    // Checked after anything that can run Python code (here __index__).
+    if (upd_usable(u) < 0 || sg_write_begin(u->sg) < 0)
         return NULL;
     uint64_t writes = u->tx->writes;
     int r = op_remove(u->sg, nid);
-    sg_write_end(u->sg);
-    if (r < 0) {
+    if (r < 0)
         op_failed(u->tx, writes);
+    sg_write_end(u->sg);
+    if (r < 0)
         return NULL;
-    }
     Py_RETURN_NONE;
 }
 
@@ -282,11 +316,11 @@ upd_update(Upd *u, PyObject *args, PyObject *kwds)
         return NULL;
     uint64_t writes = u->tx->writes;
     int r = op_update(u->sg, nid, node);
-    sg_write_end(u->sg);
-    if (r < 0) {
+    if (r < 0)
         op_failed(u->tx, writes);
+    sg_write_end(u->sg);
+    if (r < 0)
         return NULL;
-    }
     Py_RETURN_NONE;
 }
 
@@ -297,8 +331,6 @@ upd_insert_rows(Upd *u, PyObject *args)
 {
     PyObject *cls, *nids_o, *cols_o;
     if (!PyArg_ParseTuple(args, "OOO!", &cls, &nids_o, &PyList_Type, &cols_o))
-        return NULL;
-    if (upd_usable(u) < 0)
         return NULL;
     NType *nt = ntype_of_cls(cls);
     if (!nt)
@@ -331,7 +363,8 @@ upd_insert_rows(Upd *u, PyObject *args)
         }
         cols[i] = cb[i].buf;
     }
-    if (sg_write_begin(u->sg) < 0)
+    // Checked after the buffers are acquired, which can run Python code.
+    if (upd_usable(u) < 0 || sg_write_begin(u->sg) < 0)
         goto done;
     uint64_t writes = u->tx->writes;
     if (op_insert_rows(u->sg, nt, nb.buf, n, cols) == 0)
@@ -353,6 +386,10 @@ upd_get_nid_gen(Upd *u, void *closure)
         PyErr_SetString(PyExc_TypeError, "Invalid SubgraphUpdater.");
         return NULL;
     }
+    if (!upd_live(u)) {
+        upd_rolled_back();
+        return NULL;
+    }
     return PyLong_FromLongLong(u->tx->nid_gen);
 }
 
@@ -361,6 +398,10 @@ upd_get_nid_max(Upd *u, void *closure)
 {
     if (!u->tx) {
         PyErr_SetString(PyExc_TypeError, "Invalid SubgraphUpdater.");
+        return NULL;
+    }
+    if (!upd_live(u)) {
+        upd_rolled_back();
         return NULL;
     }
     return PyLong_FromLongLong(u->tx->nid_max);
@@ -475,12 +516,14 @@ sg_add1(Sg *sg, PyObject *args)
             r = -1;
         }
         if (r == 0 && (r = sg_write_begin(sg)) == 0) {
-            uint64_t writes = tx->writes;
+            uint64_t writes = tx->writes, tok = tx->tok;
             tx->nid_gen++;
             r = op_add(sg, nid, node);
-            sg_write_end(sg);
             if (r < 0)
                 op_failed(tx, writes);
+            sg_write_end(sg);
+            if (r == 0 && !txn_live(sg, tx, tok))
+                r = upd_rolled_back();
         }
         Py_DECREF(node);
         return r < 0 ? NULL : sg_cursor(sg, nid, NPATH_NONE);
@@ -537,11 +580,13 @@ sg_set1(Sg *sg, int64_t nid, NType *nt, int index, PyObject *value)
     if (tx) {
         int r = -1;
         if (txn_usable(tx) == 0 && sg_write_begin(sg) == 0) {
-            uint64_t writes = tx->writes;
+            uint64_t writes = tx->writes, tok = tx->tok;
             r = op_update(sg, nid, row);
-            sg_write_end(sg);
             if (r < 0)
                 op_failed(tx, writes);
+            sg_write_end(sg);
+            if (r == 0 && !txn_live(sg, tx, tok))
+                r = upd_rolled_back();
         }
         Py_DECREF(row);
         return r;
