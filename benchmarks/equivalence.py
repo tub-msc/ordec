@@ -104,11 +104,12 @@ class _FuzzDriver:
                     node = node.set(val=None if rng.randint(4) == 0 else rng.randint(1000))
                 u.update(node, nid)
                 m[nid] = node
-        elif op == 4: # type change under the same nid
+        elif op == 4: # type change under the same nid (update keeps the type)
             nid = self._pick(ANode.Tuple)
             if nid is not None:
                 node = CNode(tag=rng.randint(_TAGS), val=1)
-                u.update(node, nid)
+                u.remove_nid(nid)
+                u.add_single(node, nid)
                 m[nid] = node
         else:
             nid = self._pick()

@@ -393,6 +393,11 @@ def test_updater():
     assert s_orig.subgraph.nid_alloc.start == 1
     assert len(s_orig.subgraph.nodes) == 1
 
+    # update keeps the node type:
+    with pytest.raises(OrdbException, match="cannot change the type"):
+        s.subgraph.update(MyArrayNode.Tuple(val=1), 1)
+    assert s.subgraph.nodes[1].label == 'hello'
+
 def test_localref_integrity():
     class Person(Node):
         in_subgraphs=[MyHead]

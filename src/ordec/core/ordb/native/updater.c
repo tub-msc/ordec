@@ -414,7 +414,8 @@ static PyMethodDef upd_methods[] = {
     {"add_single", (PyCFunction)(void (*)(void))upd_add_single, METH_VARARGS | METH_KEYWORDS,
         NULL},
     {"remove_nid", (PyCFunction)upd_remove_nid, METH_O, NULL},
-    {"update", (PyCFunction)(void (*)(void))upd_update, METH_VARARGS | METH_KEYWORDS, NULL},
+    {"update", (PyCFunction)(void (*)(void))upd_update, METH_VARARGS | METH_KEYWORDS,
+        "update(node, nid): replaces node nid by node of the same type."},
     {"_insert_rows", (PyCFunction)upd_insert_rows, METH_VARARGS, NULL},
     {NULL}
 };

@@ -400,7 +400,9 @@ as ``of_subgraph=('root', 'ref_layers')`` were tried and dropped);
 ``Subgraph.nodes`` is a read-only view and ``Subgraph.index`` is gone;
 cursors are equal by (subgraph, nid); sorted index results break ties by
 nid; sort values (``sortkey`` results and sort attributes) are ints within
-64 bits or None, which sorts first.
+64 bits or None, which sorts first; ``update`` keeps the node type (a type
+change takes a removal and an insertion under the same nid, as in
+:meth:`~ordec.core.ordb.Node.replace`).
 
 Values are rebuilt from the tables on every access: ``subgraph.nodes[n]``,
 ``cursor.tuple`` and reads of ``Vec2I``, ``Rect4I`` or boxed values return

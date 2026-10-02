@@ -927,27 +927,27 @@ op_update(Sg *sg, int64_t nid, PyObject *node)
         PyErr_Format(PyExc_KeyError, "nid %lld not found", (long long)nid);
         return -1;
     }
-    NType *ont = st->tabs[ti].nt;
+    // An update keeps the node type: LocalRefs to the node are checked
+    // against its type only when they are written.
+    if (st->tabs[ti].nt != nt) {
+        PyObject *on = PyType_GetName((PyTypeObject *)st->tabs[ti].nt->tuple_cls);
+        PyObject *nn = PyType_GetName(Py_TYPE(node));
+        if (on && nn)
+            PyErr_Format(OrdbException, "update cannot change the type of"
+                " node nid=%lld from %U to %U.", (long long)nid, on, nn);
+        Py_XDECREF(on);
+        Py_XDECREF(nn);
+        return -1;
+    }
     IdxKey ok[MAXUSE], nk[MAXUSE];
     Rec rec;
-    if (row_keys(st, ont, cp, nid, ok) < 0
+    if (row_keys(st, nt, cp, nid, ok) < 0
             || rec_make(&rec, nt, node, nid) < 0)
         return -1;
     int ret = -1;
     if (rec_keys(&rec, nk) < 0)
         goto done;
     // Writes from here on.
-    if (ont != nt) {
-        // Type change: the node moves to another table.
-        slot_t *p;
-        if (node_drop(sg, nid, ti, ok) == 0
-                && (p = node_place(sg, nt, nid))
-                && rec_store(sg, &rec, p) == 0
-                && refs_adjust(sg, nt, p, 1) == 0
-                && index_change(sg, nt, NULL, nk, nid) == 0)
-            ret = chk_add(tx, nid);
-        goto done;
-    }
     slot_t *p = row_w(sg, ti, nid);
     if (!p || refs_adjust(sg, nt, p, -1) < 0
             || boxed_drop_row(sg, nt, p, nid) < 0)

@@ -1740,6 +1740,8 @@ class Subgraph(SubgraphQueryMixin, _ordb.SubgraphBase):
             u.remove_nid(nid)
 
     def update(self, node: NodeTuple, nid: int) -> int:
+        """Replaces the values of node nid by node, which must be of the
+        same node type (a type change takes Node.replace)."""
         with self._statement_updater() as u:
             u.update(node, nid)
 
