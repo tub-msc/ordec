@@ -68,7 +68,7 @@ inner_dealloc(Inner *n)
 {
     PyObject_GC_UnTrack(n);
     for (uint64_t m = n->mask; m; m &= m - 1)
-        Py_DECREF(n->kids[__builtin_ctzll(m)]);
+        Py_DECREF(n->kids[ctz64(m)]);
     obj_free(n);
 }
 
@@ -77,7 +77,7 @@ inner_traverse(Inner *n, visitproc visit, void *arg)
 {
     Py_VISIT(Py_TYPE((PyObject *)n));
     for (uint64_t m = n->mask; m; m &= m - 1)
-        Py_VISIT(n->kids[__builtin_ctzll(m)]);
+        Py_VISIT(n->kids[ctz64(m)]);
     return 0;
 }
 
@@ -87,7 +87,7 @@ inner_clear(Inner *n)
     uint64_t mask = n->mask;
     n->mask = 0;
     for (uint64_t m = mask; m; m &= m - 1)
-        Py_CLEAR(n->kids[__builtin_ctzll(m)]);
+        Py_CLEAR(n->kids[ctz64(m)]);
     return 0;
 }
 
@@ -175,7 +175,7 @@ inner_writable(PyObject **pp, uint64_t tok)
         return NULL;
     memcpy(c->kids, n->kids, sizeof(c->kids));
     for (uint64_t m = n->mask; m; m &= m - 1)
-        Py_INCREF(c->kids[__builtin_ctzll(m)]);
+        Py_INCREF(c->kids[ctz64(m)]);
     c->mask = n->mask;
     *pp = (PyObject *)c;
     Py_DECREF(n);
@@ -344,7 +344,7 @@ km_next(PyObject *n, int level, int64_t base, int64_t after, int64_t *out)
         }
         if (!mask)
             return NULL;
-        unsigned b = __builtin_ctz(mask);
+        unsigned b = ctz64(mask);
         *out = base + b;
         return lf->data + popcount32(lf->mask & ((1u << b) - 1))
             * lf->rec;
@@ -359,7 +359,7 @@ km_next(PyObject *n, int level, int64_t base, int64_t after, int64_t *out)
         mask &= ~((1ull << first) - 1);
     }
     for (; mask; mask &= mask - 1) {
-        unsigned i = __builtin_ctzll(mask);
+        unsigned i = ctz64(mask);
         PyObject *kid = in->kids[i];
         const slot_t *p = km_next(kid, level - 1,
             base + ((int64_t)i << shift), after, out);
@@ -383,7 +383,7 @@ km_walk(PyObject *n, int level, uint32_t rec,
     }
     const Inner *in = (const Inner *)n;
     for (uint64_t mask = in->mask; mask; mask &= mask - 1)
-        if (km_walk(in->kids[__builtin_ctzll(mask)], level - 1, rec, fn, arg))
+        if (km_walk(in->kids[ctz64(mask)], level - 1, rec, fn, arg))
             return 1;
     return 0;
 }
@@ -412,7 +412,7 @@ km_equal(PyObject *a, PyObject *b, int level, uint32_t rec)
             || (ia->hvalid && ib->hvalid && ia->hsum != ib->hsum))
         return 0;
     for (uint64_t mask = ia->mask; mask; mask &= mask - 1) {
-        unsigned i = __builtin_ctzll(mask);
+        unsigned i = ctz64(mask);
         if (!km_equal(ia->kids[i], ib->kids[i], level - 1, rec))
             return 0;
     }

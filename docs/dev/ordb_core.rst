@@ -437,8 +437,9 @@ Performance:
 
 Portability and packaging:
 
-- ``__builtin_ctzll`` has no MSVC equivalent under that name; the core is
-  only built with gcc on Linux so far. An abi3 build against the 3.13
+- Compiler builtins are used only for population counts on POPCNT targets
+  of gcc and clang (``__POPCNT__``); bit scans are portable. Still, the
+  core is only built with gcc on Linux so far. An abi3 build against the 3.13
   headers passes the tests on Python 3.11 to 3.14; the sources also compile
   against the 3.11 and 3.12 headers.
 - ``_attr_chain`` matches CPython bytecode, which changes between versions

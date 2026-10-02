@@ -21,44 +21,6 @@ typedef int64_t slot_t;
 
 extern uint64_t g_token; // source of edit tokens; 0 is never a token
 
-// Releases the object references of n records and zeroes those slots.
-static inline void
-recs_clear(slot_t *p, uint64_t objmask, uint32_t rec, uint64_t n)
-{
-    if (!objmask)
-        return;
-    for (uint64_t r = 0; r < n; r++, p += rec) {
-        for (uint64_t m = objmask; m; m &= m - 1) {
-            int b = __builtin_ctzll(m);
-            PyObject *o = (PyObject *)p[b];
-            p[b] = 0;
-            Py_XDECREF(o);
-        }
-    }
-}
-
-static inline void
-recs_incref(const slot_t *p, uint64_t objmask, uint32_t rec, uint64_t n)
-{
-    if (!objmask)
-        return;
-    for (uint64_t r = 0; r < n; r++, p += rec)
-        for (uint64_t m = objmask; m; m &= m - 1)
-            Py_XINCREF((PyObject *)p[__builtin_ctzll(m)]);
-}
-
-static inline int
-recs_traverse(const slot_t *p, uint64_t objmask, uint32_t rec, uint64_t n,
-    visitproc visit, void *arg)
-{
-    for (uint64_t r = 0; r < n; r++, p += rec)
-        for (uint64_t m = objmask; m; m &= m - 1)
-            Py_VISIT((PyObject *)p[__builtin_ctzll(m)]);
-    return 0;
-}
-
-// -- KMap --------------------------------------------------------------------
-
 // Population counts. Without a POPCNT target (the portable x86-64 baseline)
 // the builtins become library calls; the bit tricks are inline.
 static inline unsigned
@@ -85,6 +47,52 @@ popcount64(uint64_t x)
         * 0x0101010101010101ull) >> 56;
 #endif
 }
+
+// Index of the lowest set bit of m (m != 0), portable: the population
+// count of the zeros below it.
+static inline unsigned
+ctz64(uint64_t m)
+{
+    return popcount64((m & (0 - m)) - 1);
+}
+
+// Releases the object references of n records and zeroes those slots.
+static inline void
+recs_clear(slot_t *p, uint64_t objmask, uint32_t rec, uint64_t n)
+{
+    if (!objmask)
+        return;
+    for (uint64_t r = 0; r < n; r++, p += rec) {
+        for (uint64_t m = objmask; m; m &= m - 1) {
+            int b = ctz64(m);
+            PyObject *o = (PyObject *)p[b];
+            p[b] = 0;
+            Py_XDECREF(o);
+        }
+    }
+}
+
+static inline void
+recs_incref(const slot_t *p, uint64_t objmask, uint32_t rec, uint64_t n)
+{
+    if (!objmask)
+        return;
+    for (uint64_t r = 0; r < n; r++, p += rec)
+        for (uint64_t m = objmask; m; m &= m - 1)
+            Py_XINCREF((PyObject *)p[ctz64(m)]);
+}
+
+static inline int
+recs_traverse(const slot_t *p, uint64_t objmask, uint32_t rec, uint64_t n,
+    visitproc visit, void *arg)
+{
+    for (uint64_t r = 0; r < n; r++, p += rec)
+        for (uint64_t m = objmask; m; m &= m - 1)
+            Py_VISIT((PyObject *)p[ctz64(m)]);
+    return 0;
+}
+
+// -- KMap --------------------------------------------------------------------
 
 #define KW_BITS 4 // nids per leaf: 16
 #define KF_BITS 6 // children per inner node: 64

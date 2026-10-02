@@ -438,7 +438,7 @@ node_hsum(const State *st, const NType *nt, PyObject *n, int level,
     if (!in->hvalid) {
         uint64_t acc = 0, h;
         for (uint64_t m = in->mask; m; m &= m - 1) {
-            if (node_hsum(st, nt, in->kids[__builtin_ctzll(m)], level - 1,
+            if (node_hsum(st, nt, in->kids[ctz64(m)], level - 1,
                     &h) < 0)
                 return -1;
             acc += h;
