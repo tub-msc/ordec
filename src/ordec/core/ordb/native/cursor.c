@@ -166,9 +166,9 @@ node_raw_cursor(PyObject *cls, PyObject *args)
     return node_make(cls, (Sg *)sg, nid, npath);
 }
 
-// Cursors of one subgraph are ordered by (nid, npath) like the tuples
-// (subgraph, nid, npath) they used to be; code relies on this, e.g. as a
-// tie breaker when sorting (key, cursor) pairs.
+// Cursors of one subgraph are ordered by nid (PathNodes, nid -1: by npath),
+// consistent with equality; code relies on this, e.g. as a tie breaker when
+// sorting (key, cursor) pairs.
 // NotImplemented is returned with Py_NewRef: Py_RETURN_NOTIMPLEMENTED of the
 // 3.12+ headers does not increment the count, even for the 3.11 limited API.
 static PyObject *
@@ -183,10 +183,12 @@ node_order(NodeObj *x, NodeObj *y, int op)
         if (!same)
             return Py_NewRef(Py_NotImplemented);
     }
-    if (node_resolve_npath(x) < 0 || node_resolve_npath(y) < 0)
-        return NULL;
-    int c = x->nid != y->nid ? (x->nid < y->nid ? -1 : 1)
-        : x->npath != y->npath ? (x->npath < y->npath ? -1 : 1) : 0;
+    int c = x->nid != y->nid ? (x->nid < y->nid ? -1 : 1) : 0;
+    if (c == 0 && x->nid < 0) {
+        if (node_resolve_npath(x) < 0 || node_resolve_npath(y) < 0)
+            return NULL;
+        c = x->npath != y->npath ? (x->npath < y->npath ? -1 : 1) : 0;
+    }
     Py_RETURN_RICHCOMPARE(c, 0, op);
 }
 
