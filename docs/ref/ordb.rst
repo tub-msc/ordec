@@ -168,7 +168,9 @@ Node types declaring ``arrayable = True`` (e.g. :class:`~ordec.core.schema.Layou
 Transactions
 ------------
 
-All changes go through a :class:`SubgraphUpdater` (the convenience methods such as ``%`` or attribute assignment open one per change). Changes are visible through the subgraph immediately; when the updater's ``with`` block ends, the changed nodes are checked, and the changes are either committed or undone as a whole. Updaters of the same subgraph can be nested (and must be closed in reverse order); freezing or copying a subgraph is not possible while an updater is open.
+All changes go through a :class:`SubgraphUpdater`. Changes are visible through the subgraph immediately; when the updater's ``with`` block ends, the changed nodes are checked, and the changes are either committed or undone as a whole. Updaters of the same subgraph can be nested (and must be closed in reverse order); freezing or copying a subgraph is not possible while an updater is open.
+
+Statements such as ``%``, attribute assignment, ``root.x = ...``, :meth:`Node.remove` or :meth:`Node.replace` run in the open updater of the calling thread, if there is one, and otherwise in a transaction of their own. Bundling statements in an updater therefore makes them cheaper, and it changes when errors appear: inside an updater, an invalid value (e.g. a LocalRef to a missing node) raises when the ``with`` block ends, not at the statement, and undoes the whole updater; the exception note names the node and attribute. In return, a LocalRef may point forward to a node added later in the same updater. A statement that fails after it has started writing cannot be undone on its own: the updater then refuses further statements and is rolled back at exit.
 
 Low-level stuff
 ---------------

@@ -168,6 +168,8 @@ dir_w(Sg *sg, int64_t nid)
             (long long)nid);
         return NULL;
     }
+    if (tx)
+        tx->writes++;
     uint64_t i = (uint64_t)nid;
     if (i >= dir->count) {
         // Leaves owned by this subgraph may hold leftovers of aborted
@@ -205,6 +207,8 @@ tab_row_w(Sg *sg, int ti, uint64_t row)
     Vec *v = &sg->st.tabs[ti].rows;
     int append = tx && (ti >= tx->saved.ntab
         || row >= tx->saved.tabs[ti].rows.count);
+    if (tx)
+        tx->writes++;
     return vec_at_w(v, row, sg->tok, tx ? tx->tok : 0, append);
 }
 
@@ -213,6 +217,8 @@ static slot_t *
 tab_append(Sg *sg, int ti)
 {
     Vec *v = &sg->st.tabs[ti].rows;
+    if (sg->txn)
+        sg->txn->writes++;
     slot_t *p = vec_at_w(v, v->count, sg->tok, sg->txn ? sg->txn->tok : 0, 1);
     if (!p)
         return NULL;

@@ -193,6 +193,8 @@ typedef struct Txn {
     struct Txn *parent;
     State saved; // state at begin
     uint64_t tok;
+    uint64_t writes; // record writes so far (tells whether a statement wrote)
+    char failed; // a statement failed after writing: abort at exit
     int64_t *chk; // [start, end) nid ranges to check at commit
     size_t nchk, capchk;
     int64_t *rem; // removed nids
@@ -220,6 +222,8 @@ typedef struct {
     Sg *sg;
     Txn *tx;
     char commit, valid;
+    char joined; // statement handle on an open transaction (not its owner)
+    uint64_t writes; // joined: tx->writes at enter
 } Upd;
 
 // A record taken out of storage: a copy of its slots that owns references
@@ -381,6 +385,7 @@ PyObject *sg_cursors(Sg *sg, PyObject *nids);
 
 // updater.c
 PyObject *sg_add1(Sg *sg, PyObject *args);
+PyObject *sg_statement_updater(Sg *sg, PyObject *noarg);
 int sg_set1(Sg *sg, int64_t nid, NType *nt, int index, PyObject *value);
 
 #if defined(__GNUC__)

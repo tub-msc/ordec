@@ -10,6 +10,37 @@
 // Updater
 // ---------------------------------------------------------------------------
 
+// Statements (%, attribute assignment and the base.py statements through
+// _statement_updater) join the open transaction of the calling thread
+// instead of opening a nested one. Returns that transaction, or NULL if the
+// statement needs a transaction of its own.
+static Txn *
+open_txn(Sg *sg)
+{
+    return sg->txn && sg->owner == PyThread_get_thread_ident() ? sg->txn
+        : NULL;
+}
+
+// A statement that failed after it had started writing cannot be undone on
+// its own: its transaction refuses further statements and aborts at exit.
+static int
+txn_usable(Txn *tx)
+{
+    if (tx->failed) {
+        PyErr_SetString(OrdbException, "SubgraphUpdater cannot be used after"
+            " a statement failed in it; it is rolled back at exit.");
+        return -1;
+    }
+    return 0;
+}
+
+static void
+op_failed(Txn *tx, uint64_t writes)
+{
+    if (tx->writes != writes)
+        tx->failed = 1;
+}
+
 static PyObject *
 upd_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 {
@@ -35,7 +66,7 @@ static void
 upd_dealloc(Upd *u)
 {
     PyObject_GC_UnTrack(u);
-    if (u->tx && u->sg && !u->sg->writing) {
+    if (u->tx && u->sg && !u->sg->writing && !u->joined) {
         // Abandoned without __exit__: undo it and everything opened after.
         // (During a write operation of the core it stays open instead.)
         u->sg->owner = PyThread_get_thread_ident();
@@ -61,6 +92,21 @@ upd_enter(Upd *u, PyObject *noarg)
         PyErr_SetString(PyExc_TypeError,
             "Unsupported operation on FrozenSubgraph.");
         return NULL;
+    }
+    if (u->joined) {
+        Txn *tx = open_txn(u->sg);
+        if (!tx) {
+            PyErr_SetString(OrdbException,
+                "The updater of this statement was closed meanwhile.");
+            return NULL;
+        }
+        if (txn_usable(tx) < 0)
+            return NULL;
+        u->tx = tx;
+        u->writes = tx->writes;
+        u->commit = 1;
+        u->valid = 1;
+        return Py_NewRef((PyObject *)u);
     }
     u->tx = txn_begin(u->sg);
     if (!u->tx)
@@ -118,8 +164,22 @@ upd_exit(Upd *u, PyObject *args)
             "SubgraphUpdaters must be closed in reverse order of opening.");
         return NULL;
     }
-    if (upd_finish(u, exc_type == Py_None && u->commit) < 0)
+    if (u->joined) {
+        // The statement ends; the transaction it joined stays open.
+        if (exc_type != Py_None)
+            op_failed(tx, u->writes);
+        u->tx = NULL;
+        u->valid = 0;
+        Py_RETURN_FALSE;
+    }
+    int failed = tx->failed;
+    if (upd_finish(u, exc_type == Py_None && u->commit && !failed) < 0)
         return NULL;
+    if (failed && exc_type == Py_None) {
+        PyErr_SetString(OrdbException, "SubgraphUpdater rolled back: a"
+            " statement failed in it after it had started writing.");
+        return NULL;
+    }
     Py_RETURN_FALSE;
 }
 
@@ -141,7 +201,7 @@ upd_usable(Upd *u)
             " opened it.");
         return -1;
     }
-    return 0;
+    return txn_usable(u->tx);
 }
 
 static PyObject *
@@ -178,10 +238,13 @@ upd_add_single(Upd *u, PyObject *args, PyObject *kwds)
     }
     if (sg_write_begin(u->sg) < 0)
         return NULL;
+    uint64_t writes = u->tx->writes;
     int r = op_add(u->sg, nid, node);
     sg_write_end(u->sg);
-    if (r < 0)
+    if (r < 0) {
+        op_failed(u->tx, writes);
         return NULL;
+    }
     return PyLong_FromLongLong(nid);
 }
 
@@ -195,10 +258,13 @@ upd_remove_nid(Upd *u, PyObject *arg)
         return NULL;
     if (sg_write_begin(u->sg) < 0)
         return NULL;
+    uint64_t writes = u->tx->writes;
     int r = op_remove(u->sg, nid);
     sg_write_end(u->sg);
-    if (r < 0)
+    if (r < 0) {
+        op_failed(u->tx, writes);
         return NULL;
+    }
     Py_RETURN_NONE;
 }
 
@@ -214,10 +280,13 @@ upd_update(Upd *u, PyObject *args, PyObject *kwds)
         return NULL;
     if (sg_write_begin(u->sg) < 0)
         return NULL;
+    uint64_t writes = u->tx->writes;
     int r = op_update(u->sg, nid, node);
     sg_write_end(u->sg);
-    if (r < 0)
+    if (r < 0) {
+        op_failed(u->tx, writes);
         return NULL;
+    }
     Py_RETURN_NONE;
 }
 
@@ -264,8 +333,11 @@ upd_insert_rows(Upd *u, PyObject *args)
     }
     if (sg_write_begin(u->sg) < 0)
         goto done;
+    uint64_t writes = u->tx->writes;
     if (op_insert_rows(u->sg, nt, nb.buf, n, cols) == 0)
         ret = Py_NewRef(Py_None);
+    else
+        op_failed(u->tx, writes);
     sg_write_end(u->sg);
 done:
     for (int i = 0; i < ncb; i++)
@@ -319,16 +391,37 @@ static PyGetSetDef upd_getset[] = {
     {NULL}
 };
 
-// -- single-node transactions without Python-level updater -----------------
+// -- statements ---------------------------------------------------------------
 
 static Upd *
-upd_open(Sg *sg)
+upd_alloc(Sg *sg)
 {
     PyTypeObject *t = g_updater_cls ? (PyTypeObject *)g_updater_cls : Upd_Type;
     Upd *u = (Upd *)PyType_GenericAlloc(t, 0);
+    if (u)
+        u->sg = (Sg *)Py_NewRef((PyObject *)sg);
+    return u;
+}
+
+// _statement_updater(): the updater for one statement in base.py: a handle
+// on the open transaction of the calling thread (its exit neither commits
+// nor aborts) or, without one, a new updater.
+PyObject *
+sg_statement_updater(Sg *sg, PyObject *noarg)
+{
+    Upd *u = upd_alloc(sg);
+    if (u)
+        u->joined = open_txn(sg) != NULL;
+    return (PyObject *)u;
+}
+
+// A transaction of its own for a statement outside of any updater.
+static Upd *
+upd_open(Sg *sg)
+{
+    Upd *u = upd_alloc(sg);
     if (!u)
         return NULL;
-    u->sg = (Sg *)Py_NewRef((PyObject *)sg);
     PyObject *r = upd_enter(u, NULL);
     if (!r) {
         Py_DECREF(u);
@@ -348,8 +441,8 @@ upd_close(Upd *u, int ok)
 }
 
 // _add1(node[, ref]): inserts the NodeTuple node (with its attribute
-// 'ref' set to ref, if given) in a transaction of its own. Returns the
-// cursor of the new node. Backs '%' and Subgraph.add.
+// 'ref' set to ref, if given), in the open transaction or in one of its
+// own. Returns the cursor of the new node. Backs '%' and Subgraph.add.
 PyObject *
 sg_add1(Sg *sg, PyObject *args)
 {
@@ -373,12 +466,31 @@ sg_add1(Sg *sg, PyObject *args)
             return NULL;
         node = n;
     }
+    Txn *tx = open_txn(sg);
+    if (tx) {
+        int64_t nid = tx->nid_gen;
+        int r = txn_usable(tx);
+        if (r == 0 && (nid < sg->st.nid_start || nid >= sg->st.nid_stop)) {
+            PyErr_SetString(OrdbException, "nid allocation exhausted.");
+            r = -1;
+        }
+        if (r == 0 && (r = sg_write_begin(sg)) == 0) {
+            uint64_t writes = tx->writes;
+            tx->nid_gen++;
+            r = op_add(sg, nid, node);
+            sg_write_end(sg);
+            if (r < 0)
+                op_failed(tx, writes);
+        }
+        Py_DECREF(node);
+        return r < 0 ? NULL : sg_cursor(sg, nid, NPATH_NONE);
+    }
     Upd *u = upd_open(sg);
     if (!u) {
         Py_DECREF(node);
         return NULL;
     }
-    Txn *tx = u->tx;
+    tx = u->tx;
     int64_t nid = tx->nid_gen++;
     int ok = 1;
     if (nid < sg->st.nid_start || nid >= sg->st.nid_stop) {
@@ -396,8 +508,8 @@ sg_add1(Sg *sg, PyObject *args)
     return sg_cursor(sg, nid, NPATH_NONE);
 }
 
-// Sets attribute index (of node type nt) of node nid in a transaction of
-// its own. Backs attribute assignment on cursors.
+// Sets attribute index (of node type nt) of node nid, in the open
+// transaction or in one of its own. Backs attribute assignment on cursors.
 int
 sg_set1(Sg *sg, int64_t nid, NType *nt, int index, PyObject *value)
 {
@@ -421,6 +533,19 @@ sg_set1(Sg *sg, int64_t nid, NType *nt, int index, PyObject *value)
     if (!n)
         return -1;
     row = n;
+    Txn *tx = open_txn(sg);
+    if (tx) {
+        int r = -1;
+        if (txn_usable(tx) == 0 && sg_write_begin(sg) == 0) {
+            uint64_t writes = tx->writes;
+            r = op_update(sg, nid, row);
+            sg_write_end(sg);
+            if (r < 0)
+                op_failed(tx, writes);
+        }
+        Py_DECREF(row);
+        return r;
+    }
     Upd *u = upd_open(sg);
     if (!u) {
         Py_DECREF(row);

@@ -105,6 +105,26 @@ opening; aborting an outer updater also undoes committed inner ones. Freezing
 or copying a subgraph with an open updater raises
 :class:`~ordec.core.ordb.OrdbException`.
 
+Statements (``%`` and attribute assignment in C; ``Node.remove``,
+``Node.replace``, named insertion, ``Subgraph.add``, ``update`` and
+``remove_nid`` through ``Subgraph._statement_updater``) join the open
+transaction of the calling thread instead of opening a nested one: their
+nids go to its check list, and the checks run at its exit. Only without an
+open transaction does a statement get a transaction of its own. Explicit
+nested updaters stay real nested transactions. A statement inside an
+updater thus costs no ``Txn``, no ``state_copy`` and no page copies beyond
+the transaction's own (attribute assignment 890 to 220 ns, ``%`` 910 to
+630 ns). Consequences: a LocalRef may point forward to a node added later
+in the same updater, and an invalid value raises at with-exit
+(``_check_callback`` adds a note naming the node and attribute).
+
+A statement that fails after its first record write (e.g. a ``__hash__``
+raising during index insertion) cannot be undone on its own. The
+transaction counts its record writes (``Txn.writes``); such a failure sets
+``Txn.failed``, after which the transaction refuses further statements and
+its updater aborts and raises at exit. Failures before the first write
+(factories, type checks) leave the transaction usable.
+
 When a node type is created, ``base.py`` reads the bytecode of the
 ``sortkey`` and ``of_subgraph`` functions (``_attr_chain``). If a function
 only reads a chain of attributes from its argument, the core gets the

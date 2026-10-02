@@ -706,6 +706,8 @@ static PyMethodDef sg_methods[] = {
         NULL},
     {"_snapshot", (PyCFunction)sg_snapshot, METH_VARARGS, NULL},
     {"_add1", (PyCFunction)sg_add1, METH_VARARGS, NULL},
+    {"_statement_updater", (PyCFunction)sg_statement_updater, METH_NOARGS,
+        NULL},
     {"_cursors", (PyCFunction)sg_cursors, METH_O, NULL},
     {"_child", (PyCFunction)sg_child, METH_VARARGS, NULL},
     {"_set_nid_start", (PyCFunction)sg_set_nid_start, METH_O, NULL},

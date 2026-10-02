@@ -1075,7 +1075,7 @@ class Node(_ordb.NodeBase, metaclass=NodeMeta, build_node=False):
 
     def remove(self):
         """Removes selected node from subgraph, including NPath if applicable."""
-        with self.subgraph.updater() as sgu:
+        with self.subgraph._statement_updater() as sgu:
             if self.npath_nid is not None:
                 sgu.remove_nid(self.npath_nid)
             self.remove_node(sgu)
@@ -1100,7 +1100,7 @@ class Node(_ordb.NodeBase, metaclass=NodeMeta, build_node=False):
                 # Apart from that, there are other data inconsistencies that could currently
                 # be introduced by replace() but that are not caught anywhere?!
 
-        with self.subgraph.updater() as u:
+        with self.subgraph._statement_updater() as u:
             self.remove_node(u)
             new_nid = inserter.insert_into(u, self.nid)
 
@@ -1199,7 +1199,7 @@ class NonLeafNode(Node, build_node=False):
     # The item handlers allow accessing children in the NPath hierarchy:
 
     def __setitem__(self, k, v):
-        with self.subgraph.updater() as u:
+        with self.subgraph._statement_updater() as u:
             if isinstance(v, Node):
                 # v is a cursor to a node already in the subgraph: name that
                 # existing node rather than inserting a copy. This is what makes
@@ -1237,7 +1237,7 @@ class NonLeafNode(Node, build_node=False):
             "mkpath() is deprecated. Use 'x.name = PathNode()' or 'x[i] = PathNode()' instead.",
             DeprecationWarning,
             stacklevel=2)
-        with self.subgraph.updater() as u:
+        with self.subgraph._statement_updater() as u:
             self._mkpath_addnode(k, ref, u)
 
     def _mkpath_addnode(self, k, ref, u: 'SubgraphUpdater'):
@@ -1466,6 +1466,9 @@ class SubgraphUpdater(SubgraphQueryMixin, _ordb.UpdaterBase):
     subgraph see them while the updater is open. Freezing or copying the
     subgraph is not possible while an updater is open. Updaters of the same
     subgraph can be nested; they must be closed in reverse order of opening.
+
+    Statements such as ``%`` or attribute assignment run in the open updater
+    of the calling thread: their changes are checked at its exit.
     """
     __slots__ = ()
 
@@ -1722,19 +1725,23 @@ class Subgraph(SubgraphQueryMixin, _ordb.SubgraphBase):
     def updater(self) -> SubgraphUpdater:
         return SubgraphUpdater(self)
 
+    # The following statements, like % and attribute assignment, run in the
+    # open updater of the calling thread if there is one, else in a
+    # transaction of their own (see _statement_updater).
+
     def remove_nid(self, nid: int):
-        with self.updater() as u:
+        with self._statement_updater() as u:
             u.remove_nid(nid)
 
     def update(self, node: NodeTuple, nid: int) -> int:
-        with self.updater() as u:
+        with self._statement_updater() as u:
             u.update(node, nid)
 
     def add(self, node: Inserter) -> int:
         """Inserts node and returns nid."""
         if isinstance(node, NodeTuple):
             return self._add1(node).nid
-        with self.updater() as u:
+        with self._statement_updater() as u:
             return node.insert_into(u, u.nid_generate())
 
 @public
@@ -1956,17 +1963,26 @@ def _check_callback(kind: int, sgu: SubgraphUpdater, nid: int, obj):
     if kind == 5:
         raise DanglingLocalRef(nid)
     node = sg.row(nid)
-    if kind == 0:
-        root_cls = sg.row(0)._cursor_type
-        if not any(issubclass(root_cls, cls) for cls in node._cursor_type.in_subgraphs):
-            raise ModelViolation(f"{node._cursor_type.__name__} is not permitted in subgraph {root_cls.__name__}.")
-    elif kind == 1:
-        raise ModelViolation(f"{node._attrdesc_by_attr[obj].name!r} is not optional (but set to None).")
-    elif kind in (2, 3):
-        next(ns for ns in obj.indices if isinstance(ns, (LocalRefIndex, ExternalRefIndex))) \
-            .check_constraints(sgu, node, nid)
-    elif kind == 4:
-        obj.check_constraints(sgu, node, nid)
+    try:
+        if kind == 0:
+            root_cls = sg.row(0)._cursor_type
+            if not any(issubclass(root_cls, cls) for cls in node._cursor_type.in_subgraphs):
+                raise ModelViolation(f"{node._cursor_type.__name__} is not permitted in subgraph {root_cls.__name__}.")
+        elif kind == 1:
+            raise ModelViolation(f"{node._attrdesc_by_attr[obj].name!r} is not optional (but set to None).")
+        elif kind in (2, 3):
+            next(ns for ns in obj.indices if isinstance(ns, (LocalRefIndex, ExternalRefIndex))) \
+                .check_constraints(sgu, node, nid)
+        elif kind == 4:
+            obj.check_constraints(sgu, node, nid)
+    except ModelViolation as e:
+        # Checks run when the updater exits, possibly long after the
+        # statement that caused the violation: name the node.
+        where = f"{node._cursor_type.__name__}(nid={nid})"
+        if kind in (1, 2, 3):
+            where += f", attribute {node._attrdesc_by_attr[obj].name!r}"
+        e.add_note(f"Found by the commit check of {where}.")
+        raise
 
 _ordb._setup(
     OrdbException=OrdbException,

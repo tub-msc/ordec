@@ -1168,6 +1168,32 @@ def test_localref_mandatory():
     with pytest.raises(ModelViolation, match="'ref' is not optional"):
         h % NodeRef(ref=None)
         
+def test_statements_join_updater():
+    """Inside an updater, statements run in its transaction: a LocalRef may
+    point forward, and an invalid value is found at with-exit, which rolls
+    back the whole updater."""
+    class Item(Node):
+        in_subgraphs = [MyHead]
+        ref = LocalRef(MyNode)
+
+    h = MyHead()
+    with h.updater() as u:
+        item = h % Item()
+        nid = u.nid_generate()
+        item.ref = nid # no node at nid yet
+        u.add_single(MyNode(label='later'), nid)
+    assert item.ref.label == 'later'
+
+    count = h.subgraph.count()
+    with pytest.raises(DanglingLocalRef) as exc_info:
+        with h.updater():
+            h.m = MyNode(label='m')
+            item.ref = 12345
+            assigned = True
+    assert assigned
+    assert f"Item(nid={item.nid}), attribute 'ref'" in exc_info.value.__notes__[0]
+    assert h.subgraph.count() == count and item.ref.label == 'later'
+
 def test_typecheck_subgraphref():
     class AnotherHead(SubgraphRoot):
         label = Attr(str)
