@@ -219,6 +219,14 @@ class _FuzzDriver:
             if got != [nid for _, nid in expect]:
                 raise AssertionError(f"{self.name}: target index wrong for {target}")
         sg._check_indices() # entries exactly as computed from the rows
+        # Cached subtree hashes: a snapshot sharing nodes with earlier ones
+        # hashes and compares like a freshly built copy of its nodes.
+        with ordb.use_backend(self.name):
+            fresh = ordb.MutableSubgraph.load(rows).subgraph
+        fresh._set_nid_start(sg.nid_alloc.start)
+        fresh, snap = fresh.freeze(), sg.freeze()
+        if hash(snap) != hash(fresh) or snap != fresh:
+            raise AssertionError(f"{self.name}: content hash or equality wrong")
         for snap, checksum, model in self.snaps:
             if checksum_subgraph(snap) != checksum or _typed(_rows(snap)) != _typed(model):
                 raise AssertionError(f"{self.name}: snapshot changed")

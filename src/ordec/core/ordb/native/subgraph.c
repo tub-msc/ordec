@@ -361,9 +361,73 @@ plain_hash_add(const slot_t *p, void *arg)
     return 0;
 }
 
+// The hash of a stored row (may run Python code for object slots and
+// boxed values).
+static int
+row_hash(const State *st, const NType *nt, const slot_t *p, uint64_t *out)
+{
+    if (!nt->objmask && !st->boxed) {
+        *out = plain_row_hash(nt, p);
+        return 0;
+    }
+    Rec rec;
+    if (rec_take(&rec, st, nt, p, p[0]) < 0)
+        return -1;
+    uint64_t h = mix((uint64_t)(uintptr_t)nt->tuple_cls, (uint64_t)p[0]);
+    int ok = 0;
+    for (int i = 0; i < nt->nattr && ok >= 0; i++) {
+        uint64_t hc = H_NONE;
+        ok = rec_slot_hash(&rec, i, &hc);
+        h = mix(h, hc);
+    }
+    rec_drop(&rec);
+    *out = h;
+    return ok < 0 ? -1 : 0;
+}
+
+// The sum of the row hashes below the table node n, cached on the node.
+// Only for frozen subgraphs: their nodes are never written in place, so a
+// stored sum stays valid, also while hashing values runs Python code.
+static int
+node_hsum(const State *st, const NType *nt, PyObject *n, int level,
+    uint64_t *out)
+{
+    if (level == 0) {
+        KLeaf *lf = (KLeaf *)n;
+        if (!lf->hvalid) {
+            uint64_t acc = 0, h;
+            for (uint32_t k = 0; k < popcount32(lf->mask); k++) {
+                if (row_hash(st, nt, lf->data + k * nt->rec, &h) < 0)
+                    return -1;
+                acc += h;
+            }
+            lf->hsum = acc;
+            lf->hvalid = 1;
+        }
+        *out = lf->hsum;
+        return 0;
+    }
+    KInner *in = (KInner *)n;
+    if (!in->hvalid) {
+        uint64_t acc = 0, h;
+        for (uint64_t m = in->mask; m; m &= m - 1) {
+            if (node_hsum(st, nt, in->kids[__builtin_ctzll(m)], level - 1,
+                    &h) < 0)
+                return -1;
+            acc += h;
+        }
+        in->hsum = acc;
+        in->hvalid = 1;
+    }
+    *out = in->hsum;
+    return 0;
+}
+
 // Content hash: order-independent sum of record hashes plus nid_alloc.
-// Tables are looked up again for every row: hashing values can run Python
-// code, during which another thread may write to a mutable subgraph.
+// Frozen subgraphs sum the cached sums of their table nodes, so a new
+// generation only hashes the rows below the nodes it changed. Mutable ones
+// look the tables up again for every row: hashing values can run Python
+// code, during which another thread may write.
 static PyObject *
 sg_content_hash(Sg *sg, PyObject *noarg)
 {
@@ -372,28 +436,26 @@ sg_content_hash(Sg *sg, PyObject *noarg)
     const State *st = &sg->st;
     uint64_t acc = mix((uint64_t)st->nid_start, (uint64_t)st->nid_stop);
     for (int ti = 0; ti < st->ntab; ti++) {
-        if (!st->tabs[ti].nt->objmask && !st->boxed) {
+        const Tab *t = &st->tabs[ti];
+        if (sg->frozen) {
+            uint64_t h = 0;
+            if (t->rows.root && node_hsum(st, t->nt, t->rows.root,
+                    t->rows.levels, &h) < 0)
+                return NULL;
+            acc += h;
+            continue;
+        }
+        if (!t->nt->objmask && !st->boxed) {
             // No Python code runs for these rows: one walk.
-            PlainHash ph = {st->tabs[ti].nt, 0};
-            kmap_walk(&st->tabs[ti].rows, plain_hash_add, &ph);
+            PlainHash ph = {t->nt, 0};
+            kmap_walk(&t->rows, plain_hash_add, &ph);
             acc += ph.acc;
             continue;
         }
         int64_t pos = -1;
         for (const slot_t *p; (p = tab_next(st, ti, &pos));) {
-            NType *nt = st->tabs[ti].nt;
-            Rec rec;
-            if (rec_take(&rec, st, nt, p, p[0]) < 0)
-                return NULL;
-            uint64_t h = mix((uint64_t)(uintptr_t)nt->tuple_cls, (uint64_t)p[0]);
-            int ok = 0;
-            for (int i = 0; i < nt->nattr && ok >= 0; i++) {
-                uint64_t hc = H_NONE;
-                ok = rec_slot_hash(&rec, i, &hc);
-                h = mix(h, hc);
-            }
-            rec_drop(&rec);
-            if (ok < 0)
+            uint64_t h;
+            if (row_hash(st, st->tabs[ti].nt, p, &h) < 0)
                 return NULL;
             acc += h;
         }
@@ -406,26 +468,6 @@ sg_content_hash(Sg *sg, PyObject *noarg)
         sg->hash_valid = 1;
     }
     return PyLong_FromSsize_t(h);
-}
-
-typedef struct {
-    const State *sb;
-    const NType *nt;
-    int eq;
-} PlainEq;
-
-static int
-plain_eq_row(const slot_t *p, void *arg)
-{
-    PlainEq *w = arg;
-    int tk;
-    const slot_t *q = st_row(w->sb, p[0], &tk);
-    if (!q || w->sb->tabs[tk].nt != w->nt
-            || (p != q && memcmp(p, q, sizeof(slot_t) * w->nt->rec))) {
-        w->eq = 0;
-        return 1;
-    }
-    return 0;
 }
 
 // Compares two live records of the same node type.
@@ -476,10 +518,9 @@ sg_content_eq(Sg *a, PyObject *arg)
                 && sa->boxed == sb->boxed)
             continue; // shared storage
         if (!nt->objmask && !sa->boxed && !sb->boxed) {
-            // No Python code runs for these rows: one walk.
-            PlainEq w = {sb, nt, 1};
-            kmap_walk(&sa->tabs[ti].rows, plain_eq_row, &w);
-            if (!w.eq)
+            // No Python code runs for these rows: the tables are compared
+            // in parallel, skipping shared subtrees.
+            if (!kmap_equal_plain(&sa->tabs[ti].rows, &sb->tabs[tj].rows))
                 Py_RETURN_FALSE;
             continue;
         }

@@ -237,6 +237,7 @@ kleaf_new(const KMap *m, uint32_t cap, uint64_t tok)
     if (!n)
         return NULL;
     n->owner = tok;
+    n->hvalid = 0;
     n->objmask = m->objmask;
     n->rec = m->rec;
     n->mask = 0;
@@ -254,6 +255,7 @@ kinner_new(uint64_t tok)
     if (!n)
         return NULL;
     n->owner = tok;
+    n->hvalid = 0;
     n->mask = 0;
     memset(n->kids, 0, sizeof(n->kids));
     PyObject_GC_Track(n);
@@ -267,8 +269,10 @@ kleaf_writable(const KMap *m, PyObject **pp, uint32_t need, uint64_t tok)
 {
     KLeaf *n = (KLeaf *)*pp;
     uint32_t cnt = kleaf_n(n);
-    if (n->owner == tok && n->cap >= need)
+    if (n->owner == tok && n->cap >= need) {
+        n->hvalid = 0; // about to be written
         return n;
+    }
     KLeaf *c = kleaf_new(m, cap_for(need > cnt ? need : cnt), tok);
     if (!c)
         return NULL;
@@ -289,8 +293,10 @@ static KInner *
 kinner_writable(PyObject **pp, uint64_t tok)
 {
     KInner *n = (KInner *)*pp;
-    if (n->owner == tok)
+    if (n->owner == tok) {
+        n->hvalid = 0; // about to be written
         return n;
+    }
     KInner *c = kinner_new(tok);
     if (!c)
         return NULL;
@@ -435,6 +441,13 @@ kmap_remove(KMap *m, int64_t nid, uint64_t tok)
         Py_CLEAR(m->root);
         m->levels = 0;
     }
+    // Fewest levels again: a root with only its first child goes.
+    while (m->levels > 0 && ((KInner *)m->root)->mask == 1) {
+        PyObject *kid = Py_NewRef(((KInner *)m->root)->kids[0]);
+        Py_DECREF(m->root);
+        m->root = kid;
+        m->levels--;
+    }
     return 0;
 }
 
@@ -505,6 +518,40 @@ int
 kmap_walk(const KMap *m, int (*fn)(const slot_t *, void *), void *arg)
 {
     return m->root ? km_walk(m->root, m->levels, m->rec, fn, arg) : 0;
+}
+
+static int
+km_equal(PyObject *a, PyObject *b, int level, uint32_t rec)
+{
+    if (a == b)
+        return 1;
+    if (level == 0) {
+        const KLeaf *la = (const KLeaf *)a, *lb = (const KLeaf *)b;
+        return la->mask == lb->mask && !memcmp(la->data, lb->data,
+            sizeof(slot_t) * rec * kleaf_n(la));
+    }
+    const KInner *ia = (const KInner *)a, *ib = (const KInner *)b;
+    if (ia->mask != ib->mask
+            || (ia->hvalid && ib->hvalid && ia->hsum != ib->hsum))
+        return 0;
+    for (uint64_t mask = ia->mask; mask; mask &= mask - 1) {
+        unsigned i = __builtin_ctzll(mask);
+        if (!km_equal(ia->kids[i], ib->kids[i], level - 1, rec))
+            return 0;
+    }
+    return 1;
+}
+
+// Whether two tables of rows without object slots or boxed values are
+// equal. Equal content has an equal shape, so the tries are compared in
+// parallel, skipping shared subtrees.
+int
+kmap_equal_plain(const KMap *a, const KMap *b)
+{
+    if (!a->root || !b->root)
+        return a->root == b->root;
+    return a->levels == b->levels && a->rec == b->rec
+        && km_equal(a->root, b->root, a->levels, a->rec);
 }
 
 // The record with the smallest nid > after (stored in *nid), or NULL. It

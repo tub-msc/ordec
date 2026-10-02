@@ -145,6 +145,8 @@ popcount64(uint64_t x)
 typedef struct {
     PyObject_VAR_HEAD // ob_size: slots allocated (cap * rec)
     uint64_t owner;
+    uint64_t hsum; // sum of the row hashes, if hvalid (see sg_content_hash)
+    uint8_t hvalid;
     uint64_t objmask;
     uint32_t rec;
     uint32_t mask; // bit b: nid base + b is present
@@ -155,13 +157,16 @@ typedef struct {
 typedef struct {
     PyObject_HEAD
     uint64_t owner;
+    uint64_t hsum; // sum of the row hashes below, if hvalid
+    uint8_t hvalid;
     uint64_t mask; // bit i: kids[i] is present
     PyObject *kids[1u << KF_BITS];
 } KInner;
 
 // A persistent sparse array of records keyed by nid: a radix trie with
 // occupancy masks. Like everywhere else, a node is written in place only by
-// the transaction that created it.
+// the transaction that created it. The shape depends only on the content:
+// the root has the fewest levels that hold the largest nid.
 typedef struct {
     PyObject *root; // KLeaf (levels 0) or KInner; NULL when empty
     uint64_t objmask;
@@ -276,6 +281,7 @@ slot_t *kmap_at_w(KMap *m, int64_t nid, uint64_t tok);
 int kmap_remove(KMap *m, int64_t nid, uint64_t tok);
 const slot_t *kmap_next(const KMap *m, int64_t after, int64_t *nid);
 int kmap_walk(const KMap *m, int (*fn)(const slot_t *, void *), void *arg);
+int kmap_equal_plain(const KMap *a, const KMap *b);
 void obj_free(void *o);
 slot_t *vec_at_w(Vec *v, uint64_t i, uint64_t lin, uint64_t tx, int append);
 int ent_cmp(const void *a, const void *b);

@@ -107,6 +107,20 @@ previous state; abort installs it again. The shape of a trie depends only
 on its content: removing a node removes its row (no tombstones), tables
 need no compaction, and scans are always in nid order.
 
+The content hash of a subgraph (``hash()`` of a frozen subgraph) is an
+order-independent sum of row hashes plus ``nid_alloc``. Every table node
+caches the sum below it; hashing a frozen subgraph fills the missing sums
+lazily, so a new generation only hashes the rows below the nodes it
+changed (0.4 us instead of 125 us for one changed row of 50,000). Sums are
+stored only while hashing frozen subgraphs: their nodes were committed by
+earlier transactions and are never written in place again, so hashing
+values with Python code cannot invalidate them; every write path clears
+the sum of the nodes it writes nevertheless. Equality compares tables of
+rows without object slots or boxed values in parallel, skipping shared
+subtrees and stopping at the first differing cached sum; this relies on
+the shape of a trie depending only on its content (a removal collapses a
+root left with only its first child).
+
 The directory is a ``Vec``, a dense persistent radix tree with 32 children
 per inner node and leaves of 16 records. A subgraph appends to directory
 leaves it owns in place when no snapshot can see the records (behind every
