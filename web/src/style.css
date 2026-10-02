@@ -1500,6 +1500,29 @@ body.theme-dark .spotlight-buttons .spotlight-skip {
 .schem-statusbar {
     justify-content: flex-end;
 }
+/* Default / detail view of schematics. Elements of class "detail" (grid,
+   pin labels hidden by the symbol) are hidden by the SVG's own stylesheet
+   (see render.py); the detail view shows them. */
+.schem-svg.schem-detail .detail {
+    display: inline;
+}
+.schem-mode-switch {
+    display: flex;
+    margin-right: auto;
+}
+.schem-mode-switch button {
+    font-family: var(--font-sans);
+    font-size: var(--font-size-sm);
+    color: var(--color-text-muted);
+    background: none;
+    border: none;
+    padding: 0 8px;
+    cursor: pointer;
+}
+.schem-mode-switch button.active {
+    color: var(--color-text);
+    font-weight: bold;
+}
 .viewer-coordinates {
     font-family: var(--font-mono);
     font-size: var(--font-size-md);
@@ -1611,6 +1634,10 @@ body.theme-dark .spotlight-buttons .spotlight-skip {
 /* -- Symbol stroke (theme-aware) --------------------------------- */
 .symbolPoly {
     stroke: var(--color-symbol-stroke) !important;
+}
+/* Symbol text and pin arrows share the color of the symbol drawing. */
+.pinLabel, .pinArrow, .params, .cellName {
+    fill: var(--color-symbol-stroke) !important;
 }
 
 /* -- Scrollbar --------------------------------------------------- */

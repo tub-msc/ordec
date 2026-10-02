@@ -302,10 +302,12 @@ def create_symbol_from_subckt(extlib, name, ports) -> Symbol:
     SPICE does not carry pin directions, so every pin defaults to
     ``PinType.Inout`` and pins are placed automatically.
     """
-    sym = Symbol(caption=name, cell=extlib[name])
+    sym = Symbol(cell=extlib[name])
+    sym.add_default_annotations(cell_name=name)
     for port in ports:
         sym[port] = Pin(pintype=PinType.Inout, align=North)
     sym.place_pins(hpadding=3, vpadding=2)
+    sym.make_box()
     return sym.freeze()
 
 

@@ -24,6 +24,7 @@ Heuristics:
   of the removed route are rejected.
 """
 
+import math
 import numpy as np
 import heapq
 import sys
@@ -1166,7 +1167,7 @@ def tap_outline_point(tap: SchemTapPoint) -> Vec2R:
 
 def adjust_outline_initial(node: Schematic) -> Rect4R | None:
     """Compute an initial outline enclosing all ports, tap points and
-    instances.
+    instances (annotation blocks are placed after wiring).
 
     Args:
         node: Schematic containing the elements.
@@ -1175,8 +1176,7 @@ def adjust_outline_initial(node: Schematic) -> Rect4R | None:
         Rect4R: Adjusted outline bounding all elements, or None for an
         empty schematic.
     """
-    # Character width in schematic units (11pt Inconsolata 75% stretch * scale 0.045)
-    label_char_width = 0.3
+    label_char_width = Renderer.label_char_width
     port_text_space = Renderer.port_text_space
 
     outline = None
@@ -1209,6 +1209,11 @@ def adjust_outline_initial(node: Schematic) -> Rect4R | None:
             outline = outline.extend(up_pos)
         else:
             outline = instance_geometry
+    if outline is not None:
+        # Label extents are fractional; keep the outline on whole grid units,
+        # which the routing grid (calculate_vertices) relies on.
+        outline = Rect4R(math.floor(outline.lx), math.floor(outline.ly),
+            math.ceil(outline.ux), math.ceil(outline.uy))
     return outline
 
 def auto_wire(node: Schematic) -> None:

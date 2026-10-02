@@ -45,6 +45,8 @@ class PortAlignTest(Cell):
         s.west = Pin(pintype=PinType.In, align=West)
         s.east = Pin(pintype=PinType.In, align=East)
         s.place_pins()
+        s.add_default_annotations()
+        s.make_box()
 
         return s
 
@@ -96,6 +98,8 @@ class DFF(Cell):
         s.q = Pin(pintype=PinType.Out, align=East)
         s.clk = Pin(pintype=PinType.In, align=West)
         s.place_pins(vpadding=2, hpadding=3)
+        s.add_default_annotations()
+        s.make_box()
 
         return s
 
@@ -116,6 +120,8 @@ class MultibitReg_Arrays(Cell):
             s.q[i] = Pin(pintype=PinType.Out, align=East)
         s.clk = Pin(pintype=PinType.In, align=West)
         s.place_pins()
+        s.add_default_annotations()
+        s.make_box()
 
         return s
 
@@ -176,6 +182,8 @@ class MultibitReg_ArrayOfStructs(Cell):
             s.bit[i].q = Pin(pintype=PinType.Out, align=East)
         s.clk = Pin(pintype=PinType.In, align=West)
         s.place_pins()
+        s.add_default_annotations()
+        s.make_box()
 
         return s
 
@@ -201,6 +209,8 @@ class NetNamingTest(Cell):
         s.d = Pin(pintype=PinType.Inout, align=West)
         
         s.place_pins(vpadding=2, hpadding=2)
+        s.add_default_annotations()
+        s.make_box()
         return s
 
     @viewgen_noctx
@@ -244,6 +254,8 @@ class MultibitReg_StructOfArrays(Cell):
             s.data.q[i] = Pin(pintype=PinType.Out, align=East)
         s.clk = Pin(pintype=PinType.In, align=West)
         s.place_pins()
+        s.add_default_annotations()
+        s.make_box()
 
         return s
 
@@ -297,6 +309,8 @@ class TestNmosInv(Cell):
         s.a = Pin(pintype=PinType.In, align=West)
         s.y = Pin(pintype=PinType.Out, align=East)
         s.place_pins()
+        s.add_default_annotations()
+        s.make_box()
 
         return s
 

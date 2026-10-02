@@ -1,0 +1,26 @@
+# SPDX-FileCopyrightText: 2025 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+from ordec.core import *
+
+cell Box:
+    n = Parameter(int)
+    m = Parameter(int, default=1)
+
+    viewgen symbol(self) -> Symbol:
+        input a: .pos=(0, 2); .align=West
+        output y: .pos=(4, 2); .align=East
+        . % SymbolPoly(vertices=[(1, 1), (3, 1), (3, 3), (1, 3), (1, 1)])
+        # The cell name is drawn inside the box instead of in the annotation block:
+        . % SymbolText(pos=(1.2, 2), kind=AnnotationKind.CellName, text="Box")
+        for ann in .all(SymbolAnnotation):
+            if ann.kind == AnnotationKind.CellName:
+                ann.shown = False
+        # Hint: block above the box, used if it fits there.
+        .annotation_pos = (1, 5)
+
+cell Top:
+    viewgen schematic(self) -> Schematic:
+        net a, y
+        Box b1: .$n=1; .pos=(2, 2); .a -- a; .y -- y
+        Box b2: .$n=2; .pos=(10, 2); .a -- a; .y -- y; .annotation_pos=(9, 7); .annotation_align=West
