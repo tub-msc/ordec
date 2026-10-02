@@ -1295,7 +1295,8 @@ def test_query_snapshot():
     frozen = s.freeze()
     h = hash(frozen)
     nids = s.all(GuardNode.color_idx.query(123), wrap_cursor=False)
-    nids.append(999)
+    nids.append(999) # query results are detached from the index
+    assert s.all(GuardNode.color_idx.query(123), wrap_cursor=False) == nids[:2]
     with pytest.raises(TypeError):
         s.subgraph.nodes[1] = 'garbage'
     # Iterating a query result while removing exactly its nodes:
