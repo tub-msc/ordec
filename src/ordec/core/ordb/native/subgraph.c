@@ -74,18 +74,33 @@ sg_dealloc(Sg *sg)
     obj_free(sg);
 }
 
+// The nid of an integer o (int or with __index__, e.g. numpy ints from
+// arrays()): 1 if o is an integer, 0 if not, -1 on error. Out of range
+// gives nid -1 (no such node).
+static int
+index_nid(PyObject *o, int64_t *nid)
+{
+    if (!PyIndex_Check(o))
+        return 0;
+    PyObject *i = PyNumber_Index(o);
+    if (!i)
+        return -1;
+    int ovf;
+    long long x = PyLong_AsLongLongAndOverflow(i, &ovf);
+    Py_DECREF(i);
+    if (x == -1 && PyErr_Occurred())
+        return -1;
+    *nid = ovf ? -1 : x;
+    return 1;
+}
+
 static int
 arg_nid(PyObject *o, int64_t *nid)
 {
-    if (!PyLong_Check(o)) {
+    int r = index_nid(o, nid);
+    if (r == 0)
         PyErr_SetString(PyExc_TypeError, "nid must be int");
-        return -1;
-    }
-    int ovf;
-    *nid = PyLong_AsLongLongAndOverflow(o, &ovf);
-    if (ovf)
-        *nid = -1; // no such node
-    return 0;
+    return r == 1 ? 0 : -1;
 }
 
 static PyObject *
@@ -121,11 +136,11 @@ static PyObject *
 sg_has(Sg *sg, PyObject *arg)
 {
     int ti;
-    if (!PyLong_Check(arg))
-        Py_RETURN_FALSE;
-    int ovf;
-    long long nid = PyLong_AsLongLongAndOverflow(arg, &ovf);
-    return PyBool_FromLong(!ovf && st_row(&sg->st, nid, &ti) != NULL);
+    int64_t nid;
+    int r = index_nid(arg, &nid);
+    if (r < 0)
+        return NULL;
+    return PyBool_FromLong(r && st_row(&sg->st, nid, &ti) != NULL);
 }
 
 static PyObject *

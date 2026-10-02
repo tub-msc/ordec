@@ -42,8 +42,9 @@ def test_insert_array_at_interleaved():
     insert([10, 20])
     insert([15])
     assert [n.nid for n in s.all(MyArrayNode)] == [10, 15, 20]
-    for nid in (10, 15, 20):
+    for nid in s.arrays(MyArrayNode)['nid']: # numpy ints
         assert nid in s.subgraph.nodes
+        assert s.subgraph.nodes[nid].val == 2 * nid
         assert s.subgraph.cursor_at(nid).val == 2 * nid
     with pytest.raises(OrdbException, match="Duplicate nid"):
         insert([14, 15])
