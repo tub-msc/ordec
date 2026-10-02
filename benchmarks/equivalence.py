@@ -55,7 +55,11 @@ class _FuzzDriver:
         self.rng = Lcg(seed)
         with ordb.use_backend(backend_name):
             self.cur = ChainRoot().subgraph
-        self.snaps = [] # (frozen subgraph, checksum when taken)
+        # Reference model of self.cur: nid -> NodeTuple. A transaction works
+        # on a copy and replaces the model on commit, so model dicts are
+        # never changed in place and snapshots can share them.
+        self.model = {nid: self.cur.row(nid) for nid in self.cur.nids()}
+        self.snaps = [] # (frozen subgraph, checksum when taken, model)
 
     def _pick(self, ntuple=None):
         nids = self.cur.nids(ntuple) if ntuple else self.cur.nids()[1:]
@@ -63,22 +67,26 @@ class _FuzzDriver:
             return None
         return nids[self.rng.randint(len(nids))]
 
-    def _random_change(self, u):
-        """One random change inside the open updater u."""
+    def _random_change(self, u, m):
+        """One random change inside the open updater u, recorded in the
+        model m of the transaction."""
         rng = self.rng
         sg = self.cur
         op = rng.randint(6)
         if op == 0:
-            u.add_single(CNode(tag=rng.randint(_TAGS), val=rng.randint(1000)),
-                u.nid_generate())
+            node = CNode(tag=rng.randint(_TAGS), val=rng.randint(1000))
+            m[u.add_single(node, u.nid_generate())] = node
         elif op == 1:
-            vals = np.array([rng.randint(1000) for _ in range(1 + rng.randint(4))])
-            u.insert_array(ANode, val=vals, other=rng.randint(8))
+            vals = [rng.randint(1000) for _ in range(1 + rng.randint(4))]
+            other = rng.randint(8)
+            nids = u.insert_array(ANode, val=np.array(vals), other=other)
+            for nid, val in zip(nids, vals):
+                m[nid] = ANode(val=val, other=other)
         elif op == 2:
             target = self._pick(CNode.Tuple)
             if target is not None:
-                u.add_single(RNode(target=target, key=rng.randint(_KEYS)),
-                    u.nid_generate())
+                node = RNode(target=target, key=rng.randint(_KEYS))
+                m[u.add_single(node, u.nid_generate())] = node
         elif op == 3: # update, including None values and key changes
             nid = self._pick()
             if nid is not None:
@@ -90,45 +98,54 @@ class _FuzzDriver:
                 else:
                     node = node.set(val=None if rng.randint(4) == 0 else rng.randint(1000))
                 u.update(node, nid)
+                m[nid] = node
         elif op == 4: # type change under the same nid
             nid = self._pick(ANode.Tuple)
             if nid is not None:
-                u.update(CNode(tag=rng.randint(_TAGS), val=1), nid)
+                node = CNode(tag=rng.randint(_TAGS), val=1)
+                u.update(node, nid)
+                m[nid] = node
         else:
             nid = self._pick()
             if nid is not None:
                 u.remove_nid(nid)
+                del m[nid]
 
     def step(self, opcode):
         rng = self.rng
         if opcode < 55: # committed transaction with 1-3 changes
             n = 1 + rng.randint(3)
+            m = dict(self.model)
             try:
                 with self.cur.updater() as u:
                     for _ in range(n):
-                        self._random_change(u)
+                        self._random_change(u, m)
             except OrdbException as e:
                 return type(e).__name__ # rejected: same outcome everywhere
+            self.model = m
         elif opcode < 65: # aborted transaction: state untouched
             before = checksum_subgraph(self.cur)
+            m = dict(self.model)
             try:
                 with self.cur.updater() as u:
                     for _ in range(1 + rng.randint(4)):
-                        self._random_change(u)
+                        self._random_change(u, m)
                     raise _Abort()
             except (_Abort, OrdbException):
                 pass
             if checksum_subgraph(self.cur) != before:
                 raise AssertionError(f"{self.name}: aborted txn changed state")
         elif opcode < 72: # nested: inner aborts, outer commits
+            m = dict(self.model)
             try:
                 with self.cur.updater() as outer:
-                    self._random_change(outer)
+                    self._random_change(outer, m)
                     inner_before = checksum_subgraph(self.cur)
+                    m_inner = dict(m)
                     try:
                         with self.cur.updater() as inner:
-                            self._random_change(inner)
-                            self._random_change(inner)
+                            self._random_change(inner, m_inner)
+                            self._random_change(inner, m_inner)
                             raise _Abort()
                     except (_Abort, OrdbException):
                         pass
@@ -136,12 +153,14 @@ class _FuzzDriver:
                         raise AssertionError(f"{self.name}: inner abort leaked")
             except OrdbException as e:
                 return type(e).__name__
+            self.model = m
         elif opcode < 82: # freeze (non-consuming)
             snap = self.cur.freeze()
-            self.snaps.append((snap, checksum_subgraph(snap)))
+            self.snaps.append((snap, checksum_subgraph(snap), self.model))
         elif opcode < 88: # thaw a random snapshot
             if self.snaps:
-                self.cur = self.snaps[rng.randint(len(self.snaps))][0].thaw()
+                snap, _, self.model = self.snaps[rng.randint(len(self.snaps))]
+                self.cur = snap.thaw()
         elif opcode < 93: # fork the mutable
             self.cur = self.cur.copy()
         elif opcode < 96: # compacted copy of a snapshot
@@ -150,20 +169,28 @@ class _FuzzDriver:
                 if snap.compact() != snap:
                     raise AssertionError(f"{self.name}: compact() changed content")
         else: # big transaction: exercises index runs and table compaction
+            m = dict(self.model)
             with self.cur.updater() as u:
                 for _ in range(70):
-                    u.add_single(CNode(tag=rng.randint(_TAGS), val=2),
-                        u.nid_generate())
+                    node = CNode(tag=rng.randint(_TAGS), val=2)
+                    m[u.add_single(node, u.nid_generate())] = node
+            self.model = m
+            m = dict(self.model)
             with self.cur.updater() as u:
                 for nid in self.cur.nids(CNode.Tuple)[::2]:
                     if not self.cur.query(RNode.target_idx, nid):
                         u.remove_nid(nid)
+                        del m[nid]
+            self.model = m
         return None
 
     def validate(self):
-        """Index queries against brute force; snapshots unchanged."""
+        """Nodes against the model, index queries against brute force,
+        snapshots unchanged."""
         sg = self.cur
-        rows = {nid: sg.row(nid) for nid in sg.nids()}
+        rows = _rows(sg)
+        if _typed(rows) != _typed(self.model):
+            raise AssertionError(f"{self.name}: nodes differ from the model")
         for ntuple in (CNode.Tuple, ANode.Tuple, RNode.Tuple):
             expect = [nid for nid, node in rows.items() if type(node) is ntuple]
             if sg.nids(ntuple) != expect:
@@ -186,13 +213,20 @@ class _FuzzDriver:
                 if rows[nid].key is not None]
             if got != [nid for _, nid in expect]:
                 raise AssertionError(f"{self.name}: target index wrong for {target}")
-        for snap, checksum in self.snaps:
-            if checksum_subgraph(snap) != checksum:
+        for snap, checksum, model in self.snaps:
+            if checksum_subgraph(snap) != checksum or _typed(_rows(snap)) != _typed(model):
                 raise AssertionError(f"{self.name}: snapshot changed")
 
     def state(self):
         return (checksum_subgraph(self.cur), self.cur.count(),
-            self.cur.nid_alloc.start, tuple(c for _, c in self.snaps))
+            self.cur.nid_alloc.start, tuple(c for _, c, _ in self.snaps))
+
+def _rows(sg):
+    return {nid: sg.row(nid) for nid in sg.nids()}
+
+def _typed(rows):
+    """NodeTuples compare as plain tuples: pair them with their type."""
+    return {nid: (type(node), node) for nid, node in rows.items()}
 
 def differential_fuzz(backends=None, ops=300, seed=1):
     """Apply the same op sequence under all engines, comparing after every
