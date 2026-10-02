@@ -276,8 +276,12 @@ def _attr_chain(fn) -> 'tuple[str]|NoneType':
     evaluates sortkey and of_subgraph functions of this form natively and
     calls all other functions per node.
     """
-    code = getattr(fn, '__code__', None)
-    if code is None or code.co_argcount != 1 or code.co_kwonlyargcount:
+    # Plain functions only: a bound method exposes the code of its function,
+    # whose first argument is self.
+    if not inspect.isfunction(fn):
+        return None
+    code = fn.__code__
+    if code.co_argcount != 1 or code.co_kwonlyargcount:
         return None
     if code.co_flags & (inspect.CO_VARARGS | inspect.CO_VARKEYWORDS):
         return None
