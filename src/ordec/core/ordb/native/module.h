@@ -350,6 +350,8 @@ int state_copy(State *dst, const State *src);
 int st_add_idx(State *st, PyObject *index, int combined);
 void state_release(State *st);
 int sg_write_begin(Sg *sg);
+PyObject *tuple_start(PyTypeObject *cls, Py_ssize_t n);
+PyObject *tuple_finish(PyTypeObject *cls, PyObject *t);
 PyObject *boxed_get(const State *st, int64_t nid, int ai);
 PyObject *attr_value(const State *st, const NType *nt, int i, const slot_t *p,
     int64_t nid);

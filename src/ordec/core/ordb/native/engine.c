@@ -320,6 +320,36 @@ slot_is_none(const AttrInfo *ai, const slot_t *p)
     return ai->kind == K_OBJ ? p[ai->slot] == 0 : p[ai->slot] == SLOT_NONE;
 }
 
+// Instances of tuple subclasses (NodeTuples, Vec2I, ...) are built with
+// t = tuple_start(cls, n), PyTuple_SetItem on t, then tuple_finish(cls, t).
+// Since 3.14, tuples cache their hash, and only tuple's own tp_new marks the
+// cache as empty (a directly allocated instance would hash to 0): there, the
+// items are collected in a plain tuple and copied by tp_new. Before 3.14,
+// the instance is allocated directly, which is faster.
+PyObject *
+tuple_start(PyTypeObject *cls, Py_ssize_t n)
+{
+    return Py_Version < 0x030e0000 ? PyType_GenericAlloc(cls, n)
+        : PyTuple_New(n);
+}
+
+PyObject *
+tuple_finish(PyTypeObject *cls, PyObject *t)
+{
+    static newfunc tuple_new;
+    if (!t || Py_Version < 0x030e0000)
+        return t;
+    if (!tuple_new)
+        tuple_new = (newfunc)PyType_GetSlot(&PyTuple_Type, Py_tp_new);
+    PyObject *args = PyTuple_Pack(1, t);
+    Py_DECREF(t);
+    if (!args)
+        return NULL;
+    PyObject *r = tuple_new(cls, args, NULL);
+    Py_DECREF(args);
+    return r;
+}
+
 // Value of an attribute from a stable copy of its slots and, if boxed,
 // its boxed value (new reference).
 static PyObject *
@@ -337,7 +367,7 @@ slots_value(const AttrInfo *ai, const slot_t *s, PyObject *boxed)
     if (ai->kind == K_INT)
         return PyLong_FromLongLong(s[0]);
     PyTypeObject *vt = (PyTypeObject *)ai->vtype;
-    PyObject *v = PyType_GenericAlloc(vt, ai->width);
+    PyObject *v = tuple_start(vt, ai->width);
     if (!v)
         return NULL;
     for (int k = 0; k < ai->width; k++) {
@@ -348,7 +378,7 @@ slots_value(const AttrInfo *ai, const slot_t *s, PyObject *boxed)
         }
         PyTuple_SetItem(v, k, x);
     }
-    return v;
+    return tuple_finish(vt, v);
 }
 
 // Value of one attribute of a stored record (new reference). Everything is
@@ -416,7 +446,7 @@ rec_load(const Rec *r)
 {
     const NType *nt = r->nt;
     PyTypeObject *tc = (PyTypeObject *)nt->tuple_cls;
-    PyObject *t = PyType_GenericAlloc(tc, nt->nattr);
+    PyObject *t = tuple_start(tc, nt->nattr);
     if (!t)
         return NULL;
     for (int i = 0; i < nt->nattr; i++) {
@@ -427,7 +457,7 @@ rec_load(const Rec *r)
         }
         PyTuple_SetItem(t, i, v);
     }
-    return t;
+    return tuple_finish(tc, t);
 }
 
 PyObject *

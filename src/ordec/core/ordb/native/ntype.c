@@ -320,7 +320,7 @@ static PyObject *
 ntuple_build(NType *nt, PyObject *base, PyObject *values)
 {
     PyTypeObject *tc = (PyTypeObject *)nt->tuple_cls;
-    PyObject *t = PyType_GenericAlloc(tc, nt->nattr);
+    PyObject *t = tuple_start(tc, nt->nattr);
     if (!t)
         return NULL;
     Py_ssize_t used = 0;
@@ -368,7 +368,7 @@ ntuple_build(NType *nt, PyObject *base, PyObject *values)
         Py_XDECREF(unknown);
         goto fail;
     }
-    return t;
+    return tuple_finish(tc, t);
 fail:
     Py_DECREF(t);
     return NULL;
@@ -414,7 +414,7 @@ ntuple_replace(NType *nt, PyObject *node, int index, PyObject *value)
         return NULL;
     }
     PyTypeObject *tc = (PyTypeObject *)nt->tuple_cls;
-    PyObject *t = PyType_GenericAlloc(tc, nt->nattr);
+    PyObject *t = tuple_start(tc, nt->nattr);
     if (!t) {
         Py_DECREF(v);
         return NULL;
@@ -422,7 +422,7 @@ ntuple_replace(NType *nt, PyObject *node, int index, PyObject *value)
     for (int i = 0; i < nt->nattr; i++)
         PyTuple_SetItem(t, i, i == index ? v
             : Py_NewRef(PyTuple_GetItem(node, i)));
-    return t;
+    return tuple_finish(tc, t);
 }
 
 static PyType_Slot ntype_slots[] = {
