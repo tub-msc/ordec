@@ -171,7 +171,11 @@ raising during index insertion) cannot be undone on its own. The
 transaction counts its record writes (``Txn.writes``); such a failure sets
 ``Txn.failed``, after which the transaction refuses further statements and
 its updater aborts and raises at exit. Failures before the first write
-(factories, type checks) leave the transaction usable.
+(factories, type checks) leave the transaction usable. Running out of
+memory in the middle of a write is such a failure, and it can leave the
+transaction's tables or indices inconsistent (an empty trie node, an extra
+root level, a lost index entry); the abort discards them with the rest of
+the transaction.
 
 When a node type is created, ``base.py`` reads the bytecode of the
 ``sortkey`` and ``of_subgraph`` functions (``_attr_chain``). If a function
@@ -402,7 +406,9 @@ cursors are equal by (subgraph, nid); sorted index results break ties by
 nid; sort values (``sortkey`` results and sort attributes) are ints within
 64 bits or None, which sorts first; ``update`` keeps the node type (a type
 change takes a removal and an insertion under the same nid, as in
-:meth:`~ordec.core.ordb.Node.replace`).
+:meth:`~ordec.core.ordb.Node.replace`); nids are integers (``int`` or
+``__index__``, e.g. numpy ints): ``subgraph.nodes[1.0]`` raises, where the
+dict of the Python backends found the node.
 
 Values are rebuilt from the tables on every access: ``subgraph.nodes[n]``,
 ``cursor.tuple`` and reads of ``Vec2I``, ``Rect4I`` or boxed values return
@@ -461,3 +467,13 @@ Design questions:
   attribute descriptor, subgraph, updater), chosen at import time, and every
   change to ORDB made twice. The fuzz could compare it with the core across
   processes.
+- LocalRefs are checked against their target type only when they are
+  written. ``update`` therefore keeps the node type, but a removal and an
+  insertion under the same nid can still change it
+  (:meth:`~ordec.core.ordb.Node.replace`, ``expand_paths`` and
+  ``expand_rects`` in ``layout/helpers.py`` do so on purpose), and a typed
+  LocalRef to that nid then points at a node of another type unnoticed (as
+  before the native core). Closing this needs the referrers of such nids
+  at commit, which the reference counters of the directory do not provide:
+  a scan of the LocalRef attributes that can point at the old type, or
+  reverse references.

@@ -1103,9 +1103,10 @@ class Node(_ordb.NodeBase, metaclass=NodeMeta, build_node=False):
                 raise OrdbException("Cannot replace non-leaf node that has children.")
                 # TODO: This error should really be raised by NPath.idx_parent, and only in case
                 # a non-leaf node is replaced by a leaf node.
-                # Apart from that, there are other data inconsistencies that could currently
-                # be introduced by replace() but that are not caught anywhere?!
 
+        # The new node may be of another type. LocalRefs pointing at this nid
+        # are not checked against the new type (a known gap, see "Design
+        # questions" in docs/dev/ordb_core.rst).
         with self.subgraph._statement_updater() as u:
             self.remove_node(u)
             new_nid = inserter.insert_into(u, self.nid)
