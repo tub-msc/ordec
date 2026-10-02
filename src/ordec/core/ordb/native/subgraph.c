@@ -170,6 +170,24 @@ sg_ntuples(Sg *sg, PyObject *noarg)
     return l;
 }
 
+// List of the n nids (copied out of storage before creating objects, which
+// can run Python code); frees nids.
+static PyObject *
+nid_list(int64_t *nids, uint64_t n)
+{
+    PyObject *l = PyList_New((Py_ssize_t)n);
+    for (uint64_t k = 0; l && k < n; k++) {
+        PyObject *x = PyLong_FromLongLong(nids[k]);
+        if (!x) {
+            Py_CLEAR(l);
+            break;
+        }
+        PyList_SetItem(l, k, x);
+    }
+    PyMem_Free(nids);
+    return l;
+}
+
 // nids(): all nids; nids(X.Tuple): the nids of one node type. Ascending.
 static PyObject *
 sg_nids(Sg *sg, PyObject *args)
@@ -179,7 +197,6 @@ sg_nids(Sg *sg, PyObject *args)
         return NULL;
     const State *st = &sg->st;
     if (cls == Py_None) {
-        // Copied out before allocating objects (which can run Python code).
         int64_t *nids = PyMem_Malloc(sizeof(int64_t) * (st->nlive + 1));
         if (!nids)
             return PyErr_NoMemory();
@@ -188,17 +205,7 @@ sg_nids(Sg *sg, PyObject *args)
         for (const slot_t *d; (d = kmap_next(&st->dir, nid, &nid));)
             if (d[0] > 0)
                 nids[n++] = nid;
-        PyObject *l = PyList_New((Py_ssize_t)n);
-        for (uint64_t k = 0; l && k < n; k++) {
-            PyObject *x = PyLong_FromLongLong(nids[k]);
-            if (!x) {
-                Py_CLEAR(l);
-                break;
-            }
-            PyList_SetItem(l, k, x);
-        }
-        PyMem_Free(nids);
-        return l;
+        return nid_list(nids, n);
     }
     NType *nt = ntype_of_cls(cls);
     if (!nt)
@@ -210,21 +217,14 @@ sg_nids(Sg *sg, PyObject *args)
     const slot_t **rows = tab_rows_sorted(st, ti, &n);
     if (!rows)
         return NULL;
-    // Copied out before allocating objects (which can run Python code).
-    int64_t *nids = (int64_t *)rows;
-    for (uint64_t k = 0; k < n; k++)
-        nids[k] = rows[k][0];
-    PyObject *l = PyList_New((Py_ssize_t)n);
-    for (uint64_t k = 0; l && k < n; k++) {
-        PyObject *x = PyLong_FromLongLong(nids[k]);
-        if (!x) {
-            Py_CLEAR(l);
-            break;
-        }
-        PyList_SetItem(l, k, x);
-    }
+    int64_t *nids = PyMem_Malloc(sizeof(int64_t) * (n + 1));
+    if (nids)
+        for (uint64_t k = 0; k < n; k++)
+            nids[k] = rows[k][0];
     PyMem_Free(rows);
-    return l;
+    if (!nids)
+        return PyErr_NoMemory();
+    return nid_list(nids, n);
 }
 
 static PyObject *

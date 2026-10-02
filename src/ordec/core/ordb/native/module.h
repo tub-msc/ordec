@@ -339,11 +339,12 @@ mix(uint64_t h, uint64_t x)
 }
 
 // Python's hash of the int x: the numeric hash of the language reference
-// (modulus 2**61 - 1), which equal floats, Fractions and numpy ints share.
+// (modulus 2**61 - 1, on 32-bit builds 2**31 - 1, as in pyhash.h), which
+// equal floats, Fractions and numpy ints share.
 static inline uint64_t
 int_hash(int64_t x)
 {
-    const int64_t P = ((int64_t)1 << 61) - 1;
+    const int64_t P = ((int64_t)1 << (SIZEOF_VOID_P >= 8 ? 61 : 31)) - 1;
     if (x > -P && x < P)
         return (uint64_t)(x == -1 ? -2 : x);
     int64_t h = (int64_t)((x < 0 ? 0 - (uint64_t)x : (uint64_t)x)
