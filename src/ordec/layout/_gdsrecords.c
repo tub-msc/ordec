@@ -10,6 +10,7 @@
 // record type, data type.
 
 #define PY_SSIZE_T_CLEAN
+#define Py_LIMITED_API 0x030b0000 // abi3, Python 3.11+
 #include <Python.h>
 #include <stdint.h>
 #include <string.h>
@@ -87,10 +88,10 @@ static PyObject *record_value(const uint8_t *rec, Py_ssize_t len) {
             Py_DECREF(tuple);
             return NULL;
         }
-        PyTuple_SET_ITEM(tuple, i, v);
+        PyTuple_SetItem(tuple, i, v);
     }
     if (count == 1) {
-        PyObject *v = Py_NewRef(PyTuple_GET_ITEM(tuple, 0));
+        PyObject *v = Py_NewRef(PyTuple_GetItem(tuple, 0));
         Py_DECREF(tuple);
         return v;
     }
@@ -117,11 +118,13 @@ static PyObject *scan(PyObject *self, PyObject *args) {
             break;
         }
         if (rt == UNITS) {
-            Py_SETREF(units, record_value(data + pos, len));
+            Py_DECREF(units);
+            units = record_value(data + pos, len);
             if (!units)
                 goto fail;
         } else if (rt == STRNAME) {
-            Py_XSETREF(name, record_value(data + pos, len));
+            Py_XDECREF(name);
+            name = record_value(data + pos, len);
             if (!name)
                 goto fail;
             start = pos + len;

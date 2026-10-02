@@ -61,10 +61,10 @@ jobs:
       # list lives in pyproject.toml only. --shm-size=1g avoids headless
       # Chromium crashes with Docker's default 64 MB /dev/shm. Coverage/cache
       # addopts are dropped to keep output out of the mounted checkout.
-      # The import checks that the wheel contains the C extension, which is
-      # optional in setup.py and silently left out if ordec-base lacks a
-      # compiler; it runs outside of /mnt so that the installed package is
-      # imported, not the checkout.
+      # The import checks that the wheel contains the _gdsrecords extension,
+      # which is optional in setup.py and silently left out if ordec-base
+      # lacks a compiler; it runs outside of /mnt so that the installed
+      # package is imported, not the checkout.
       - name: Test image
         run: |
           docker run --rm --user root --shm-size=1g -v "$PWD":/mnt -w /mnt ordec-imagetest sh -xec '

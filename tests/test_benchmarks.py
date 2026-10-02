@@ -8,9 +8,10 @@ would rot unnoticed against ORDB's API.
 
 Every workload must run under every registered storage backend, the report
 tool must render, and -- the part that gates shipped code rather than the
-tooling -- all backends must agree on the canonical checksum and survive
-the differential fuzz. The smallest scale is used throughout: this is a
-correctness check, not a measurement. Runs in seconds.
+tooling -- all backends must agree on the canonical checksum and match the
+reference model of the differential fuzz. The smallest scale is used
+throughout: this is a correctness check, not a measurement. Runs in
+seconds.
 """
 
 import sys
@@ -46,8 +47,11 @@ def test_report_html(tmp_path):
             rec = run_one(wl, backend, 'tiny', repeats=1, warmup=0, seed=1,
                 measure_mem=True, do_checksum=False)
             params = tuple(sorted(rec['params'].items()))
-            records[('python', backend, wl.name, params)] = rec | {
-                'world': 'python'}
+            # A second world (results merged from another commit, machine or
+            # implementation) gives a ratio column even with one backend.
+            for world in ('python', 'other'):
+                records[(world, backend, wl.name, params)] = rec | {
+                    'world': world}
 
     path = tmp_path / 'report.html'
     write_html(group_records(records), backends[0], 'min', str(path))

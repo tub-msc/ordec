@@ -118,9 +118,12 @@ def read_gds_structure(data, name: str, start: int, end: int, layers: LayerStack
     is_rect = (quads[:, 2:4] == quads[:, 10:12]).all(axis=1) & (lx < ux) & (ly < uy) \
         & on_corner.all(axis=1) & (np.bitwise_or.reduce(1 << corner, axis=1) == 15)
     # Layer nid per quad, with one lookup per distinct (layer, data type).
-    gds_layers, inverse = np.unique(quads[:, 0:2], axis=0, return_inverse=True)
-    quad_layers = np.array([lookup_shape_layer(l, d) for l, d in gds_layers.tolist()],
-        dtype=np.int64)[inverse.reshape(-1)]
+    # The pair is packed into one int64 key: np.unique(axis=0) on the pairs
+    # is several times slower.
+    keys = (quads[:, 0].astype(np.int64) << 32) | quads[:, 1].astype(np.uint32)
+    gds_keys, inverse = np.unique(keys, return_inverse=True)
+    quad_layers = np.array([lookup_shape_layer(k >> 32, int(np.int32(np.uint32(k & 0xffffffff))))
+        for k in gds_keys.tolist()], dtype=np.int64)[inverse.reshape(-1)]
 
     # All elements are inserted in a single transaction, which is much faster
     # than one transaction per element.

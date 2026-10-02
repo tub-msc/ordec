@@ -125,7 +125,8 @@ def expand_paths(layout: Layout):
     For the given Layout, replaces all LayoutPath instances by geometrically
     equivalent LayoutPoly instances.
     """
-    # One transaction for all paths; cursors read the pre-transaction state.
+    # One transaction for all paths. Cursors see its changes; each node is
+    # read before it is replaced.
     with layout.updater() as u:
         for path in layout.all(LayoutPath):
             poly = LayoutPoly(
@@ -142,7 +143,8 @@ def expand_rects(layout: Layout):
     equivalent LayoutPoly instances.
     """
 
-    # One transaction for all rects; cursors read the pre-transaction state.
+    # One transaction for all rects. Cursors see its changes; each node is
+    # read before it is replaced.
     with layout.updater() as u:
         for rect in layout.all(LayoutRect):
             r = rect.rect
@@ -331,7 +333,8 @@ def expand_pins(layout: Layout, directory: Directory):
     Handles LayoutPoly and LayoutPath refs directly. Expects that LayoutRect
     objects have already been expanded (e.g. through expand_rects).
     """
-    # One transaction for all pins; cursors read the pre-transaction state.
+    # One transaction for all pins. Cursors see its changes; each pin is
+    # read before it is removed.
     with layout.updater() as u:
         for pin in layout.all(LayoutPin):
             ref = pin.ref

@@ -14,7 +14,7 @@ ORDeC integrates various external tools, most importantly Ngspice for simulation
 
 For narrative descriptions, see `docs/ref/` (data model, ORD language, cells/viewgens, schema, layout) and `docs/dev/` (webui, view generation, ORDB wire format, benchmarks, design decisions). Below are pointers into the source for orientation.
 
-- **ORDB** (`src/ordec/core/ordb/`): custom graph database underlying all IC design data (Symbols, Schematics, Layouts, SimHierarchy, etc.). Node storage and indexing sit behind a pluggable backend interface (`backend.py` plus the `backend_*` modules: `pyrsistent`, `fullcopy`, `cow`, `cow_arrays`, `delta`). The default is `cow-arrays`; `ORDEC_ORDB_BACKEND` or `ordb.use_backend(name)` selects another, and the suite is expected to pass under every backend. See `docs/ref/ordb.rst` and `docs/dev/ordb_benchmarks.rst`.
+- **ORDB** (`src/ordec/core/ordb/`): custom graph database underlying all IC design data (Symbols, Schematics, Layouts, SimHierarchy, etc.). Storage, indices, transactions and constraint checks live in the C extension `_ordb` (sources in `native/`: `engine.c` and `index.c` below the Python types, one file per Python type, shared declarations in `module.h`); `base.py` holds the schema language, the public classes and the error messages. The core has one storage engine, `keyed` (tables keyed by nid); the engine selection (`ORDEC_ORDB_BACKEND`, `ordb.use_backend(name)`) is kept for trying further engines. See `docs/ref/ordb.rst`, `docs/dev/ordb_core.rst` and `docs/dev/ordb_benchmarks.rst`.
 - **Cell and view generators** (`src/ordec/core/cell.py`): base class for parametrizable design components; `@viewgen`/`@viewgen_noctx` decorated methods produce cached views (schematic, symbol, layout, simulation). `src/ordec/server.py:discover_views` finds all view generators for the web UI. See `docs/ref/cell_and_viewgen.rst`.
 - **ORD language** (`src/ordec/language.py`, `src/ordec/ord/`, `src/ordec/importer.py`): Python-superset HDL; `.ord` files compile to Python AST then `exec()` into ORDB structures. The importer adds an import hook so `.ord` files import like `.py` files. See `docs/ref/ord.rst` and `docs/guides/ord_tutorial.py`. Use ORD (not Python) for new standalone hardware designs.
 - **Schema** (`src/ordec/core/schema/`): node type definitions, one module per view family (`schematic.py`, `layout.py`, `simhier.py`, `drc.py`, `lvs.py`, `report.py`, on the common `base.py`). See `docs/ref/schema.rst`.
@@ -35,7 +35,8 @@ Treat ORDB semantics as stable. If you want to change ORDB semantics, it is like
 ### Environment Setup
 
 ```bash
-# Install in editable mode with test dependencies
+# Install in editable mode with test dependencies. This also builds the C
+# extensions (ORDB core) into src/; rerun it after changing C sources.
 pip3 install -e .[test]
 
 # Install documentation dependencies
@@ -73,9 +74,6 @@ pytest -m "not web"
 # explicit path and are not part of a plain 'pytest' run. Their extra
 # dependencies are the 'test-editors' extra (pip3 install -e .[test-editors]).
 pytest support/editors/tests
-
-# Run the suite against a non-default ORDB backend
-ORDEC_ORDB_BACKEND=delta pytest -m "not web"
 ```
 
 Web tests serve the frontend like `server.py` does: in a regular install, the packaged `webdist.tar` is used (no npm needed); in an editable install, `web/dist` is rebuilt automatically when it is missing or older than the frontend sources (`web/src/`), so no manual build step is needed. The rebuild requires npm on PATH; if a rebuild is needed and npm is missing, the web tests fail rather than silently skip.

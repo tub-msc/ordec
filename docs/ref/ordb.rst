@@ -23,7 +23,7 @@ ORDB is based on five principles:
 
 3. **Hierarchical tree organization:** Names can be assigned to nodes. Those names can be arranged hierarchically in a tree. This makes it possible to group design objects in arrays, structs or other logical units.
 
-4. **Persistent data structures:** The state of a ORDB subgraph behaves like a `persistent data structure <https://en.wikipedia.org/wiki/Persistent_data_structure>`_: a frozen state is immutable. How this is implemented is up to the storage backend (see :doc:`../dev/ordb_benchmarks`): the default backend shares state copy-on-write, the ``pyrsistent-*`` backends use the `Pyrsistent <https://pyrsistent.readthedocs.io/>`_ library.
+4. **Persistent data structures:** The state of a ORDB subgraph behaves like a `persistent data structure <https://en.wikipedia.org/wiki/Persistent_data_structure>`_: a frozen state is immutable. The native core stores each node type as a table, a persistent tree keyed by nid that snapshots share, so a modification copies only the nodes on its path (see :doc:`../dev/ordb_core`).
    
    Modifying a subgraph (i.e. adding, updating or removing nodes) replaces its old state with a new state, which is built upon the previous state. The old subgraph state remains unchanged. Due to this, logical copies of subgraphs are very cheap, as the underlying data does not need to be copied until it is modified.
    
@@ -76,6 +76,7 @@ Each node instance (row) has a **node ID (nid)** that identifies it uniquely wit
 
 .. autoclass:: Node
   :members:
+  :inherited-members:
 
   .. attribute:: Tuple
     :type: type[NodeTuple]
@@ -143,6 +144,8 @@ Inserters & indices
 
 .. autoclass:: CombinedIndex
 
+Query results are ordered by nid, or by the ``sortkey`` value with ties by nid. ``sortkey`` and the ``of_subgraph`` function of :class:`ExternalRef` are evaluated natively when they only read a chain of attributes: ``lambda node: node.order`` (an int attribute), ``lambda c: c.root.ref_layers``, ``lambda c: c.subg`` and ``lambda c: c.ref.symbol`` (a LocalRef, then a SubgraphRef of its target). This is decided from the function's bytecode when the node type is created. Other functions are called per node, which is correct but slower.
+
 .. autoclass:: IndexQuery
 
 Array rows
@@ -156,15 +159,24 @@ Node types declaring ``arrayable = True`` (e.g. :class:`~ordec.core.schema.Layou
         nids = u.insert_array(LayoutRect, layer=layers.Metal1, rect=rects) # rects: shape (n, 4)
     cols = layout.arrays(LayoutRect) # {'nid': ..., 'layer': ..., 'rect': (n, 4)}
 
-:meth:`SubgraphUpdater.insert_array` is equivalent to inserting the same rows one by one with ``add_single`` in the same transaction, and :meth:`Subgraph.arrays` returns what iterating ``all(LayoutRect)`` would read. Array rows remain ordinary nodes: cursors, updates, removals and queries work on them as on any node. How they are stored is up to the storage backend: ``cow-arrays`` keeps them in array chunks (see :doc:`../dev/ordb_benchmarks`), all other backends store them row by row. The wire format encodes representable rows of arrayable types as arrays regardless of the backend (see :mod:`ordec.core.wire`).
+:meth:`SubgraphUpdater.insert_array` is equivalent to inserting the same rows one by one with ``add_single`` in the same transaction, and :meth:`Subgraph.arrays` returns what iterating ``all(LayoutRect)`` would read. Array rows are ordinary nodes: cursors, updates, removals and queries work on them as on any node. Both directions copy directly between the arrays and the node type's table in the native core, without per-node Python objects. The wire format encodes representable rows of arrayable types as arrays (see :mod:`ordec.core.wire`).
 
 .. automethod:: SubgraphUpdater.insert_array
 
 .. automethod:: Subgraph.arrays
   :no-index:
 
+Transactions
+------------
+
+All changes go through a :class:`SubgraphUpdater`. Changes are visible through the subgraph immediately; when the updater's ``with`` block ends, the changed nodes are checked, and the changes are either committed or undone as a whole. Updaters of the same subgraph can be nested (and must be closed in reverse order); freezing or copying a subgraph is not possible while an updater is open.
+
+Statements such as ``%``, attribute assignment, ``root.x = ...``, :meth:`Node.remove` or :meth:`Node.replace` run in the open updater of the calling thread, if there is one, and otherwise in a transaction of their own. Bundling statements in an updater therefore makes them cheaper, and it changes when errors appear: inside an updater, an invalid value (e.g. a LocalRef to a missing node) raises when the ``with`` block ends, not at the statement, and undoes the whole updater; the exception note names the node and attribute. In return, a LocalRef may point forward to a node added later in the same updater. A statement that fails after it has started writing cannot be undone on its own: the updater then refuses further statements and is rolled back at exit.
+
 Low-level stuff
 ---------------
+
+The subgraph stores values in tables, not as :class:`NodeTuple` objects. Low-level read access without cursors: ``Subgraph.row(nid)`` returns the NodeTuple of a node, ``Subgraph.nids(ntuple=None)`` the ascending nids of all nodes or of one node type, ``Subgraph.query(index, key)`` the nids matching an index key, ``Subgraph.has(nid)`` and ``Subgraph.count()``. :attr:`Subgraph.nodes` is a read-only mapping built on these.
 
 .. autoclass:: NodeTuple
   :members:
@@ -181,6 +193,7 @@ Low-level stuff
 
 .. autoclass:: Subgraph
   :members:
+  :inherited-members:
 
 .. autoclass:: MutableSubgraph
   :show-inheritance:

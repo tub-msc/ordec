@@ -2,57 +2,36 @@ ORDB benchmark workloads
 ========================
 
 What the benchmark workloads do, how their random input is built, how the
-result checksum is computed and what the JSON output looks like — written out
-in enough detail that a second implementation can run the same thing and get
-comparable numbers. The Python code in ``benchmarks/`` is what actually runs;
-this page exists so the Zig ORDB (see the ``zig`` branch) can match it and
-emit the same JSON, which ``python -m benchmarks.report`` merges. The zigbridge
-FFI is left out on purpose: each side benchmarks its own data structures.
+result checksum is computed and what the JSON output looks like, written out
+in enough detail that a second implementation could run the same thing and get
+comparable numbers. The Python code in ``benchmarks/`` is what actually runs.
 
-Storage backends
-----------------
+Storage engines
+---------------
 
-A backend stores one *subgraph*: a mapping ``nodes: nid -> node`` (nid:
-unsigned integer; node: immutable tuple of attribute values with a type tag),
-a combined index ``index: key -> bucket``, and an allocation cursor
-``nid_alloc_start``.
+An engine stores one *subgraph*: nodes addressed by nid (unsigned integer;
+node: attribute values with a type tag), the indices declared in the schema,
+and an allocation cursor ``nid_alloc_start``.
 
-What a backend does:
+What an engine does:
 
-- **txn begin / commit / abort** — all mutation happens inside a transaction.
-  While one is open, the subgraph itself still shows the pre-transaction
-  state; only the transaction's view sees uncommitted changes. Aborting leaves
-  the subgraph untouched.
-- **node set / node remove** — insert, overwrite or delete one node.
-- **bucket add / remove** — index maintenance. Bucket kinds:
+- **txn begin / commit / abort**: all mutation happens inside a transaction.
+  Reads through the subgraph see uncommitted changes; aborting restores the
+  state of begin. Transactions nest.
+- **insert / update / remove** of single nodes, **insert_array** of many.
+- **queries**: all nodes of a type (ascending nid) and equality queries on
+  indices (ordered by nid, or by the index's sort attribute with ties by
+  nid). Query results are snapshots: callers may iterate them while
+  mutating the subgraph.
+- **freeze**: an immutable snapshot; the mutable subgraph stays usable.
+- **thaw**: a new mutable subgraph from a snapshot.
+- **fork**: an independent mutable copy of a mutable subgraph.
+- **compact**: a content-identical snapshot with compacted storage.
 
-  - ``NID``: set of nids, iterated in ascending order;
-  - ``SORTED``: nids ordered by an externally supplied sort value (ties:
-    later-inserted first, i.e. leftmost-insertion/bisect_left order);
-  - ``SET``: unordered set of values.
-
-  ``index[key]`` returns an immutable *snapshot* of the bucket, so callers can
-  iterate it while mutating the subgraph; the same holds for every other
-  public read path that exposes buckets. An empty bucket looks the same as an
-  absent key. The node and index mappings themselves must reject in-place
-  mutation through their public API (all mutation goes through a
-  transaction) -- snapshots may share state objects, so a stray write would
-  corrupt every subgraph in the sharing group.
-
-- **freeze** — produce an immutable snapshot; the mutable subgraph stays
-  usable afterwards.
-- **thaw** — produce a new mutable subgraph from a snapshot.
-- **fork** — produce an independent mutable copy of a mutable subgraph.
-- **compact** (optional) — produce a content-identical snapshot with flattened
-  internal structure (delta chains); identity for flat backends.
-
-Python backend names: ``pyrsistent-patricia``, ``pyrsistent-pvector``
-(persistent HAMT maps; Patricia-trie vs sorted-vector NID buckets),
-``fullcopy`` (plain dicts, full copies at every boundary incl. txn begin),
-``cow`` (plain dicts, O(1) share-on-snapshot, copy-on-first-write), ``delta``
-/ ``delta-compactN`` (delta chains ported from the Zig design; N =
-auto-compact chain-depth threshold at freeze). Zig backend names should
-describe their structure analogously (e.g. ``zig:delta``).
+Engine names: ``keyed`` (tables keyed by nid), the only engine of the
+native core; see :doc:`ordb_core`. Result files may also contain the
+removed engines ``paged`` (persistent pages of rows) and ``flat``
+(contiguous blocks, copied on the first write after sharing).
 
 PRNG
 ----
@@ -97,7 +76,9 @@ root node at nid 0; nids allocate sequentially from ``nid_alloc_start``.
   ``SimItem(group:LocalRef(SimGroup), key:str;
   CombinedIndex([group, key], unique))``;
   ``SimAnnot(target:LocalRef(SimItem), value:int)``.
-- Chain: ``ChainRoot`` (root); ``CNode(tag:int, val:int; Index(tag))``.
+- Chain: ``ChainRoot`` (root); ``CNode(tag:int, val:int; Index(tag))``;
+  for the differential fuzz only: ``ANode`` (arrayable) and ``RNode``
+  (LocalRef to CNode, unique ``Index(key)``, ``Index(target, sortkey=key)``).
 - Micro: ``MicroRoot`` (root); ``Box(val:int)``; ``MPoly(val:int)``;
   ``UNode(val:int; Index(val, unique))``.
 
@@ -258,7 +239,7 @@ Measurement protocol
   allocation peak via tracemalloc plus ``retained_bytes`` = deduped deep size
   of the objects the workload retains (e.g. all generations of snapshot_chain)
   — the structure-sharing comparison number. Caveats: the walker cannot see
-  C-level internals (record ``pyrsistent_c_ext``), and interned/shared small
+  C-level internals, and interned/shared small
   objects are attributed to the graph. Other worlds report the closest
   equivalents (e.g. arena bytes) and document them.
 
@@ -271,12 +252,12 @@ JSON result format
       "spec_version": 1,
       "world": "python",
       "impl": {"python": "3.13.5", "ordec_git": "abc1234", "cpu": "...",
-               "hostname": "...", "pyrsistent_c_ext": false},
+               "hostname": "..."},
       "timestamp": "2026-07-07T12:00:00Z",
       "results": [
         {
           "workload": "snapshot_chain",
-          "backend": "delta",
+          "backend": "paged",
           "params": {"n": 10000, "k": 32, "patch_permille": 20,
                      "compact_every": 0, "scale": "default", "seed": 1},
           "warmup": 1,
@@ -291,7 +272,7 @@ JSON result format
       ]
     }
 
-``world`` distinguishes implementations ("python", "zig"). ``impl`` is
+``world`` distinguishes implementations (currently only "python"). ``impl`` is
 free-form host/implementation metadata. ``mem`` and ``checksum`` may be null
 when not measured. Records are keyed by (world, backend, workload, params) when
 merging; the same key from a later file wins.
@@ -299,10 +280,13 @@ merging; the same key from a later file wins.
 Checks
 ------
 
-1. ``ORDEC_ORDB_BACKEND=<b> pytest`` green for every backend.
+1. ``ORDEC_ORDB_BACKEND=<b> pytest`` green for every engine.
 2. ``python -m benchmarks.equivalence``: identical checksums for every workload
-   under every backend, plus a differential fuzz (seeded random
-   insert/update/remove/freeze/thaw/fork/abort sequence applied lockstep under
-   candidate and reference backends, full state compared after every op,
-   including transaction isolation and abort checks).
+   under every engine, plus a differential fuzz: a seeded random sequence of
+   transactions (insert, update, type change, remove, aborted and nested),
+   freeze, thaw, fork and compact, applied to all engines and to a
+   pure-Python reference model (nid to node values) in lockstep. After every
+   step every engine must hold the model's nodes, the engines must agree,
+   every index query must equal a brute-force scan and every snapshot must
+   keep its checksum and nodes.
 3. ``tests/test_benchmarks.py`` runs both in CI at the ``tiny`` scale.
