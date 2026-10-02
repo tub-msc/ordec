@@ -24,7 +24,6 @@ sg_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
     if (!sg)
         return NULL;
     state_init(&sg->st);
-    sg->tok = ++g_token;
     sg->wire_hash = Py_NewRef(Py_None);
     sg->arrays_memo = Py_NewRef(Py_None);
     return (PyObject *)sg;
@@ -160,21 +159,25 @@ sg_nids(Sg *sg, PyObject *args)
         return NULL;
     const State *st = &sg->st;
     if (cls == Py_None) {
-        PyObject *l = PyList_New((Py_ssize_t)st->nlive);
-        if (!l)
-            return NULL;
-        Py_ssize_t k = 0;
-        for (uint64_t i = 0; i < st->dir.count; i++) {
-            const slot_t *d = vec_get(&st->dir, i);
-            if (!d || d[0] <= 0)
-                continue;
-            PyObject *x = PyLong_FromUnsignedLongLong(i);
+        // Copied out before allocating objects (which can run Python code).
+        int64_t *nids = PyMem_Malloc(sizeof(int64_t) * (st->nlive + 1));
+        if (!nids)
+            return PyErr_NoMemory();
+        uint64_t n = 0;
+        int64_t nid = -1;
+        for (const slot_t *d; (d = kmap_next(&st->dir, nid, &nid));)
+            if (d[0] > 0)
+                nids[n++] = nid;
+        PyObject *l = PyList_New((Py_ssize_t)n);
+        for (uint64_t k = 0; l && k < n; k++) {
+            PyObject *x = PyLong_FromLongLong(nids[k]);
             if (!x) {
-                Py_DECREF(l);
-                return NULL;
+                Py_CLEAR(l);
+                break;
             }
-            PyList_SetItem(l, k++, x);
+            PyList_SetItem(l, k, x);
         }
+        PyMem_Free(nids);
         return l;
     }
     NType *nt = ntype_of_cls(cls);
@@ -315,7 +318,6 @@ sg_snapshot(Sg *sg, PyObject *args)
         Py_DECREF(n);
         return NULL;
     }
-    n->tok = ++g_token;
     n->frozen = (char)frozen;
     return (PyObject *)n;
 }
@@ -393,7 +395,7 @@ node_hsum(const State *st, const NType *nt, PyObject *n, int level,
     uint64_t *out)
 {
     if (level == 0) {
-        KLeaf *lf = (KLeaf *)n;
+        Leaf *lf = (Leaf *)n;
         if (!lf->hvalid) {
             uint64_t acc = 0, h;
             for (uint32_t k = 0; k < popcount32(lf->mask); k++) {
@@ -407,7 +409,7 @@ node_hsum(const State *st, const NType *nt, PyObject *n, int level,
         *out = lf->hsum;
         return 0;
     }
-    KInner *in = (KInner *)n;
+    Inner *in = (Inner *)n;
     if (!in->hvalid) {
         uint64_t acc = 0, h;
         for (uint64_t m = in->mask; m; m &= m - 1) {
@@ -695,11 +697,10 @@ sg_stats(Sg *sg, PyObject *noarg)
     uint64_t entries = 0;
     for (int i = 0; i < st->nidx; i++)
         entries += st->idxs[i].tree.count;
-    return Py_BuildValue("{s:K,s:i,s:i,s:K,s:K}",
+    return Py_BuildValue("{s:K,s:i,s:i,s:K}",
         "nodes", (unsigned long long)st->nlive,
         "tables", st->ntab, "indices", st->nidx,
-        "index_entries", (unsigned long long)entries,
-        "directory", (unsigned long long)st->dir.count);
+        "index_entries", (unsigned long long)entries);
 }
 
 // _child(npath_nid, name): cursor of the child path name below the NPath

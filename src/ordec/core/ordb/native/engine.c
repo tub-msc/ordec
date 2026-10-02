@@ -14,7 +14,7 @@ void
 state_init(State *st)
 {
     memset(st, 0, sizeof(State));
-    vec_init(&st->dir, 2);
+    kmap_init(&st->dir, 2, 0);
     st->nid_stop = (int64_t)1 << 32;
 }
 
@@ -72,7 +72,7 @@ state_release(State *st)
     st->idxs = NULL;
     st->nidx = 0;
     st->dir.root = NULL;
-    st->dir.count = 0;
+    st->dir.levels = 0;
     st->boxed = NULL;
     st->nlive = 0;
     for (int i = 0; i < ntab; i++) {
@@ -147,50 +147,30 @@ sg_write_begin(Sg *sg)
     return 0;
 }
 
-// Writable directory record of nid. Extends the directory (zero-filled)
-// when nid is beyond its end.
+// Writable directory record of nid, created (cleared) if missing.
 static slot_t *
 dir_w(Sg *sg, int64_t nid)
 {
     State *st = &sg->st;
-    Txn *tx = sg->txn;
-    Vec *dir = &st->dir;
-    uint64_t txtok = tx ? tx->tok : 0;
-    if (nid < 0 || nid >= st->nid_stop
-            || nid >= (int64_t)dir->count + DIR_MAX_GAP) {
+    if (nid < 0 || nid >= st->nid_stop) {
         PyErr_Format(OrdbException, "nid %lld is out of range.",
             (long long)nid);
         return NULL;
     }
-    if (tx)
-        tx->writes++;
-    uint64_t i = (uint64_t)nid;
-    if (i >= dir->count) {
-        // Leaves owned by this subgraph may hold leftovers of aborted
-        // transactions behind count: zero all existing leaves in the gap.
-        slot_t *p = NULL;
-        uint64_t j = dir->count;
-        while (j <= i) {
-            uint64_t end = (j | (LEAF_ROWS - 1)) + 1;
-            if (end > i + 1)
-                end = i + 1;
-            int exists = dir->root
-                && j < ((uint64_t)LEAF_ROWS << (BITS * dir->levels))
-                && vec_get(dir, j) != NULL;
-            if (exists || end == i + 1) {
-                p = vec_at_w(dir, j, sg->tok, txtok, 1);
-                if (!p)
-                    return NULL;
-                memset(p, 0, sizeof(slot_t) * 2 * (end - j));
-                p += 2 * (i - j);
-            }
-            j = end;
-        }
-        dir->count = i + 1;
-        return p;
-    }
-    int append = tx && i >= tx->saved.dir.count;
-    return vec_at_w(dir, i, sg->tok, txtok, append);
+    sg->txn->writes++;
+    if (kmap_get(&st->dir, nid))
+        return kmap_at_w(&st->dir, nid, sg->txn->tok);
+    return kmap_insert(&st->dir, nid, sg->txn->tok);
+}
+
+// Removes the directory record d of nid if it has neither a node nor
+// references.
+static int
+dir_tidy(Sg *sg, int64_t nid, const slot_t *d)
+{
+    if (d[0] || d[1])
+        return 0;
+    return kmap_remove(&sg->st.dir, nid, sg->txn->tok);
 }
 
 // Writable record of the live node nid in table ti.
@@ -697,12 +677,14 @@ refs_adjust(Sg *sg, const NType *nt, const slot_t *p, int delta)
         slot_t v = p[ai->slot];
         if (v < 0) // None, boxed or invalid: caught by the commit check
             continue;
-        if (delta < 0 && (uint64_t)v >= sg->st.dir.count)
+        if (delta < 0 && !st_dir(&sg->st, v))
             continue;
         slot_t *d = dir_w(sg, v);
         if (!d)
             return -1;
         d[1] += delta;
+        if (delta < 0 && dir_tidy(sg, v, d) < 0)
+            return -1;
     }
     return 0;
 }
@@ -832,6 +814,8 @@ node_drop(Sg *sg, int64_t nid, int ti, const IdxKey *k)
     if (!dw)
         return -1;
     dw[0] = 0;
+    if (dir_tidy(sg, nid, dw) < 0)
+        return -1;
     st->tabs[ti].live--;
     st->nlive--;
     return 0;

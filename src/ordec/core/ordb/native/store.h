@@ -3,13 +3,11 @@
 
 // Storage primitives of the ORDB core (functions in store.c):
 //
-// - Vec: a dense vector of fixed-size records of 8-byte slots without
-//   object references (the nid directory), a persistent radix tree with
-//   leaves of 16 records.
-// - KMap: a persistent sparse array of records keyed by nid (the tables).
+// - KMap: a persistent sparse array of records keyed by nid (the tables and
+//   the directory).
 // - BTree: a persistent B+tree of index entries (h, s, nid).
 //
-// All three copy on write by edit tokens. Table leaves that can hold
+// Both copy on write by edit tokens. Table leaves that can hold
 // Python object references (objmask != 0) are GC-tracked Python objects:
 // leaves are shared between subgraphs, and the cycle collector must see
 // each reference exactly once. Inner nodes are always GC objects (there
@@ -21,33 +19,7 @@
 
 typedef int64_t slot_t;
 
-#define LEAF_BITS 4
-#define LEAF_ROWS (1u << LEAF_BITS)
-#define BITS 5
-#define FAN (1u << BITS)
-#define SHIFT(l) (LEAF_BITS + BITS * ((l) - 1))
-
 extern uint64_t g_token; // source of edit tokens; 0 is never a token
-
-typedef struct {
-    PyObject_VAR_HEAD
-    uint64_t owner;
-    uint32_t rec;
-    slot_t data[1];
-} Leaf;
-
-typedef struct {
-    PyObject_HEAD
-    uint64_t owner;
-    PyObject *kids[FAN];
-} Inner;
-
-typedef struct {
-    PyObject *root; // Leaf or Inner; NULL when empty
-    uint64_t count; // records visible through this Vec
-    uint32_t rec; // slots per record
-    uint8_t levels; // inner levels above the leaves
-} Vec;
 
 // Releases the object references of n records and zeroes those slots.
 static inline void
@@ -85,32 +57,7 @@ recs_traverse(const slot_t *p, uint64_t objmask, uint32_t rec, uint64_t n,
     return 0;
 }
 
-// -- Vec ---------------------------------------------------------------------
-
-static inline void
-vec_init(Vec *v, uint32_t rec)
-{
-    v->root = NULL;
-    v->count = 0;
-    v->rec = rec;
-    v->levels = 0;
-}
-
-// Record i (i < count). For sparsely written vectors (the nid directory),
-// NULL if no leaf covers i.
-static inline const slot_t *
-vec_get(const Vec *v, uint64_t i)
-{
-    PyObject *n = v->root;
-    for (int l = v->levels; l > 0; l--) {
-        n = ((Inner *)n)->kids[(i >> SHIFT(l)) & (FAN - 1)];
-        if (!n)
-            return NULL;
-    }
-    return ((Leaf *)n)->data + (i & (LEAF_ROWS - 1)) * v->rec;
-}
-
-// -- keyed tables (engine "keyed") -------------------------------------------
+// -- KMap --------------------------------------------------------------------
 
 // Population counts. Without a POPCNT target (the portable x86-64 baseline)
 // the builtins become library calls; the bit tricks are inline.
@@ -152,7 +99,7 @@ typedef struct {
     uint32_t mask; // bit b: nid base + b is present
     uint32_t cap; // rows allocated
     slot_t data[1]; // the present rows, packed in nid order
-} KLeaf;
+} Leaf;
 
 typedef struct {
     PyObject_HEAD
@@ -161,14 +108,14 @@ typedef struct {
     uint8_t hvalid;
     uint64_t mask; // bit i: kids[i] is present
     PyObject *kids[1u << KF_BITS];
-} KInner;
+} Inner;
 
 // A persistent sparse array of records keyed by nid: a radix trie with
 // occupancy masks. Like everywhere else, a node is written in place only by
 // the transaction that created it. The shape depends only on the content:
 // the root has the fewest levels that hold the largest nid.
 typedef struct {
-    PyObject *root; // KLeaf (levels 0) or KInner; NULL when empty
+    PyObject *root; // Leaf (levels 0) or Inner; NULL when empty
     uint64_t objmask;
     uint32_t rec;
     uint8_t levels; // inner levels above the leaves
@@ -193,10 +140,10 @@ kmap_get(const KMap *m, int64_t nid)
     for (int l = m->levels; l > 0; l--) {
         unsigned i = ((uint64_t)nid >> (KW_BITS + KF_BITS * (l - 1)))
             & ((1u << KF_BITS) - 1);
-        if (!(n = ((const KInner *)n)->kids[i]))
+        if (!(n = ((const Inner *)n)->kids[i]))
             return NULL;
     }
-    const KLeaf *lf = (const KLeaf *)n;
+    const Leaf *lf = (const Leaf *)n;
     unsigned b = (uint64_t)nid & ((1u << KW_BITS) - 1);
     if (!(lf->mask >> b & 1))
         return NULL;
@@ -274,7 +221,6 @@ typedef struct {
 } BIter;
 
 // store.c
-extern PyTypeObject *Leaf_Type, *InnerGC_Type;
 int store_init(void);
 slot_t *kmap_insert(KMap *m, int64_t nid, uint64_t tok);
 slot_t *kmap_at_w(KMap *m, int64_t nid, uint64_t tok);
@@ -283,7 +229,6 @@ const slot_t *kmap_next(const KMap *m, int64_t after, int64_t *nid);
 int kmap_walk(const KMap *m, int (*fn)(const slot_t *, void *), void *arg);
 int kmap_equal_plain(const KMap *a, const KMap *b);
 void obj_free(void *o);
-slot_t *vec_at_w(Vec *v, uint64_t i, uint64_t lin, uint64_t tx, int append);
 int ent_cmp(const void *a, const void *b);
 int bt_insert(BTree *t, const Ent *e, uint64_t tok);
 int bt_delete(BTree *t, const Ent *e, uint64_t tok);

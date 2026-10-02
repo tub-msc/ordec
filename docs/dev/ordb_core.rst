@@ -121,10 +121,9 @@ subtrees and stopping at the first differing cached sum; this relies on
 the shape of a trie depending only on its content (a removal collapses a
 root left with only its first child).
 
-The directory is a ``Vec``, a dense persistent radix tree with 32 children
-per inner node and leaves of 16 records. A subgraph appends to directory
-leaves it owns in place when no snapshot can see the records (behind every
-snapshot's count).
+The directory is a ``KMap`` like the tables, with records of two slots (no
+nid). A record with neither a node nor references is removed, so nids may
+be sparse anywhere below ``nid_stop``.
 
 ``keyed`` is the only engine. The engine selection
 (``ORDEC_ORDB_BACKEND``, :mod:`~ordec.core.ordb.backend`, the ``engine``
@@ -337,6 +336,14 @@ appending a row. The 64-slot inner nodes cost memory in many small
 subgraphs (``symbol_build`` retains 13.5 % more). Leaf growth in steps of 4
 or to the rest of the window on appends changed nothing measurable.
 
+The directory was the last user of the ``paged`` structure (a dense
+persistent vector with lineage tokens, so that a subgraph could append in
+place behind its snapshots). Moving it to a ``KMap`` removed that
+machinery and the limit on nid gaps (2^24 past the end of the directory),
+at a cost of 2.5 % on the default-scale suite, about 3 % retained memory,
+and 18 % for ``%`` in a transaction of its own (834 instead of 704 ns),
+which now copies the directory leaf and its path.
+
 Indices are ordered by (key hash, sort value, nid) because hash indices
 degrade on keys with many duplicates (all rectangles on one layer), while
 one order serves plain, sorted and unique indices alike. The first version
@@ -408,21 +415,16 @@ Performance:
   (``lambda c: c.instance.eref.symbol`` of ``SimPin``) and the computed
   ones of ``SimHierarchy`` are called per node.
 - Index entries take 24 bytes; 16 would do.
-- An insert in a transaction of its own copies the table leaf and the index
-  leaves it touches, with their paths. For tables, a visibility bound per
-  snapshot (rows with a nid at or above the snapshot's ``nid_start`` are
-  invisible to it) would allow appending new nids in place to nodes owned
-  by the subgraph, as ``paged`` did behind each snapshot's row count; every
-  read and walk would then filter by the bound.
+- An insert in a transaction of its own copies the table leaf, the
+  directory leaf and the index leaves it touches, with their paths. For
+  tables and the directory, a visibility bound per snapshot (records with a
+  nid at or above the snapshot's ``nid_start`` are invisible to it) would
+  allow appending new nids in place to nodes owned by the subgraph, as
+  ``paged`` did behind each snapshot's row count; every read and walk would
+  then filter by the bound.
 - Inner nodes always have 64 child slots (520 bytes), which costs memory in
   many small subgraphs; a small packed form for nodes with few children
   would recover it at the cost of a population count per level.
-
-Correctness and semantics:
-
-- A LocalRef or explicit nid more than 2^24 past the end of the nid
-  directory raises ``OrdbException`` immediately, where the old backends
-  raised ``DanglingLocalRef`` at commit and allowed sparse nids up to 2^32.
 
 Portability and packaging:
 

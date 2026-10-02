@@ -4,11 +4,11 @@
 // Native core of ORDB (see docs/ref/ordb.rst and docs/dev/ordb_core.rst).
 //
 // A subgraph state consists of:
-// - one table per node type: a persistent sparse array keyed by nid (the
-//   "keyed" engine) of records of 8-byte slots, slot 0 is the nid,
-//   followed by the attribute slots,
+// - one table per node type: a persistent sparse array keyed by nid of
+//   records of 8-byte slots, slot 0 is the nid, followed by the attribute
+//   slots,
 // - the nid directory: per nid the table and the number of LocalRefs
-//   pointing at it, a persistent vector,
+//   pointing at it, a persistent sparse array like the tables,
 // - per index a persistent B+tree with exactly one entry (h, s, nid) per
 //   indexed live node.
 //
@@ -86,10 +86,10 @@
 #define MAXWIDTH 8 // slots of one attribute
 #define H_NONE 0x9E3779B97F4A7C15ull
 
-// Directory record of a nid: [table + 1 (0: no node), inbound LocalRefs].
+// Directory record of a nid: [table + 1 (0: no node), inbound LocalRefs];
+// a record with neither a node nor references is removed.
 #define DIR_TAB(loc) ((int)(loc) - 1)
 #define DIR_LOC(ti) ((slot_t)(ti) + 1)
-#define DIR_MAX_GAP ((int64_t)1 << 24)
 
 // The limited API has no static types. Like static types, the heap types
 // of the core are immutable; those without tp_new cannot be instantiated
@@ -180,7 +180,7 @@ typedef struct {
 } IdxKey;
 
 typedef struct {
-    Vec dir; // records [table + 1, refs]
+    KMap dir; // records [table + 1, refs]
     Tab *tabs;
     int ntab;
     Idx *idxs;
@@ -207,7 +207,6 @@ typedef struct Sg {
     PyObject_HEAD
     State st; // always the current state, including uncommitted changes
     Txn *txn; // innermost open transaction
-    uint64_t tok; // lineage token: this subgraph may append to such blocks
     PyObject *root_cursor;
     PyObject *wire_hash; // memo slot used by base.py
     PyObject *arrays_memo; // memo slot used by arrays.py (frozen only)
@@ -282,9 +281,7 @@ st_find_idx(const State *st, const PyObject *index)
 static inline const slot_t *
 st_dir(const State *st, int64_t nid)
 {
-    if (nid < 0 || (uint64_t)nid >= st->dir.count)
-        return NULL;
-    return vec_get(&st->dir, (uint64_t)nid);
+    return kmap_get(&st->dir, nid);
 }
 
 // Record of a live node, or NULL.

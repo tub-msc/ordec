@@ -1,13 +1,12 @@
 // SPDX-FileCopyrightText: 2026 ORDeC contributors
 // SPDX-License-Identifier: Apache-2.0
 
-// Storage primitives (see store.h): the directory vector, keyed tables,
-// index trees and the types of their nodes.
+// Storage primitives (see store.h): tries keyed by nid (tables and the
+// directory), index trees and the types of their nodes.
 
 #include "module.h"
 
 uint64_t g_token = 1; // source of edit tokens; 0 is never a token
-PyTypeObject *Leaf_Type, *InnerGC_Type;
 
 // Frees an instance of one of the (heap) types of the core and drops the
 // reference the instance holds to its type.
@@ -20,178 +19,52 @@ obj_free(void *o)
     Py_DECREF(tp);
 }
 
-// -- Vec (the directory) -------------------------------------------------------
-
-static void
-leaf_dealloc(Leaf *n)
-{
-    obj_free(n);
-}
-
-static void
-inner_dealloc(Inner *n)
-{
-    PyObject_GC_UnTrack(n);
-    for (unsigned i = 0; i < FAN; i++)
-        Py_XDECREF(n->kids[i]);
-    obj_free(n);
-}
-
-static int
-inner_traverse(Inner *n, visitproc visit, void *arg)
-{
-    Py_VISIT(Py_TYPE((PyObject *)n));
-    for (unsigned i = 0; i < FAN; i++)
-        Py_VISIT(n->kids[i]);
-    return 0;
-}
-
-static int
-inner_clear(Inner *n)
-{
-    for (unsigned i = 0; i < FAN; i++)
-        Py_CLEAR(n->kids[i]);
-    return 0;
-}
-
-static PyObject *
-leaf_new(const Vec *v, uint64_t tok)
-{
-    Py_ssize_t nslots = (Py_ssize_t)v->rec * LEAF_ROWS;
-    Leaf *n = PyObject_NewVar(Leaf, Leaf_Type, nslots);
-    if (!n)
-        return NULL;
-    n->owner = tok;
-    n->rec = v->rec;
-    memset(n->data, 0, sizeof(slot_t) * nslots);
-    return (PyObject *)n;
-}
-
-static PyObject *
-inner_new(const Vec *v, uint64_t tok)
-{
-    Inner *n = PyObject_GC_New(Inner, InnerGC_Type);
-    if (!n)
-        return NULL;
-    n->owner = tok;
-    memset(n->kids, 0, sizeof(n->kids));
-    PyObject_GC_Track(n);
-    return (PyObject *)n;
-}
-
-// Copy of a tree node with a new owner; the copy shares the children.
-static PyObject *
-node_copy(const Vec *v, PyObject *n, int level, uint64_t tok)
-{
-    if (level > 0) {
-        Inner *c = (Inner *)inner_new(v, tok);
-        if (!c)
-            return NULL;
-        memcpy(c->kids, ((Inner *)n)->kids, sizeof(c->kids));
-        for (unsigned i = 0; i < FAN; i++)
-            Py_XINCREF(c->kids[i]);
-        return (PyObject *)c;
-    }
-    Leaf *c = (Leaf *)leaf_new(v, tok);
-    if (!c)
-        return NULL;
-    memcpy(c->data, ((Leaf *)n)->data, sizeof(slot_t) * v->rec * LEAF_ROWS);
-    return (PyObject *)c;
-}
-
-// Writable record i; does not change count. With append, the caller
-// states that no other snapshot of this vector can see record i.
-//
-// Write rule: a node is written in place if it was created by this
-// transaction (owner == tx), or if it is owned by this subgraph
-// (owner == lin) and the write is an append. Every other node on the path
-// is copied first.
-slot_t *
-vec_at_w(Vec *v, uint64_t i, uint64_t lin, uint64_t tx, int append)
-{
-    uint64_t newtok = append ? lin : tx;
-    if (!v->root) {
-        v->root = leaf_new(v, newtok);
-        if (!v->root)
-            return NULL;
-        v->levels = 0;
-    }
-    while (i >= ((uint64_t)LEAF_ROWS << (BITS * v->levels))) {
-        Inner *r = (Inner *)inner_new(v, newtok);
-        if (!r)
-            return NULL;
-        r->kids[0] = v->root;
-        v->root = (PyObject *)r;
-        v->levels++;
-    }
-    PyObject **pp = &v->root;
-    for (int l = v->levels;; l--) {
-        PyObject *n = *pp;
-        uint64_t owner = l > 0 ? ((Inner *)n)->owner : ((Leaf *)n)->owner;
-        if (!(owner == tx || (append && owner == lin))) {
-            n = node_copy(v, n, l, newtok);
-            if (!n)
-                return NULL;
-            Py_DECREF(*pp);
-            *pp = n;
-        }
-        if (l == 0)
-            return ((Leaf *)n)->data + (i & (LEAF_ROWS - 1)) * v->rec;
-        pp = &((Inner *)n)->kids[(i >> SHIFT(l)) & (FAN - 1)];
-        if (!*pp) {
-            *pp = l > 1 ? inner_new(v, newtok) : leaf_new(v, newtok);
-            if (!*pp)
-                return NULL;
-        }
-    }
-}
-
 int
 ent_cmp(const void *a, const void *b)
 {
     return ent_lt(a, b) ? -1 : ent_lt(b, a) ? 1 : 0;
 }
 
-// -- keyed tables ----------------------------------------------------------------
+// -- KMap ----------------------------------------------------------------------
 
-static PyTypeObject *KLeaf_Type, *KLeafGC_Type, *KInner_Type;
+static PyTypeObject *Leaf_Type, *LeafGC_Type, *Inner_Type;
 
 #define KW (1u << KW_BITS)
 #define KF (1u << KF_BITS)
 
 static inline uint32_t
-kleaf_n(const KLeaf *n)
+leaf_n(const Leaf *n)
 {
     return (uint32_t)popcount32(n->mask);
 }
 
 
 static void
-kleaf_dealloc(KLeaf *n)
+leaf_dealloc(Leaf *n)
 {
     if (n->objmask)
         PyObject_GC_UnTrack(n);
-    recs_clear(n->data, n->objmask, n->rec, kleaf_n(n));
+    recs_clear(n->data, n->objmask, n->rec, leaf_n(n));
     obj_free(n);
 }
 
 static int
-kleaf_traverse(KLeaf *n, visitproc visit, void *arg)
+leaf_traverse(Leaf *n, visitproc visit, void *arg)
 {
     Py_VISIT(Py_TYPE((PyObject *)n));
-    return recs_traverse(n->data, n->objmask, n->rec, kleaf_n(n), visit,
+    return recs_traverse(n->data, n->objmask, n->rec, leaf_n(n), visit,
         arg);
 }
 
 static int
-kleaf_clear(KLeaf *n)
+leaf_clear(Leaf *n)
 {
-    recs_clear(n->data, n->objmask, n->rec, kleaf_n(n));
+    recs_clear(n->data, n->objmask, n->rec, leaf_n(n));
     return 0;
 }
 
 static void
-kinner_dealloc(KInner *n)
+inner_dealloc(Inner *n)
 {
     PyObject_GC_UnTrack(n);
     for (uint64_t m = n->mask; m; m &= m - 1)
@@ -200,7 +73,7 @@ kinner_dealloc(KInner *n)
 }
 
 static int
-kinner_traverse(KInner *n, visitproc visit, void *arg)
+inner_traverse(Inner *n, visitproc visit, void *arg)
 {
     Py_VISIT(Py_TYPE((PyObject *)n));
     for (uint64_t m = n->mask; m; m &= m - 1)
@@ -209,7 +82,7 @@ kinner_traverse(KInner *n, visitproc visit, void *arg)
 }
 
 static int
-kinner_clear(KInner *n)
+inner_clear(Inner *n)
 {
     uint64_t mask = n->mask;
     n->mask = 0;
@@ -228,12 +101,12 @@ cap_for(uint32_t n)
     return c;
 }
 
-static KLeaf *
-kleaf_new(const KMap *m, uint32_t cap, uint64_t tok)
+static Leaf *
+leaf_new(const KMap *m, uint32_t cap, uint64_t tok)
 {
     Py_ssize_t nslots = (Py_ssize_t)cap * m->rec;
-    KLeaf *n = m->objmask ? PyObject_GC_NewVar(KLeaf, KLeafGC_Type, nslots)
-        : PyObject_NewVar(KLeaf, KLeaf_Type, nslots);
+    Leaf *n = m->objmask ? PyObject_GC_NewVar(Leaf, LeafGC_Type, nslots)
+        : PyObject_NewVar(Leaf, Leaf_Type, nslots);
     if (!n)
         return NULL;
     n->owner = tok;
@@ -248,10 +121,10 @@ kleaf_new(const KMap *m, uint32_t cap, uint64_t tok)
     return n;
 }
 
-static KInner *
-kinner_new(uint64_t tok)
+static Inner *
+inner_new(uint64_t tok)
 {
-    KInner *n = PyObject_GC_New(KInner, KInner_Type);
+    Inner *n = PyObject_GC_New(Inner, Inner_Type);
     if (!n)
         return NULL;
     n->owner = tok;
@@ -264,16 +137,16 @@ kinner_new(uint64_t tok)
 
 // The leaf *pp, writable for tok and with room for need rows: copied
 // (taking references) unless tok created it, moved to a larger leaf if full.
-static KLeaf *
-kleaf_writable(const KMap *m, PyObject **pp, uint32_t need, uint64_t tok)
+static Leaf *
+leaf_writable(const KMap *m, PyObject **pp, uint32_t need, uint64_t tok)
 {
-    KLeaf *n = (KLeaf *)*pp;
-    uint32_t cnt = kleaf_n(n);
+    Leaf *n = (Leaf *)*pp;
+    uint32_t cnt = leaf_n(n);
     if (n->owner == tok && n->cap >= need) {
         n->hvalid = 0; // about to be written
         return n;
     }
-    KLeaf *c = kleaf_new(m, cap_for(need > cnt ? need : cnt), tok);
+    Leaf *c = leaf_new(m, cap_for(need > cnt ? need : cnt), tok);
     if (!c)
         return NULL;
     memcpy(c->data, n->data, sizeof(slot_t) * cnt * m->rec);
@@ -289,15 +162,15 @@ kleaf_writable(const KMap *m, PyObject **pp, uint32_t need, uint64_t tok)
 
 // The inner node *pp, writable for tok: copied (sharing the children)
 // unless tok created it.
-static KInner *
-kinner_writable(PyObject **pp, uint64_t tok)
+static Inner *
+inner_writable(PyObject **pp, uint64_t tok)
 {
-    KInner *n = (KInner *)*pp;
+    Inner *n = (Inner *)*pp;
     if (n->owner == tok) {
         n->hvalid = 0; // about to be written
         return n;
     }
-    KInner *c = kinner_new(tok);
+    Inner *c = inner_new(tok);
     if (!c)
         return NULL;
     memcpy(c->kids, n->kids, sizeof(c->kids));
@@ -317,19 +190,19 @@ kmap_shift(int level)
 
 // The leaf holding nid, writable for tok with room for extra more rows;
 // missing nodes are created (create) or NULL is returned.
-static KLeaf *
+static Leaf *
 kmap_leaf_w(KMap *m, int64_t nid, uint64_t tok, uint32_t extra, int create)
 {
     if (!m->root) {
         while ((uint64_t)nid >> (KW_BITS + KF_BITS * m->levels))
             m->levels++;
-        m->root = m->levels ? (PyObject *)kinner_new(tok)
-            : (PyObject *)kleaf_new(m, 1, tok);
+        m->root = m->levels ? (PyObject *)inner_new(tok)
+            : (PyObject *)leaf_new(m, 1, tok);
         if (!m->root)
             return NULL;
     }
     while ((uint64_t)nid >> (KW_BITS + KF_BITS * m->levels)) {
-        KInner *r = kinner_new(tok);
+        Inner *r = inner_new(tok);
         if (!r)
             return NULL;
         r->kids[0] = m->root;
@@ -341,17 +214,17 @@ kmap_leaf_w(KMap *m, int64_t nid, uint64_t tok, uint32_t extra, int create)
     for (int l = m->levels; l > 0; l--) {
         unsigned i = ((uint64_t)nid >> kmap_shift(l)) & ((1u << KF_BITS) - 1);
         uint64_t bit = 1ull << i;
-        int has = (((KInner *)*pp)->mask & bit) != 0;
+        int has = (((Inner *)*pp)->mask & bit) != 0;
         if (!has && !create) {
-            PyErr_SetString(PyExc_SystemError, "ORDB: keyed row missing");
+            PyErr_SetString(PyExc_SystemError, "ORDB: row missing");
             return NULL;
         }
-        KInner *in = kinner_writable(pp, tok);
+        Inner *in = inner_writable(pp, tok);
         if (!in)
             return NULL;
         if (!has) {
-            PyObject *kid = l > 1 ? (PyObject *)kinner_new(tok)
-                : (PyObject *)kleaf_new(m, 1, tok);
+            PyObject *kid = l > 1 ? (PyObject *)inner_new(tok)
+                : (PyObject *)leaf_new(m, 1, tok);
             if (!kid)
                 return NULL;
             in->kids[i] = kid;
@@ -359,23 +232,23 @@ kmap_leaf_w(KMap *m, int64_t nid, uint64_t tok, uint32_t extra, int create)
         }
         pp = &in->kids[i];
     }
-    KLeaf *lf = (KLeaf *)*pp;
-    return kleaf_writable(m, pp, kleaf_n(lf) + extra, tok);
+    Leaf *lf = (Leaf *)*pp;
+    return leaf_writable(m, pp, leaf_n(lf) + extra, tok);
 }
 
 // A new, cleared record for nid (which must be absent).
 slot_t *
 kmap_insert(KMap *m, int64_t nid, uint64_t tok)
 {
-    KLeaf *lf = kmap_leaf_w(m, nid, tok, 1, 1);
+    Leaf *lf = kmap_leaf_w(m, nid, tok, 1, 1);
     if (!lf)
         return NULL;
     unsigned b = (uint64_t)nid & (KW - 1);
     if (lf->mask >> b & 1) {
-        PyErr_SetString(PyExc_SystemError, "ORDB: keyed row exists");
+        PyErr_SetString(PyExc_SystemError, "ORDB: row exists");
         return NULL;
     }
-    uint32_t cnt = kleaf_n(lf), r = popcount32(lf->mask & ((1u << b) - 1));
+    uint32_t cnt = leaf_n(lf), r = popcount32(lf->mask & ((1u << b) - 1));
     slot_t *p = lf->data + r * m->rec;
     memmove(p + m->rec, p, sizeof(slot_t) * m->rec * (cnt - r));
     memset(p, 0, sizeof(slot_t) * m->rec);
@@ -388,10 +261,10 @@ slot_t *
 kmap_at_w(KMap *m, int64_t nid, uint64_t tok)
 {
     if (!kmap_get(m, nid)) {
-        PyErr_SetString(PyExc_SystemError, "ORDB: keyed row missing");
+        PyErr_SetString(PyExc_SystemError, "ORDB: row missing");
         return NULL;
     }
-    KLeaf *lf = kmap_leaf_w(m, nid, tok, 0, 0);
+    Leaf *lf = kmap_leaf_w(m, nid, tok, 0, 0);
     if (!lf)
         return NULL;
     unsigned b = (uint64_t)nid & (KW - 1);
@@ -403,11 +276,11 @@ static int
 km_remove(const KMap *m, PyObject **pp, int level, int64_t nid, uint64_t tok)
 {
     if (level == 0) {
-        KLeaf *lf = kleaf_writable(m, pp, kleaf_n((KLeaf *)*pp), tok);
+        Leaf *lf = leaf_writable(m, pp, leaf_n((Leaf *)*pp), tok);
         if (!lf)
             return -1;
         unsigned b = (uint64_t)nid & (KW - 1);
-        uint32_t cnt = kleaf_n(lf), r = popcount32(lf->mask & ((1u << b) - 1));
+        uint32_t cnt = leaf_n(lf), r = popcount32(lf->mask & ((1u << b) - 1));
         slot_t *p = lf->data + r * m->rec;
         recs_clear(p, m->objmask, m->rec, 1);
         memmove(p, p + m->rec, sizeof(slot_t) * m->rec * (cnt - r - 1));
@@ -415,7 +288,7 @@ km_remove(const KMap *m, PyObject **pp, int level, int64_t nid, uint64_t tok)
         lf->mask &= ~(1u << b);
         return lf->mask == 0;
     }
-    KInner *in = kinner_writable(pp, tok);
+    Inner *in = inner_writable(pp, tok);
     if (!in)
         return -1;
     unsigned i = ((uint64_t)nid >> kmap_shift(level)) & ((1u << KF_BITS) - 1);
@@ -431,7 +304,7 @@ int
 kmap_remove(KMap *m, int64_t nid, uint64_t tok)
 {
     if (!kmap_get(m, nid)) {
-        PyErr_SetString(PyExc_SystemError, "ORDB: keyed row missing");
+        PyErr_SetString(PyExc_SystemError, "ORDB: row missing");
         return -1;
     }
     int r = km_remove(m, &m->root, m->levels, nid, tok);
@@ -442,8 +315,8 @@ kmap_remove(KMap *m, int64_t nid, uint64_t tok)
         m->levels = 0;
     }
     // Fewest levels again: a root with only its first child goes.
-    while (m->levels > 0 && ((KInner *)m->root)->mask == 1) {
-        PyObject *kid = Py_NewRef(((KInner *)m->root)->kids[0]);
+    while (m->levels > 0 && ((Inner *)m->root)->mask == 1) {
+        PyObject *kid = Py_NewRef(((Inner *)m->root)->kids[0]);
         Py_DECREF(m->root);
         m->root = kid;
         m->levels--;
@@ -457,7 +330,7 @@ static const slot_t *
 km_next(PyObject *n, int level, int64_t base, int64_t after, int64_t *out)
 {
     if (level == 0) {
-        const KLeaf *lf = (const KLeaf *)n;
+        const Leaf *lf = (const Leaf *)n;
         uint32_t mask = lf->mask;
         if (after >= base) {
             int64_t skip = after - base + 1;
@@ -472,7 +345,7 @@ km_next(PyObject *n, int level, int64_t base, int64_t after, int64_t *out)
         return lf->data + popcount32(lf->mask & ((1u << b) - 1))
             * lf->rec;
     }
-    const KInner *in = (const KInner *)n;
+    const Inner *in = (const Inner *)n;
     unsigned shift = kmap_shift(level);
     uint64_t mask = in->mask;
     if (after >= base) {
@@ -497,14 +370,14 @@ km_walk(PyObject *n, int level, uint32_t rec,
     int (*fn)(const slot_t *, void *), void *arg)
 {
     if (level == 0) {
-        const KLeaf *lf = (const KLeaf *)n;
-        uint32_t cnt = kleaf_n(lf);
+        const Leaf *lf = (const Leaf *)n;
+        uint32_t cnt = leaf_n(lf);
         for (uint32_t k = 0; k < cnt; k++)
             if (fn(lf->data + k * rec, arg))
                 return 1;
         return 0;
     }
-    const KInner *in = (const KInner *)n;
+    const Inner *in = (const Inner *)n;
     for (uint64_t mask = in->mask; mask; mask &= mask - 1)
         if (km_walk(in->kids[__builtin_ctzll(mask)], level - 1, rec, fn, arg))
             return 1;
@@ -526,11 +399,11 @@ km_equal(PyObject *a, PyObject *b, int level, uint32_t rec)
     if (a == b)
         return 1;
     if (level == 0) {
-        const KLeaf *la = (const KLeaf *)a, *lb = (const KLeaf *)b;
+        const Leaf *la = (const Leaf *)a, *lb = (const Leaf *)b;
         return la->mask == lb->mask && !memcmp(la->data, lb->data,
-            sizeof(slot_t) * rec * kleaf_n(la));
+            sizeof(slot_t) * rec * leaf_n(la));
     }
-    const KInner *ia = (const KInner *)a, *ib = (const KInner *)b;
+    const Inner *ia = (const Inner *)a, *ib = (const Inner *)b;
     if (ia->mask != ib->mask
             || (ia->hvalid && ib->hvalid && ia->hsum != ib->hsum))
         return 0;
@@ -1166,24 +1039,19 @@ block_type(const char *name, int basicsize, int itemsize, destructor dealloc,
 int
 store_init(void)
 {
-    if (!(Leaf_Type = block_type("_ordb.Leaf", offsetof(Leaf, data),
-            sizeof(slot_t), (destructor)leaf_dealloc, NULL, NULL))
-        || !(InnerGC_Type = block_type("_ordb.InnerGC", sizeof(Inner), 0,
-            (destructor)inner_dealloc, (traverseproc)inner_traverse,
-            (inquiry)inner_clear))
-        || !(BLeaf_Type = block_type("_ordb.IndexLeaf", sizeof(BLeaf), 0,
+    if (!(BLeaf_Type = block_type("_ordb.IndexLeaf", sizeof(BLeaf), 0,
             (destructor)bleaf_dealloc, NULL, NULL))
         || !(BInner_Type = block_type("_ordb.IndexInnerGC", sizeof(BInner), 0,
             (destructor)binner_dealloc, (traverseproc)binner_traverse,
             (inquiry)binner_clear))
-        || !(KLeaf_Type = block_type("_ordb.KeyedLeaf", offsetof(KLeaf, data),
-            sizeof(slot_t), (destructor)kleaf_dealloc, NULL, NULL))
-        || !(KLeafGC_Type = block_type("_ordb.KeyedLeafGC",
-            offsetof(KLeaf, data), sizeof(slot_t), (destructor)kleaf_dealloc,
-            (traverseproc)kleaf_traverse, (inquiry)kleaf_clear))
-        || !(KInner_Type = block_type("_ordb.KeyedInnerGC", sizeof(KInner), 0,
-            (destructor)kinner_dealloc, (traverseproc)kinner_traverse,
-            (inquiry)kinner_clear)))
+        || !(Leaf_Type = block_type("_ordb.Leaf", offsetof(Leaf, data),
+            sizeof(slot_t), (destructor)leaf_dealloc, NULL, NULL))
+        || !(LeafGC_Type = block_type("_ordb.LeafGC",
+            offsetof(Leaf, data), sizeof(slot_t), (destructor)leaf_dealloc,
+            (traverseproc)leaf_traverse, (inquiry)leaf_clear))
+        || !(Inner_Type = block_type("_ordb.InnerGC", sizeof(Inner), 0,
+            (destructor)inner_dealloc, (traverseproc)inner_traverse,
+            (inquiry)inner_clear)))
         return -1;
     return 0;
 }
