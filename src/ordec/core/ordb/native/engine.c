@@ -11,10 +11,11 @@
 // ---------------------------------------------------------------------------
 
 void
-state_init(State *st)
+state_init(State *st, int keyed)
 {
     memset(st, 0, sizeof(State));
     vec_init(&st->dir, 2, 0);
+    st->keyed = keyed;
     st->nid_stop = (int64_t)1 << 32;
 }
 
@@ -37,6 +38,7 @@ state_copy(State *dst, const State *src)
     for (int i = 0; i < src->ntab; i++) {
         Py_INCREF((PyObject *)src->tabs[i].nt);
         Py_XINCREF(src->tabs[i].rows.root);
+        Py_XINCREF(src->tabs[i].map.root);
     }
     Py_XINCREF(src->dir.root);
     for (int i = 0; i < src->nidx; i++) {
@@ -77,6 +79,7 @@ state_release(State *st)
     st->nlive = 0;
     for (int i = 0; i < ntab; i++) {
         Py_XDECREF(tabs[i].rows.root);
+        Py_XDECREF(tabs[i].map.root);
         Py_DECREF(tabs[i].nt);
     }
     PyMem_Free(tabs);
@@ -95,8 +98,12 @@ st_add_tab(State *st, NType *nt)
     }
     st->tabs = tabs;
     Tab *t = &tabs[st->ntab];
+    memset(t, 0, sizeof(Tab));
     t->nt = (NType *)Py_NewRef((PyObject *)nt);
-    vec_init(&t->rows, nt->rec, nt->objmask);
+    if (st->keyed)
+        kmap_init(&t->map, nt->rec, nt->objmask);
+    else
+        vec_init(&t->rows, nt->rec, nt->objmask);
     t->live = 0;
     t->last_nid = -1;
     t->sorted = 1;
@@ -205,6 +212,17 @@ tab_row_w(Sg *sg, int ti, uint64_t row)
     if (tx)
         tx->writes++;
     return vec_at_w(v, row, sg->tok, tx ? tx->tok : 0, append);
+}
+
+// Writable record of the live node nid in table ti.
+static slot_t *
+row_w(Sg *sg, int ti, int64_t nid)
+{
+    if (sg->st.keyed) {
+        sg->txn->writes++;
+        return kmap_at_w(&sg->st.tabs[ti].map, nid, sg->txn->tok);
+    }
+    return tab_row_w(sg, ti, DIR_ROW(st_dir(&sg->st, nid)[0]));
 }
 
 // Appends a record and returns it with its object slots cleared.
@@ -796,7 +814,12 @@ node_place(Sg *sg, NType *nt, int64_t nid)
         return NULL;
     slot_t loc = d[0];
     slot_t *p;
-    if ((loc & DIR_DEAD) && DIR_TAB(loc) == ti) {
+    if (st->keyed) {
+        sg->txn->writes++;
+        if (!(p = kmap_insert(&st->tabs[ti].map, nid, sg->txn->tok)))
+            return NULL;
+        d[0] = DIR_LOC(ti, 0);
+    } else if ((loc & DIR_DEAD) && DIR_TAB(loc) == ti) {
         p = tab_row_w(sg, ti, DIR_ROW(loc));
         if (!p)
             return NULL;
@@ -859,9 +882,23 @@ node_drop(Sg *sg, int64_t nid, int ti, const IdxKey *k)
     NType *nt = st->tabs[ti].nt;
     if (index_change(sg, nt, k, NULL, nid) < 0)
         return -1;
-    const slot_t *d = st_dir(st, nid);
-    uint64_t row = DIR_ROW(d[0]);
-    slot_t *p = tab_row_w(sg, ti, row);
+    if (st->keyed) {
+        const slot_t *p = kmap_get(&st->tabs[ti].map, nid);
+        if (refs_adjust(sg, nt, p, -1) < 0
+                || boxed_drop_row(sg, nt, p, nid) < 0)
+            return -1;
+        sg->txn->writes++;
+        if (kmap_remove(&st->tabs[ti].map, nid, sg->txn->tok) < 0)
+            return -1;
+        slot_t *dw = dir_w(sg, nid);
+        if (!dw)
+            return -1;
+        dw[0] = 0;
+        st->tabs[ti].live--;
+        st->nlive--;
+        return 0;
+    }
+    slot_t *p = row_w(sg, ti, nid);
     if (!p)
         return -1;
     if (refs_adjust(sg, nt, p, -1) < 0 || boxed_drop_row(sg, nt, p, nid) < 0)
@@ -936,8 +973,7 @@ op_update(Sg *sg, int64_t nid, PyObject *node)
             ret = chk_add(tx, nid);
         goto done;
     }
-    uint64_t row = DIR_ROW(st_dir(st, nid)[0]);
-    slot_t *p = tab_row_w(sg, ti, row);
+    slot_t *p = row_w(sg, ti, nid);
     if (!p || refs_adjust(sg, nt, p, -1) < 0
             || boxed_drop_row(sg, nt, p, nid) < 0)
         goto done;
@@ -1041,6 +1077,12 @@ done:
 // Maintenance: compaction of tables (no open transaction)
 // ---------------------------------------------------------------------------
 
+// A live row of a paged table in nid order (tab_order).
+typedef struct {
+    int64_t nid;
+    uint64_t row;
+} NidRow;
+
 static int
 nidrow_cmp(const void *a, const void *b)
 {
@@ -1048,8 +1090,8 @@ nidrow_cmp(const void *a, const void *b)
     return x < y ? -1 : x > y;
 }
 
-// Live (nid, row) pairs of a table in ascending nid order.
-NidRow *
+// Live (nid, row) pairs of a paged table in ascending nid order.
+static NidRow *
 tab_order(const Tab *t, uint64_t *n_out)
 {
     NidRow *o = PyMem_Malloc(sizeof(NidRow) * (t->live + 1));
@@ -1069,12 +1111,44 @@ tab_order(const Tab *t, uint64_t *n_out)
     return o;
 }
 
-// Rewrites a table without tombstones, in nid order.
+// The live rows of table ti in ascending nid order. The pointers are valid
+// until the next write or Python code.
+const slot_t **
+tab_rows_sorted(const State *st, int ti, uint64_t *n_out)
+{
+    const Tab *t = &st->tabs[ti];
+    const slot_t **rows = PyMem_Malloc(sizeof(slot_t *) * (t->live + 1));
+    if (!rows) {
+        PyErr_NoMemory();
+        return NULL;
+    }
+    uint64_t n = 0;
+    if (st->keyed) {
+        int64_t nid = -1;
+        for (const slot_t *p; (p = kmap_next(&t->map, nid, &nid));)
+            rows[n++] = p;
+    } else {
+        NidRow *o = tab_order(t, &n);
+        if (!o) {
+            PyMem_Free(rows);
+            return NULL;
+        }
+        for (uint64_t k = 0; k < n; k++)
+            rows[k] = vec_get(&t->rows, o[k].row);
+        PyMem_Free(o);
+    }
+    *n_out = n;
+    return rows;
+}
+
+// Rewrites a paged table without tombstones, in nid order.
 int
 tab_compact(Sg *sg, int ti)
 {
     State *st = &sg->st;
     Tab *t = &st->tabs[ti];
+    if (st->keyed)
+        return 0;
     uint64_t tok = ++g_token;
     uint64_t n;
     NidRow *o = tab_order(t, &n);
@@ -1126,6 +1200,8 @@ done:
 int
 sg_maintain(Sg *sg, int freezing)
 {
+    if (sg->st.keyed)
+        return 0; // no tombstones, always in nid order
     State *st = &sg->st;
     for (int ti = 0; ti < st->ntab; ti++) {
         Tab *t = &st->tabs[ti];

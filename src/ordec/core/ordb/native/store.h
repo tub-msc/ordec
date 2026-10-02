@@ -6,6 +6,8 @@
 // - Vec: a vector of fixed-size records of 8-byte slots, stored as a
 //   persistent radix tree with small leaves and edit tokens (the "paged"
 //   engine).
+// - KMap: a persistent sparse array of records keyed by nid (the "keyed"
+//   engine).
 // - BTree: a persistent B+tree of index entries (h, s, nid).
 //
 // Leaves that can hold Python object references (objmask != 0) are
@@ -111,6 +113,70 @@ vec_get(const Vec *v, uint64_t i)
     return ((Leaf *)n)->data + (i & (LEAF_ROWS - 1)) * v->rec;
 }
 
+// -- keyed tables (engine "keyed") -------------------------------------------
+
+#define KW_BITS 4 // nids per leaf: 16
+#define KF_BITS 6 // children per inner node: 64
+
+typedef struct {
+    PyObject_VAR_HEAD // ob_size: slots allocated (cap * rec)
+    uint64_t owner;
+    uint64_t objmask;
+    uint32_t rec;
+    uint32_t mask; // bit b: nid base + b is present
+    uint32_t cap; // rows allocated
+    slot_t data[1]; // the present rows, packed in nid order
+} KLeaf;
+
+typedef struct {
+    PyObject_VAR_HEAD // ob_size: children allocated
+    uint64_t owner;
+    uint64_t mask; // bit i: child i is present
+    uint32_t cap;
+    PyObject *kids[1]; // the present children, packed
+} KInner;
+
+// A persistent sparse array of records keyed by nid: a radix trie with
+// occupancy masks. Like everywhere else, a node is written in place only by
+// the transaction that created it.
+typedef struct {
+    PyObject *root; // KLeaf (levels 0) or KInner; NULL when empty
+    uint64_t objmask;
+    uint32_t rec;
+    uint8_t levels; // inner levels above the leaves
+} KMap;
+
+static inline void
+kmap_init(KMap *m, uint32_t rec, uint64_t objmask)
+{
+    m->root = NULL;
+    m->objmask = objmask;
+    m->rec = rec;
+    m->levels = 0;
+}
+
+// The record of nid, or NULL.
+static inline const slot_t *
+kmap_get(const KMap *m, int64_t nid)
+{
+    PyObject *n = m->root;
+    if (!n || nid < 0 || (uint64_t)nid >> (KW_BITS + KF_BITS * m->levels))
+        return NULL;
+    for (int l = m->levels; l > 0; l--) {
+        const KInner *in = (const KInner *)n;
+        unsigned i = ((uint64_t)nid >> (KW_BITS + KF_BITS * (l - 1)))
+            & ((1u << KF_BITS) - 1);
+        if (!(in->mask >> i & 1))
+            return NULL;
+        n = in->kids[__builtin_popcountll(in->mask & ((1ull << i) - 1))];
+    }
+    const KLeaf *lf = (const KLeaf *)n;
+    unsigned b = (uint64_t)nid & ((1u << KW_BITS) - 1);
+    if (!(lf->mask >> b & 1))
+        return NULL;
+    return lf->data + __builtin_popcount(lf->mask & ((1u << b) - 1)) * lf->rec;
+}
+
 // -- index trees -------------------------------------------------------------
 
 typedef struct {
@@ -184,6 +250,10 @@ typedef struct {
 // store.c
 extern PyTypeObject *Leaf_Type, *LeafGC_Type, *InnerGC_Type;
 int store_init(void);
+slot_t *kmap_insert(KMap *m, int64_t nid, uint64_t tok);
+slot_t *kmap_at_w(KMap *m, int64_t nid, uint64_t tok);
+int kmap_remove(KMap *m, int64_t nid, uint64_t tok);
+const slot_t *kmap_next(const KMap *m, int64_t after, int64_t *nid);
 void obj_free(void *o);
 slot_t *vec_at_w(Vec *v, uint64_t i, uint64_t lin, uint64_t tx, int append);
 int ent_cmp(const void *a, const void *b);

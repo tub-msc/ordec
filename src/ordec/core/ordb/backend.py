@@ -5,11 +5,14 @@
 Storage engines of ORDB subgraphs.
 
 All subgraph storage lives in the native core (:mod:`ordec.core.ordb._ordb`),
-which currently has one engine:
+which has two engines with identical semantics. They differ in the
+tables; the directory, the indices and the transactions are shared:
 
-- ``paged``: every table is a persistent vector of small pages. Snapshots
-  (freeze, thaw, copy) share pages; a write copies only the pages it
-  touches. A transaction keeps the previous state; abort swaps it back.
+- ``paged``: every table is a persistent vector of rows in pages of 16
+  rows. Snapshots (freeze, thaw, copy) share pages; a write copies only the
+  pages it touches.
+- ``keyed``: every table is a persistent sparse array keyed by nid (leaves
+  of 16 nids with an occupancy mask), without tombstones or compaction.
 
 The selection below stays so that further engines can be tried without
 re-adding it. New subgraphs use the process-wide default engine, selected
@@ -39,6 +42,7 @@ BUILTIN_DEFAULT = 'paged'
 
 _registry = {
     'paged': StorageBackend('paged', _ordb.ENGINE_PAGED),
+    'keyed': StorageBackend('keyed', _ordb.ENGINE_KEYED),
 }
 _default = None
 

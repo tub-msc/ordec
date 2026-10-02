@@ -85,6 +85,7 @@ PyInit__ordb(void)
             || PyModule_AddObjectRef(m, "UpdaterBase",
                 (PyObject *)Upd_Type) < 0
             || PyModule_AddIntConstant(m, "ENGINE_PAGED", ENGINE_PAGED) < 0
+            || PyModule_AddIntConstant(m, "ENGINE_KEYED", ENGINE_KEYED) < 0
             || PyModule_AddIntConstant(m, "K_INT", K_INT) < 0
             || PyModule_AddIntConstant(m, "K_IVEC", K_IVEC) < 0
             || PyModule_AddIntConstant(m, "K_OBJ", K_OBJ) < 0) {

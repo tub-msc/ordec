@@ -16,14 +16,14 @@ sg_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
     int engine = ENGINE_PAGED;
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "|i", kwlist, &engine))
         return NULL;
-    if (engine != ENGINE_PAGED) {
+    if (engine != ENGINE_PAGED && engine != ENGINE_KEYED) {
         PyErr_Format(PyExc_ValueError, "Unknown storage engine %d.", engine);
         return NULL;
     }
     Sg *sg = (Sg *)PyType_GenericAlloc(type, 0);
     if (!sg)
         return NULL;
-    state_init(&sg->st);
+    state_init(&sg->st, engine == ENGINE_KEYED);
     sg->tok = ++g_token;
     sg->wire_hash = Py_NewRef(Py_None);
     sg->arrays_memo = Py_NewRef(Py_None);
@@ -38,6 +38,7 @@ sg_traverse(Sg *sg, visitproc visit, void *arg)
     Py_VISIT(st->dir.root);
     for (int i = 0; i < st->ntab; i++) {
         Py_VISIT(st->tabs[i].rows.root);
+        Py_VISIT(st->tabs[i].map.root);
         Py_VISIT(st->tabs[i].nt);
     }
     for (int i = 0; i < st->nidx; i++) {
@@ -184,19 +185,23 @@ sg_nids(Sg *sg, PyObject *args)
     if (ti < 0)
         return PyList_New(0);
     uint64_t n;
-    NidRow *o = tab_order(&st->tabs[ti], &n);
-    if (!o)
+    const slot_t **rows = tab_rows_sorted(st, ti, &n);
+    if (!rows)
         return NULL;
+    // Copied out before allocating objects (which can run Python code).
+    int64_t *nids = (int64_t *)rows;
+    for (uint64_t k = 0; k < n; k++)
+        nids[k] = rows[k][0];
     PyObject *l = PyList_New((Py_ssize_t)n);
     for (uint64_t k = 0; l && k < n; k++) {
-        PyObject *x = PyLong_FromLongLong(o[k].nid);
+        PyObject *x = PyLong_FromLongLong(nids[k]);
         if (!x) {
             Py_CLEAR(l);
             break;
         }
         PyList_SetItem(l, k, x);
     }
-    PyMem_Free(o);
+    PyMem_Free(rows);
     return l;
 }
 
@@ -266,7 +271,7 @@ sg_get_nid_alloc(Sg *sg, void *closure)
 static PyObject *
 sg_get_engine(Sg *sg, void *closure)
 {
-    return PyUnicode_FromString("paged");
+    return PyUnicode_FromString(sg->st.keyed ? "keyed" : "paged");
 }
 
 static PyObject *
@@ -311,11 +316,11 @@ sg_snapshot(Sg *sg, PyObject *args)
     Sg *n = (Sg *)PyType_GenericAlloc((PyTypeObject *)cls, 0);
     if (!n)
         return NULL;
-    state_init(&n->st);
+    state_init(&n->st, sg->st.keyed);
     n->wire_hash = Py_NewRef(Py_None);
     n->arrays_memo = Py_NewRef(Py_None);
     if (state_copy(&n->st, &sg->st) < 0) {
-        state_init(&n->st);
+        state_init(&n->st, sg->st.keyed);
         Py_DECREF(n);
         return NULL;
     }
@@ -377,11 +382,9 @@ sg_content_hash(Sg *sg, PyObject *noarg)
     const State *st = &sg->st;
     uint64_t acc = mix((uint64_t)st->nid_start, (uint64_t)st->nid_stop);
     for (int ti = 0; ti < st->ntab; ti++) {
-        for (uint64_t r = 0; ti < st->ntab && r < st->tabs[ti].rows.count; r++) {
+        int64_t pos = -1;
+        for (const slot_t *p; (p = tab_next(st, ti, &pos));) {
             NType *nt = st->tabs[ti].nt;
-            const slot_t *p = vec_get(&st->tabs[ti].rows, r);
-            if (p[0] < 0)
-                continue;
             if (!nt->objmask && !st->boxed) {
                 acc += plain_row_hash(nt, p);
                 continue;
@@ -456,14 +459,13 @@ sg_content_eq(Sg *a, PyObject *arg)
                 continue;
             Py_RETURN_FALSE;
         }
-        if (sa->tabs[ti].rows.root == sb->tabs[tj].rows.root
-                && sa->tabs[ti].rows.count == sb->tabs[tj].rows.count
-                && sa->boxed == sb->boxed)
+        if (sa->keyed == sb->keyed && sa->boxed == sb->boxed
+                && (sa->keyed ? sa->tabs[ti].map.root == sb->tabs[tj].map.root
+                    : sa->tabs[ti].rows.root == sb->tabs[tj].rows.root
+                    && sa->tabs[ti].rows.count == sb->tabs[tj].rows.count))
             continue; // shared storage
-        for (uint64_t r = 0; ti < sa->ntab && r < sa->tabs[ti].rows.count; r++) {
-            const slot_t *p = vec_get(&sa->tabs[ti].rows, r);
-            if (p[0] < 0)
-                continue;
+        int64_t pos = -1;
+        for (const slot_t *p; (p = tab_next(sa, ti, &pos));) {
             int tk;
             const slot_t *q = st_row(sb, p[0], &tk);
             if (!q || sb->tabs[tk].nt != nt)
@@ -538,10 +540,8 @@ sg_arrays(Sg *sg, PyObject *args)
     }
     const State *st = &sg->st;
     int ti = st_find_tab(st, nt);
-    uint64_t n = 0;
-    NidRow *o = NULL;
-    if (ti >= 0 && !(o = tab_order(&st->tabs[ti], &n)))
-        return NULL;
+    uint64_t n = ti >= 0 ? st->tabs[ti].live : 0;
+    const slot_t **rows = NULL;
     PyObject *cols = NULL, *ret = NULL;
     int64_t *colp[64];
     PyObject *nids = PyBytes_FromStringAndSize(NULL, n * 8);
@@ -556,9 +556,19 @@ sg_arrays(Sg *sg, PyObject *args)
         PyList_SetItem(cols, i, b);
     }
     int64_t *nidp = (int64_t *)PyBytes_AsString(nids);
+    // The rows are taken after allocating (which can run Python code); no
+    // Python code runs while they are read.
+    uint64_t nrows = 0;
+    if (n && (ti = st_find_tab(st, nt)) >= 0
+            && !(rows = tab_rows_sorted(st, ti, &nrows)))
+        goto done;
+    if (nrows != n) {
+        PyErr_SetString(OrdbException, "Subgraph changed during arrays().");
+        goto done;
+    }
     uint64_t m = 0;
     for (uint64_t k = 0; k < n; k++) {
-        const slot_t *p = vec_get(&st->tabs[ti].rows, o[k].row);
+        const slot_t *p = rows[k];
         int ok = 1;
         for (int i = 0; i < nt->nattr && ok == 1; i++)
             ok = attr_ints(st, nt, i, p, p[0],
@@ -594,7 +604,7 @@ sg_arrays(Sg *sg, PyObject *args)
     }
     ret = PyTuple_Pack(2, nids, cols);
 done:
-    PyMem_Free(o);
+    PyMem_Free(rows);
     Py_XDECREF(nids);
     Py_XDECREF(cols);
     return ret;
@@ -624,7 +634,7 @@ sg_stats(Sg *sg, PyObject *noarg)
     const State *st = &sg->st;
     uint64_t rows = 0, entries = 0;
     for (int i = 0; i < st->ntab; i++)
-        rows += st->tabs[i].rows.count;
+        rows += st->keyed ? st->tabs[i].live : st->tabs[i].rows.count;
     for (int i = 0; i < st->nidx; i++)
         entries += st->idxs[i].tree.count;
     return Py_BuildValue("{s:K,s:K,s:i,s:i,s:K,s:K}",

@@ -239,10 +239,8 @@ sg_check_indices(Sg *sg, PyObject *noarg)
         const Tab *t = &st->tabs[ti];
         for (int i = 0; i < t->nt->nuse; i++) {
             if (st_find_idx(st, t->nt->uses[i].index) < 0 && t->live) {
-                for (uint64_t r = 0; r < t->rows.count; r++) {
-                    const slot_t *p = vec_get(&t->rows, r);
-                    if (p[0] < 0)
-                        continue;
+                int64_t pos = -1;
+                for (const slot_t *p; (p = tab_next(st, ti, &pos));) {
                     Rec rec;
                     uint64_t h;
                     int64_t s;
@@ -272,10 +270,8 @@ sg_check_indices(Sg *sg, PyObject *noarg)
             const IdxUse *u = ntype_find_use(t->nt, ix->index);
             if (!u)
                 continue;
-            for (uint64_t r = 0; r < t->rows.count; r++) {
-                const slot_t *p = vec_get(&t->rows, r);
-                if (p[0] < 0)
-                    continue;
+            int64_t pos = -1;
+            for (const slot_t *p; (p = tab_next(st, ti, &pos));) {
                 Rec rec;
                 Ent e = {0, 0, p[0]};
                 if (rec_take(&rec, st, t->nt, p, p[0]) < 0) {

@@ -48,7 +48,8 @@
 #define SLOT_NONE INT64_MIN
 #define SLOT_BOXED (INT64_MIN + 1)
 
-#define ENGINE_PAGED 0 // the only engine so far; the selection stays
+#define ENGINE_PAGED 0 // tables: vectors of rows in 16-row pages
+#define ENGINE_KEYED 1 // tables: sparse arrays keyed by nid
 
 #define K_INT 0 // int64 slot (int, LocalRef, ExternalRef)
 #define K_IVEC 1 // width int64 slots (Vec2I, Rect4I)
@@ -162,10 +163,11 @@ typedef struct {
 
 typedef struct {
     NType *nt;
-    Vec rows;
+    Vec rows; // paged
+    KMap map; // keyed
     uint64_t live;
-    int64_t last_nid; // nid of the last appended row
-    int sorted; // rows are in ascending nid order
+    int64_t last_nid; // paged: nid of the last appended row
+    int sorted; // paged: rows are in ascending nid order
 } Tab;
 
 typedef struct {
@@ -183,7 +185,8 @@ typedef struct {
 } IdxKey;
 
 typedef struct {
-    Vec dir; // records [loc, refs]
+    Vec dir; // records [loc, refs]; keyed: loc holds the table only
+    int keyed; // engine: ENGINE_KEYED tables
     Tab *tabs;
     int ntab;
     Idx *idxs;
@@ -251,12 +254,6 @@ typedef struct {
     int64_t npath; // nid of the NPath, NPATH_NONE or NPATH_UNRESOLVED
 } NodeObj;
 
-// A live row of a table in nid order (tab_order).
-typedef struct {
-    int64_t nid;
-    uint64_t row;
-} NidRow;
-
 // ---------------------------------------------------------------------------
 // Inline helpers
 // ---------------------------------------------------------------------------
@@ -304,7 +301,28 @@ st_row(const State *st, int64_t nid, int *ti)
     if (!d || d[0] <= 0 || (d[0] & DIR_DEAD))
         return NULL;
     *ti = DIR_TAB(d[0]);
+    if (st->keyed)
+        return kmap_get(&st->tabs[*ti].map, nid);
     return vec_get(&st->tabs[*ti].rows, DIR_ROW(d[0]));
+}
+
+// The next live row of table ti after position *pos (start with -1): row
+// order (paged) or nid order (keyed). Each call looks the table up again,
+// so the loop may run Python code between calls.
+static inline const slot_t *
+tab_next(const State *st, int ti, int64_t *pos)
+{
+    if (ti >= st->ntab)
+        return NULL;
+    const Tab *t = &st->tabs[ti];
+    if (st->keyed)
+        return kmap_next(&t->map, *pos, pos);
+    for ((*pos)++; (uint64_t)*pos < t->rows.count; (*pos)++) {
+        const slot_t *p = vec_get(&t->rows, (uint64_t)*pos);
+        if (p[0] >= 0)
+            return p;
+    }
+    return NULL;
 }
 
 // The int64 slot value of an exact int that is representable unboxed.
@@ -348,7 +366,7 @@ mix_ints(int n, const slot_t *x)
 // ---------------------------------------------------------------------------
 
 // engine.c
-void state_init(State *st);
+void state_init(State *st, int keyed);
 int state_copy(State *dst, const State *src);
 int st_add_idx(State *st, PyObject *index, int combined);
 void state_release(State *st);
@@ -371,7 +389,7 @@ int op_remove(Sg *sg, int64_t nid);
 int op_update(Sg *sg, int64_t nid, PyObject *node);
 int op_insert_rows(Sg *sg, NType *nt, const int64_t *nids, Py_ssize_t n,
     const int64_t **cols);
-NidRow *tab_order(const Tab *t, uint64_t *n_out);
+const slot_t **tab_rows_sorted(const State *st, int ti, uint64_t *n_out);
 int tab_compact(Sg *sg, int ti);
 int sg_maintain(Sg *sg, int freezing);
 Txn *txn_begin(Sg *sg);
