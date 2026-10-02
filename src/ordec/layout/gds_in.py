@@ -9,7 +9,7 @@ from .helpers import poly_orientation
 from . import gdsrecords
 from .gdsrecords import BOUNDARY, PATH, SREF, AREF, TEXT, NODE, BOX, LAYER, \
     DATATYPE, XY, SNAME, COLROW, TEXTTYPE, STRING, STRANS, MAG, ANGLE, \
-    PATHTYPE, BGNEXTN, ENDEXTN
+    PATHTYPE, WIDTH, BGNEXTN, ENDEXTN
 
 # GDS files are read at record level by gdsrecords, which keeps the raw
 # integer coordinates (gdstk converts everything to floats, more or less
@@ -154,10 +154,10 @@ def read_gds_structure(data, name: str, start: int, end: int, layers: LayerStack
                     raise GdsReaderException(f"Invalid GDS data: Path with XY {e[XY]!r} has less than 2 vertices!")
                 endtype = gds_pathtype_to_endtype(e.get(PATHTYPE, 0))
                 if endtype == PathEndType.Custom:
-                    add(LayoutPath(layer=layer, vertices=vertices, endtype=endtype,
+                    add(LayoutPath(layer=layer, vertices=vertices, endtype=endtype, width=e.get(WIDTH),
                         ext_bgn=e.get(BGNEXTN, 0), ext_end=e.get(ENDEXTN, 0)))
                 else:
-                    add(LayoutPath(layer=layer, vertices=vertices, endtype=endtype))
+                    add(LayoutPath(layer=layer, vertices=vertices, endtype=endtype, width=e.get(WIDTH)))
             elif kind == SREF:
                 if e.get(MAG) not in (1.0, None):
                     raise GdsReaderException("SRef with magnification != 1.0 not supported.")
