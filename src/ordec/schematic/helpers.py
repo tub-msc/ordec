@@ -82,7 +82,8 @@ def symbol_add_default_annotations(node: Symbol, cell_name: str|None = None, sho
     cell_name defaults to the class name of the symbol's cell. Hidden lines
     (shown=False) are the cell name with show_cell_name=False (e.g. for ideal
     components whose symbol says it all) and parameters left at their
-    default; schematics can still show them via an override.
+    default, unless the Parameter sets hide_default=False; schematics can
+    still show them via an override.
     """
     if cell_name is None:
         cell_name = type(node.cell).__name__

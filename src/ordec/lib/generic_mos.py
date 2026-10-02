@@ -24,8 +24,8 @@ class Mos(SimLeafCell):
     """
     Shared base class of Nmos and Pmos.
     """
-    l = Parameter(R, default=R('1u'))
-    w = Parameter(R, default=R('1u'))
+    l = Parameter(R, default=R('1u'), hide_default=False)
+    w = Parameter(R, default=R('1u'), hide_default=False)
     def ngspice_current_pins(self):
         return {"id": "d", "is": "s", "ig": "g", "ib": "b"}
 

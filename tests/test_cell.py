@@ -105,16 +105,19 @@ def test_param_inst():
     with pytest.raises(ParameterError, match="has no parameter"):
         A(l=1, w=1, x=123)
 
-def test_params_list_hides_default_bool():
+def test_params_list_defaults():
     class A(Cell):
         x = Parameter(int)
         m = Parameter(int, default=1)
+        k = Parameter(int, default=2, hide_default=False)
         flag = Parameter(bool, default=True)
 
     # A boolean parameter at its default is omitted from the canonical name,
-    # while a non-default bool and non-bool defaults (m) are kept.
-    assert repr(A(x=2)) == "A(x=2,m=1)"
-    assert repr(A(x=2, flag=False)) == "A(x=2,m=1,flag=False)"
+    # while a non-default bool and non-bool defaults (m, k) are kept.
+    assert repr(A(x=2)) == "A(x=2,m=1,k=2)"
+    assert repr(A(x=2, flag=False)) == "A(x=2,m=1,k=2,flag=False)"
+    # skip_default (used for symbol annotations) respects hide_default:
+    assert A(x=2).params_list(skip_default=True) == ["x=2", "k=2"]
 
 # -- Concurrency semantics of Future-based view caching ----------------------
 
