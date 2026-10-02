@@ -76,6 +76,7 @@ Each node instance (row) has a **node ID (nid)** that identifies it uniquely wit
 
 .. autoclass:: Node
   :members:
+  :inherited-members:
 
   .. attribute:: Tuple
     :type: type[NodeTuple]
@@ -192,6 +193,7 @@ The subgraph stores values in tables, not as :class:`NodeTuple` objects. Low-lev
 
 .. autoclass:: Subgraph
   :members:
+  :inherited-members:
 
 .. autoclass:: MutableSubgraph
   :show-inheritance:
