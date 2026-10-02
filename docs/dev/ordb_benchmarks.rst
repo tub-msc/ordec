@@ -1,18 +1,17 @@
 ORDB storage engines and benchmarks
 ===================================
 
-Subgraph storage is implemented by the native core (:doc:`ordb_core`) in two
-engines with identical semantics: ``paged`` (persistent pages, the default)
-and ``flat`` (contiguous blocks, copied as a whole before the first write
-after sharing). Every subgraph keeps the engine it was created with; derived
-subgraphs (freeze/thaw/copy) inherit it.
+Subgraph storage is implemented by the native core (:doc:`ordb_core`) in
+one engine, ``paged`` (persistent pages). A second engine, ``flat``
+(contiguous blocks, copied as a whole before the first write after
+sharing), was removed; its results below are kept as history and as a
+target for tuning ``paged``.
 
-Engine selection: the ``ORDEC_ORDB_BACKEND`` environment variable, or
-programmatically ``ordb.use_backend(name)`` (context manager) /
-``MutableSubgraph(backend=...)``. The whole test suite is expected to pass
-under both engines::
-
-    ORDEC_ORDB_BACKEND=flat pytest -m "not web"
+Engine selection is kept for future engines: the ``ORDEC_ORDB_BACKEND``
+environment variable, or programmatically ``ordb.use_backend(name)``
+(context manager) / ``MutableSubgraph(backend=...)``. Every subgraph keeps
+the engine it was created with; derived subgraphs (freeze/thaw/copy)
+inherit it.
 
 Benchmark suite
 ---------------
@@ -84,11 +83,12 @@ backend by a different margin. Untimed setup belongs to no phase, so
 Two checks keep a comparison honest:
 
 - ``python -m benchmarks.equivalence`` checks that every workload produces
-  an identical canonical checksum under every engine and runs a
-  differential fuzz (random transactions, snapshots, aborts and nested
-  updaters applied to all engines in lockstep; after every step the engines
-  must agree, index queries must equal brute-force scans and snapshots must
-  be unchanged).
+  an identical canonical checksum under every engine (with one engine,
+  compare the checksums across commits) and runs a differential fuzz
+  (random transactions, snapshots, aborts and nested updaters applied to
+  every engine and to a pure-Python reference model; after every step each
+  engine must hold the model's nodes, index queries must equal brute-force
+  scans and snapshots must be unchanged).
 - ``tests/test_benchmarks.py`` runs the whole suite at the smallest scale
   in CI.
 
@@ -97,7 +97,8 @@ Results
 
 One workstation (Intel Core i7-14700K), Python 3.13.5. The previous
 implementation (``cow-arrays``: Python dicts plus numpy chunks, and the other
-pure-Python backends it replaced) is given for comparison.
+pure-Python backends it replaced) is given for comparison, as is the removed
+``flat`` engine.
 
 Per operation, measured on the benchmark schema:
 
@@ -130,7 +131,7 @@ Retained memory of ``snapshot_chain`` at the large scale (64 generations of
 ``flat``, against 231 MiB for ``cow-arrays`` and 93 MiB for the former
 ``pyrsistent-patricia``. Pages of 16 rows keep this small: every generation
 copies only the pages it touches, while ``flat`` copies every touched table.
-On the other workloads, both engines need 2 to 6 times less memory than
+On the other workloads, both engines needed 2 to 6 times less memory than
 ``cow-arrays``.
 
 An example IO ring in SG13G2 (739,000 rectangles) builds in about
@@ -140,7 +141,10 @@ about 40 ms of it.
 Choosing an engine
 ------------------
 
-``paged`` is the default: its transactions need no undo log, and chains of
-generations of a large subgraph stay cheap. ``flat`` is somewhat faster for
-single-row updates (no page copies) and builds, but every generation that
-touches a table copies the table.
+``paged`` is the only engine: its transactions need no undo log, and chains
+of generations of a large subgraph stay cheap. ``flat`` was somewhat faster
+for single-row updates (no page copies) and builds, but every generation
+that touched a table copied the table, and its undo log was the riskiest
+code of the core; it was removed (see "History & rationale" in
+:doc:`ordb_core`). Its numbers above are the target for tuning ``paged`` on
+builds and updates.

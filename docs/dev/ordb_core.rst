@@ -66,31 +66,23 @@ candidates against the current row (node alive, same ``(h, s)``, key equal).
 Stale entries are dropped when runs are merged or when an index is compacted
 at commit (once they are the majority).
 
-Storage engines
----------------
+Storage engine
+--------------
 
-A table (and the directory) is a ``Vec`` in one of two engines. Everything
-above is shared; only the vector and the undo mechanism differ.
+A table (and the directory) is a ``Vec`` of the ``paged`` engine, a
+persistent radix tree: inner nodes with 32 children, leaves of 16 records.
+Every tree node carries the token of its creator. A node is written in
+place if it was created in the current transaction, or if it is owned by
+the subgraph and the write is an append behind every snapshot's row count;
+any other node is copied first, along the path from the root. Freeze, thaw
+and copy share the whole tree (O(number of tables)); a write copies one leaf
+and its path. A transaction keeps the previous state; abort installs it
+again.
 
-``paged``
-  A persistent radix tree: inner nodes with 32 children, leaves of 16
-  records. Every tree node carries the token of its creator. A node is
-  written in place if it was created in the current transaction, or if it is
-  owned by the subgraph and the write is an append behind every snapshot's
-  row count; any other node is copied first, along the path from the root.
-  Freeze, thaw and copy share the whole tree (O(number of tables)); a write
-  copies one leaf and its path. A transaction keeps the previous state;
-  abort installs it again.
-
-``flat``
-  One contiguous block per table. Snapshots share blocks by reference count;
-  the first write to a shared block copies it as a whole. Transactions edit
-  in place and log the old contents of rows they overwrite; abort replays the
-  log backwards.
-
-Both engines pass the same test suite and produce identical content hashes
-and wire encodings. ``paged`` is the default (``ORDEC_ORDB_BACKEND`` selects
-the engine of new subgraphs).
+``paged`` is the only engine. The engine selection (``ORDEC_ORDB_BACKEND``,
+:mod:`~ordec.core.ordb.backend`, the ``engine`` argument of the core) is
+kept, so that another engine can be tried without re-adding it. A second
+engine, ``flat``, was removed (see "History & rationale").
 
 Transactions
 ------------
@@ -162,16 +154,16 @@ atomic reference counts for the shared index runs, and per-subgraph locks.
 Garbage collection
 ------------------
 
-Blocks shared between subgraphs that can hold Python object references are
+Leaves shared between subgraphs that can hold Python object references are
 GC-tracked Python objects (as are all inner tree nodes), so the cycle
-collector sees every reference exactly once. Blocks of tables without object
-slots are plain memory. The core needs the GIL.
+collector sees every reference exactly once. Leaves of tables without object
+slots are not GC-tracked. The core needs the GIL.
 
 Memory measurements (the ``retained`` figures of the benchmark suite) sum
 ``sys.getsizeof`` over ``gc.get_referents``. They see the storage only
-because inner tree nodes are GC objects (so leaves are reachable) and flat
-blocks and subgraphs implement ``__sizeof__`` (index runs are counted as a
-share by reference count). A new block type needs the same, or memory
+because inner tree nodes are GC objects (so leaves are reachable) and
+subgraphs implement ``__sizeof__`` (index runs are counted as a share by
+reference count). A new block type needs the same, or memory
 figures silently undercount.
 
 Cursors
@@ -187,16 +179,14 @@ Testing changes to the core
 ---------------------------
 
 Bugs in C code crash or corrupt memory rather than fail a test cleanly.
-Besides ``pytest`` under both engines (``ORDEC_ORDB_BACKEND=flat``), a
-change to the core should pass:
+Besides ``pytest``, a change to the core should pass:
 
 - **Sanitizers.** Build the core with AddressSanitizer and UBSan and run the
   ORDB-heavy tests and the fuzz with the sanitizer runtimes preloaded::
 
       gcc -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer \
           -shared -fPIC -I$(python3 -c "import sysconfig; print(sysconfig.get_paths()['include'])") \
-          src/ordec/core/ordb/_ordb.c \
-          -o src/ordec/core/ordb/_ordb$(python3 -c "import sysconfig; print(sysconfig.get_config_var('EXT_SUFFIX'))")
+          src/ordec/core/ordb/_ordb.c -o src/ordec/core/ordb/_ordb.abi3.so
       ASAN_OPTIONS=detect_leaks=0 PYTHONMALLOC=malloc \
           LD_PRELOAD=$(gcc -print-file-name=libasan.so):$(gcc -print-file-name=libubsan.so) \
           pytest -n 0 tests/test_ordb.py tests/test_wire.py tests/test_benchmarks.py \
@@ -237,8 +227,20 @@ were explored, built and measured against each other:
   (both are 10 to 35 times faster than the Python backends), no undo log,
   and chains of generations stay small (3 MiB instead of 9.6 GB for 200
   generations of a million rows with 10 changes each). It became the
-  default; ``flat`` stays as the simpler engine that the fuzz checks
-  ``paged`` against.
+  default.
+
+``flat`` stayed for a while as the second engine that the differential fuzz
+compared ``paged`` against, and was then removed. Its transactions were the
+riskiest code of the core (an undo log, replayed backwards on abort and
+moved into the parent on a nested commit, which lost entries when out of
+memory), it was a poor fit for freeze/thaw (0.35 ms instead of 1.6 us per
+thaw, update and freeze of 50,000 nodes; 174 MiB instead of 31.6 MiB for the
+large ``snapshot_chain``), and since it shared about 95 % of its code with
+``paged``, comparing the two could not find bugs in the shared code. A
+pure-Python reference model in the fuzz took over that job. ``flat`` was
+faster on builds and single-row updates (``layout_flatten`` 2.19 s against
+2.97 s, ``symbol_build`` 0.25 s against 0.30 s, see :doc:`ordb_benchmarks`),
+which remains a target for tuning ``paged``.
 
 The page size decides how much snapshots share: with 2 % random updates
 per generation, pages of 64 rows shared almost nothing (148 MiB against
@@ -294,8 +296,8 @@ Performance:
   the Python updater; a C path like the one for ``%`` would cut it.
 - The constructors of ``Rect4I``, ``Vec2I`` and ``R`` are now the largest
   per-node cost in user code.
-- ``arrays()`` always copies: strided zero-copy views for clean ``flat``
-  tables, or leaves of any length ("extents") for bulk rows in ``paged``.
+- ``arrays()`` always copies: leaves of any length ("extents") for bulk rows
+  would allow zero-copy views.
 - ``of_subgraph`` chains of more than one reference
   (``lambda c: c.instance.eref.symbol`` of ``SimPin``) and the computed
   ones of ``SimHierarchy`` are called per node.
@@ -333,9 +335,6 @@ Design questions:
   attribute descriptor, subgraph, updater), chosen at import time, and every
   change to ORDB made twice. The fuzz could compare it with the core across
   processes.
-- Removing ``flat``: less code (no undo log, no second vector engine) and
-  half the test runs, but the fuzz would lose the engine it compares
-  ``paged`` against, and ``flat`` is somewhat faster for single-row updates.
 
 Documentation: the Sphinx build was not verified after the switch to the
 native core.

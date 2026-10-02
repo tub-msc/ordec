@@ -2,16 +2,20 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Cross-engine correctness gates:
+Correctness gates for the storage engines:
 
 1. check_equivalence(): every workload at the tiny scale must produce an
-   identical canonical checksum under every storage engine.
+   identical canonical checksum under every storage engine. With one
+   engine, compare the printed checksums across commits instead (see
+   "Testing changes to the core" in docs/dev/ordb_core.rst).
 2. differential_fuzz(): a seeded random operation sequence (insert, update,
    type change, remove, freeze, thaw, copy, aborted and nested
    transactions) applied to every engine in lockstep. After every
-   operation, the engines must agree, every index query must equal a
-   brute-force scan of the nodes, and every snapshot must still have the
-   checksum it had when it was taken.
+   operation, every engine must hold exactly the nodes of a pure-Python
+   reference model (a dict of nid to NodeTuple per subgraph, updated
+   alongside each operation), the engines must agree, every index query
+   must equal a brute-force scan of the nodes, and every snapshot must
+   still have the checksum and the nodes it had when it was taken.
 """
 
 from ordec.core import ordb

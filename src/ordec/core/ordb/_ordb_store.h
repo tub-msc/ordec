@@ -3,14 +3,13 @@
 
 // Storage primitives of the ORDB core (included by _ordb.c only):
 //
-// - Vec: a vector of fixed-size records of 8-byte slots, in two engines.
-//   "paged" is a persistent radix tree with small leaves and edit tokens,
-//   "flat" is one contiguous block that is copied as a whole before the
-//   first write when it is shared.
+// - Vec: a vector of fixed-size records of 8-byte slots, stored as a
+//   persistent radix tree with small leaves and edit tokens (the "paged"
+//   engine).
 // - Run: a sorted, immutable array of index entries (h, s, nid).
 //
-// Blocks that can hold Python object references (objmask != 0) are
-// GC-tracked Python objects: blocks are shared between subgraphs, and the
+// Leaves that can hold Python object references (objmask != 0) are
+// GC-tracked Python objects: leaves are shared between subgraphs, and the
 // cycle collector must see each reference exactly once. Inner tree nodes
 // are always GC objects (there are few of them), which also makes the
 // leaves reachable for memory accounting via gc.get_referents.
@@ -39,16 +38,7 @@ typedef struct {
     PyObject *kids[FAN];
 } Inner;
 
-typedef struct {
-    PyObject_HEAD
-    uint64_t objmask;
-    uint32_t rec;
-    uint64_t cap; // rows
-    slot_t *data;
-} FBlock;
-
-static PyTypeObject *Leaf_Type, *LeafGC_Type, *InnerGC_Type,
-    *FBlock_Type, *FBlockGC_Type;
+static PyTypeObject *Leaf_Type, *LeafGC_Type, *InnerGC_Type;
 
 // Frees an instance of one of the (heap) types of the core and drops the
 // reference the instance holds to its type.
@@ -62,12 +52,11 @@ obj_free(void *o)
 }
 
 typedef struct {
-    PyObject *root; // Leaf/Inner (paged) or FBlock (flat); NULL when empty
+    PyObject *root; // Leaf or Inner; NULL when empty
     uint64_t count; // records visible through this Vec
     uint64_t objmask; // bit b set: slot b of a record holds a PyObject*
     uint32_t rec; // slots per record
-    uint8_t levels; // paged: inner levels above the leaves
-    uint8_t flat;
+    uint8_t levels; // inner levels above the leaves
 } Vec;
 
 // Releases the object references of n records and zeroes those slots.
@@ -207,87 +196,23 @@ node_copy(const Vec *v, PyObject *n, int level, uint64_t tok)
     return (PyObject *)c;
 }
 
-// -- flat blocks -------------------------------------------------------------
-
-static void
-fblock_dealloc(FBlock *b)
-{
-    if (b->objmask)
-        PyObject_GC_UnTrack(b);
-    if (b->data) {
-        recs_clear(b->data, b->objmask, b->rec, b->cap);
-        PyMem_Free(b->data);
-    }
-    obj_free(b);
-}
-
-static int
-fblock_traverse(FBlock *b, visitproc visit, void *arg)
-{
-    Py_VISIT(Py_TYPE((PyObject *)b));
-    return recs_traverse(b->data, b->objmask, b->rec, b->cap, visit, arg);
-}
-
-static int
-fblock_clear(FBlock *b)
-{
-    recs_clear(b->data, b->objmask, b->rec, b->cap);
-    return 0;
-}
-
-static PyObject *
-fblock_sizeof(FBlock *b, PyObject *noarg)
-{
-    return PyLong_FromSize_t(sizeof(FBlock) + sizeof(slot_t) * b->rec * b->cap);
-}
-
-static PyMethodDef fblock_methods[] = {
-    {"__sizeof__", (PyCFunction)fblock_sizeof, METH_NOARGS, NULL},
-    {NULL}
-};
-
-static PyObject *
-fblock_new(const Vec *v, uint64_t cap)
-{
-    FBlock *b = v->objmask ? PyObject_GC_New(FBlock, FBlockGC_Type)
-        : PyObject_New(FBlock, FBlock_Type);
-    if (!b)
-        return NULL;
-    b->objmask = v->objmask;
-    b->rec = v->rec;
-    b->cap = cap;
-    b->data = PyMem_Calloc(cap * v->rec, sizeof(slot_t));
-    if (!b->data) {
-        b->cap = 0;
-        Py_DECREF(b);
-        PyErr_NoMemory();
-        return NULL;
-    }
-    if (v->objmask)
-        PyObject_GC_Track(b);
-    return (PyObject *)b;
-}
-
 // -- Vec ---------------------------------------------------------------------
 
 static inline void
-vec_init(Vec *v, uint32_t rec, uint64_t objmask, int flat)
+vec_init(Vec *v, uint32_t rec, uint64_t objmask)
 {
     v->root = NULL;
     v->count = 0;
     v->objmask = objmask;
     v->rec = rec;
     v->levels = 0;
-    v->flat = (uint8_t)flat;
 }
 
-// Record i (i < count). For sparsely written paged vectors (the nid
-// directory), NULL if no leaf covers i.
+// Record i (i < count). For sparsely written vectors (the nid directory),
+// NULL if no leaf covers i.
 static inline const slot_t *
 vec_get(const Vec *v, uint64_t i)
 {
-    if (v->flat)
-        return ((FBlock *)v->root)->data + i * v->rec;
     PyObject *n = v->root;
     for (int l = v->levels; l > 0; l--) {
         n = ((Inner *)n)->kids[(i >> SHIFT(l)) & (FAN - 1)];
@@ -300,52 +225,13 @@ vec_get(const Vec *v, uint64_t i)
 // Writable record i; does not change count. With append, the caller
 // states that no other snapshot of this vector can see record i.
 //
-// Paged write rule: a node is written in place if it was created by this
+// Write rule: a node is written in place if it was created by this
 // transaction (owner == tx), or if it is owned by this subgraph
 // (owner == lin) and the write is an append. Every other node on the path
 // is copied first.
-//
-// Flat: a shared block (refcount > 1) is copied as a whole.
 static slot_t *
 vec_at_w(Vec *v, uint64_t i, uint64_t lin, uint64_t tx, int append)
 {
-    if (v->flat) {
-        FBlock *b = (FBlock *)v->root;
-        if (!b) {
-            b = (FBlock *)fblock_new(v, i + 1 > 16 ? i + 1 : 16);
-            if (!b)
-                return NULL;
-            v->root = (PyObject *)b;
-        } else if (Py_REFCNT((PyObject *)b) > 1) {
-            uint64_t cap = b->cap > i + 1 ? b->cap : i + 1;
-            FBlock *c = (FBlock *)fblock_new(v, cap);
-            if (!c)
-                return NULL;
-            memcpy(c->data, b->data, sizeof(slot_t) * v->rec * v->count);
-            recs_incref(c->data, v->objmask, v->rec, v->count);
-            Py_DECREF(b);
-            v->root = (PyObject *)c;
-            b = c;
-        }
-        if (i >= b->cap) {
-            uint64_t cap = b->cap * 2 > i + 1 ? b->cap * 2 : i + 1;
-            if (cap > PY_SSIZE_T_MAX / (sizeof(slot_t) * v->rec)) {
-                PyErr_NoMemory();
-                return NULL;
-            }
-            slot_t *d = PyMem_Realloc(b->data, sizeof(slot_t) * v->rec * cap);
-            if (!d) {
-                PyErr_NoMemory();
-                return NULL;
-            }
-            memset(d + b->cap * v->rec, 0,
-                sizeof(slot_t) * v->rec * (cap - b->cap));
-            b->data = d;
-            b->cap = cap;
-        }
-        return b->data + i * v->rec;
-    }
-
     uint64_t newtok = append ? lin : tx;
     if (!v->root) {
         v->root = leaf_new(v, newtok);

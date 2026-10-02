@@ -53,8 +53,7 @@ def test_insert_array_at_interleaved():
 
 def test_backend_in_effect(ordb_backend):
     """Guard the fixture itself: if use_backend ever stopped reaching newly
-    built subgraphs, every parametrization here would silently collapse into
-    six identical runs of the default backend."""
+    built subgraphs, a second engine would silently go untested."""
     assert MyHead().subgraph.backend.name == ordb_backend
 
 class test_node_tuple():

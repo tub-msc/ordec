@@ -5,19 +5,18 @@
 Storage engines of ORDB subgraphs.
 
 All subgraph storage lives in the native core (:mod:`ordec.core.ordb._ordb`),
-which has two engines with identical semantics:
+which currently has one engine:
 
 - ``paged``: every table is a persistent vector of small pages. Snapshots
   (freeze, thaw, copy) share pages; a write copies only the pages it
   touches. A transaction keeps the previous state; abort swaps it back.
-- ``flat``: every table is one contiguous block, shared between snapshots
-  by reference count and copied as a whole before the first write.
-  Transactions edit in place; abort replays an undo log.
 
-New subgraphs use the process-wide default engine, selected by (in order of
-precedence): an explicit MutableSubgraph(backend=...) / use_backend(), the
-ORDEC_ORDB_BACKEND environment variable, or BUILTIN_DEFAULT. Derived
-subgraphs (freeze/thaw/copy) keep the engine of their origin.
+The selection below stays so that further engines can be tried without
+re-adding it. New subgraphs use the process-wide default engine, selected
+by (in order of precedence): an explicit MutableSubgraph(backend=...) /
+use_backend(), the ORDEC_ORDB_BACKEND environment variable, or
+BUILTIN_DEFAULT. Derived subgraphs (freeze/thaw/copy) keep the engine of
+their origin.
 """
 
 from contextlib import contextmanager
@@ -40,7 +39,6 @@ BUILTIN_DEFAULT = 'paged'
 
 _registry = {
     'paged': StorageBackend('paged', _ordb.ENGINE_PAGED),
-    'flat': StorageBackend('flat', _ordb.ENGINE_FLAT),
 }
 _default = None
 

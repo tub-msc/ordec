@@ -7,8 +7,8 @@ ORDB, the graph database that ORDeC represents design data in.
 :mod:`~ordec.core.ordb.base` holds the data model: nodes, subgraphs,
 cursors, indices and the updater. Storage, indices, transactions and
 constraint checks are implemented by the native core
-(:mod:`ordec.core.ordb._ordb`), which offers two storage engines
-(:mod:`~ordec.core.ordb.backend`).
+(:mod:`ordec.core.ordb._ordb`); its storage engine is selected in
+:mod:`~ordec.core.ordb.backend`.
 """
 
 from .base import *

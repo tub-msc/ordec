@@ -28,8 +28,10 @@ What an engine does:
 - **fork**: an independent mutable copy of a mutable subgraph.
 - **compact**: a content-identical snapshot with compacted storage.
 
-Engine names: ``paged`` (persistent pages) and ``flat`` (contiguous blocks,
-copied on the first write after sharing); see :doc:`ordb_core`.
+Engine names: ``paged`` (persistent pages), the only engine of the native
+core; see :doc:`ordb_core`. Result files may also contain ``flat``
+(contiguous blocks, copied on the first write after sharing), an engine
+that was removed.
 
 PRNG
 ----
@@ -282,7 +284,9 @@ Checks
 2. ``python -m benchmarks.equivalence``: identical checksums for every workload
    under every engine, plus a differential fuzz: a seeded random sequence of
    transactions (insert, update, type change, remove, aborted and nested),
-   freeze, thaw, fork and compact, applied to all engines in lockstep. After
-   every step the engines must agree, every index query must equal a
-   brute-force scan and every snapshot must keep its checksum.
+   freeze, thaw, fork and compact, applied to all engines and to a
+   pure-Python reference model (nid to node values) in lockstep. After every
+   step every engine must hold the model's nodes, the engines must agree,
+   every index query must equal a brute-force scan and every snapshot must
+   keep its checksum and nodes.
 3. ``tests/test_benchmarks.py`` runs both in CI at the ``tiny`` scale.

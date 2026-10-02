@@ -12,10 +12,9 @@
 //   The index is a hint: removals and key changes leave stale entries,
 //   every read verifies its candidates against the rows.
 //
-// Two storage engines share all of this (see _ordb_store.h): "paged"
-// (persistent pages, a transaction keeps the previous state and abort
-// swaps it back) and "flat" (contiguous blocks edited in place, abort
-// replays an undo log).
+// Tables and the directory are persistent vectors of small pages (the
+// "paged" engine, see _ordb_store.h): snapshots share pages, a transaction
+// keeps the previous state, and abort swaps it back.
 //
 // base.py owns the schema, the public classes and all error messages. On
 // any failed constraint check, the core calls back into base.py, which
@@ -35,8 +34,7 @@
 #define SLOT_NONE INT64_MIN
 #define SLOT_BOXED (INT64_MIN + 1)
 
-#define ENGINE_PAGED 0
-#define ENGINE_FLAT 1
+#define ENGINE_PAGED 0 // the only engine so far; the selection stays
 
 #define K_INT 0 // int64 slot (int, LocalRef, ExternalRef)
 #define K_IVEC 1 // width int64 slots (Vec2I, Rect4I)
@@ -423,17 +421,15 @@ typedef struct {
 } State;
 
 static void
-state_init(State *st, int flat)
+state_init(State *st)
 {
     memset(st, 0, sizeof(State));
-    vec_init(&st->dir, 2, 0, flat);
+    vec_init(&st->dir, 2, 0);
     st->nid_stop = (int64_t)1 << 32;
 }
 
-// With retain_vecs == 0, the copy borrows the blocks (flat engine: the
-// pre-transaction state must not make the blocks look shared).
 static int
-state_copy(State *dst, const State *src, int retain_vecs)
+state_copy(State *dst, const State *src)
 {
     *dst = *src;
     dst->tabs = PyMem_Malloc(sizeof(Tab) * (src->ntab + 1));
@@ -450,11 +446,9 @@ state_copy(State *dst, const State *src, int retain_vecs)
         memcpy(dst->idxs, src->idxs, sizeof(Idx) * src->nidx);
     for (int i = 0; i < src->ntab; i++) {
         Py_INCREF((PyObject *)src->tabs[i].nt);
-        if (retain_vecs)
-            Py_XINCREF(src->tabs[i].rows.root);
+        Py_XINCREF(src->tabs[i].rows.root);
     }
-    if (retain_vecs)
-        Py_XINCREF(src->dir.root);
+    Py_XINCREF(src->dir.root);
     for (int i = 0; i < src->nidx; i++) {
         const Idx *ix = &src->idxs[i];
         Py_INCREF(ix->index);
@@ -481,7 +475,7 @@ idxs_release(Idx *idxs, int nidx)
 }
 
 static void
-state_release(State *st, int release_vecs)
+state_release(State *st)
 {
     Tab *tabs = st->tabs;
     int ntab = st->ntab;
@@ -497,13 +491,11 @@ state_release(State *st, int release_vecs)
     st->boxed = NULL;
     st->nlive = 0;
     for (int i = 0; i < ntab; i++) {
-        if (release_vecs)
-            Py_XDECREF(tabs[i].rows.root);
+        Py_XDECREF(tabs[i].rows.root);
         Py_DECREF(tabs[i].nt);
     }
     PyMem_Free(tabs);
-    if (release_vecs)
-        Py_XDECREF(dir_root);
+    Py_XDECREF(dir_root);
     idxs_release(idxs, nidx);
     Py_XDECREF(boxed);
 }
@@ -528,7 +520,7 @@ st_add_tab(State *st, NType *nt)
     st->tabs = tabs;
     Tab *t = &tabs[st->ntab];
     t->nt = (NType *)Py_NewRef((PyObject *)nt);
-    vec_init(&t->rows, nt->rec, nt->objmask, st->dir.flat);
+    vec_init(&t->rows, nt->rec, nt->objmask);
     t->live = 0;
     t->last_nid = -1;
     t->sorted = 1;
@@ -583,19 +575,10 @@ st_row(const State *st, int64_t nid, int *ti)
 // Subgraph and transaction
 // ---------------------------------------------------------------------------
 
-typedef struct {
-    int is_dir;
-    int tab;
-    uint64_t i;
-    slot_t *old; // copy of the record, owning its object references
-} UndoEnt;
-
 typedef struct Txn {
     struct Txn *parent;
     State saved; // state at begin
     uint64_t tok;
-    UndoEnt *undo; // flat engine only
-    size_t nundo, capundo;
     int64_t *chk; // [start, end) nid ranges to check at commit
     size_t nchk, capchk;
     int64_t *rem; // removed nids
@@ -636,8 +619,6 @@ static PyObject *sg_add1(Sg *sg, PyObject *args);
 static PyObject *sg_cursors(Sg *sg, PyObject *nids);
 static PyObject *sg_child(Sg *sg, PyObject *args);
 
-#define SG_FLAT(sg) ((sg)->st.dir.flat)
-
 // Concurrency rules (see docs/dev/ordb_core.rst, "Threads"): one thread at a
 // time may write a subgraph (the thread that opened the outermost updater),
 // and no write may start while a write operation of the core is in progress
@@ -669,31 +650,6 @@ sg_write_end(Sg *sg)
     sg->writing = 0;
 }
 
-static int
-undo_log(Txn *tx, int is_dir, int tab, uint64_t i, const slot_t *rec,
-    uint32_t nslots, uint64_t objmask)
-{
-    if (tx->nundo == tx->capundo) {
-        size_t cap = tx->capundo ? tx->capundo * 2 : 16;
-        UndoEnt *u = PyMem_Realloc(tx->undo, sizeof(UndoEnt) * cap);
-        if (!u) {
-            PyErr_NoMemory();
-            return -1;
-        }
-        tx->undo = u;
-        tx->capundo = cap;
-    }
-    slot_t *old = PyMem_Malloc(sizeof(slot_t) * nslots);
-    if (!old) {
-        PyErr_NoMemory();
-        return -1;
-    }
-    memcpy(old, rec, sizeof(slot_t) * nslots);
-    recs_incref(old, objmask, nslots, 1);
-    tx->undo[tx->nundo++] = (UndoEnt){is_dir, tab, i, old};
-    return 0;
-}
-
 // Writable directory record of nid. Extends the directory (zero-filled)
 // when nid is beyond its end.
 static slot_t *
@@ -711,44 +667,30 @@ dir_w(Sg *sg, int64_t nid)
     }
     uint64_t i = (uint64_t)nid;
     if (i >= dir->count) {
-        slot_t *p;
-        if (dir->flat) {
-            p = vec_at_w(dir, i, sg->tok, txtok, 1);
-            if (!p)
-                return NULL;
-            FBlock *b = (FBlock *)dir->root;
-            memset(b->data + dir->count * 2, 0,
-                sizeof(slot_t) * 2 * (i + 1 - dir->count));
-        } else {
-            // Leaves owned by this subgraph may hold leftovers of aborted
-            // transactions behind count: zero all existing leaves in the gap.
-            uint64_t j = dir->count;
-            p = NULL;
-            while (j <= i) {
-                uint64_t end = (j | (LEAF_ROWS - 1)) + 1;
-                if (end > i + 1)
-                    end = i + 1;
-                int exists = dir->root
-                    && j < ((uint64_t)LEAF_ROWS << (BITS * dir->levels))
-                    && vec_get(dir, j) != NULL;
-                if (exists || end == i + 1) {
-                    p = vec_at_w(dir, j, sg->tok, txtok, 1);
-                    if (!p)
-                        return NULL;
-                    memset(p, 0, sizeof(slot_t) * 2 * (end - j));
-                    p += 2 * (i - j);
-                }
-                j = end;
+        // Leaves owned by this subgraph may hold leftovers of aborted
+        // transactions behind count: zero all existing leaves in the gap.
+        slot_t *p = NULL;
+        uint64_t j = dir->count;
+        while (j <= i) {
+            uint64_t end = (j | (LEAF_ROWS - 1)) + 1;
+            if (end > i + 1)
+                end = i + 1;
+            int exists = dir->root
+                && j < ((uint64_t)LEAF_ROWS << (BITS * dir->levels))
+                && vec_get(dir, j) != NULL;
+            if (exists || end == i + 1) {
+                p = vec_at_w(dir, j, sg->tok, txtok, 1);
+                if (!p)
+                    return NULL;
+                memset(p, 0, sizeof(slot_t) * 2 * (end - j));
+                p += 2 * (i - j);
             }
+            j = end;
         }
         dir->count = i + 1;
         return p;
     }
     int append = tx && i >= tx->saved.dir.count;
-    if (dir->flat && tx && !append) {
-        if (undo_log(tx, 1, 0, i, vec_get(dir, i), 2, 0) < 0)
-            return NULL;
-    }
     return vec_at_w(dir, i, sg->tok, txtok, append);
 }
 
@@ -760,10 +702,6 @@ tab_row_w(Sg *sg, int ti, uint64_t row)
     Vec *v = &sg->st.tabs[ti].rows;
     int append = tx && (ti >= tx->saved.ntab
         || row >= tx->saved.tabs[ti].rows.count);
-    if (v->flat && tx && !append) {
-        if (undo_log(tx, 0, ti, row, vec_get(v, row), v->rec, v->objmask) < 0)
-            return NULL;
-    }
     return vec_at_w(v, row, sg->tok, tx ? tx->tok : 0, append);
 }
 
@@ -2003,7 +1941,7 @@ tab_compact(Sg *sg, int ti)
     if (!o)
         return -1;
     Vec nv;
-    vec_init(&nv, t->rows.rec, t->rows.objmask, t->rows.flat);
+    vec_init(&nv, t->rows.rec, t->rows.objmask);
     int ret = -1;
     // Forget the tombstones (their rows go away).
     for (uint64_t r = 0; r < t->rows.count; r++) {
@@ -2085,7 +2023,7 @@ txn_begin(Sg *sg)
         PyErr_NoMemory();
         return NULL;
     }
-    if (state_copy(&tx->saved, &sg->st, !SG_FLAT(sg)) < 0) {
+    if (state_copy(&tx->saved, &sg->st) < 0) {
         PyMem_Free(tx);
         return NULL;
     }
@@ -2107,75 +2045,18 @@ txn_begin(Sg *sg)
 static void
 txn_free(Txn *tx)
 {
-    for (size_t i = 0; i < tx->nundo; i++)
-        PyMem_Free(tx->undo[i].old);
-    PyMem_Free(tx->undo);
     PyMem_Free(tx->chk);
     PyMem_Free(tx->rem);
     PyMem_Free(tx);
 }
 
 static void
-undo_release(Sg *sg, Txn *tx)
-{
-    State *st = &sg->st;
-    for (size_t i = 0; i < tx->nundo; i++) {
-        UndoEnt *u = &tx->undo[i];
-        if (!u->is_dir && u->tab < st->ntab) {
-            Vec *v = &st->tabs[u->tab].rows;
-            recs_clear(u->old, v->objmask, v->rec, 1);
-        }
-    }
-}
-
-static void
 txn_abort(Sg *sg, Txn *tx)
 {
-    State *st = &sg->st;
     sg->txn = tx->parent;
     sg->hash_valid = 0;
-    if (!SG_FLAT(sg)) {
-        state_release(st, 1);
-        *st = tx->saved;
-        txn_free(tx);
-        return;
-    }
-    // Flat: restore the overwritten records (newest first), then the
-    // counts. Blocks written in this transaction are private, so they are
-    // written directly.
-    for (size_t i = tx->nundo; i-- > 0;) {
-        UndoEnt *u = &tx->undo[i];
-        Vec *v = u->is_dir ? &st->dir : &st->tabs[u->tab].rows;
-        slot_t *p = ((FBlock *)v->root)->data + u->i * v->rec;
-        recs_clear(p, v->objmask, v->rec, 1);
-        memcpy(p, u->old, sizeof(slot_t) * v->rec); // takes the references
-    }
-    for (int ti = 0; ti < st->ntab; ti++) {
-        Tab *t = &st->tabs[ti];
-        if (ti < tx->saved.ntab) {
-            const Tab *s = &tx->saved.tabs[ti];
-            t->rows.count = s->rows.count;
-            t->live = s->live;
-            t->last_nid = s->last_nid;
-            t->sorted = s->sorted;
-        } else {
-            Py_XDECREF(t->rows.root);
-            Py_DECREF(t->nt);
-        }
-    }
-    st->ntab = tx->saved.ntab;
-    st->dir.count = tx->saved.dir.count;
-    idxs_release(st->idxs, st->nidx);
-    st->idxs = tx->saved.idxs;
-    st->nidx = tx->saved.nidx;
-    PyObject *boxed = st->boxed;
-    st->boxed = tx->saved.boxed;
-    Py_XDECREF(boxed);
-    st->nlive = tx->saved.nlive;
-    st->nid_start = tx->saved.nid_start;
-    for (int i = 0; i < tx->saved.ntab; i++)
-        Py_DECREF(tx->saved.tabs[i].nt);
-    PyMem_Free(tx->saved.tabs);
+    state_release(&sg->st);
+    sg->st = tx->saved;
     txn_free(tx);
 }
 
@@ -2389,28 +2270,7 @@ txn_commit(Sg *sg, Txn *tx)
     st->nid_start = tx->nid_max + 1;
     sg->txn = tx->parent;
     sg->hash_valid = 0;
-    if (SG_FLAT(sg)) {
-        if (tx->parent) {
-            // The parent must be able to undo what this transaction did.
-            Txn *pa = tx->parent;
-            for (size_t i = 0; i < tx->nundo; i++) {
-                UndoEnt *u = &tx->undo[i];
-                uint64_t seen = u->is_dir ? pa->saved.dir.count
-                    : u->tab < pa->saved.ntab
-                        ? pa->saved.tabs[u->tab].rows.count : 0;
-                Vec *v = u->is_dir ? &st->dir : &st->tabs[u->tab].rows;
-                if (u->i < seen) {
-                    if (undo_log(pa, u->is_dir, u->tab, u->i, u->old, v->rec,
-                            v->objmask) < 0)
-                        PyErr_Clear(); // out of memory: parent abort is lossy
-                }
-            }
-        }
-        undo_release(sg, tx);
-        state_release(&tx->saved, 0);
-    } else {
-        state_release(&tx->saved, 1);
-    }
+    state_release(&tx->saved);
     if (tx->parent) {
         if (tx->nid_max > tx->parent->nid_max)
             tx->parent->nid_max = tx->nid_max;
@@ -2952,10 +2812,14 @@ sg_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
     int engine = ENGINE_PAGED;
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "|i", kwlist, &engine))
         return NULL;
+    if (engine != ENGINE_PAGED) {
+        PyErr_Format(PyExc_ValueError, "Unknown storage engine %d.", engine);
+        return NULL;
+    }
     Sg *sg = (Sg *)PyType_GenericAlloc(type, 0);
     if (!sg)
         return NULL;
-    state_init(&sg->st, engine == ENGINE_FLAT);
+    state_init(&sg->st);
     sg->tok = ++g_token;
     sg->wire_hash = Py_NewRef(Py_None);
     sg->arrays_memo = Py_NewRef(Py_None);
@@ -2988,7 +2852,7 @@ sg_clear(Sg *sg)
     Py_CLEAR(sg->wire_hash);
     Py_CLEAR(sg->arrays_memo);
     if (!sg->txn)
-        state_release(&sg->st, 1);
+        state_release(&sg->st);
     return 0;
 }
 
@@ -3001,7 +2865,7 @@ sg_dealloc(Sg *sg)
     Py_CLEAR(sg->root_cursor);
     Py_CLEAR(sg->wire_hash);
     Py_CLEAR(sg->arrays_memo);
-    state_release(&sg->st, 1);
+    state_release(&sg->st);
     obj_free(sg);
 }
 
@@ -3196,7 +3060,7 @@ sg_get_nid_alloc(Sg *sg, void *closure)
 static PyObject *
 sg_get_engine(Sg *sg, void *closure)
 {
-    return PyUnicode_FromString(SG_FLAT(sg) ? "flat" : "paged");
+    return PyUnicode_FromString("paged");
 }
 
 static PyObject *
@@ -3241,11 +3105,11 @@ sg_snapshot(Sg *sg, PyObject *args)
     Sg *n = (Sg *)PyType_GenericAlloc((PyTypeObject *)cls, 0);
     if (!n)
         return NULL;
-    state_init(&n->st, SG_FLAT(sg));
+    state_init(&n->st);
     n->wire_hash = Py_NewRef(Py_None);
     n->arrays_memo = Py_NewRef(Py_None);
-    if (state_copy(&n->st, &sg->st, 1) < 0) {
-        state_init(&n->st, SG_FLAT(sg));
+    if (state_copy(&n->st, &sg->st) < 0) {
+        state_init(&n->st);
         Py_DECREF(n);
         return NULL;
     }
@@ -4222,16 +4086,13 @@ static struct PyModuleDef moddef = {
 
 static PyTypeObject *
 block_type(const char *name, int basicsize, int itemsize, destructor dealloc,
-    traverseproc traverse, inquiry clear, PyMethodDef *methods)
+    traverseproc traverse, inquiry clear)
 {
-    PyType_Slot slots[5] = {{Py_tp_dealloc, dealloc}};
-    int n = 1;
+    PyType_Slot slots[4] = {{Py_tp_dealloc, dealloc}};
     if (traverse) {
-        slots[n++] = (PyType_Slot){Py_tp_traverse, traverse};
-        slots[n++] = (PyType_Slot){Py_tp_clear, clear};
+        slots[1] = (PyType_Slot){Py_tp_traverse, traverse};
+        slots[2] = (PyType_Slot){Py_tp_clear, clear};
     }
-    if (methods)
-        slots[n++] = (PyType_Slot){Py_tp_methods, methods};
     PyType_Spec spec = {name, basicsize, itemsize,
         TPFLAGS | Py_TPFLAGS_DISALLOW_INSTANTIATION
         | (traverse ? Py_TPFLAGS_HAVE_GC : 0), slots};
@@ -4323,18 +4184,13 @@ PyMODINIT_FUNC
 PyInit__ordb(void)
 {
     if (!(Leaf_Type = block_type("_ordb.Leaf", offsetof(Leaf, data),
-            sizeof(slot_t), (destructor)leaf_dealloc, NULL, NULL, NULL))
+            sizeof(slot_t), (destructor)leaf_dealloc, NULL, NULL))
         || !(LeafGC_Type = block_type("_ordb.LeafGC", offsetof(Leaf, data),
             sizeof(slot_t), (destructor)leaf_dealloc,
-            (traverseproc)leaf_traverse, (inquiry)leaf_clear, NULL))
+            (traverseproc)leaf_traverse, (inquiry)leaf_clear))
         || !(InnerGC_Type = block_type("_ordb.InnerGC", sizeof(Inner), 0,
             (destructor)inner_dealloc, (traverseproc)inner_traverse,
-            (inquiry)inner_clear, NULL))
-        || !(FBlock_Type = block_type("_ordb.FBlock", sizeof(FBlock), 0,
-            (destructor)fblock_dealloc, NULL, NULL, fblock_methods))
-        || !(FBlockGC_Type = block_type("_ordb.FBlockGC", sizeof(FBlock), 0,
-            (destructor)fblock_dealloc, (traverseproc)fblock_traverse,
-            (inquiry)fblock_clear, fblock_methods)))
+            (inquiry)inner_clear)))
         return NULL;
     if (!(NType_Type = (PyTypeObject *)PyType_FromSpec(&ntype_spec))
             || !(Node_Type = (PyTypeObject *)PyType_FromSpec(&node_spec))
@@ -4367,7 +4223,6 @@ PyInit__ordb(void)
             || PyModule_AddObjectRef(m, "UpdaterBase",
                 (PyObject *)Upd_Type) < 0
             || PyModule_AddIntConstant(m, "ENGINE_PAGED", ENGINE_PAGED) < 0
-            || PyModule_AddIntConstant(m, "ENGINE_FLAT", ENGINE_FLAT) < 0
             || PyModule_AddIntConstant(m, "K_INT", K_INT) < 0
             || PyModule_AddIntConstant(m, "K_IVEC", K_IVEC) < 0
             || PyModule_AddIntConstant(m, "K_OBJ", K_OBJ) < 0) {
