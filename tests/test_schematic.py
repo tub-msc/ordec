@@ -275,6 +275,13 @@ def test_pin_show_flags():
     assert svg.count('class="pinLabel detail"') == 4
     svg = Inv().symbol.render().svg().decode()
     assert svg.count('class="pinArrow"') == 4 and svg.count('class="pinLabel"') == 4
+    # Without rotate_pin_labels, labels of vertical stubs are not rotated:
+    for rotate, n_rotated in ((True, 2), (False, 0)):
+        s = Symbol(outline=(0, 0, 4, 4), rotate_pin_labels=rotate)
+        s.d = Pin(pos=(2, 4), align=North)
+        s.s = Pin(pos=(2, 0), align=South)
+        s.g = Pin(pos=(0, 2), align=West)
+        assert s.freeze().render().svg().decode().count('<text transform="matrix(0 ') == n_rotated
 
 def test_annotation_placement():
     from ordec.schematic.annotate import block_rects, schematic_obstacles, symbol_body, fits, rect_gap

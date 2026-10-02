@@ -100,6 +100,10 @@ class Symbol(MixinRenderable, SubgraphRoot):
     annotation_pos = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
     #: Direction in which the block extends from annotation_pos: East or West.
     annotation_align = Attr(D4, default=D4.East)
+    #: Whether labels of vertical pin stubs (North/South) are rotated to run
+    #: along the stub. False draws them horizontally beside the stub, which
+    #: reads better for short labels (e.g. 's', 'g', 'd').
+    rotate_pin_labels = Attr(bool, default=True)
 
     def portmap(self, **kwargs):
         def inserter_func(main, sgu, primary_nid):
