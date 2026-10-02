@@ -1423,3 +1423,18 @@ def test_concurrent_writes_rejected():
         t.join()
     assert "another thread" in str(errors[0]) and errors[1] == 1
     assert [n.label for n in s.all(MyNode)] == ['owner']
+
+def test_key_hash_matches_eq():
+    """Index queries and content hashes agree with ==, also across value
+    types (int vs. float or numpy int, tuple vs. Vec2I)."""
+    import numpy as np
+    s = MyHead()
+    a = s % KeyNode(key=(1, 2))
+    b = s % KeyNode(key=-1)
+    assert list(s.all(KeyNode.key_idx.query((np.int64(1), 2.0)))) == [a]
+    assert list(s.all(KeyNode.key_idx.query(Vec2I(1, 2)))) == [a]
+    assert list(s.all(KeyNode.key_idx.query(-1.0))) == [b]
+    t = MyHead()
+    t % KeyNode(key=(True, 2))
+    t % KeyNode(key=np.int64(-1))
+    assert s.freeze() == t.freeze() and hash(s.freeze()) == hash(t.freeze())

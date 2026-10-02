@@ -338,12 +338,33 @@ mix(uint64_t h, uint64_t x)
     return h ^ (h >> 33);
 }
 
+// Python's hash of the int x: the numeric hash of the language reference
+// (modulus 2**61 - 1), which equal floats, Fractions and numpy ints share.
+static inline uint64_t
+int_hash(int64_t x)
+{
+    const int64_t P = ((int64_t)1 << 61) - 1;
+    if (x > -P && x < P)
+        return (uint64_t)(x == -1 ? -2 : x);
+    int64_t h = (int64_t)((x < 0 ? 0 - (uint64_t)x : (uint64_t)x)
+        % (uint64_t)P);
+    h = x < 0 ? -h : h;
+    return (uint64_t)(h == -1 ? -2 : h);
+}
+
+// Hash of a tuple from the Python hashes of its n items (see pyval_hash).
+static inline uint64_t
+mix_start(Py_ssize_t n)
+{
+    return 0xC2B2AE3D27D4EB4Full + (uint64_t)n;
+}
+
 static inline uint64_t
 mix_ints(int n, const slot_t *x)
 {
-    uint64_t h = 0xC2B2AE3D27D4EB4Full + (uint64_t)n;
+    uint64_t h = mix_start(n);
     for (int k = 0; k < n; k++)
-        h = mix(h, (uint64_t)x[k]);
+        h = mix(h, int_hash(x[k]));
     return h;
 }
 

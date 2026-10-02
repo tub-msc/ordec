@@ -45,9 +45,12 @@ A subgraph state consists of:
   removed if its counter is zero at commit.
 - **One index per declared** :class:`~ordec.core.ordb.Index`: a persistent
   B+tree of entries ``(h, s, nid)``, exactly one per indexed live node.
-  ``h`` is the hash of the key (for a single int or LocalRef key, the value
-  itself), ``s`` the sort attribute (or 0). Leaves hold 32 entries, inner
-  nodes 32 children.
+  ``h`` is the hash of the key, ``s`` the sort attribute (or 0). Leaves hold
+  32 entries, inner nodes 32 children. Keys hash consistently with ``==``:
+  an int like in Python (for nids and small ints, the value itself), a
+  value that hashes and compares like a tuple as the mix of its items'
+  Python hashes, whether stored in slots or as an object, so that e.g.
+  ``(1, 2)``, ``(np.int64(1), 2.0)`` and ``Vec2I(1, 2)`` find each other.
 
 Attribute values are stored by kind (decided per attribute when the node
 type is created):
@@ -72,8 +75,8 @@ recomputed from the stored row, which is why a ``sortkey`` must depend only
 on the node's values (otherwise the entry is not found, and the operation
 raises :class:`~ordec.core.ordb.OrdbException`). A query is one range scan
 over the entries with hash ``h``, already ordered by ``(s, nid)``; rows are
-compared to the key only to rule out hash collisions (never for int and
-LocalRef keys, whose hash is the value). A unique check asks whether that
+compared to the key only to rule out hash collisions (for int and LocalRef
+keys, by comparing slots without Python code). A unique check asks whether that
 range holds another node with an equal key. ``insert_array`` sorts its
 entries and inserts them in order, or rebuilds the tree bottom-up if the
 batch is at least as large as the index.

@@ -473,8 +473,29 @@ row_load(const State *st, const NType *nt, const slot_t *p, int64_t nid)
 
 // -- hashing -----------------------------------------------------------------
 
-// Hash of a Python value, consistent with how the same value hashes when
-// it is stored in slots: ints by value, tuples of ints by mix_ints.
+// Whether v hashes and compares like a plain tuple (tuple's own __hash__ and
+// __eq__), as the value types stored in int64 slots must (Vec2I, ...).
+static int
+tuple_like(PyObject *v)
+{
+    static void *thash, *tcmp;
+    if (!PyTuple_Check(v))
+        return 0;
+    PyTypeObject *t = Py_TYPE(v);
+    if (t == &PyTuple_Type)
+        return 1;
+    if (!thash) {
+        thash = PyType_GetSlot(&PyTuple_Type, Py_tp_hash);
+        tcmp = PyType_GetSlot(&PyTuple_Type, Py_tp_richcompare);
+    }
+    return PyType_GetSlot(t, Py_tp_hash) == thash
+        && PyType_GetSlot(t, Py_tp_richcompare) == tcmp;
+}
+
+// Hash of a Python value, consistent with == and with the hash of the same
+// value stored in slots: an int hashes like in Python (int_hash), a
+// tuple-like value as the mix of its items' Python hashes (mix_ints for
+// slots), so that e.g. (1, 2), (True, 2.0) and Vec2I(1, 2) hash alike.
 static int
 pyval_hash(PyObject *v, uint64_t *out)
 {
@@ -482,22 +503,17 @@ pyval_hash(PyObject *v, uint64_t *out)
         *out = H_NONE;
         return 0;
     }
-    if (PyLong_Check(v)) {
-        int ovf;
-        long long x = PyLong_AsLongLongAndOverflow(v, &ovf);
-        if (!ovf) {
-            *out = (uint64_t)x;
-            return 0;
+    if (tuple_like(v)) {
+        Py_ssize_t n = PyTuple_Size(v);
+        uint64_t h = mix_start(n);
+        for (Py_ssize_t k = 0; k < n; k++) {
+            Py_hash_t e = PyObject_Hash(PyTuple_GetItem(v, k));
+            if (e == -1 && PyErr_Occurred())
+                return -1;
+            h = mix(h, (uint64_t)e);
         }
-    } else if (PyTuple_Check(v) && PyTuple_Size(v) <= 8) {
-        slot_t x[8];
-        int n = (int)PyTuple_Size(v), ok = 1;
-        for (int k = 0; k < n && ok; k++)
-            ok = long_as_slot(PyTuple_GetItem(v, k), &x[k]);
-        if (ok && n > 0) {
-            *out = mix_ints(n, x);
-            return 0;
-        }
+        *out = h;
+        return 0;
     }
     Py_hash_t h = PyObject_Hash(v);
     if (h == -1 && PyErr_Occurred())
@@ -506,7 +522,6 @@ pyval_hash(PyObject *v, uint64_t *out)
     return 0;
 }
 
-// Hash of one attribute of a record. Returns 1 if the value is None.
 int
 rec_slot_hash(const Rec *r, int i, uint64_t *out)
 {
@@ -521,7 +536,7 @@ rec_slot_hash(const Rec *r, int i, uint64_t *out)
         return 1;
     if (s[0] == SLOT_BOXED)
         return pyval_hash(r->box[i], out);
-    *out = ai->kind == K_INT ? (uint64_t)s[0] : mix_ints(ai->width, s);
+    *out = ai->kind == K_INT ? int_hash(s[0]) : mix_ints(ai->width, s);
     return 0;
 }
 

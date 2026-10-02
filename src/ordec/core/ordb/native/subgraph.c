@@ -345,7 +345,7 @@ plain_row_hash(const NType *nt, const slot_t *p)
         const AttrInfo *ai = &nt->attrs[i];
         const slot_t *s = p + ai->slot;
         h = mix(h, s[0] == SLOT_NONE ? H_NONE
-            : ai->kind == K_INT ? (uint64_t)s[0] : mix_ints(ai->width, s));
+            : ai->kind == K_INT ? int_hash(s[0]) : mix_ints(ai->width, s));
     }
     return h;
 }
