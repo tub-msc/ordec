@@ -91,9 +91,15 @@ Storage engine
 
 A table is a ``KMap`` of the ``keyed`` engine, a persistent radix trie
 keyed by nid: a leaf covers 16 nids, with a 16-bit occupancy mask and the
-present rows packed in nid order; an inner node has up to 64 children, with
-a 64-bit mask and the present children packed. Lookup is a few shifts and
-population counts. Capacities grow in powers of two. Every node carries the
+present rows packed in nid order (leaf capacities grow in powers of two);
+an inner node has 64 child slots and a 64-bit mask of the present ones.
+Lookup is a few shifts and one population count (inline bit arithmetic:
+without a POPCNT target, the compiler builtin is a library call).
+Attribute descriptors know their node type and go to its table directly,
+without the directory. Loops that run no Python code between rows (scans,
+``arrays()``, hashing and equality of tables without object slots or boxed
+values) walk the trie recursively; the others look each next row up from
+the root. Every node carries the
 token of the transaction that created it and is written in place only by
 it; any other write copies the path from the root. Freeze, thaw and copy
 share the whole trie (O(number of tables)). A transaction keeps the
@@ -301,9 +307,21 @@ The first implementation, measured against ``paged`` at the large scale,
 was slower: ``layout_flatten`` +28 %, ``sim_hierarchy`` +19 %,
 ``symbol_build`` +6 %, ``render_scan`` +2 %, ``snapshot_chain`` +3 %; per
 operation attribute reads +43 %, inserts with ``%`` +37 %, scans +44 %,
-retained memory 0 to +18 %. ``keyed`` was chosen for its simpler invariants;
-part of the gap came from the first implementation (iteration re-descending
-from the root per row, leaves growing one row at a time).
+retained memory 0 to +18 %. ``keyed`` was chosen for its simpler invariants.
+A profile showed population counts compiled as library calls, packed inner
+nodes and iteration re-descending from the root per row; fixing these
+(inline population counts, 64 child slots per inner node, attribute reads
+without the directory, recursive walks) brought the default-scale suite
+from +14.7 % to +5.9 % against ``paged``, attribute reads, scans and
+``thaw, update, freeze`` to parity (24 ns, 46 ns, 885 ns), and the hash of a
+new snapshot below it (123 instead of 183 us for 50,000 nodes). Builds
+remain slower (``layout_flatten`` +13 %, ``sim_hierarchy`` +17 % at the
+large scale): an insert in a transaction of its own copies the table leaf
+and its path, where ``paged`` appended in place (``%`` 694 against
+532 ns), and inserting into the trie costs about 6 % more instructions than
+appending a row. The 64-slot inner nodes cost memory in many small
+subgraphs (``symbol_build`` retains 13.5 % more). Leaf growth in steps of 4
+or to the rest of the window on appends changed nothing measurable.
 
 Indices are ordered by (key hash, sort value, nid) because hash indices
 degrade on keys with many duplicates (all rectangles on one layer), while
@@ -377,7 +395,14 @@ Performance:
   ones of ``SimHierarchy`` are called per node.
 - Index entries take 24 bytes; 16 would do.
 - An insert in a transaction of its own copies the table leaf and the index
-  leaves it touches, with their paths.
+  leaves it touches, with their paths. For tables, a visibility bound per
+  snapshot (rows with a nid at or above the snapshot's ``nid_start`` are
+  invisible to it) would allow appending new nids in place to nodes owned
+  by the subgraph, as ``paged`` did behind each snapshot's row count; every
+  read and walk would then filter by the bound.
+- Inner nodes always have 64 child slots (520 bytes), which costs memory in
+  many small subgraphs; a small packed form for nodes with few children
+  would recover it at the cost of a population count per level.
 
 Correctness and semantics:
 

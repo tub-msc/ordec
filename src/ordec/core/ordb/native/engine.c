@@ -995,6 +995,19 @@ done:
     return ret;
 }
 
+typedef struct {
+    const slot_t **rows;
+    uint64_t n;
+} RowList;
+
+static int
+rowlist_add(const slot_t *p, void *arg)
+{
+    RowList *l = arg;
+    l->rows[l->n++] = p;
+    return 0;
+}
+
 // The live rows of table ti in ascending nid order. The pointers are valid
 // until the next write or Python code.
 const slot_t **
@@ -1006,11 +1019,9 @@ tab_rows_sorted(const State *st, int ti, uint64_t *n_out)
         PyErr_NoMemory();
         return NULL;
     }
-    uint64_t n = 0;
-    int64_t nid = -1;
-    for (const slot_t *p; (p = kmap_next(&t->rows, nid, &nid));)
-        rows[n++] = p;
-    *n_out = n;
+    RowList l = {rows, 0};
+    kmap_walk(&t->rows, rowlist_add, &l);
+    *n_out = l.n;
     return rows;
 }
 

@@ -348,6 +348,19 @@ plain_row_hash(const NType *nt, const slot_t *p)
     return h;
 }
 
+typedef struct {
+    const NType *nt;
+    uint64_t acc;
+} PlainHash;
+
+static int
+plain_hash_add(const slot_t *p, void *arg)
+{
+    PlainHash *ph = arg;
+    ph->acc += plain_row_hash(ph->nt, p);
+    return 0;
+}
+
 // Content hash: order-independent sum of record hashes plus nid_alloc.
 // Tables are looked up again for every row: hashing values can run Python
 // code, during which another thread may write to a mutable subgraph.
@@ -359,13 +372,16 @@ sg_content_hash(Sg *sg, PyObject *noarg)
     const State *st = &sg->st;
     uint64_t acc = mix((uint64_t)st->nid_start, (uint64_t)st->nid_stop);
     for (int ti = 0; ti < st->ntab; ti++) {
+        if (!st->tabs[ti].nt->objmask && !st->boxed) {
+            // No Python code runs for these rows: one walk.
+            PlainHash ph = {st->tabs[ti].nt, 0};
+            kmap_walk(&st->tabs[ti].rows, plain_hash_add, &ph);
+            acc += ph.acc;
+            continue;
+        }
         int64_t pos = -1;
         for (const slot_t *p; (p = tab_next(st, ti, &pos));) {
             NType *nt = st->tabs[ti].nt;
-            if (!nt->objmask && !st->boxed) {
-                acc += plain_row_hash(nt, p);
-                continue;
-            }
             Rec rec;
             if (rec_take(&rec, st, nt, p, p[0]) < 0)
                 return NULL;
@@ -390,6 +406,26 @@ sg_content_hash(Sg *sg, PyObject *noarg)
         sg->hash_valid = 1;
     }
     return PyLong_FromSsize_t(h);
+}
+
+typedef struct {
+    const State *sb;
+    const NType *nt;
+    int eq;
+} PlainEq;
+
+static int
+plain_eq_row(const slot_t *p, void *arg)
+{
+    PlainEq *w = arg;
+    int tk;
+    const slot_t *q = st_row(w->sb, p[0], &tk);
+    if (!q || w->sb->tabs[tk].nt != w->nt
+            || (p != q && memcmp(p, q, sizeof(slot_t) * w->nt->rec))) {
+        w->eq = 0;
+        return 1;
+    }
+    return 0;
 }
 
 // Compares two live records of the same node type.
@@ -439,6 +475,14 @@ sg_content_eq(Sg *a, PyObject *arg)
         if (sa->tabs[ti].rows.root == sb->tabs[tj].rows.root
                 && sa->boxed == sb->boxed)
             continue; // shared storage
+        if (!nt->objmask && !sa->boxed && !sb->boxed) {
+            // No Python code runs for these rows: one walk.
+            PlainEq w = {sb, nt, 1};
+            kmap_walk(&sa->tabs[ti].rows, plain_eq_row, &w);
+            if (!w.eq)
+                Py_RETURN_FALSE;
+            continue;
+        }
         int64_t pos = -1;
         for (const slot_t *p; (p = tab_next(sa, ti, &pos));) {
             int tk;

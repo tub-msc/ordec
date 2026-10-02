@@ -157,18 +157,14 @@ ent_cmp(const void *a, const void *b)
 static PyTypeObject *KLeaf_Type, *KLeafGC_Type, *KInner_Type;
 
 #define KW (1u << KW_BITS)
+#define KF (1u << KF_BITS)
 
 static inline uint32_t
 kleaf_n(const KLeaf *n)
 {
-    return (uint32_t)__builtin_popcount(n->mask);
+    return (uint32_t)popcount32(n->mask);
 }
 
-static inline uint32_t
-kinner_n(const KInner *n)
-{
-    return (uint32_t)__builtin_popcountll(n->mask);
-}
 
 static void
 kleaf_dealloc(KLeaf *n)
@@ -198,8 +194,8 @@ static void
 kinner_dealloc(KInner *n)
 {
     PyObject_GC_UnTrack(n);
-    for (uint32_t i = 0; i < kinner_n(n); i++)
-        Py_XDECREF(n->kids[i]);
+    for (uint64_t m = n->mask; m; m &= m - 1)
+        Py_DECREF(n->kids[__builtin_ctzll(m)]);
     obj_free(n);
 }
 
@@ -207,18 +203,18 @@ static int
 kinner_traverse(KInner *n, visitproc visit, void *arg)
 {
     Py_VISIT(Py_TYPE((PyObject *)n));
-    for (uint32_t i = 0; i < kinner_n(n); i++)
-        Py_VISIT(n->kids[i]);
+    for (uint64_t m = n->mask; m; m &= m - 1)
+        Py_VISIT(n->kids[__builtin_ctzll(m)]);
     return 0;
 }
 
 static int
 kinner_clear(KInner *n)
 {
-    uint32_t k = kinner_n(n);
+    uint64_t mask = n->mask;
     n->mask = 0;
-    for (uint32_t i = 0; i < k; i++)
-        Py_CLEAR(n->kids[i]);
+    for (uint64_t m = mask; m; m &= m - 1)
+        Py_CLEAR(n->kids[__builtin_ctzll(m)]);
     return 0;
 }
 
@@ -252,15 +248,14 @@ kleaf_new(const KMap *m, uint32_t cap, uint64_t tok)
 }
 
 static KInner *
-kinner_new(uint32_t cap, uint64_t tok)
+kinner_new(uint64_t tok)
 {
-    KInner *n = PyObject_GC_NewVar(KInner, KInner_Type, cap);
+    KInner *n = PyObject_GC_New(KInner, KInner_Type);
     if (!n)
         return NULL;
     n->owner = tok;
     n->mask = 0;
-    n->cap = cap;
-    memset(n->kids, 0, sizeof(PyObject *) * cap);
+    memset(n->kids, 0, sizeof(n->kids));
     PyObject_GC_Track(n);
     return n;
 }
@@ -288,24 +283,21 @@ kleaf_writable(const KMap *m, PyObject **pp, uint32_t need, uint64_t tok)
     return c;
 }
 
-// As kleaf_writable, for an inner node with room for need children.
+// The inner node *pp, writable for tok: copied (sharing the children)
+// unless tok created it.
 static KInner *
-kinner_writable(PyObject **pp, uint32_t need, uint64_t tok)
+kinner_writable(PyObject **pp, uint64_t tok)
 {
     KInner *n = (KInner *)*pp;
-    uint32_t cnt = kinner_n(n);
-    if (n->owner == tok && n->cap >= need)
+    if (n->owner == tok)
         return n;
-    KInner *c = kinner_new(cap_for(need > cnt ? need : cnt), tok);
+    KInner *c = kinner_new(tok);
     if (!c)
         return NULL;
-    memcpy(c->kids, n->kids, sizeof(PyObject *) * cnt);
+    memcpy(c->kids, n->kids, sizeof(c->kids));
+    for (uint64_t m = n->mask; m; m &= m - 1)
+        Py_INCREF(c->kids[__builtin_ctzll(m)]);
     c->mask = n->mask;
-    if (n->owner == tok)
-        n->mask = 0; // grown: the children move to the copy
-    else
-        for (uint32_t i = 0; i < cnt; i++)
-            Py_INCREF(c->kids[i]);
     *pp = (PyObject *)c;
     Py_DECREF(n);
     return c;
@@ -325,13 +317,13 @@ kmap_leaf_w(KMap *m, int64_t nid, uint64_t tok, uint32_t extra, int create)
     if (!m->root) {
         while ((uint64_t)nid >> (KW_BITS + KF_BITS * m->levels))
             m->levels++;
-        m->root = m->levels ? (PyObject *)kinner_new(1, tok)
+        m->root = m->levels ? (PyObject *)kinner_new(tok)
             : (PyObject *)kleaf_new(m, 1, tok);
         if (!m->root)
             return NULL;
     }
     while ((uint64_t)nid >> (KW_BITS + KF_BITS * m->levels)) {
-        KInner *r = kinner_new(1, tok);
+        KInner *r = kinner_new(tok);
         if (!r)
             return NULL;
         r->kids[0] = m->root;
@@ -343,26 +335,23 @@ kmap_leaf_w(KMap *m, int64_t nid, uint64_t tok, uint32_t extra, int create)
     for (int l = m->levels; l > 0; l--) {
         unsigned i = ((uint64_t)nid >> kmap_shift(l)) & ((1u << KF_BITS) - 1);
         uint64_t bit = 1ull << i;
-        KInner *in = (KInner *)*pp;
-        int has = (in->mask & bit) != 0;
+        int has = (((KInner *)*pp)->mask & bit) != 0;
         if (!has && !create) {
             PyErr_SetString(PyExc_SystemError, "ORDB: keyed row missing");
             return NULL;
         }
-        if (!(in = kinner_writable(pp, kinner_n(in) + !has, tok)))
+        KInner *in = kinner_writable(pp, tok);
+        if (!in)
             return NULL;
-        unsigned k = __builtin_popcountll(in->mask & (bit - 1));
         if (!has) {
-            PyObject *kid = l > 1 ? (PyObject *)kinner_new(1, tok)
+            PyObject *kid = l > 1 ? (PyObject *)kinner_new(tok)
                 : (PyObject *)kleaf_new(m, 1, tok);
             if (!kid)
                 return NULL;
-            memmove(&in->kids[k + 1], &in->kids[k],
-                sizeof(PyObject *) * (kinner_n(in) - k));
-            in->kids[k] = kid;
+            in->kids[i] = kid;
             in->mask |= bit;
         }
-        pp = &in->kids[k];
+        pp = &in->kids[i];
     }
     KLeaf *lf = (KLeaf *)*pp;
     return kleaf_writable(m, pp, kleaf_n(lf) + extra, tok);
@@ -380,7 +369,7 @@ kmap_insert(KMap *m, int64_t nid, uint64_t tok)
         PyErr_SetString(PyExc_SystemError, "ORDB: keyed row exists");
         return NULL;
     }
-    uint32_t cnt = kleaf_n(lf), r = __builtin_popcount(lf->mask & ((1u << b) - 1));
+    uint32_t cnt = kleaf_n(lf), r = popcount32(lf->mask & ((1u << b) - 1));
     slot_t *p = lf->data + r * m->rec;
     memmove(p + m->rec, p, sizeof(slot_t) * m->rec * (cnt - r));
     memset(p, 0, sizeof(slot_t) * m->rec);
@@ -400,7 +389,7 @@ kmap_at_w(KMap *m, int64_t nid, uint64_t tok)
     if (!lf)
         return NULL;
     unsigned b = (uint64_t)nid & (KW - 1);
-    return lf->data + __builtin_popcount(lf->mask & ((1u << b) - 1)) * m->rec;
+    return lf->data + popcount32(lf->mask & ((1u << b) - 1)) * m->rec;
 }
 
 // Removes nid below *pp; returns 1 if the node became empty.
@@ -412,7 +401,7 @@ km_remove(const KMap *m, PyObject **pp, int level, int64_t nid, uint64_t tok)
         if (!lf)
             return -1;
         unsigned b = (uint64_t)nid & (KW - 1);
-        uint32_t cnt = kleaf_n(lf), r = __builtin_popcount(lf->mask & ((1u << b) - 1));
+        uint32_t cnt = kleaf_n(lf), r = popcount32(lf->mask & ((1u << b) - 1));
         slot_t *p = lf->data + r * m->rec;
         recs_clear(p, m->objmask, m->rec, 1);
         memmove(p, p + m->rec, sizeof(slot_t) * m->rec * (cnt - r - 1));
@@ -420,21 +409,15 @@ km_remove(const KMap *m, PyObject **pp, int level, int64_t nid, uint64_t tok)
         lf->mask &= ~(1u << b);
         return lf->mask == 0;
     }
-    KInner *in = kinner_writable(pp, kinner_n((KInner *)*pp), tok);
+    KInner *in = kinner_writable(pp, tok);
     if (!in)
         return -1;
     unsigned i = ((uint64_t)nid >> kmap_shift(level)) & ((1u << KF_BITS) - 1);
-    uint64_t bit = 1ull << i;
-    unsigned k = __builtin_popcountll(in->mask & (bit - 1));
-    int r = km_remove(m, &in->kids[k], level - 1, nid, tok);
+    int r = km_remove(m, &in->kids[i], level - 1, nid, tok);
     if (r != 1)
         return r;
-    PyObject *kid = in->kids[k];
-    memmove(&in->kids[k], &in->kids[k + 1],
-        sizeof(PyObject *) * (kinner_n(in) - k - 1));
-    in->kids[kinner_n(in) - 1] = NULL;
-    in->mask &= ~bit;
-    Py_DECREF(kid);
+    Py_CLEAR(in->kids[i]);
+    in->mask &= ~(1ull << i);
     return in->mask == 0;
 }
 
@@ -473,7 +456,7 @@ km_next(PyObject *n, int level, int64_t base, int64_t after, int64_t *out)
             return NULL;
         unsigned b = __builtin_ctz(mask);
         *out = base + b;
-        return lf->data + __builtin_popcount(lf->mask & ((1u << b) - 1))
+        return lf->data + popcount32(lf->mask & ((1u << b) - 1))
             * lf->rec;
     }
     const KInner *in = (const KInner *)n;
@@ -487,13 +470,41 @@ km_next(PyObject *n, int level, int64_t base, int64_t after, int64_t *out)
     }
     for (; mask; mask &= mask - 1) {
         unsigned i = __builtin_ctzll(mask);
-        PyObject *kid = in->kids[__builtin_popcountll(in->mask & ((1ull << i) - 1))];
+        PyObject *kid = in->kids[i];
         const slot_t *p = km_next(kid, level - 1,
             base + ((int64_t)i << shift), after, out);
         if (p)
             return p;
     }
     return NULL;
+}
+
+static int
+km_walk(PyObject *n, int level, uint32_t rec,
+    int (*fn)(const slot_t *, void *), void *arg)
+{
+    if (level == 0) {
+        const KLeaf *lf = (const KLeaf *)n;
+        uint32_t cnt = kleaf_n(lf);
+        for (uint32_t k = 0; k < cnt; k++)
+            if (fn(lf->data + k * rec, arg))
+                return 1;
+        return 0;
+    }
+    const KInner *in = (const KInner *)n;
+    for (uint64_t mask = in->mask; mask; mask &= mask - 1)
+        if (km_walk(in->kids[__builtin_ctzll(mask)], level - 1, rec, fn, arg))
+            return 1;
+    return 0;
+}
+
+// Calls fn(row, arg) for every row in nid order, until fn returns nonzero
+// (then returns 1). Faster than kmap_next, but no Python code may run
+// during the walk (fn must not run any).
+int
+kmap_walk(const KMap *m, int (*fn)(const slot_t *, void *), void *arg)
+{
+    return m->root ? km_walk(m->root, m->levels, m->rec, fn, arg) : 0;
 }
 
 // The record with the smallest nid > after (stored in *nid), or NULL. It
@@ -1123,8 +1134,7 @@ store_init(void)
         || !(KLeafGC_Type = block_type("_ordb.KeyedLeafGC",
             offsetof(KLeaf, data), sizeof(slot_t), (destructor)kleaf_dealloc,
             (traverseproc)kleaf_traverse, (inquiry)kleaf_clear))
-        || !(KInner_Type = block_type("_ordb.KeyedInnerGC",
-            offsetof(KInner, kids), sizeof(PyObject *),
+        || !(KInner_Type = block_type("_ordb.KeyedInnerGC", sizeof(KInner), 0,
             (destructor)kinner_dealloc, (traverseproc)kinner_traverse,
             (inquiry)kinner_clear)))
         return -1;

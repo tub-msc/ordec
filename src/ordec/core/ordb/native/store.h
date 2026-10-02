@@ -112,6 +112,33 @@ vec_get(const Vec *v, uint64_t i)
 
 // -- keyed tables (engine "keyed") -------------------------------------------
 
+// Population counts. Without a POPCNT target (the portable x86-64 baseline)
+// the builtins become library calls; the bit tricks are inline.
+static inline unsigned
+popcount32(uint32_t x)
+{
+#ifdef __POPCNT__
+    return (unsigned)__builtin_popcount(x);
+#else
+    x = x - ((x >> 1) & 0x55555555u);
+    x = (x & 0x33333333u) + ((x >> 2) & 0x33333333u);
+    return (((x + (x >> 4)) & 0x0F0F0F0Fu) * 0x01010101u) >> 24;
+#endif
+}
+
+static inline unsigned
+popcount64(uint64_t x)
+{
+#ifdef __POPCNT__
+    return (unsigned)__builtin_popcountll(x);
+#else
+    x = x - ((x >> 1) & 0x5555555555555555ull);
+    x = (x & 0x3333333333333333ull) + ((x >> 2) & 0x3333333333333333ull);
+    return (((x + (x >> 4)) & 0x0F0F0F0F0F0F0F0Full)
+        * 0x0101010101010101ull) >> 56;
+#endif
+}
+
 #define KW_BITS 4 // nids per leaf: 16
 #define KF_BITS 6 // children per inner node: 64
 
@@ -126,11 +153,10 @@ typedef struct {
 } KLeaf;
 
 typedef struct {
-    PyObject_VAR_HEAD // ob_size: children allocated
+    PyObject_HEAD
     uint64_t owner;
-    uint64_t mask; // bit i: child i is present
-    uint32_t cap;
-    PyObject *kids[1]; // the present children, packed
+    uint64_t mask; // bit i: kids[i] is present
+    PyObject *kids[1u << KF_BITS];
 } KInner;
 
 // A persistent sparse array of records keyed by nid: a radix trie with
@@ -160,18 +186,16 @@ kmap_get(const KMap *m, int64_t nid)
     if (!n || nid < 0 || (uint64_t)nid >> (KW_BITS + KF_BITS * m->levels))
         return NULL;
     for (int l = m->levels; l > 0; l--) {
-        const KInner *in = (const KInner *)n;
         unsigned i = ((uint64_t)nid >> (KW_BITS + KF_BITS * (l - 1)))
             & ((1u << KF_BITS) - 1);
-        if (!(in->mask >> i & 1))
+        if (!(n = ((const KInner *)n)->kids[i]))
             return NULL;
-        n = in->kids[__builtin_popcountll(in->mask & ((1ull << i) - 1))];
     }
     const KLeaf *lf = (const KLeaf *)n;
     unsigned b = (uint64_t)nid & ((1u << KW_BITS) - 1);
     if (!(lf->mask >> b & 1))
         return NULL;
-    return lf->data + __builtin_popcount(lf->mask & ((1u << b) - 1)) * lf->rec;
+    return lf->data + popcount32(lf->mask & ((1u << b) - 1)) * lf->rec;
 }
 
 // -- index trees -------------------------------------------------------------
@@ -251,6 +275,7 @@ slot_t *kmap_insert(KMap *m, int64_t nid, uint64_t tok);
 slot_t *kmap_at_w(KMap *m, int64_t nid, uint64_t tok);
 int kmap_remove(KMap *m, int64_t nid, uint64_t tok);
 const slot_t *kmap_next(const KMap *m, int64_t after, int64_t *nid);
+int kmap_walk(const KMap *m, int (*fn)(const slot_t *, void *), void *arg);
 void obj_free(void *o);
 slot_t *vec_at_w(Vec *v, uint64_t i, uint64_t lin, uint64_t tx, int append);
 int ent_cmp(const void *a, const void *b);

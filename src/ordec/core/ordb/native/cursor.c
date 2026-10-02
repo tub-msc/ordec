@@ -308,12 +308,14 @@ attrdesc_get(AttrDesc *d, PyObject *obj, PyObject *type)
     }
     NodeObj *c = (NodeObj *)obj;
     const State *st = &c->sg->st;
-    int ti;
-    const slot_t *p = st_row(st, c->nid, &ti);
-    if (!p)
-        return key_error_nid(c->nid);
     NType *nt = d->nt;
-    if (st->tabs[ti].nt != nt) {
+    // The descriptor knows the node type and thus the table: no directory
+    // lookup. Without a row there, the directory tells why.
+    int ti = st_find_tab(st, nt);
+    const slot_t *p = ti >= 0 ? kmap_get(&st->tabs[ti].rows, c->nid) : NULL;
+    if (!p) {
+        if (!st_row(st, c->nid, &ti))
+            return key_error_nid(c->nid);
         PyErr_Format(OrdbException,
             "Node nid=%lld was replaced by a node of another type.",
             (long long)c->nid);
