@@ -1514,7 +1514,7 @@ class SubgraphUpdater(SubgraphQueryMixin, _ordb.UpdaterBase):
         self.insert_array_at(ntype, np.arange(start, start + n, dtype=np.int64), cols)
         return range(start, start + n)
 
-    def insert_array_at(self, ntype: type, nids, cols, fresh: bool=False):
+    def insert_array_at(self, ntype: type, nids, cols):
         """
         Like insert_array, with given nids (int64 array) and normalized
         columns (see ordec.core.ordb.arrays.normalize). Used by insert_array
