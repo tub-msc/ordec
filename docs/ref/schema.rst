@@ -54,7 +54,8 @@ instance with :class:`SchemAnnotationOverride` to declutter the drawing.
 
 Symbol viewgens start out with the default block (see
 :meth:`Symbol.add_default_annotations`, which hides parameters left at their
-default) and may modify, remove or extend it. A symbol viewgen that draws
+default unless they are declared with ``Parameter(..., hide_default=False)``)
+and may modify, remove or extend it. A symbol viewgen that draws
 nothing (no :class:`SymbolPoly` or :class:`SymbolArc`) becomes a box symbol
 (:meth:`Symbol.make_box`): the outline is drawn, and the labels are placed
 as :class:`SymbolText` at fixed positions inside the box instead of forming
