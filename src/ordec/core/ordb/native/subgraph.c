@@ -80,14 +80,19 @@ sg_dealloc(Sg *sg)
 static int
 index_nid(PyObject *o, int64_t *nid)
 {
-    if (!PyIndex_Check(o))
-        return 0;
-    PyObject *i = PyNumber_Index(o);
-    if (!i)
-        return -1;
     int ovf;
-    long long x = PyLong_AsLongLongAndOverflow(i, &ovf);
-    Py_DECREF(i);
+    long long x;
+    if (PyLong_Check(o)) {
+        x = PyLong_AsLongLongAndOverflow(o, &ovf);
+    } else {
+        if (!PyIndex_Check(o))
+            return 0;
+        PyObject *i = PyNumber_Index(o);
+        if (!i)
+            return -1;
+        x = PyLong_AsLongLongAndOverflow(i, &ovf);
+        Py_DECREF(i);
+    }
     if (x == -1 && PyErr_Occurred())
         return -1;
     *nid = ovf ? -1 : x;
