@@ -1909,7 +1909,8 @@ op_insert_rows(Sg *sg, NType *nt, const int64_t *nids, Py_ssize_t n,
         if (refs_adjust(sg, nt, p, 1) < 0)
             goto fail;
         if (nuse) {
-            // All-integer rows: hashing runs no Python code.
+            // Hashing all-integer rows runs no Python code, but a sortkey
+            // that is not an attribute chain is called per row.
             Rec rec;
             if (rec_take(&rec, st, nt, p, nid) < 0)
                 goto fail;

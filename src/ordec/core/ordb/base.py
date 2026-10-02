@@ -431,7 +431,11 @@ class Index(GenericIndex):
             nid). Without sortkey, results are ordered by nid. A plain
             attribute read (lambda node: node.order) is evaluated natively;
             other functions are called per index update and per query
-            result (slower).
+            result (slower). sortkey must depend only on the values of the
+            node: entries are validated by evaluating it again, so an entry
+            whose sortkey result changed without a change of the node looks
+            stale. Queries skip such entries, and merging index runs can
+            drop them permanently.
     """
     def __init__(self, attr: Attr, unique:bool=False, sortkey: Callable=None):
         if sortkey is not None and not callable(sortkey):
@@ -465,6 +469,15 @@ class Index(GenericIndex):
 
 @public
 class CombinedIndex(Index):
+    """
+    Index for equality queries on a tuple of attributes.
+
+    Args:
+        attrs: Indexed attributes; query keys are tuples in this order.
+        unique: At most one node may have each key.
+        sortkey: As for :class:`Index` (in particular, it must depend only
+            on the values of the node).
+    """
     def __init__(self, attrs: list[Attr], unique:bool=False, sortkey: Callable=None):
         if sortkey is not None and not callable(sortkey):
             raise TypeError("sortkey must be a function, e.g. lambda node: node.order.")
