@@ -344,16 +344,19 @@ def collect_wire_deps(sg: FrozenSubgraph,
     """
     deps = {}
     def collect(sg):
-        for nid in sg.nids():
+        # Only rows of types with SubgraphRef attributes are read (arrayable
+        # types have none, see ordb.base.array_layout), in nid order.
+        refs = {}
+        for ntuple in sg.ntuples():
+            idx = [ad.index for ad in ntuple._layout
+                if isinstance(ad.attr, SubgraphRef)]
+            if idx:
+                for nid in sg.nids(ntuple):
+                    refs[nid] = idx
+        for nid in sorted(refs):
             node = sg.row(nid)
-            # Rows of arrayable types hold no SubgraphRefs (see
-            # ordb.base.array_layout).
-            if node._array_layout is not None:
-                continue
-            for ad in node._layout:
-                if not isinstance(ad.attr, SubgraphRef):
-                    continue
-                child = node[ad.index]
+            for i in refs[nid]:
+                child = node[i]
                 if child is None:
                     continue
                 h = child.wire_hash(ept)
