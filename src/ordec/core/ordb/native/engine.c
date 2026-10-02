@@ -742,7 +742,9 @@ refs_adjust(Sg *sg, const NType *nt, const slot_t *p, int delta)
         if (ai->ref_kind != REF_LOCAL)
             continue;
         slot_t v = p[ai->slot];
-        if (v < 0) // None, boxed or invalid: caught by the commit check
+        // None, boxed or out of range (no node can be there): the commit
+        // check reports it.
+        if (v < 0 || v >= sg->st.nid_stop)
             continue;
         if (delta < 0 && !st_dir(&sg->st, v))
             continue;
