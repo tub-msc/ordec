@@ -49,7 +49,9 @@ def get_backend(name: str) -> StorageBackend:
     except KeyError:
         raise ValueError(
             f"Unknown ORDB storage backend {name!r}."
-            f" Available: {', '.join(sorted(_registry))}"
+            f" Available: {', '.join(sorted(_registry))} (the Python backends"
+            " of earlier versions, e.g. 'cow-arrays' or 'delta', were"
+            " replaced by the native core)."
         ) from None
 
 def available_backends() -> list[str]:

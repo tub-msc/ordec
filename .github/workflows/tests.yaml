@@ -25,8 +25,9 @@ jobs:
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: pip install
         run: pip install .[test]
-      # The extension is optional in setup.py: without a compiler, the build
-      # succeeds without it and the tests pass on the slow Python fallback.
+      # _gdsrecords is optional in setup.py: without a compiler, the build
+      # succeeds without it and the tests pass on its slow Python fallback.
+      # (The ORDB core _ordb is required; without it, the build fails.)
       - name: check that C extensions were built
         run: python3 -c "import ordec.layout._gdsrecords"
       # The models in ordec-base were compiled for the CPU of the machine that

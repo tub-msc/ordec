@@ -436,12 +436,13 @@ Performance:
 Portability and packaging:
 
 - ``__builtin_ctzll`` has no MSVC equivalent under that name; the core is
-  only built and tested with gcc on Linux and Python 3.13 so far.
+  only built with gcc on Linux so far. An abi3 build against the 3.13
+  headers passes the tests on Python 3.11 to 3.14; the sources also compile
+  against the 3.11 and 3.12 headers.
 - ``_attr_chain`` matches CPython bytecode, which changes between versions
-  (``LOAD_FAST_BORROW`` in 3.14 is accepted but untested). An unrecognized
-  form only makes the schema's lambdas slow, and
-  ``test_schema_lambdas_native`` fails.
-- Wheels for macOS and Windows, and builds against Python 3.11 and 3.12.
+  (checked on 3.11 to 3.14). An unrecognized form only makes the schema's
+  lambdas slow, and ``test_schema_lambdas_native`` fails.
+- Wheels for macOS and Windows.
 
 Threads:
 
@@ -457,6 +458,3 @@ Design questions:
   attribute descriptor, subgraph, updater), chosen at import time, and every
   change to ORDB made twice. The fuzz could compare it with the core across
   processes.
-
-Documentation: the Sphinx build was not verified after the switch to the
-native core.
