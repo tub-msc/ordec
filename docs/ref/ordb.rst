@@ -143,7 +143,7 @@ Inserters & indices
 
 .. autoclass:: CombinedIndex
 
-Index declarations are evaluated by the native core, so they use explicit forms rather than functions: ``sortkey`` names an int attribute (``Index(ref, sortkey=order)``), and :class:`ExternalRef` gets its subgraph from a path of attribute names (``of_subgraph=('root', 'ref_layers')``). Query results are ordered by nid, or by the sort attribute with ties by nid.
+Query results are ordered by nid, or by the ``sortkey`` value with ties by nid. ``sortkey`` and the ``of_subgraph`` function of :class:`ExternalRef` are evaluated natively when they only read a chain of attributes: ``lambda node: node.order`` (an int attribute), ``lambda c: c.root.ref_layers``, ``lambda c: c.subg`` and ``lambda c: c.ref.symbol`` (a LocalRef, then a SubgraphRef of its target). This is decided from the function's bytecode when the node type is created. Other functions are called per node, which is correct but slower.
 
 .. autoclass:: IndexQuery
 

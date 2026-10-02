@@ -36,7 +36,7 @@ class SymVertex(Node):
     x = Attr(int)
     y = Attr(int)
 
-    ref_idx = Index(ref, sortkey=order)
+    ref_idx = Index(ref, sortkey=lambda node: node.order)
 
 # Schematic-like subgraph (mirrors Schematic/Net/SchemInstance/InstanceConn)
 # --------------------------------------------------------------------------
@@ -59,7 +59,7 @@ class SchConn(Node):
     LocalRef to the instance, ExternalRef into the instance's symbol."""
     in_subgraphs = [SchRoot]
     ref = LocalRef(SchInst, optional=False)
-    pin = ExternalRef(SymPin, of_subgraph=('ref', 'sym'), optional=False)
+    pin = ExternalRef(SymPin, of_subgraph=lambda node: node.ref.sym, optional=False)
     net = LocalRef(SchNet, optional=False)
 
     ref_idx = Index(ref)
@@ -90,7 +90,7 @@ class LVertex(Node):
     x = Attr(int)
     y = Attr(int)
 
-    ref_idx = Index(ref, sortkey=order)
+    ref_idx = Index(ref, sortkey=lambda node: node.order)
 
 class LLabel(Node):
     in_subgraphs = [LayRoot]
@@ -159,7 +159,7 @@ class RNode(Node):
     target = LocalRef(CNode, optional=False)
     key = Attr(int)
     key_idx = Index(key, unique=True)
-    target_idx = Index(target, sortkey=key)
+    target_idx = Index(target, sortkey=lambda node: node.key)
 
 # Micro-benchmark subgraph (from the former tests/bench_ordb_index.py)
 # --------------------------------------------------------------------

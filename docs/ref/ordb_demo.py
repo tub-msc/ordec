@@ -211,7 +211,7 @@ class Ticket(SubgraphRoot):
 class TicketSegment(Node):
     in_subgraphs = [Ticket]
     
-    flight = ExternalRef(Flight, of_subgraph=('root', 'planet'))
+    flight = ExternalRef(Flight, of_subgraph=lambda c: c.root.planet)
     seat = Attr(str)
     
 myticket = Ticket(price=1999.0, planet=earth_frozen)

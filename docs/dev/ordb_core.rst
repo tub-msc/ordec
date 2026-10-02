@@ -99,8 +99,19 @@ opening; aborting an outer updater also undoes committed inner ones. Freezing
 or copying a subgraph with an open updater raises
 :class:`~ordec.core.ordb.OrdbException`.
 
-ExternalRef targets are checked in C when ``of_subgraph`` is
-``('root', name)``; other forms call ``ExternalRef.check_ref`` per node.
+When a node type is created, ``base.py`` reads the bytecode of the
+``sortkey`` and ``of_subgraph`` functions (``_attr_chain``). If a function
+only reads a chain of attributes from its argument, the core gets the
+attributes themselves: the position of the sort attribute
+(``lambda node: node.order``), or the start node of the ExternalRef (the
+root, the node itself or the target of one of its LocalRefs) and the
+SubgraphRef attribute to read there (``lambda c: c.root.ref_layers``,
+``lambda c: c.subg``, ``lambda c: c.ref.symbol``). The core then sorts and
+checks without calling Python; a root SubgraphRef is resolved once per
+commit. Any other function is called per node (sort keys at every index
+update and query result, ExternalRef functions at every check); a
+``tests/test_ordb.py`` test makes sure that the schema's functions take the
+native path, except the computed ones of ``SimHierarchy``.
 
 Maintenance
 -----------
@@ -250,8 +261,11 @@ Rejected alternatives:
 
 Decisions taken with the new core: C with the CPython API and no
 pure-Python fallback; transactions are not isolated (reads see uncommitted
-changes, freeze and copy are refused while an updater is open); explicit
-schema forms (``sortkey=order``, ``of_subgraph=('root', 'ref_layers')``);
+changes, freeze and copy are refused while an updater is open); the
+schema keeps its ``sortkey`` and ``of_subgraph`` lambdas, and the core
+evaluates attribute chains among them natively (calling every lambda per
+node cost 1.6x on sorted queries and 5x on GDS import; explicit forms such
+as ``of_subgraph=('root', 'ref_layers')`` were tried and dropped);
 ``Subgraph.nodes`` is a read-only view and ``Subgraph.index`` is gone;
 cursors are equal by (subgraph, nid); sorted index results break ties by
 nid.
@@ -272,8 +286,9 @@ Performance:
   per-node cost in user code.
 - ``arrays()`` always copies: strided zero-copy views for clean ``flat``
   tables, or leaves of any length ("extents") for bulk rows in ``paged``.
-- ExternalRef paths other than ``('root', name)`` are checked in Python;
-  ``SimHierarchy`` still uses a callable ``of_subgraph``.
+- ``of_subgraph`` chains of more than one reference
+  (``lambda c: c.instance.eref.symbol`` of ``SimPin``) and the computed
+  ones of ``SimHierarchy`` are called per node.
 - Tables whose rows are out of nid order are sorted on every ``all(T)`` until
   the next freeze.
 - Index entries take 24 bytes; 16 would do.
@@ -289,6 +304,10 @@ Portability and packaging:
 
 - ``__builtin_ctzll`` has no MSVC equivalent under that name; the core is
   only built and tested with gcc on Linux and Python 3.13 so far.
+- ``_attr_chain`` matches CPython bytecode, which changes between versions
+  (``LOAD_FAST_BORROW`` in 3.14 is accepted but untested). An unrecognized
+  form only makes the schema's lambdas slow, and
+  ``test_schema_lambdas_native`` fails.
 - Wheels for macOS and Windows, and builds against Python 3.11 and 3.12.
 - Optional: the Limited API (one abi3 wheel per platform). This needs heap
   types instead of the 12 static types, about 30 accesses to type object
@@ -303,11 +322,6 @@ Threads:
 
 Design questions:
 
-- Bringing back lambdas for index declarations (``sortkey=lambda node:
-  node.order``, ``of_subgraph=lambda c: c.root.ref_layers``), which read
-  better than attributes and name tuples. The core would call them per
-  node: to be costed is the Python call per insert (sort keys) and per
-  check (ExternalRef), for the affected types.
 - A portable pure-Python version for installs without a compiler: about
   1,500 to 2,000 lines, Python equivalents of the four C types (cursor,
   attribute descriptor, subgraph, updater), chosen at import time, and every

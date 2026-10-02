@@ -6,6 +6,8 @@ from collections.abc import Mapping
 from types import NoneType
 from dataclasses import dataclass
 from abc import ABC, ABCMeta, abstractmethod
+import dis
+import inspect
 import string
 import warnings
 from public import public
@@ -259,6 +261,33 @@ class SubgraphRef(Attr):
         
         return val
 
+# Opcodes that load the first argument of a function (3.14 adds the BORROW
+# variant).
+_LOAD_ARG_OPS = ('LOAD_FAST', 'LOAD_FAST_CHECK', 'LOAD_FAST_BORROW')
+
+def _attr_chain(fn) -> 'tuple[str]|NoneType':
+    """
+    Names of the attributes read by fn if fn does nothing but read a chain of
+    attributes from its single argument and return the result, e.g.
+    ('root', 'ref_layers') for lambda c: c.root.ref_layers. None for any
+    other callable.
+
+    This is decided from the bytecode, without calling fn: the core
+    evaluates sortkey and of_subgraph functions of this form natively and
+    calls all other functions per node.
+    """
+    code = getattr(fn, '__code__', None)
+    if code is None or code.co_argcount != 1 or code.co_kwonlyargcount:
+        return None
+    if code.co_flags & (inspect.CO_VARARGS | inspect.CO_VARKEYWORDS):
+        return None
+    ops = [i for i in dis.get_instructions(code) if i.opname not in ('RESUME', 'NOP')]
+    if len(ops) < 3 or ops[0].opname not in _LOAD_ARG_OPS or ops[0].argval != code.co_varnames[0]:
+        return None
+    if ops[-1].opname != 'RETURN_VALUE' or any(i.opname != 'LOAD_ATTR' for i in ops[1:-1]):
+        return None
+    return tuple(i.argval for i in ops[1:-1])
+
 @public
 class ExternalRef(Attr):
     """
@@ -271,46 +300,23 @@ class ExternalRef(Attr):
 
     Args:
         refs_ntype: The referenced node type.
-        of_subgraph: Path of attribute names from the current node to the
-            SubgraphRef, as tuple. The name 'root' at the start of the path
-            selects the subgraph root. Examples: ('root', 'ref_layers')
-            reads the SubgraphRef ref_layers of the root, ('ref', 'symbol')
-            follows the attribute ref, then reads symbol. A function
-            receiving the current node and returning the SubgraphRoot is
-            accepted too, but is called per node on insertion (slow).
+        of_subgraph: Function receiving the current node as argument and
+            returning the SubgraphRoot of the referenced subgraph by reading
+            the SubgraphRef that corresponds to this instance of the
+            ExternalRef. Plain attribute chains (lambda c: c.root.ref_layers,
+            lambda c: c.ref.symbol, lambda c: c.subg) are checked natively;
+            other functions are called per node on commit (slower).
         optional: Specifies whether the reference can be None.
     """
 
-    def __init__(self, refs_ntype: type, of_subgraph: 'tuple[str]|Callable[[Node], SubgraphRoot]', optional: bool = True):
+    def __init__(self, refs_ntype: type, of_subgraph: 'Callable[[Node], SubgraphRoot]', optional: bool = True):
         super().__init__(type=int, optional=optional)
+        if not callable(of_subgraph):
+            raise TypeError("of_subgraph must be a function, e.g. lambda c: c.root.ref_layers.")
         self.refs_ntype = refs_ntype
-        if isinstance(of_subgraph, tuple):
-            if not (of_subgraph and all(isinstance(n, str) for n in of_subgraph)):
-                raise TypeError("of_subgraph must be a non-empty tuple of attribute names.")
-        elif not callable(of_subgraph):
-            raise TypeError("of_subgraph must be a tuple of attribute names or a function.")
         self.of_subgraph = of_subgraph
         self.refcheck = lambda val: issubclass(val, refs_ntype)
         self.indices.append(ExternalRefIndex(self))
-
-    def root_attr_name(self) -> str|NoneType:
-        """Name of the root's SubgraphRef for of_subgraph=('root', name)."""
-        path = self.of_subgraph
-        if isinstance(path, tuple) and len(path) == 2 and path[0] == 'root':
-            return path[1]
-        return None
-
-    def subgraph_of(self, cursor: 'Node') -> 'SubgraphRoot|NoneType':
-        """The SubgraphRoot of the referenced subgraph, seen from cursor."""
-        path = self.of_subgraph
-        if not isinstance(path, tuple):
-            return path(cursor)
-        obj = cursor
-        for i, name in enumerate(path):
-            if obj is None:
-                return None
-            obj = obj.root if (i == 0 and name == 'root') else getattr(obj, name)
-        return obj
 
     def check_ref(self, sgu: 'SubgraphUpdater', node, nid):
         """
@@ -327,7 +333,7 @@ class ExternalRef(Attr):
             return
 
         cursor = sgu.cursor_at(nid, lookup_npath=False)
-        subgraph_root = self.subgraph_of(cursor)
+        subgraph_root = self.of_subgraph(cursor)
         if subgraph_root is None:
             refs_name = getattr(self.refs_ntype, '__name__', str(self.refs_ntype))
             raise ModelViolation(
@@ -355,7 +361,7 @@ class ExternalRef(Attr):
     def read_hook(self, value, cursor):
         if value is None:
             return None
-        return self.subgraph_of(cursor).cursor_at(value)
+        return self.of_subgraph(cursor).cursor_at(value)
 
     def factory(self, val: 'int|Node|NoneType'):
         if val is None:
@@ -420,12 +426,16 @@ class Index(GenericIndex):
     Args:
         attr: Indexed attribute.
         unique: At most one node may have each value (None excepted).
-        sortkey: int attribute by which query results are ordered (ties:
-            by nid). Without sortkey, results are ordered by nid.
+        sortkey: Function receiving the node value (NodeTuple) and returning
+            the int (or None) by which query results are ordered (ties: by
+            nid). Without sortkey, results are ordered by nid. A plain
+            attribute read (lambda node: node.order) is evaluated natively;
+            other functions are called per index update and per query
+            result (slower).
     """
-    def __init__(self, attr: Attr, unique:bool=False, sortkey: Attr=None):
-        if sortkey is not None and not isinstance(sortkey, Attr):
-            raise TypeError("sortkey must be an attribute (e.g. sortkey=order).")
+    def __init__(self, attr: Attr, unique:bool=False, sortkey: Callable=None):
+        if sortkey is not None and not callable(sortkey):
+            raise TypeError("sortkey must be a function, e.g. lambda node: node.order.")
         self.attr = attr
         self.unique = unique
         self.sortkey = sortkey
@@ -455,9 +465,9 @@ class Index(GenericIndex):
 
 @public
 class CombinedIndex(Index):
-    def __init__(self, attrs: list[Attr], unique:bool=False, sortkey: Attr=None):
-        if sortkey is not None and not isinstance(sortkey, Attr):
-            raise TypeError("sortkey must be an attribute (e.g. sortkey=order).")
+    def __init__(self, attrs: list[Attr], unique:bool=False, sortkey: Callable=None):
+        if sortkey is not None and not callable(sortkey):
+            raise TypeError("sortkey must be a function, e.g. lambda node: node.order.")
         self.attrs = attrs
         self.unique = unique
         self.sortkey = sortkey
@@ -686,8 +696,58 @@ def _read_mode(attr) -> int:
         return 1 # cursor at the stored nid
     return 2 # attr.read_hook(value, cursor)
 
+def _subgraph_refs(classes, name) -> 'tuple[SubgraphRef]|NoneType':
+    """The SubgraphRef attributes called name of the given node types, or
+    None if one of them has no such SubgraphRef."""
+    refs = tuple(getattr(c, '_raw_attrs', {}).get(name) for c in classes)
+    if refs and all(isinstance(a, SubgraphRef) for a in refs):
+        return refs
+    return None
+
+# Start node of a natively evaluated of_subgraph chain (else: position of a
+# LocalRef attribute of the node).
+_EXT_ROOT = -2
+_EXT_SELF = -1
+
+def _ext_native(cls, attr, by_name) -> 'tuple[int, tuple[SubgraphRef]]|NoneType':
+    """
+    The native form (start, SubgraphRefs) of an ExternalRef's of_subgraph, for
+    the attribute chains c.root.X, c.X and c.L.X (L a LocalRef of the node),
+    each ending in a SubgraphRef X. The core reads the SubgraphRef of the start
+    node that is one of the given attributes. None for other functions.
+    """
+    chain = _attr_chain(attr.of_subgraph)
+    if chain is None or len(chain) > 2:
+        return None
+    first_ad = by_name.get(chain[0])
+    first = first_ad.attr if first_ad else None
+    if len(chain) == 1:
+        if isinstance(first, SubgraphRef):
+            return _EXT_SELF, (first,)
+    elif first is None and chain[0] == 'root':
+        # Node.root, as no attribute of the node is called root.
+        refs = _subgraph_refs(cls.in_subgraphs, chain[1])
+        if refs:
+            return _EXT_ROOT, refs
+    elif isinstance(first, LocalRef) and isinstance(first.refs_ntype, type):
+        refs = _subgraph_refs((first.refs_ntype,), chain[1])
+        if refs:
+            return first_ad.index, refs
+    return None
+
+def _sort_native(index, by_name) -> 'int|NoneType':
+    """Position of the int attribute that the sortkey of index reads
+    (lambda node: node.order), or None if the sortkey must be called."""
+    chain = _attr_chain(index.sortkey)
+    if chain and len(chain) == 1 and chain[0] in by_name:
+        ad = by_name[chain[0]]
+        if _is_int_attr(ad.attr):
+            return ad.index
+    return None
+
 def _build_ntype(cls, ntuple, layout, attrdesc_by_attr, indices):
     """Describes a node type to the native core."""
+    by_name = {ad.name: ad for ad in layout}
     attrs = []
     for ad in layout:
         attr = ad.attr
@@ -699,7 +759,11 @@ def _build_ntype(cls, ntuple, layout, attrdesc_by_attr, indices):
         else:
             kind, width = _ordb.K_OBJ, 1
         ref_kind = 1 if isinstance(attr, LocalRef) else 2 if isinstance(attr, ExternalRef) else 0
-        root_name = attr.root_attr_name() if isinstance(attr, ExternalRef) else None
+        ext, ext_fn = None, None
+        if isinstance(attr, ExternalRef):
+            ext = _ext_native(cls, attr, by_name)
+            if ext is None:
+                ext_fn = attr.of_subgraph
         factory = type(attr).factory
         if factory is Attr.factory and attr.custom_factory is None and attr._default_typecheck:
             fmode = 0 # in C: default, then isinstance check
@@ -708,8 +772,8 @@ def _build_ntype(cls, ntuple, layout, attrdesc_by_attr, indices):
         else:
             fmode = 2 # attr.factory(value)
         attrs.append((ad.name, kind, width, attr.type if kind == _ordb.K_IVEC else None,
-            attr.optional, attr, _read_mode(attr), ref_kind, root_name,
-            fmode, attr.type, attr.default))
+            attr.optional, attr, _read_mode(attr), ref_kind, ext,
+            fmode, attr.type, attr.default, ext_fn))
 
     uses = []
     checks = []
@@ -724,15 +788,14 @@ def _build_ntype(cls, ntuple, layout, attrdesc_by_attr, indices):
             key_attrs = ns.attrs if combined else [ns.attr]
             if not all(a in position for a in key_attrs):
                 continue
-            if ns.sortkey is None:
-                sort = -1
-            elif ns.sortkey in position:
-                sort = position[ns.sortkey]
-            else:
-                raise TypeError(f"{cls.__name__}: sortkey of an index is not an attribute of the node type.")
+            sort, sortfn = -1, None
+            if ns.sortkey is not None:
+                sort = _sort_native(ns, by_name)
+                if sort is None:
+                    sort, sortfn = -1, ns.sortkey
             if ns.unique:
                 checks.append((0, len(uses)))
-            uses.append((ns, tuple(position[a] for a in key_attrs), sort, ns.unique, combined))
+            uses.append((ns, tuple(position[a] for a in key_attrs), sort, ns.unique, combined, sortfn))
     return _ordb.NType(ntuple, cls, attrs, uses, checks)
 
 #: Maps declared wire_ids to their Node classes (see ordec.core.wire). Node

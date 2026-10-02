@@ -858,7 +858,8 @@ def test_index_custom_sort():
         in_subgraphs=[MyHead]
         ref    = LocalRef(MyNode)
         order  = Attr(int)
-        idx_ref = Index(ref, sortkey=order)
+        idx_ref = Index(ref, sortkey=lambda node: node.order)
+        idx_desc = Index(ref, sortkey=lambda node: -node.order) # called per node
 
     s = MyHead()
     with s.updater() as u:
@@ -871,6 +872,7 @@ def test_index_custom_sort():
 
     index_values = s.all(MyItem.idx_ref.query(1), wrap_cursor=False)
     assert index_values == [99, 98, 100, 102, 101] # ordered by node.order
+    assert s.all(MyItem.idx_desc.query(1), wrap_cursor=False) == index_values[::-1]
 
 def test_subgraph_ntype():
     s = MyHead()
@@ -913,7 +915,7 @@ def test_cursor_externalref():
     class NodeExtRef(Node):
         in_subgraphs=[MyHead]
         subg = SubgraphRef(MyHead)
-        eref = ExternalRef(MyNode, of_subgraph=('subg',))
+        eref = ExternalRef(MyNode, of_subgraph=lambda c: c.subg)
 
     s1 = MyHead()
     s1.n1 = MyNode(label='hello')
@@ -930,7 +932,11 @@ def test_cursor_externalref():
     assert s3.e1.eref == s1.n1
     assert s3.e2.eref == s2.n1
 
-def test_externalref_validation():
+# The native check of attribute chains and the per-node call of other
+# functions must agree.
+@pytest.mark.parametrize('of_subg', [lambda c: c.subg, lambda c: getattr(c, 'subg')],
+    ids=['native', 'called'])
+def test_externalref_validation(of_subg):
     class NodeA(Node):
         in_subgraphs=[MyHead]
         text = Attr(str)
@@ -942,7 +948,7 @@ def test_externalref_validation():
     class NodeExtRef(Node):
         in_subgraphs=[MyHead]
         subg = SubgraphRef(MyHead)
-        eref = ExternalRef(NodeB, of_subgraph=('subg',))
+        eref = ExternalRef(NodeB, of_subgraph=of_subg)
 
     s_ref = MyHead()
     s_ref.a = NodeA(text='A')
@@ -964,7 +970,7 @@ def test_externalref_validation():
     class NodeExtRefMandatory(Node):
         in_subgraphs=[MyHead]
         subg = SubgraphRef(MyHead)
-        eref = ExternalRef(NodeB, of_subgraph=lambda c: c.subg, optional=False)
+        eref = ExternalRef(NodeB, of_subgraph=of_subg, optional=False)
 
     s.good = NodeExtRef(subg=s_ref, eref=s_ref.b.nid)
     s.good2 = NodeExtRefMandatory(subg=s_ref, eref=s_ref.b.nid)
@@ -974,11 +980,39 @@ def test_externalref_validation():
         s.bad_dangling = NodeExtRefMandatory(subg=s_ref, eref=dangling_ref)
     assert exc_info.value.nid == dangling_ref
 
+def test_schema_lambdas_native():
+    """All sortkey and of_subgraph functions of the ORDeC schema are attribute
+    chains evaluated natively, except the ones computing the subgraph."""
+    from ordec.core.ordb.base import _attr_chain, _ext_native, _sort_native
+
+    def subclasses(c):
+        for sc in c.__subclasses__():
+            yield sc
+            yield from subclasses(sc)
+
+    called = set()
+    for cls in set(subclasses(Node)):
+        if not cls.__module__.startswith('ordec.') or not cls.in_subgraphs:
+            continue
+        if cls.Tuple._cursor_type is not cls: # Mutable/Frozen variants
+            continue
+        by_name = cls.Tuple._attrdesc_by_name
+        for name, ad in by_name.items():
+            if isinstance(ad.attr, ExternalRef) and not _ext_native(cls, ad.attr, by_name):
+                called.add(f'{cls.__name__}.{name}')
+        for index in cls.Tuple.indices:
+            if isinstance(index, Index) and index.sortkey and _sort_native(index, by_name) is None:
+                called.add(f'{cls.__name__} sortkey')
+    assert called == {'SimInstance.eref', 'SimNet.eref', 'SimPin.eref'}
+
+    # Decided from the bytecode, not by calling the function:
+    assert _attr_chain(lambda c: c.a if isinstance(c, int) else c.b) is None
+
 def test_index_externalref_by_node():
     class NodeExtRef(Node):
         in_subgraphs=[MyHead]
         subg = SubgraphRef(MyHead)
-        eref = ExternalRef(MyNode, of_subgraph=('subg',))
+        eref = ExternalRef(MyNode, of_subgraph=lambda c: c.subg)
         eref_idx = Index(eref)
 
     s_ref = MyHead()

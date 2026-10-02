@@ -88,9 +88,9 @@ class DrcBox(Node):
     wire_id = WIRE_DOMAIN | 5
 
     item = LocalRef(DrcItem, optional=False)
+    item_idx = Index(item, sortkey=lambda node: node.order)
 
     order = Attr(int, default=0)
-    item_idx = Index(item, sortkey=order)
     tag = Attr(str, default='')
     rect = Attr(Rect4I, factory=coerce_tuple(Rect4I, 4))
 
@@ -102,9 +102,9 @@ class DrcEdge(Node):
     wire_id = WIRE_DOMAIN | 6
 
     item = LocalRef(DrcItem, optional=False)
+    item_idx = Index(item, sortkey=lambda node: node.order)
 
     order = Attr(int, default=0)
-    item_idx = Index(item, sortkey=order)
     tag = Attr(str, default='')
     p1 = Attr(Vec2I, factory=coerce_tuple(Vec2I, 2))
     p2 = Attr(Vec2I, factory=coerce_tuple(Vec2I, 2))
@@ -117,9 +117,9 @@ class DrcEdgePair(Node):
     wire_id = WIRE_DOMAIN | 7
 
     item = LocalRef(DrcItem, optional=False)
+    item_idx = Index(item, sortkey=lambda node: node.order)
 
     order = Attr(int, default=0)
-    item_idx = Index(item, sortkey=order)
     tag = Attr(str, default='')
     edge1_p1 = Attr(Vec2I, factory=coerce_tuple(Vec2I, 2))
     edge1_p2 = Attr(Vec2I, factory=coerce_tuple(Vec2I, 2))
@@ -141,9 +141,9 @@ class DrcPoly(DrcPolyBase):
     vertex_cls = PolyVec2I
 
     item = LocalRef(DrcItem, optional=False)
+    item_idx = Index(item, sortkey=lambda node: node.order)
 
     order = Attr(int, default=0)
-    item_idx = Index(item, sortkey=order)
 
 
 class DrcPathBase(GenericPolyI):
@@ -162,9 +162,9 @@ class DrcPath(DrcPathBase):
     vertex_cls = PolyVec2I
 
     item = LocalRef(DrcItem, optional=False)
+    item_idx = Index(item, sortkey=lambda node: node.order)
 
     order = Attr(int, default=0)
-    item_idx = Index(item, sortkey=order)
 
 
 @public
@@ -174,9 +174,9 @@ class DrcText(Node):
     wire_id = WIRE_DOMAIN | 10
 
     item = LocalRef(DrcItem, optional=False)
+    item_idx = Index(item, sortkey=lambda node: node.order)
 
     order = Attr(int, default=0)
-    item_idx = Index(item, sortkey=order)
     tag = Attr(str, default='')
     pos = Attr(Vec2I, factory=coerce_tuple(Vec2I, 2))
     text = Attr(str)
@@ -189,9 +189,9 @@ class DrcValue(Node):
     wire_id = WIRE_DOMAIN | 11
 
     item = LocalRef(DrcItem, optional=False)
+    item_idx = Index(item, sortkey=lambda node: node.order)
 
     order = Attr(int, default=0)
-    item_idx = Index(item, sortkey=order)
     tag = Attr(str, default='')
     value = Attr(str)
 

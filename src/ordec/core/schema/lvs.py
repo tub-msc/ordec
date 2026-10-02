@@ -114,7 +114,7 @@ class LvsItem(Node):
     # Schematic side: Net for pins/nets, SchemInstance for devices.
     # Only resolves when circuit.ref_schematic is set (top-level circuit).
     schem = ExternalRef(Net|SchemInstance,
-        of_subgraph=('circuit', 'ref_schematic'),
+        of_subgraph=lambda c: c.circuit.ref_schematic,
         optional=True)
 
     message = Attr(str, optional=True)

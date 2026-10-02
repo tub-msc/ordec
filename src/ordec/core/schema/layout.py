@@ -99,7 +99,7 @@ class RoutingSpecLayer(Node):
     in_subgraphs = [RoutingSpec]
     wire_id = WIRE_DOMAIN | 4
 
-    layer = ExternalRef(Layer, of_subgraph=('root', 'ref_layers'), optional=False)
+    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
 
     #: route_id determines the routing order. To route from layer n to layer m
     #: (m > n), all layers with route_ids x where m > x > n must be traversed.
@@ -151,7 +151,7 @@ class LayoutLabel(Node):
     in_subgraphs = [Layout]
     wire_id = WIRE_DOMAIN | 6
 
-    layer = ExternalRef(Layer, of_subgraph=('root', 'ref_layers'))
+    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers)
     pos = ConstrainableAttr(Vec2I, factory=coerce_tuple(Vec2I, 2),
         placeholder=Vec2LinearTerm)
     text = Attr(str)
@@ -169,14 +169,14 @@ class LayoutPoly(GenericPolyI, MixinClosedPolygon, MixinLayoutPinnable):
     in_subgraphs = [Layout]
     wire_id = WIRE_DOMAIN | 7
 
-    layer = ExternalRef(Layer, of_subgraph=('root', 'ref_layers'))
+    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers)
 
 class LayoutPathBase(GenericPolyI):
     endtype = Attr(PathEndType, default=PathEndType.Flush, optional=False)
     ext_bgn = Attr(int) #: Mandatory if endtype is PathEndType.Custom, else ignored.
     ext_end = Attr(int) #: Mandatory if endtype is PathEndType.Custom, else ignored.
     width = Attr(int)
-    layer = ExternalRef(Layer, of_subgraph=('root', 'ref_layers'), optional=False)
+    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
 
     def __new__(cls, *args, **kwargs):
         if (kwargs.get('ext_bgn') is not None) or (kwargs.get('ext_end') is not None):
@@ -203,7 +203,7 @@ class LayoutRect(Node, MixinLayoutPinnable):
     wire_id = WIRE_DOMAIN | 9
     arrayable = True
 
-    layer = ExternalRef(Layer, of_subgraph=('root', 'ref_layers'))
+    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers)
     rect = ConstrainableAttr(Rect4I, factory=coerce_tuple(Rect4I, 4),
         placeholder=Rect4LinearTerm)
 
@@ -440,7 +440,7 @@ class LayoutPin(Node):
         refcheck_custom=lambda val: issubclass(val, (LayoutPoly, LayoutRect, LayoutPath)),
         )
     pin = ExternalRef(Pin,
-        of_subgraph=('root', 'symbol'),
+        of_subgraph=lambda c: c.root.symbol,
         optional=False,
         )
 

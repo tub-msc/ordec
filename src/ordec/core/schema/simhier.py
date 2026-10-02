@@ -369,7 +369,7 @@ class SimPin(Node):
         refcheck_custom=lambda val: issubclass(val, SimInstance))
 
     eref = ExternalRef(Pin,
-        of_subgraph=('instance', 'eref', 'symbol'),
+        of_subgraph=lambda c: c.instance.eref.symbol,
         optional=False)
 
     #: Simulated pin current as a SimColumn, or None if not recorded.

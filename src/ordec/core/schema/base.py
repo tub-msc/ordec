@@ -205,7 +205,7 @@ class PolyVec2R(Node):
     order   = Attr(int, optional=False) #: Order of the point in the polygonal chain
     pos     = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
 
-    ref_idx = Index(ref, sortkey=order)
+    ref_idx = Index(ref, sortkey=lambda node: node.order)
     pos_idx = Index(pos)
 
 @public
@@ -218,7 +218,7 @@ class PolyVec2I(Node):
     pos     = ConstrainableAttr(Vec2I, factory=coerce_tuple(Vec2I, 2),
         placeholder=Vec2LinearTerm)
 
-    ref_idx = Index(ref, sortkey=order)
+    ref_idx = Index(ref, sortkey=lambda node: node.order)
 
 GenericPolyR.vertex_cls = PolyVec2R
 GenericPolyI.vertex_cls = PolyVec2I

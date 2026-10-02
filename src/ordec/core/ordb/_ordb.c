@@ -92,7 +92,13 @@ typedef struct {
     PyObject *attr; // Attr object
     PyObject *vtype; // K_IVEC: value type (tuple subclass)
     PyObject *refcache; // refs: dict NType -> bool, results of attr.refcheck
-    PyObject *root_name; // ExternalRef with of_subgraph=('root', name)
+    // ExternalRef: the target subgraph is held by the attribute of the start
+    // node (ext_start: EXT_ROOT, EXT_SELF or the position of a LocalRef of
+    // the node) that is one of ext_refs (SubgraphRef Attr objects). Without
+    // ext_refs, the of_subgraph function subfn is called per node.
+    PyObject *ext_refs;
+    PyObject *subfn;
+    int ext_start;
     PyObject *ftype; // F_PLAIN: values must be instances of ftype
     PyObject *fdefault; // F_PLAIN: value used for None
     int kind, width, slot; // slot: first slot in the record (>= 1)
@@ -104,6 +110,7 @@ typedef struct {
     int nkey;
     int key[MAXKEY]; // attribute positions
     int sort; // attribute position of the sort value or -1
+    PyObject *sortfn; // sortkey function (called with the NodeTuple) or NULL
     int unique, combined;
 } IdxUse;
 
@@ -141,9 +148,13 @@ ntype_traverse(NType *nt, visitproc visit, void *arg)
         Py_VISIT(nt->attrs[i].refcache);
         Py_VISIT(nt->attrs[i].ftype);
         Py_VISIT(nt->attrs[i].fdefault);
+        Py_VISIT(nt->attrs[i].subfn);
+        Py_VISIT(nt->attrs[i].ext_refs);
     }
-    for (int i = 0; i < nt->nuse; i++)
+    for (int i = 0; i < nt->nuse; i++) {
         Py_VISIT(nt->uses[i].index);
+        Py_VISIT(nt->uses[i].sortfn);
+    }
     return 0;
 }
 
@@ -161,9 +172,13 @@ ntype_clear(NType *nt)
         Py_CLEAR(nt->attrs[i].refcache);
         Py_CLEAR(nt->attrs[i].ftype);
         Py_CLEAR(nt->attrs[i].fdefault);
+        Py_CLEAR(nt->attrs[i].subfn);
+        Py_CLEAR(nt->attrs[i].ext_refs);
     }
-    for (int i = 0; i < nt->nuse; i++)
+    for (int i = 0; i < nt->nuse; i++) {
         Py_CLEAR(nt->uses[i].index);
+        Py_CLEAR(nt->uses[i].sortfn);
+    }
     return 0;
 }
 
@@ -172,10 +187,8 @@ ntype_dealloc(NType *nt)
 {
     PyObject_GC_UnTrack(nt);
     ntype_clear(nt);
-    for (int i = 0; i < nt->nattr; i++) {
+    for (int i = 0; i < nt->nattr; i++)
         Py_XDECREF(nt->attrs[i].name);
-        Py_XDECREF(nt->attrs[i].root_name);
-    }
     PyMem_Free(nt->attrs);
     PyMem_Free(nt->uses);
     PyMem_Free(nt->checks);
@@ -184,8 +197,9 @@ ntype_dealloc(NType *nt)
 
 // NType(tuple_cls, cursor_type, attrs, uses, checks)
 //   attrs: [(name, kind, width, vtype, optional, attr, read_mode, ref_kind,
-//       root_name, fmode, ftype, fdefault)]
-//   uses: [(index, key_positions, sort_position, unique, combined)]
+//       ext, fmode, ftype, fdefault, subfn)]
+//   ext: None or (start, tuple of SubgraphRef attributes)
+//   uses: [(index, key_positions, sort_position, unique, combined, sortfn)]
 //   checks: [(kind, i)], in the order in which they are run
 static PyObject *
 ntype_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
@@ -214,11 +228,11 @@ ntype_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
     int slot = 1;
     for (int i = 0; i < nt->nattr; i++) {
         AttrInfo *ai = &nt->attrs[i];
-        PyObject *name, *vtype, *attr, *root_name, *ftype, *fdefault;
-        if (!PyArg_ParseTuple(PyList_GET_ITEM(attrs, i), "UiiOpOiiOiOO", &name,
+        PyObject *name, *vtype, *attr, *ext, *ftype, *fdefault, *subfn;
+        if (!PyArg_ParseTuple(PyList_GET_ITEM(attrs, i), "UiiOpOiiOiOOO", &name,
                 &ai->kind, &ai->width, &vtype, &ai->optional, &attr,
-                &ai->read_mode, &ai->ref_kind, &root_name, &ai->fmode, &ftype,
-                &fdefault)) {
+                &ai->read_mode, &ai->ref_kind, &ext, &ai->fmode, &ftype,
+                &fdefault, &subfn)) {
             Py_DECREF(nt);
             return NULL;
         }
@@ -229,7 +243,16 @@ ntype_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
             nt->ref_attr = i;
         ai->attr = Py_NewRef(attr);
         ai->vtype = vtype == Py_None ? NULL : Py_NewRef(vtype);
-        ai->root_name = root_name == Py_None ? NULL : Py_NewRef(root_name);
+        if (ext != Py_None) {
+            PyObject *refs;
+            if (!PyArg_ParseTuple(ext, "iO!", &ai->ext_start, &PyTuple_Type,
+                    &refs)) {
+                Py_DECREF(nt);
+                return NULL;
+            }
+            ai->ext_refs = Py_NewRef(refs);
+        }
+        ai->subfn = subfn == Py_None ? NULL : Py_NewRef(subfn);
         if (ai->ref_kind != REF_NONE) {
             ai->refcache = PyDict_New();
             if (!ai->refcache) {
@@ -253,9 +276,10 @@ ntype_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
     }
     for (int i = 0; i < nt->nuse; i++) {
         IdxUse *u = &nt->uses[i];
-        PyObject *index, *key;
-        if (!PyArg_ParseTuple(PyList_GET_ITEM(uses, i), "OO!ipp", &index,
-                &PyTuple_Type, &key, &u->sort, &u->unique, &u->combined)) {
+        PyObject *index, *key, *sortfn;
+        if (!PyArg_ParseTuple(PyList_GET_ITEM(uses, i), "OO!ippO", &index,
+                &PyTuple_Type, &key, &u->sort, &u->unique, &u->combined,
+                &sortfn)) {
             Py_DECREF(nt);
             return NULL;
         }
@@ -283,6 +307,7 @@ ntype_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
             return NULL;
         }
         u->index = Py_NewRef(index);
+        u->sortfn = sortfn == Py_None ? NULL : Py_NewRef(sortfn);
     }
     for (int i = 0; i < nt->ncheck; i++) {
         CheckItem *c = &nt->checks[i];
@@ -1093,7 +1118,28 @@ rec_hs(const Rec *r, const IdxUse *u, uint64_t *h, int64_t *s)
         *h = acc;
     }
     *s = 0;
-    if (u->sort >= 0) {
+    if (u->sortfn) {
+        PyObject *t = rec_load(r);
+        if (!t)
+            return -1;
+        PyObject *v = PyObject_CallOneArg(u->sortfn, t);
+        Py_DECREF(t);
+        if (!v)
+            return -1;
+        // None sorts like a None int attribute.
+        if (v != Py_None && !PyLong_Check(v)) {
+            PyErr_Format(PyExc_TypeError,
+                "sortkey must return an int or None, not %.100s.",
+                Py_TYPE(v)->tp_name);
+            Py_DECREF(v);
+            return -1;
+        }
+        long long x = v == Py_None ? SLOT_NONE : PyLong_AsLongLong(v);
+        Py_DECREF(v);
+        if (x == -1 && PyErr_Occurred())
+            return -1;
+        *s = x == SLOT_BOXED ? 0 : x;
+    } else if (u->sort >= 0) {
         slot_t v = r->s[r->nt->attrs[u->sort].slot];
         *s = v == SLOT_BOXED ? 0 : v;
     }
@@ -2143,6 +2189,35 @@ refcheck(AttrInfo *ai, NType *target)
     return ok;
 }
 
+static Sg *call_subfn(PyObject *fn, Sg *sg, int64_t nid);
+
+#define EXT_ROOT (-2)
+#define EXT_SELF (-1)
+
+// The subgraph in the SubgraphRef of node nid that is one of the attributes
+// refs (borrowed from the storage), or NULL.
+static Sg *
+subref_target(const State *st, int64_t nid, PyObject *refs)
+{
+    int ti;
+    const slot_t *p = nid >= 0 ? st_row(st, nid, &ti) : NULL;
+    if (!p)
+        return NULL;
+    const NType *nt = st->tabs[ti].nt;
+    for (int a = 0; a < nt->nattr; a++) {
+        const AttrInfo *ai = &nt->attrs[a];
+        if (ai->kind != K_OBJ)
+            continue;
+        for (Py_ssize_t k = 0; k < PyTuple_GET_SIZE(refs); k++) {
+            if (PyTuple_GET_ITEM(refs, k) == ai->attr) {
+                PyObject *o = (PyObject *)p[ai->slot];
+                return o && PyObject_TypeCheck(o, &Sg_Type) ? (Sg *)o : NULL;
+            }
+        }
+    }
+    return NULL;
+}
+
 // Deferred constraint checks of a transaction. The core only decides
 // "fine" on its fast paths; everything else goes to base.py, which raises.
 static int
@@ -2220,29 +2295,26 @@ txn_check(Sg *sg, Txn *tx, PyObject *sgu)
                 }
                 // ExternalRef
                 int ok = 0;
-                if (ai->root_name && v >= 0) {
+                if (ai->ext_refs && v >= 0) {
                     Sg *target = NULL;
-                    int e;
-                    for (e = 0; e < next && ext_attr[e] != ai; e++)
-                        ;
-                    if (e < next) {
-                        target = ext_sg[e];
-                    } else {
-                        const slot_t *rp = st_row(st, 0, &rti);
-                        for (int a = 0; rp && a < root_nt->nattr; a++) {
-                            const AttrInfo *ra = &root_nt->attrs[a];
-                            if (ra->kind == K_OBJ && PyUnicode_Compare(
-                                    ra->name, ai->root_name) == 0) {
-                                PyObject *o = (PyObject *)rp[ra->slot];
-                                if (o && PyObject_TypeCheck(o, &Sg_Type))
-                                    target = (Sg *)o;
-                                break;
+                    if (ai->ext_start == EXT_ROOT) {
+                        // Same root for all nodes: resolved once per commit.
+                        int e;
+                        for (e = 0; e < next && ext_attr[e] != ai; e++)
+                            ;
+                        if (e < next) {
+                            target = ext_sg[e];
+                        } else {
+                            target = subref_target(st, 0, ai->ext_refs);
+                            if (target && next < 8) {
+                                ext_attr[next] = ai;
+                                ext_sg[next++] = target;
                             }
                         }
-                        if (target && next < 8) {
-                            ext_attr[next] = ai;
-                            ext_sg[next++] = target;
-                        }
+                    } else {
+                        int64_t start = ai->ext_start == EXT_SELF ? nid
+                            : p[nt->attrs[ai->ext_start].slot];
+                        target = subref_target(st, start, ai->ext_refs);
                     }
                     int tti;
                     if (target && st_row(&target->st, v, &tti)) {
@@ -2250,6 +2322,16 @@ txn_check(Sg *sg, Txn *tx, PyObject *sgu)
                         if (ok < 0)
                             return -1;
                     }
+                } else if (ai->subfn && v >= 0) {
+                    Sg *target = call_subfn(ai->subfn, sg, nid);
+                    if (!target && PyErr_Occurred())
+                        return -1;
+                    int tti;
+                    if (target && st_row(&target->st, v, &tti))
+                        ok = refcheck(ai, target->st.tabs[tti].nt);
+                    Py_XDECREF(target);
+                    if (ok < 0)
+                        return -1;
                 }
                 if (!ok && call_check(CB_EXTERNALREF, sgu, nid, ai->attr) < 0)
                     return -1;
@@ -2322,6 +2404,28 @@ typedef struct {
     int64_t nid; // -1: no node (PathNode)
     int64_t npath; // nid of the NPath, NPATH_NONE or NPATH_UNRESOLVED
 } NodeObj;
+
+static PyObject *sg_cursor(Sg *sg, int64_t nid, int64_t npath);
+
+// Calls an of_subgraph function for the node nid. Returns the subgraph of
+// the SubgraphRoot it returns (new reference), NULL with no error if it
+// returned something else, NULL with error on failure.
+static Sg *
+call_subfn(PyObject *fn, Sg *sg, int64_t nid)
+{
+    PyObject *c = sg_cursor(sg, nid, NPATH_NONE);
+    if (!c)
+        return NULL;
+    PyObject *r = PyObject_CallOneArg(fn, c);
+    Py_DECREF(c);
+    if (!r)
+        return NULL;
+    Sg *target = NULL;
+    if (PyObject_TypeCheck(r, &Node_Type) && ((NodeObj *)r)->nid == 0)
+        target = (Sg *)Py_NewRef(((NodeObj *)r)->sg);
+    Py_DECREF(r);
+    return target;
+}
 
 static PyObject *
 node_make(PyObject *cls, Sg *sg, int64_t nid, int64_t npath)
