@@ -1823,12 +1823,10 @@ class FrozenSubgraph(Subgraph):
 
     def compact(self) -> 'FrozenSubgraph':
         """
-        Return a content-equal FrozenSubgraph with compacted storage (no
-        tombstones, tables in nid order, one run per index).
+        Return a content-equal FrozenSubgraph. Storage needs no compaction
+        (tables keyed by nid, exact indices); kept for compatibility.
         """
-        ret = self._snapshot(FrozenSubgraph, True)
-        ret._compact()
-        return ret
+        return self._snapshot(FrozenSubgraph, True)
 
     def __eq__(self, other):
         if not isinstance(other, FrozenSubgraph):

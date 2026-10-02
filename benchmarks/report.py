@@ -5,7 +5,7 @@
 Benchmark report tool: merge result JSON files (possibly from different
 worlds, e.g. Python and Zig) and print per-workload comparison tables.
 
-    python -m benchmarks.report results/*.json --baseline paged
+    python -m benchmarks.report results/*.json --baseline keyed
     python -m benchmarks.report results/*.json --stat median --format csv
 """
 
@@ -169,7 +169,7 @@ def report(records, baseline, stat, fmt, out=sys.stdout):
 def main(argv=None):
     parser = argparse.ArgumentParser(prog='python -m benchmarks.report')
     parser.add_argument('files', nargs='+')
-    parser.add_argument('--baseline', default='paged')
+    parser.add_argument('--baseline', default='keyed')
     parser.add_argument('--stat', default='min', choices=['min', 'median'])
     parser.add_argument('--format', default='md', choices=['md', 'csv'])
     parser.add_argument('--html', metavar='FILE',

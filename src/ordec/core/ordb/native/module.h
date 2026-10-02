@@ -4,18 +4,18 @@
 // Native core of ORDB (see docs/ref/ordb.rst and docs/dev/ordb_core.rst).
 //
 // A subgraph state consists of:
-// - one table per node type: records of 8-byte slots, slot 0 is the nid
-//   (tombstone: -1 - nid), followed by the attribute slots,
-// - the nid directory: per nid the location (table, row) and the number of
-//   LocalRefs pointing at it,
+// - one table per node type: a persistent sparse array keyed by nid (the
+//   "keyed" engine) of records of 8-byte slots, slot 0 is the nid,
+//   followed by the attribute slots,
+// - the nid directory: per nid the table and the number of LocalRefs
+//   pointing at it, a persistent vector,
 // - per index a persistent B+tree with exactly one entry (h, s, nid) per
 //   indexed live node.
 //
-// Tables and the directory are persistent vectors of small pages (the
-// "paged" engine, see store.h): snapshots share pages, a transaction keeps
-// the previous state, and abort swaps it back.
+// All three are persistent trees (see store.h): snapshots share nodes, a
+// transaction keeps the previous state, and abort swaps it back.
 //
-// Files: store.h/store.c (persistent vectors, index trees), engine.c (state,
+// Files: store.h/store.c (tables, directory, index trees), engine.c (state,
 // records, node operations, transactions and checks), index.c (indices),
 // and one file per Python type: ntype.c, cursor.c, subgraph.c, updater.c.
 // module.c defines the globals and initializes the module. This header holds
@@ -48,8 +48,7 @@
 #define SLOT_NONE INT64_MIN
 #define SLOT_BOXED (INT64_MIN + 1)
 
-#define ENGINE_PAGED 0 // tables: vectors of rows in 16-row pages
-#define ENGINE_KEYED 1 // tables: sparse arrays keyed by nid
+#define ENGINE_KEYED 0 // the only engine so far; the selection stays
 
 #define K_INT 0 // int64 slot (int, LocalRef, ExternalRef)
 #define K_IVEC 1 // width int64 slots (Vec2I, Rect4I)
@@ -87,10 +86,9 @@
 #define MAXWIDTH 8 // slots of one attribute
 #define H_NONE 0x9E3779B97F4A7C15ull
 
-#define DIR_DEAD ((slot_t)1 << 62)
-#define DIR_TAB(loc) ((int)(((loc) & ~DIR_DEAD) >> 40) - 1)
-#define DIR_ROW(loc) ((uint64_t)((loc) & (((slot_t)1 << 40) - 1)))
-#define DIR_LOC(ti, row) ((((slot_t)(ti) + 1) << 40) | (slot_t)(row))
+// Directory record of a nid: [table + 1 (0: no node), inbound LocalRefs].
+#define DIR_TAB(loc) ((int)(loc) - 1)
+#define DIR_LOC(ti) ((slot_t)(ti) + 1)
 #define DIR_MAX_GAP ((int64_t)1 << 24)
 
 // The limited API has no static types. Like static types, the heap types
@@ -163,11 +161,8 @@ typedef struct {
 
 typedef struct {
     NType *nt;
-    Vec rows; // paged
-    KMap map; // keyed
+    KMap rows;
     uint64_t live;
-    int64_t last_nid; // paged: nid of the last appended row
-    int sorted; // paged: rows are in ascending nid order
 } Tab;
 
 typedef struct {
@@ -185,8 +180,7 @@ typedef struct {
 } IdxKey;
 
 typedef struct {
-    Vec dir; // records [loc, refs]; keyed: loc holds the table only
-    int keyed; // engine: ENGINE_KEYED tables
+    Vec dir; // records [table + 1, refs]
     Tab *tabs;
     int ntab;
     Idx *idxs;
@@ -298,31 +292,19 @@ static inline const slot_t *
 st_row(const State *st, int64_t nid, int *ti)
 {
     const slot_t *d = st_dir(st, nid);
-    if (!d || d[0] <= 0 || (d[0] & DIR_DEAD))
+    if (!d || d[0] <= 0)
         return NULL;
     *ti = DIR_TAB(d[0]);
-    if (st->keyed)
-        return kmap_get(&st->tabs[*ti].map, nid);
-    return vec_get(&st->tabs[*ti].rows, DIR_ROW(d[0]));
+    return kmap_get(&st->tabs[*ti].rows, nid);
 }
 
-// The next live row of table ti after position *pos (start with -1): row
-// order (paged) or nid order (keyed). Each call looks the table up again,
-// so the loop may run Python code between calls.
+// The row of table ti with the smallest nid > *nid (start with -1), which
+// becomes the new *nid. Each call looks the table up again, so the loop may
+// run Python code between calls.
 static inline const slot_t *
-tab_next(const State *st, int ti, int64_t *pos)
+tab_next(const State *st, int ti, int64_t *nid)
 {
-    if (ti >= st->ntab)
-        return NULL;
-    const Tab *t = &st->tabs[ti];
-    if (st->keyed)
-        return kmap_next(&t->map, *pos, pos);
-    for ((*pos)++; (uint64_t)*pos < t->rows.count; (*pos)++) {
-        const slot_t *p = vec_get(&t->rows, (uint64_t)*pos);
-        if (p[0] >= 0)
-            return p;
-    }
-    return NULL;
+    return ti < st->ntab ? kmap_next(&st->tabs[ti].rows, *nid, nid) : NULL;
 }
 
 // The int64 slot value of an exact int that is representable unboxed.
@@ -366,7 +348,7 @@ mix_ints(int n, const slot_t *x)
 // ---------------------------------------------------------------------------
 
 // engine.c
-void state_init(State *st, int keyed);
+void state_init(State *st);
 int state_copy(State *dst, const State *src);
 int st_add_idx(State *st, PyObject *index, int combined);
 void state_release(State *st);
@@ -390,8 +372,6 @@ int op_update(Sg *sg, int64_t nid, PyObject *node);
 int op_insert_rows(Sg *sg, NType *nt, const int64_t *nids, Py_ssize_t n,
     const int64_t **cols);
 const slot_t **tab_rows_sorted(const State *st, int ti, uint64_t *n_out);
-int tab_compact(Sg *sg, int ti);
-int sg_maintain(Sg *sg, int freezing);
 Txn *txn_begin(Sg *sg);
 void txn_abort(Sg *sg, Txn *tx);
 Sg *ext_target(const State *st, const NType *nt, const AttrInfo *ai,

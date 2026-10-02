@@ -13,17 +13,17 @@ static PyObject *
 sg_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 {
     static char *kwlist[] = {"engine", NULL};
-    int engine = ENGINE_PAGED;
+    int engine = ENGINE_KEYED;
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "|i", kwlist, &engine))
         return NULL;
-    if (engine != ENGINE_PAGED && engine != ENGINE_KEYED) {
+    if (engine != ENGINE_KEYED) {
         PyErr_Format(PyExc_ValueError, "Unknown storage engine %d.", engine);
         return NULL;
     }
     Sg *sg = (Sg *)PyType_GenericAlloc(type, 0);
     if (!sg)
         return NULL;
-    state_init(&sg->st, engine == ENGINE_KEYED);
+    state_init(&sg->st);
     sg->tok = ++g_token;
     sg->wire_hash = Py_NewRef(Py_None);
     sg->arrays_memo = Py_NewRef(Py_None);
@@ -38,7 +38,6 @@ sg_traverse(Sg *sg, visitproc visit, void *arg)
     Py_VISIT(st->dir.root);
     for (int i = 0; i < st->ntab; i++) {
         Py_VISIT(st->tabs[i].rows.root);
-        Py_VISIT(st->tabs[i].map.root);
         Py_VISIT(st->tabs[i].nt);
     }
     for (int i = 0; i < st->nidx; i++) {
@@ -167,7 +166,7 @@ sg_nids(Sg *sg, PyObject *args)
         Py_ssize_t k = 0;
         for (uint64_t i = 0; i < st->dir.count; i++) {
             const slot_t *d = vec_get(&st->dir, i);
-            if (!d || d[0] <= 0 || (d[0] & DIR_DEAD))
+            if (!d || d[0] <= 0)
                 continue;
             PyObject *x = PyLong_FromUnsignedLongLong(i);
             if (!x) {
@@ -271,7 +270,7 @@ sg_get_nid_alloc(Sg *sg, void *closure)
 static PyObject *
 sg_get_engine(Sg *sg, void *closure)
 {
-    return PyUnicode_FromString(sg->st.keyed ? "keyed" : "paged");
+    return PyUnicode_FromString("keyed");
 }
 
 static PyObject *
@@ -305,22 +304,14 @@ sg_snapshot(Sg *sg, PyObject *args)
     }
     if (sg_no_txn(sg, frozen ? "freeze" : "copy") < 0)
         return NULL;
-    if (!sg->frozen) {
-        if (sg_write_begin(sg) < 0)
-            return NULL;
-        int r = sg_maintain(sg, frozen);
-        sg_write_end(sg);
-        if (r < 0)
-            return NULL;
-    }
     Sg *n = (Sg *)PyType_GenericAlloc((PyTypeObject *)cls, 0);
     if (!n)
         return NULL;
-    state_init(&n->st, sg->st.keyed);
+    state_init(&n->st);
     n->wire_hash = Py_NewRef(Py_None);
     n->arrays_memo = Py_NewRef(Py_None);
     if (state_copy(&n->st, &sg->st) < 0) {
-        state_init(&n->st, sg->st.keyed);
+        state_init(&n->st);
         Py_DECREF(n);
         return NULL;
     }
@@ -339,20 +330,6 @@ sg_set_nid_start(Sg *sg, PyObject *arg)
         return NULL;
     sg->st.nid_start = v;
     sg->hash_valid = 0;
-    Py_RETURN_NONE;
-}
-
-static PyObject *
-sg_compact(Sg *sg, PyObject *noarg)
-{
-    if (sg_no_txn(sg, "compact") < 0 || sg_write_begin(sg) < 0)
-        return NULL;
-    int r = 0;
-    for (int ti = 0; ti < sg->st.ntab && r == 0; ti++)
-        r = tab_compact(sg, ti);
-    sg_write_end(sg);
-    if (r < 0)
-        return NULL;
     Py_RETURN_NONE;
 }
 
@@ -459,10 +436,8 @@ sg_content_eq(Sg *a, PyObject *arg)
                 continue;
             Py_RETURN_FALSE;
         }
-        if (sa->keyed == sb->keyed && sa->boxed == sb->boxed
-                && (sa->keyed ? sa->tabs[ti].map.root == sb->tabs[tj].map.root
-                    : sa->tabs[ti].rows.root == sb->tabs[tj].rows.root
-                    && sa->tabs[ti].rows.count == sb->tabs[tj].rows.count))
+        if (sa->tabs[ti].rows.root == sb->tabs[tj].rows.root
+                && sa->boxed == sb->boxed)
             continue; // shared storage
         int64_t pos = -1;
         for (const slot_t *p; (p = tab_next(sa, ti, &pos));) {
@@ -632,14 +607,11 @@ static PyObject *
 sg_stats(Sg *sg, PyObject *noarg)
 {
     const State *st = &sg->st;
-    uint64_t rows = 0, entries = 0;
-    for (int i = 0; i < st->ntab; i++)
-        rows += st->keyed ? st->tabs[i].live : st->tabs[i].rows.count;
+    uint64_t entries = 0;
     for (int i = 0; i < st->nidx; i++)
         entries += st->idxs[i].tree.count;
-    return Py_BuildValue("{s:K,s:K,s:i,s:i,s:K,s:K}",
+    return Py_BuildValue("{s:K,s:i,s:i,s:K,s:K}",
         "nodes", (unsigned long long)st->nlive,
-        "rows", (unsigned long long)rows,
         "tables", st->ntab, "indices", st->nidx,
         "index_entries", (unsigned long long)entries,
         "directory", (unsigned long long)st->dir.count);
@@ -703,7 +675,6 @@ static PyMethodDef sg_methods[] = {
     {"_cursors", (PyCFunction)sg_cursors, METH_O, NULL},
     {"_child", (PyCFunction)sg_child, METH_VARARGS, NULL},
     {"_set_nid_start", (PyCFunction)sg_set_nid_start, METH_O, NULL},
-    {"_compact", (PyCFunction)sg_compact, METH_NOARGS, NULL},
     {"_check_indices", (PyCFunction)sg_check_indices, METH_NOARGS, NULL},
     {"_content_hash", (PyCFunction)sg_content_hash, METH_NOARGS, NULL},
     {"_content_eq", (PyCFunction)sg_content_eq, METH_O, NULL},

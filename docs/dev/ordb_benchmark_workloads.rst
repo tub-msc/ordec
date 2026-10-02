@@ -28,10 +28,10 @@ What an engine does:
 - **fork**: an independent mutable copy of a mutable subgraph.
 - **compact**: a content-identical snapshot with compacted storage.
 
-Engine names: ``paged`` (persistent pages), the only engine of the native
-core; see :doc:`ordb_core`. Result files may also contain ``flat``
-(contiguous blocks, copied on the first write after sharing), an engine
-that was removed.
+Engine names: ``keyed`` (tables keyed by nid), the only engine of the
+native core; see :doc:`ordb_core`. Result files may also contain the
+removed engines ``paged`` (persistent pages of rows) and ``flat``
+(contiguous blocks, copied on the first write after sharing).
 
 PRNG
 ----

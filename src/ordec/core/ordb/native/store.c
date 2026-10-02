@@ -1,13 +1,13 @@
 // SPDX-FileCopyrightText: 2026 ORDeC contributors
 // SPDX-License-Identifier: Apache-2.0
 
-// Storage primitives (see store.h): Vec writes, index trees and the types
-// of their nodes.
+// Storage primitives (see store.h): the directory vector, keyed tables,
+// index trees and the types of their nodes.
 
 #include "module.h"
 
 uint64_t g_token = 1; // source of edit tokens; 0 is never a token
-PyTypeObject *Leaf_Type, *LeafGC_Type, *InnerGC_Type;
+PyTypeObject *Leaf_Type, *InnerGC_Type;
 
 // Frees an instance of one of the (heap) types of the core and drops the
 // reference the instance holds to its type.
@@ -20,29 +20,12 @@ obj_free(void *o)
     Py_DECREF(tp);
 }
 
-// -- paged blocks ------------------------------------------------------------
+// -- Vec (the directory) -------------------------------------------------------
 
 static void
 leaf_dealloc(Leaf *n)
 {
-    if (n->objmask)
-        PyObject_GC_UnTrack(n);
-    recs_clear(n->data, n->objmask, n->rec, LEAF_ROWS);
     obj_free(n);
-}
-
-static int
-leaf_traverse(Leaf *n, visitproc visit, void *arg)
-{
-    Py_VISIT(Py_TYPE((PyObject *)n));
-    return recs_traverse(n->data, n->objmask, n->rec, LEAF_ROWS, visit, arg);
-}
-
-static int
-leaf_clear(Leaf *n)
-{
-    recs_clear(n->data, n->objmask, n->rec, LEAF_ROWS);
-    return 0;
 }
 
 static void
@@ -75,16 +58,12 @@ static PyObject *
 leaf_new(const Vec *v, uint64_t tok)
 {
     Py_ssize_t nslots = (Py_ssize_t)v->rec * LEAF_ROWS;
-    Leaf *n = v->objmask ? PyObject_GC_NewVar(Leaf, LeafGC_Type, nslots)
-        : PyObject_NewVar(Leaf, Leaf_Type, nslots);
+    Leaf *n = PyObject_NewVar(Leaf, Leaf_Type, nslots);
     if (!n)
         return NULL;
     n->owner = tok;
-    n->objmask = v->objmask;
     n->rec = v->rec;
     memset(n->data, 0, sizeof(slot_t) * nslots);
-    if (v->objmask)
-        PyObject_GC_Track(n);
     return (PyObject *)n;
 }
 
@@ -117,7 +96,6 @@ node_copy(const Vec *v, PyObject *n, int level, uint64_t tok)
     if (!c)
         return NULL;
     memcpy(c->data, ((Leaf *)n)->data, sizeof(slot_t) * v->rec * LEAF_ROWS);
-    recs_incref(c->data, v->objmask, v->rec, LEAF_ROWS);
     return (PyObject *)c;
 }
 
@@ -1132,9 +1110,6 @@ store_init(void)
 {
     if (!(Leaf_Type = block_type("_ordb.Leaf", offsetof(Leaf, data),
             sizeof(slot_t), (destructor)leaf_dealloc, NULL, NULL))
-        || !(LeafGC_Type = block_type("_ordb.LeafGC", offsetof(Leaf, data),
-            sizeof(slot_t), (destructor)leaf_dealloc,
-            (traverseproc)leaf_traverse, (inquiry)leaf_clear))
         || !(InnerGC_Type = block_type("_ordb.InnerGC", sizeof(Inner), 0,
             (destructor)inner_dealloc, (traverseproc)inner_traverse,
             (inquiry)inner_clear))

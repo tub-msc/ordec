@@ -23,7 +23,7 @@ ORDB is based on five principles:
 
 3. **Hierarchical tree organization:** Names can be assigned to nodes. Those names can be arranged hierarchically in a tree. This makes it possible to group design objects in arrays, structs or other logical units.
 
-4. **Persistent data structures:** The state of a ORDB subgraph behaves like a `persistent data structure <https://en.wikipedia.org/wiki/Persistent_data_structure>`_: a frozen state is immutable. The native core stores each node type as a table; the default storage engine keeps tables in small pages that snapshots share, so a modification copies only the pages it touches (see :doc:`../dev/ordb_core`).
+4. **Persistent data structures:** The state of a ORDB subgraph behaves like a `persistent data structure <https://en.wikipedia.org/wiki/Persistent_data_structure>`_: a frozen state is immutable. The native core stores each node type as a table, a persistent tree keyed by nid that snapshots share, so a modification copies only the nodes on its path (see :doc:`../dev/ordb_core`).
    
    Modifying a subgraph (i.e. adding, updating or removing nodes) replaces its old state with a new state, which is built upon the previous state. The old subgraph state remains unchanged. Due to this, logical copies of subgraphs are very cheap, as the underlying data does not need to be copied until it is modified.
    

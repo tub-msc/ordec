@@ -36,13 +36,13 @@ Data layout
 
 A subgraph state consists of:
 
-- **One table per node type.** A table is a vector of records of 8-byte
-  slots. Slot 0 is the nid (a removed node leaves the tombstone ``-1 - nid``),
-  followed by the attribute slots in layout order.
-- **The nid directory**, one record ``[location, references]`` per nid:
-  the table and row of the node, and the number of LocalRefs pointing at the
-  nid. The counter replaces reverse-reference buckets: a node can be removed
-  if its counter is zero at commit.
+- **One table per node type**, a sparse array of records keyed by nid.
+  A record is a row of 8-byte slots: slot 0 is the nid, followed by the
+  attribute slots in layout order.
+- **The nid directory**, one record ``[table, references]`` per nid: the
+  table of the node (0: no node), and the number of LocalRefs pointing at
+  the nid. The counter replaces reverse-reference buckets: a node can be
+  removed if its counter is zero at commit.
 - **One index per declared** :class:`~ordec.core.ordb.Index`: a persistent
   B+tree of entries ``(h, s, nid)``, exactly one per indexed live node.
   ``h`` is the hash of the key (for a single int or LocalRef key, the value
@@ -78,9 +78,9 @@ range holds another node with an equal key. ``insert_array`` sorts its
 entries and inserts them in order, or rebuilds the tree bottom-up if the
 batch is at least as large as the index.
 
-The B+tree follows the rules of the table pages: nodes carry the token of
-the transaction that created them and are written in place only by it,
-other writes copy the path from the root. Leaves are plain Python objects
+The B+tree follows the rules of the tables: nodes carry the token of the
+transaction that created them and are written in place only by it, other
+writes copy the path from the root. Leaves are plain Python objects
 and inner nodes GC objects, so that ``gc.get_referents`` reaches the whole
 tree for memory accounting. ``Subgraph._check_indices()`` (used by the
 fuzz after every step) checks the tree structure and compares every index
@@ -89,20 +89,28 @@ with the entries computed from the live rows.
 Storage engine
 --------------
 
-A table (and the directory) is a ``Vec`` of the ``paged`` engine, a
-persistent radix tree: inner nodes with 32 children, leaves of 16 records.
-Every tree node carries the token of its creator. A node is written in
-place if it was created in the current transaction, or if it is owned by
-the subgraph and the write is an append behind every snapshot's row count;
-any other node is copied first, along the path from the root. Freeze, thaw
-and copy share the whole tree (O(number of tables)); a write copies one leaf
-and its path. A transaction keeps the previous state; abort installs it
-again.
+A table is a ``KMap`` of the ``keyed`` engine, a persistent radix trie
+keyed by nid: a leaf covers 16 nids, with a 16-bit occupancy mask and the
+present rows packed in nid order; an inner node has up to 64 children, with
+a 64-bit mask and the present children packed. Lookup is a few shifts and
+population counts. Capacities grow in powers of two. Every node carries the
+token of the transaction that created it and is written in place only by
+it; any other write copies the path from the root. Freeze, thaw and copy
+share the whole trie (O(number of tables)). A transaction keeps the
+previous state; abort installs it again. The shape of a trie depends only
+on its content: removing a node removes its row (no tombstones), tables
+need no compaction, and scans are always in nid order.
 
-``paged`` is the only engine. The engine selection (``ORDEC_ORDB_BACKEND``,
-:mod:`~ordec.core.ordb.backend`, the ``engine`` argument of the core) is
-kept, so that another engine can be tried without re-adding it. A second
-engine, ``flat``, was removed (see "History & rationale").
+The directory is a ``Vec``, a dense persistent radix tree with 32 children
+per inner node and leaves of 16 records. A subgraph appends to directory
+leaves it owns in place when no snapshot can see the records (behind every
+snapshot's count).
+
+``keyed`` is the only engine. The engine selection
+(``ORDEC_ORDB_BACKEND``, :mod:`~ordec.core.ordb.backend`, the ``engine``
+argument of the core) is kept, so that another engine can be tried without
+re-adding it. Two engines were removed: ``flat`` and ``paged`` (see
+"History & rationale").
 
 Transactions
 ------------
@@ -155,14 +163,6 @@ functions at every check and read); a
 ``tests/test_ordb.py`` test makes sure that the schema's functions take the
 native path, except the computed ones of ``SimHierarchy``.
 
-Maintenance
------------
-
-At the end of the outermost transaction, tables with more tombstones than
-live rows are rewritten, and indices whose entries are mostly stale are
-compacted. Freezing also rewrites tables whose rows are out of nid order, so
-frozen tables scan in nid order.
-
 Threads
 -------
 
@@ -173,8 +173,7 @@ collector), another thread can run. Two rules and one coding discipline
 keep the storage consistent:
 
 - **One writing thread per subgraph.** The thread that opens the outermost
-  updater (or starts a write such as ``freeze()`` maintenance) owns the
-  subgraph until it is done. A write from another thread in that time raises
+  updater owns the subgraph until it is done. A write from another thread in that time raises
   :class:`~ordec.core.ordb.OrdbException`; it does not wait, so that code
   taking several subgraphs in different orders cannot deadlock.
 - **No write while a write operation is in progress.** Python code called
@@ -188,23 +187,22 @@ keep the storage consistent:
   nodes removed meanwhile).
 
 Free-threaded Python is not supported: it would need the module to declare
-GIL-free operation, the lock released around every call into Python,
-atomic reference counts for the shared index runs, and per-subgraph locks.
+GIL-free operation, the lock released around every call into Python, and
+per-subgraph locks.
 
 Garbage collection
 ------------------
 
-Leaves shared between subgraphs that can hold Python object references are
-GC-tracked Python objects (as are all inner tree nodes), so the cycle
-collector sees every reference exactly once. Leaves of tables without object
-slots are not GC-tracked. The core needs the GIL.
+Table leaves that can hold Python object references are GC-tracked Python
+objects (as are all inner nodes), so the cycle collector sees every
+reference exactly once. Leaves of tables without object slots, of the
+directory and of the indices are not GC-tracked. The core needs the GIL.
 
 Memory measurements (the ``retained`` figures of the benchmark suite) sum
 ``sys.getsizeof`` over ``gc.get_referents``. They see the storage only
-because inner tree nodes are GC objects (so leaves are reachable) and
-subgraphs implement ``__sizeof__`` (index runs are counted as a share by
-reference count). A new block type needs the same, or memory
-figures silently undercount.
+because inner nodes are GC objects (so leaves are reachable) and subgraphs
+implement ``__sizeof__``. A new node type needs the same, or memory figures
+silently undercount.
 
 Cursors
 -------
@@ -263,11 +261,12 @@ were explored, built and measured against each other:
 - **Contiguous tables copied before the first write** (``flat``): the
   simplest form, but every generation that touches a table copies it, e.g.
   48 MB and 20 ms per generation of a table with a million rows.
-- **Persistent pages** (``paged``): about as fast as ``flat`` per operation
-  (both are 10 to 35 times faster than the Python backends), no undo log,
-  and chains of generations stay small (3 MiB instead of 9.6 GB for 200
-  generations of a million rows with 10 changes each). It became the
-  default.
+- **Persistent pages** (``paged``): rows in insertion order in pages of 16
+  rows, with tombstones for removed nodes. About as fast as ``flat`` per
+  operation (both are 10 to 35 times faster than the Python backends), no
+  undo log, and chains of generations stay small (3 MiB instead of 9.6 GB
+  for 200 generations of a million rows with 10 changes each). It became
+  the default.
 
 ``flat`` stayed for a while as the second engine that the differential fuzz
 compared ``paged`` against, and was then removed. Its transactions were the
@@ -279,13 +278,32 @@ large ``snapshot_chain``), and since it shared about 95 % of its code with
 ``paged``, comparing the two could not find bugs in the shared code. A
 pure-Python reference model in the fuzz took over that job. ``flat`` was
 faster on builds and single-row updates (``layout_flatten`` 2.19 s against
-2.97 s, ``symbol_build`` 0.25 s against 0.30 s, see :doc:`ordb_benchmarks`),
-which remains a target for tuning ``paged``.
+2.97 s, ``symbol_build`` 0.25 s against 0.30 s, see :doc:`ordb_benchmarks`).
 
 The page size decides how much snapshots share: with 2 % random updates
 per generation, pages of 64 rows shared almost nothing (148 MiB against
 192 MiB for full copies), pages of 8 to 16 rows shared well (29 to 50
-MiB) at no measurable cost for reads through Python. Hence 16-row leaves.
+MiB) at no measurable cost for reads through Python. Hence 16-row leaves,
+and windows of 16 nids for the tables keyed by nid that replaced the pages.
+
+``paged`` tables kept history-dependent state: rows in insertion order,
+tombstones for removed nodes with the location of the row remembered for
+revival, compaction at commit once tombstones dominated, a rewrite at
+freeze for nid order, and a sort on every scan of a table out of nid order.
+Tables keyed by nid (``keyed``) have none of that; their shape depends only
+on their content, which keeps equality and cached subtree hashes simple and
+makes diffs between generations possible. Both engines ran side by side,
+with the same directory, indices and transactions. A stage without C code
+estimated tables and per-generation copies from the workloads and real
+designs: windows of 32 or 64 nids would copy 1.6 or 2.5 times the bytes of
+pages per generation in ``snapshot_chain``, windows of 16 nids 0.9 times.
+The first implementation, measured against ``paged`` at the large scale,
+was slower: ``layout_flatten`` +28 %, ``sim_hierarchy`` +19 %,
+``symbol_build`` +6 %, ``render_scan`` +2 %, ``snapshot_chain`` +3 %; per
+operation attribute reads +43 %, inserts with ``%`` +37 %, scans +44 %,
+retained memory 0 to +18 %. ``keyed`` was chosen for its simpler invariants;
+part of the gap came from the first implementation (iteration re-descending
+from the root per row, leaves growing one row at a time).
 
 Indices are ordered by (key hash, sort value, nid) because hash indices
 degrade on keys with many duplicates (all rectangles on one layer), while
@@ -357,11 +375,9 @@ Performance:
 - ``of_subgraph`` chains of more than one reference
   (``lambda c: c.instance.eref.symbol`` of ``SimPin``) and the computed
   ones of ``SimHierarchy`` are called per node.
-- Tables whose rows are out of nid order are sorted on every ``all(T)`` until
-  the next freeze.
 - Index entries take 24 bytes; 16 would do.
-- An insert in a transaction of its own copies a leaf and its path (about
-  1 KiB per level) per index, where table rows are appended in place.
+- An insert in a transaction of its own copies the table leaf and the index
+  leaves it touches, with their paths.
 
 Correctness and semantics:
 

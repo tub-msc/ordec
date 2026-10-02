@@ -2,10 +2,10 @@ ORDB storage engines and benchmarks
 ===================================
 
 Subgraph storage is implemented by the native core (:doc:`ordb_core`) in
-one engine, ``paged`` (persistent pages). A second engine, ``flat``
-(contiguous blocks, copied as a whole before the first write after
-sharing), was removed; its results below are kept as history and as a
-target for tuning ``paged``.
+one engine, ``keyed`` (tables as persistent sparse arrays keyed by nid).
+Two earlier engines were removed: ``flat`` (contiguous blocks, copied as a
+whole before the first write after sharing) and ``paged`` (rows in
+persistent pages of 16 rows). Their results below are kept as history.
 
 Engine selection is kept for future engines: the ``ORDEC_ORDB_BACKEND``
 environment variable, or programmatically ``ordb.use_backend(name)``
@@ -41,10 +41,10 @@ Typical usage::
         --repeats 5 --warmup 1 --checksum --time-limit 0 --out results/py.json
 
     # compare (also merges results from other worlds/machines)
-    python -m benchmarks.report results/*.json --baseline paged
+    python -m benchmarks.report results/*.json --baseline keyed
 
     # HTML report
-    python -m benchmarks.report results/*.json --baseline paged \
+    python -m benchmarks.report results/*.json --baseline keyed \
         --html results/report.html --no-tables
 
 The ``default`` scale is sized so the full matrix stays in the minutes range;
@@ -98,7 +98,8 @@ Results
 One workstation (Intel Core i7-14700K), Python 3.13.5. The previous
 implementation (``cow-arrays``: Python dicts plus numpy chunks, and the other
 pure-Python backends it replaced) is given for comparison, as is the removed
-``flat`` engine.
+``flat`` engine. These tables predate ``keyed``; its comparison with
+``paged`` is in "History & rationale" of :doc:`ordb_core`.
 
 Per operation, measured on the benchmark schema:
 
@@ -147,10 +148,9 @@ about 40 ms of it.
 Choosing an engine
 ------------------
 
-``paged`` is the only engine: its transactions need no undo log, and chains
-of generations of a large subgraph stay cheap. ``flat`` was somewhat faster
-for single-row updates (no page copies) and builds, but every generation
-that touched a table copied the table, and its undo log was the riskiest
-code of the core; it was removed (see "History & rationale" in
-:doc:`ordb_core`). Its numbers above are the target for tuning ``paged`` on
-builds and updates.
+``keyed`` is the only engine: persistent like ``paged``, so chains of
+generations of a large subgraph stay cheap, and without its
+history-dependent state (tombstones, compaction, rows out of nid order).
+``flat`` was somewhat faster for single-row updates and builds, but every
+generation that touched a table copied the table, and its undo log was the
+riskiest code of the core. See "History & rationale" in :doc:`ordb_core`.

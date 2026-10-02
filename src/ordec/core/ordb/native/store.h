@@ -3,18 +3,18 @@
 
 // Storage primitives of the ORDB core (functions in store.c):
 //
-// - Vec: a vector of fixed-size records of 8-byte slots, stored as a
-//   persistent radix tree with small leaves and edit tokens (the "paged"
-//   engine).
-// - KMap: a persistent sparse array of records keyed by nid (the "keyed"
-//   engine).
+// - Vec: a dense vector of fixed-size records of 8-byte slots without
+//   object references (the nid directory), a persistent radix tree with
+//   leaves of 16 records.
+// - KMap: a persistent sparse array of records keyed by nid (the tables).
 // - BTree: a persistent B+tree of index entries (h, s, nid).
 //
-// Leaves that can hold Python object references (objmask != 0) are
-// GC-tracked Python objects: leaves are shared between subgraphs, and the
-// cycle collector must see each reference exactly once. Inner tree nodes
-// are always GC objects (there are few of them), which also makes the
-// leaves reachable for memory accounting via gc.get_referents.
+// All three copy on write by edit tokens. Table leaves that can hold
+// Python object references (objmask != 0) are GC-tracked Python objects:
+// leaves are shared between subgraphs, and the cycle collector must see
+// each reference exactly once. Inner nodes are always GC objects (there
+// are few of them), which also makes the leaves reachable for memory
+// accounting via gc.get_referents.
 
 #ifndef ORDB_STORE_H
 #define ORDB_STORE_H
@@ -32,7 +32,6 @@ extern uint64_t g_token; // source of edit tokens; 0 is never a token
 typedef struct {
     PyObject_VAR_HEAD
     uint64_t owner;
-    uint64_t objmask;
     uint32_t rec;
     slot_t data[1];
 } Leaf;
@@ -46,7 +45,6 @@ typedef struct {
 typedef struct {
     PyObject *root; // Leaf or Inner; NULL when empty
     uint64_t count; // records visible through this Vec
-    uint64_t objmask; // bit b set: slot b of a record holds a PyObject*
     uint32_t rec; // slots per record
     uint8_t levels; // inner levels above the leaves
 } Vec;
@@ -90,11 +88,10 @@ recs_traverse(const slot_t *p, uint64_t objmask, uint32_t rec, uint64_t n,
 // -- Vec ---------------------------------------------------------------------
 
 static inline void
-vec_init(Vec *v, uint32_t rec, uint64_t objmask)
+vec_init(Vec *v, uint32_t rec)
 {
     v->root = NULL;
     v->count = 0;
-    v->objmask = objmask;
     v->rec = rec;
     v->levels = 0;
 }
@@ -248,7 +245,7 @@ typedef struct {
 } BIter;
 
 // store.c
-extern PyTypeObject *Leaf_Type, *LeafGC_Type, *InnerGC_Type;
+extern PyTypeObject *Leaf_Type, *InnerGC_Type;
 int store_init(void);
 slot_t *kmap_insert(KMap *m, int64_t nid, uint64_t tok);
 slot_t *kmap_at_w(KMap *m, int64_t nid, uint64_t tok);
