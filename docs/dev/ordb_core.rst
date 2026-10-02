@@ -17,6 +17,15 @@ C sources, run the same command again. For a quick rebuild during
 development, ``python3 setup.py build_ext --inplace`` does the same if
 setuptools is installed.
 
+The core and ``_gdsrecords.c`` use only the limited API of Python 3.11
+(``Py_LIMITED_API`` in the sources), so one abi3 build (``_ordb.abi3.so``)
+serves all Python versions from 3.11. The limited API has no static types,
+no access to type object fields and no macros like ``PyTuple_GET_ITEM``:
+the types are heap types created with ``PyType_FromSpec``, and the function
+forms of the macros cost 2 to 3% on the benchmarks. A version-specific
+build left in the source tree (``_ordb.cpython-313-*.so``) is imported in
+preference to the abi3 one; delete it after switching.
+
 Data layout
 -----------
 
@@ -298,7 +307,6 @@ Correctness and semantics:
 - A LocalRef or explicit nid more than 2^24 past the end of the nid
   directory raises ``OrdbException`` immediately, where the old backends
   raised ``DanglingLocalRef`` at commit and allowed sparse nids up to 2^32.
-- ``arrays()`` uses the private ``_PyBytes_Resize``.
 
 Portability and packaging:
 
@@ -309,9 +317,6 @@ Portability and packaging:
   form only makes the schema's lambdas slow, and
   ``test_schema_lambdas_native`` fails.
 - Wheels for macOS and Windows, and builds against Python 3.11 and 3.12.
-- Optional: the Limited API (one abi3 wheel per platform). This needs heap
-  types instead of the 12 static types, about 30 accesses to type object
-  fields and 45 macros replaced, and the same for ``_gdsrecords.c``.
 
 Threads:
 

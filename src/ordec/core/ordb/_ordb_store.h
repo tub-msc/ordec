@@ -47,8 +47,19 @@ typedef struct {
     slot_t *data;
 } FBlock;
 
-static PyTypeObject Leaf_Type, LeafGC_Type, InnerGC_Type,
-    FBlock_Type, FBlockGC_Type;
+static PyTypeObject *Leaf_Type, *LeafGC_Type, *InnerGC_Type,
+    *FBlock_Type, *FBlockGC_Type;
+
+// Frees an instance of one of the (heap) types of the core and drops the
+// reference the instance holds to its type.
+static void
+obj_free(void *o)
+{
+    PyTypeObject *tp = Py_TYPE((PyObject *)o);
+    freefunc tp_free = (freefunc)PyType_GetSlot(tp, Py_tp_free);
+    tp_free(o);
+    Py_DECREF(tp);
+}
 
 typedef struct {
     PyObject *root; // Leaf/Inner (paged) or FBlock (flat); NULL when empty
@@ -103,12 +114,13 @@ leaf_dealloc(Leaf *n)
     if (n->objmask)
         PyObject_GC_UnTrack(n);
     recs_clear(n->data, n->objmask, n->rec, LEAF_ROWS);
-    Py_TYPE(n)->tp_free((PyObject *)n);
+    obj_free(n);
 }
 
 static int
 leaf_traverse(Leaf *n, visitproc visit, void *arg)
 {
+    Py_VISIT(Py_TYPE((PyObject *)n));
     return recs_traverse(n->data, n->objmask, n->rec, LEAF_ROWS, visit, arg);
 }
 
@@ -125,12 +137,13 @@ inner_dealloc(Inner *n)
     PyObject_GC_UnTrack(n);
     for (unsigned i = 0; i < FAN; i++)
         Py_XDECREF(n->kids[i]);
-    Py_TYPE(n)->tp_free((PyObject *)n);
+    obj_free(n);
 }
 
 static int
 inner_traverse(Inner *n, visitproc visit, void *arg)
 {
+    Py_VISIT(Py_TYPE((PyObject *)n));
     for (unsigned i = 0; i < FAN; i++)
         Py_VISIT(n->kids[i]);
     return 0;
@@ -148,8 +161,8 @@ static PyObject *
 leaf_new(const Vec *v, uint64_t tok)
 {
     Py_ssize_t nslots = (Py_ssize_t)v->rec * LEAF_ROWS;
-    Leaf *n = v->objmask ? PyObject_GC_NewVar(Leaf, &LeafGC_Type, nslots)
-        : PyObject_NewVar(Leaf, &Leaf_Type, nslots);
+    Leaf *n = v->objmask ? PyObject_GC_NewVar(Leaf, LeafGC_Type, nslots)
+        : PyObject_NewVar(Leaf, Leaf_Type, nslots);
     if (!n)
         return NULL;
     n->owner = tok;
@@ -164,7 +177,7 @@ leaf_new(const Vec *v, uint64_t tok)
 static PyObject *
 inner_new(const Vec *v, uint64_t tok)
 {
-    Inner *n = PyObject_GC_New(Inner, &InnerGC_Type);
+    Inner *n = PyObject_GC_New(Inner, InnerGC_Type);
     if (!n)
         return NULL;
     n->owner = tok;
@@ -205,12 +218,13 @@ fblock_dealloc(FBlock *b)
         recs_clear(b->data, b->objmask, b->rec, b->cap);
         PyMem_Free(b->data);
     }
-    Py_TYPE(b)->tp_free((PyObject *)b);
+    obj_free(b);
 }
 
 static int
 fblock_traverse(FBlock *b, visitproc visit, void *arg)
 {
+    Py_VISIT(Py_TYPE((PyObject *)b));
     return recs_traverse(b->data, b->objmask, b->rec, b->cap, visit, arg);
 }
 
@@ -224,8 +238,7 @@ fblock_clear(FBlock *b)
 static PyObject *
 fblock_sizeof(FBlock *b, PyObject *noarg)
 {
-    return PyLong_FromSize_t(Py_TYPE(b)->tp_basicsize
-        + sizeof(slot_t) * b->rec * b->cap);
+    return PyLong_FromSize_t(sizeof(FBlock) + sizeof(slot_t) * b->rec * b->cap);
 }
 
 static PyMethodDef fblock_methods[] = {
@@ -236,8 +249,8 @@ static PyMethodDef fblock_methods[] = {
 static PyObject *
 fblock_new(const Vec *v, uint64_t cap)
 {
-    FBlock *b = v->objmask ? PyObject_GC_New(FBlock, &FBlockGC_Type)
-        : PyObject_New(FBlock, &FBlock_Type);
+    FBlock *b = v->objmask ? PyObject_GC_New(FBlock, FBlockGC_Type)
+        : PyObject_New(FBlock, FBlock_Type);
     if (!b)
         return NULL;
     b->objmask = v->objmask;
@@ -303,7 +316,7 @@ vec_at_w(Vec *v, uint64_t i, uint64_t lin, uint64_t tx, int append)
             if (!b)
                 return NULL;
             v->root = (PyObject *)b;
-        } else if (Py_REFCNT(b) > 1) {
+        } else if (Py_REFCNT((PyObject *)b) > 1) {
             uint64_t cap = b->cap > i + 1 ? b->cap : i + 1;
             FBlock *c = (FBlock *)fblock_new(v, cap);
             if (!c)

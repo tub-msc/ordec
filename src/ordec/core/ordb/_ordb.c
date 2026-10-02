@@ -22,9 +22,12 @@
 // repeats the check in Python and raises the exact exception.
 
 #define PY_SSIZE_T_CLEAN
+#define Py_LIMITED_API 0x030b0000 // abi3, Python 3.11+
 #include <Python.h>
 #include <structmember.h>
+#include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "_ordb_store.h"
@@ -132,11 +135,12 @@ typedef struct {
     CheckItem *checks;
 } NType;
 
-static PyTypeObject NType_Type;
+static PyTypeObject *NType_Type;
 
 static int
 ntype_traverse(NType *nt, visitproc visit, void *arg)
 {
+    Py_VISIT(Py_TYPE((PyObject *)nt));
     Py_VISIT(nt->tuple_cls);
     Py_VISIT(nt->cursor_type);
     Py_VISIT(nt->cur_mut);
@@ -192,7 +196,7 @@ ntype_dealloc(NType *nt)
     PyMem_Free(nt->attrs);
     PyMem_Free(nt->uses);
     PyMem_Free(nt->checks);
-    Py_TYPE(nt)->tp_free((PyObject *)nt);
+    obj_free(nt);
 }
 
 // NType(tuple_cls, cursor_type, attrs, uses, checks)
@@ -208,16 +212,16 @@ ntype_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
     if (!PyArg_ParseTuple(args, "OOO!O!O!", &tuple_cls, &cursor_type,
             &PyList_Type, &attrs, &PyList_Type, &uses, &PyList_Type, &checks))
         return NULL;
-    NType *nt = (NType *)type->tp_alloc(type, 0);
+    NType *nt = (NType *)PyType_GenericAlloc(type, 0);
     if (!nt)
         return NULL;
     nt->tuple_cls = Py_NewRef(tuple_cls);
     nt->cursor_type = Py_NewRef(cursor_type);
     nt->permitted = PyDict_New();
-    nt->nattr = (int)PyList_GET_SIZE(attrs);
+    nt->nattr = (int)PyList_Size(attrs);
     nt->ref_attr = -1;
-    nt->nuse = (int)PyList_GET_SIZE(uses);
-    nt->ncheck = (int)PyList_GET_SIZE(checks);
+    nt->nuse = (int)PyList_Size(uses);
+    nt->ncheck = (int)PyList_Size(checks);
     nt->attrs = PyMem_Calloc(nt->nattr + 1, sizeof(AttrInfo));
     nt->uses = PyMem_Calloc(nt->nuse + 1, sizeof(IdxUse));
     nt->checks = PyMem_Calloc(nt->ncheck + 1, sizeof(CheckItem));
@@ -229,7 +233,7 @@ ntype_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
     for (int i = 0; i < nt->nattr; i++) {
         AttrInfo *ai = &nt->attrs[i];
         PyObject *name, *vtype, *attr, *ext, *ftype, *fdefault, *subfn;
-        if (!PyArg_ParseTuple(PyList_GET_ITEM(attrs, i), "UiiOpOiiOiOOO", &name,
+        if (!PyArg_ParseTuple(PyList_GetItem(attrs, i), "UiiOpOiiOiOOO", &name,
                 &ai->kind, &ai->width, &vtype, &ai->optional, &attr,
                 &ai->read_mode, &ai->ref_kind, &ext, &ai->fmode, &ftype,
                 &fdefault, &subfn)) {
@@ -277,13 +281,13 @@ ntype_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
     for (int i = 0; i < nt->nuse; i++) {
         IdxUse *u = &nt->uses[i];
         PyObject *index, *key, *sortfn;
-        if (!PyArg_ParseTuple(PyList_GET_ITEM(uses, i), "OO!ippO", &index,
+        if (!PyArg_ParseTuple(PyList_GetItem(uses, i), "OO!ippO", &index,
                 &PyTuple_Type, &key, &u->sort, &u->unique, &u->combined,
                 &sortfn)) {
             Py_DECREF(nt);
             return NULL;
         }
-        u->nkey = (int)PyTuple_GET_SIZE(key);
+        u->nkey = (int)PyTuple_Size(key);
         if (u->nkey < 1 || u->nkey > MAXKEY) {
             Py_DECREF(nt);
             PyErr_Format(PyExc_TypeError,
@@ -291,7 +295,7 @@ ntype_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
             return NULL;
         }
         for (int k = 0; k < u->nkey; k++) {
-            u->key[k] = (int)PyLong_AsLong(PyTuple_GET_ITEM(key, k));
+            u->key[k] = (int)PyLong_AsLong(PyTuple_GetItem(key, k));
             if (u->key[k] < 0 || u->key[k] >= nt->nattr) {
                 Py_DECREF(nt);
                 if (!PyErr_Occurred())
@@ -311,7 +315,7 @@ ntype_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
     }
     for (int i = 0; i < nt->ncheck; i++) {
         CheckItem *c = &nt->checks[i];
-        if (!PyArg_ParseTuple(PyList_GET_ITEM(checks, i), "ii", &c->kind,
+        if (!PyArg_ParseTuple(PyList_GetItem(checks, i), "ii", &c->kind,
                 &c->i)) {
             Py_DECREF(nt);
             return NULL;
@@ -332,8 +336,11 @@ ntype_set_cursors(NType *nt, PyObject *args)
     PyObject *mut, *frz;
     if (!PyArg_ParseTuple(args, "OO", &mut, &frz))
         return NULL;
-    Py_XSETREF(nt->cur_mut, Py_NewRef(mut));
-    Py_XSETREF(nt->cur_frz, Py_NewRef(frz));
+    PyObject *old_mut = nt->cur_mut, *old_frz = nt->cur_frz;
+    nt->cur_mut = Py_NewRef(mut);
+    nt->cur_frz = Py_NewRef(frz);
+    Py_XDECREF(old_mut);
+    Py_XDECREF(old_frz);
     Py_RETURN_NONE;
 }
 
@@ -347,20 +354,26 @@ static PyMethodDef ntype_methods[] = {
     {NULL}
 };
 
-// The NType of a NodeTuple class (borrowed), or NULL with TypeError.
+// The NType of a NodeTuple class (borrowed from the class attribute
+// _ntype), or NULL with TypeError. An _ntype inherited from another
+// NodeTuple class does not count.
 static NType *
 ntype_of_cls(PyObject *cls)
 {
     PyObject *nt = NULL;
     if (PyType_Check(cls)) {
-        PyObject *dict = ((PyTypeObject *)cls)->tp_dict;
-        if (dict)
-            nt = PyDict_GetItemWithError(dict, str_ntype);
+        nt = PyObject_GetAttr(cls, str_ntype);
+        if (!nt) {
+            if (!PyErr_ExceptionMatches(PyExc_AttributeError))
+                return NULL;
+            PyErr_Clear();
+        }
     }
-    if (!nt || Py_TYPE(nt) != &NType_Type) {
-        if (!PyErr_Occurred())
-            PyErr_SetString(PyExc_TypeError,
-                "node must be instance of NodeTuple.");
+    int ok = nt && Py_TYPE(nt) == NType_Type
+        && ((NType *)nt)->tuple_cls == cls;
+    Py_XDECREF(nt);
+    if (!ok) {
+        PyErr_SetString(PyExc_TypeError, "node must be instance of NodeTuple.");
         return NULL;
     }
     return (NType *)nt;
@@ -435,7 +448,7 @@ state_copy(State *dst, const State *src, int retain_vecs)
     if (src->nidx)
         memcpy(dst->idxs, src->idxs, sizeof(Idx) * src->nidx);
     for (int i = 0; i < src->ntab; i++) {
-        Py_INCREF(src->tabs[i].nt);
+        Py_INCREF((PyObject *)src->tabs[i].nt);
         if (retain_vecs)
             Py_XINCREF(src->tabs[i].rows.root);
     }
@@ -513,7 +526,7 @@ st_add_tab(State *st, NType *nt)
     }
     st->tabs = tabs;
     Tab *t = &tabs[st->ntab];
-    t->nt = (NType *)Py_NewRef(nt);
+    t->nt = (NType *)Py_NewRef((PyObject *)nt);
     vec_init(&t->rows, nt->rec, nt->objmask, st->dir.flat);
     t->live = 0;
     t->last_nid = -1;
@@ -604,7 +617,8 @@ typedef struct Sg {
     char writing; // a write operation of the core is in progress
 } Sg;
 
-static PyTypeObject Sg_Type, Node_Type, Upd_Type, AttrDesc_Type, CurIter_Type;
+static PyTypeObject *Sg_Type, *Node_Type, *Upd_Type, *AttrDesc_Type,
+    *CurIter_Type;
 
 typedef struct {
     PyObject_HEAD
@@ -785,7 +799,8 @@ boxed_writable(Sg *sg)
         PyObject *c = PyDict_Copy(st->boxed);
         if (!c)
             return -1;
-        Py_SETREF(st->boxed, c);
+        Py_DECREF(st->boxed); // shared: not the last reference
+        st->boxed = c;
     }
     return 0;
 }
@@ -858,7 +873,9 @@ row_store(Sg *sg, const NType *nt, slot_t *p, PyObject *node, int64_t nid)
 {
     for (int i = 0; i < nt->nattr; i++) {
         const AttrInfo *ai = &nt->attrs[i];
-        PyObject *v = PyTuple_GET_ITEM(node, i);
+        PyObject *v = PyTuple_GetItem(node, i);
+        if (!v)
+            return -1;
         slot_t *s = p + ai->slot;
         if (ai->kind == K_OBJ) {
             s[0] = v == Py_None ? 0 : (slot_t)Py_NewRef(v);
@@ -874,10 +891,10 @@ row_store(Sg *sg, const NType *nt, slot_t *p, PyObject *node, int64_t nid)
             if (long_as_slot(v, s))
                 continue;
         } else if ((PyObject *)Py_TYPE(v) == ai->vtype
-                && PyTuple_GET_SIZE(v) == ai->width) {
+                && PyTuple_Size(v) == ai->width) {
             int ok = 1;
             for (int k = 0; k < ai->width && ok; k++)
-                ok = long_as_slot(PyTuple_GET_ITEM(v, k), s + k);
+                ok = long_as_slot(PyTuple_GetItem(v, k), s + k);
             if (ok)
                 continue;
             for (int k = 1; k < ai->width; k++)
@@ -913,7 +930,7 @@ slots_value(const AttrInfo *ai, const slot_t *s, PyObject *boxed)
     if (ai->kind == K_INT)
         return PyLong_FromLongLong(s[0]);
     PyTypeObject *vt = (PyTypeObject *)ai->vtype;
-    PyObject *v = vt->tp_alloc(vt, ai->width);
+    PyObject *v = PyType_GenericAlloc(vt, ai->width);
     if (!v)
         return NULL;
     for (int k = 0; k < ai->width; k++) {
@@ -922,7 +939,7 @@ slots_value(const AttrInfo *ai, const slot_t *s, PyObject *boxed)
             Py_DECREF(v);
             return NULL;
         }
-        PyTuple_SET_ITEM(v, k, x);
+        PyTuple_SetItem(v, k, x);
     }
     return v;
 }
@@ -1003,7 +1020,7 @@ rec_load(const Rec *r)
 {
     const NType *nt = r->nt;
     PyTypeObject *tc = (PyTypeObject *)nt->tuple_cls;
-    PyObject *t = tc->tp_alloc(tc, nt->nattr);
+    PyObject *t = PyType_GenericAlloc(tc, nt->nattr);
     if (!t)
         return NULL;
     for (int i = 0; i < nt->nattr; i++) {
@@ -1012,7 +1029,7 @@ rec_load(const Rec *r)
             Py_DECREF(t);
             return NULL;
         }
-        PyTuple_SET_ITEM(t, i, v);
+        PyTuple_SetItem(t, i, v);
     }
     return t;
 }
@@ -1062,11 +1079,11 @@ pyval_hash(PyObject *v, uint64_t *out)
             *out = (uint64_t)x;
             return 0;
         }
-    } else if (PyTuple_Check(v) && PyTuple_GET_SIZE(v) <= 8) {
+    } else if (PyTuple_Check(v) && PyTuple_Size(v) <= 8) {
         slot_t x[8];
-        int n = (int)PyTuple_GET_SIZE(v), ok = 1;
+        int n = (int)PyTuple_Size(v), ok = 1;
         for (int k = 0; k < n && ok; k++)
-            ok = long_as_slot(PyTuple_GET_ITEM(v, k), &x[k]);
+            ok = long_as_slot(PyTuple_GetItem(v, k), &x[k]);
         if (ok && n > 0) {
             *out = mix_ints(n, x);
             return 0;
@@ -1122,15 +1139,16 @@ rec_hs(const Rec *r, const IdxUse *u, uint64_t *h, int64_t *s)
         PyObject *t = rec_load(r);
         if (!t)
             return -1;
-        PyObject *v = PyObject_CallOneArg(u->sortfn, t);
+        PyObject *v = PyObject_CallFunctionObjArgs(u->sortfn, t, NULL);
         Py_DECREF(t);
         if (!v)
             return -1;
         // None sorts like a None int attribute.
         if (v != Py_None && !PyLong_Check(v)) {
+            PyObject *n = PyType_GetName(Py_TYPE(v));
             PyErr_Format(PyExc_TypeError,
-                "sortkey must return an int or None, not %.100s.",
-                Py_TYPE(v)->tp_name);
+                "sortkey must return an int or None, not %S.", n);
+            Py_XDECREF(n);
             Py_DECREF(v);
             return -1;
         }
@@ -1158,9 +1176,9 @@ key_hash(PyObject *key, int combined, uint64_t *h)
     if (!PyTuple_Check(key))
         return 0;
     uint64_t acc = 0x27D4EB2F165667C5ull;
-    for (Py_ssize_t k = 0; k < PyTuple_GET_SIZE(key); k++) {
+    for (Py_ssize_t k = 0; k < PyTuple_Size(key); k++) {
         uint64_t hc;
-        if (pyval_hash(PyTuple_GET_ITEM(key, k), &hc) < 0)
+        if (pyval_hash(PyTuple_GetItem(key, k), &hc) < 0)
             return -1;
         acc = mix(acc, hc);
     }
@@ -1468,7 +1486,7 @@ st_query(const State *st, PyObject *index, PyObject *key)
         IdxUse *u = ntype_find_use(nt, index);
         if (!u)
             continue;
-        if (u->combined && PyTuple_GET_SIZE(key) != u->nkey)
+        if (u->combined && PyTuple_Size(key) != u->nkey)
             continue;
         uint64_t rh;
         int64_t rs;
@@ -1479,7 +1497,7 @@ st_query(const State *st, PyObject *index, PyObject *key)
         if (ok == 1 && (rh != h || rs != e->s))
             ok = 0;
         for (int k = 0; k < u->nkey && ok == 1; k++) {
-            PyObject *comp = u->combined ? PyTuple_GET_ITEM(key, k) : key;
+            PyObject *comp = u->combined ? PyTuple_GetItem(key, k) : key;
             ok = rec_eq_pyval(&rec, u->key[k], comp);
         }
         rec_drop(&rec);
@@ -2148,7 +2166,9 @@ txn_abort(Sg *sg, Txn *tx)
     idxs_release(st->idxs, st->nidx);
     st->idxs = tx->saved.idxs;
     st->nidx = tx->saved.nidx;
-    Py_XSETREF(st->boxed, tx->saved.boxed);
+    PyObject *boxed = st->boxed;
+    st->boxed = tx->saved.boxed;
+    Py_XDECREF(boxed);
     st->nlive = tx->saved.nlive;
     st->nid_start = tx->saved.nid_start;
     for (int i = 0; i < tx->saved.ntab; i++)
@@ -2177,8 +2197,8 @@ refcheck(AttrInfo *ai, NType *target)
         return c == Py_True;
     if (PyErr_Occurred())
         return -1;
-    PyObject *r = PyObject_CallMethodOneArg(ai->attr, str_refcheck,
-        target->cursor_type);
+    PyObject *r = PyObject_CallMethodObjArgs(ai->attr, str_refcheck,
+        target->cursor_type, NULL);
     if (!r)
         return -1;
     int ok = PyObject_IsTrue(r);
@@ -2208,10 +2228,10 @@ subref_target(const State *st, int64_t nid, PyObject *refs)
         const AttrInfo *ai = &nt->attrs[a];
         if (ai->kind != K_OBJ)
             continue;
-        for (Py_ssize_t k = 0; k < PyTuple_GET_SIZE(refs); k++) {
-            if (PyTuple_GET_ITEM(refs, k) == ai->attr) {
+        for (Py_ssize_t k = 0; k < PyTuple_Size(refs); k++) {
+            if (PyTuple_GetItem(refs, k) == ai->attr) {
                 PyObject *o = (PyObject *)p[ai->slot];
-                return o && PyObject_TypeCheck(o, &Sg_Type) ? (Sg *)o : NULL;
+                return o && PyObject_TypeCheck(o, Sg_Type) ? (Sg *)o : NULL;
             }
         }
     }
@@ -2329,7 +2349,7 @@ txn_check(Sg *sg, Txn *tx, PyObject *sgu)
                     int tti;
                     if (target && st_row(&target->st, v, &tti))
                         ok = refcheck(ai, target->st.tabs[tti].nt);
-                    Py_XDECREF(target);
+                    Py_XDECREF((PyObject *)target);
                     if (ok < 0)
                         return -1;
                 }
@@ -2416,13 +2436,13 @@ call_subfn(PyObject *fn, Sg *sg, int64_t nid)
     PyObject *c = sg_cursor(sg, nid, NPATH_NONE);
     if (!c)
         return NULL;
-    PyObject *r = PyObject_CallOneArg(fn, c);
+    PyObject *r = PyObject_CallFunctionObjArgs(fn, c, NULL);
     Py_DECREF(c);
     if (!r)
         return NULL;
     Sg *target = NULL;
-    if (PyObject_TypeCheck(r, &Node_Type) && ((NodeObj *)r)->nid == 0)
-        target = (Sg *)Py_NewRef(((NodeObj *)r)->sg);
+    if (PyObject_TypeCheck(r, Node_Type) && ((NodeObj *)r)->nid == 0)
+        target = (Sg *)Py_NewRef((PyObject *)((NodeObj *)r)->sg);
     Py_DECREF(r);
     return target;
 }
@@ -2431,10 +2451,10 @@ static PyObject *
 node_make(PyObject *cls, Sg *sg, int64_t nid, int64_t npath)
 {
     PyTypeObject *t = (PyTypeObject *)cls;
-    NodeObj *c = (NodeObj *)t->tp_alloc(t, 0);
+    NodeObj *c = (NodeObj *)PyType_GenericAlloc(t, 0);
     if (!c)
         return NULL;
-    c->sg = (Sg *)Py_NewRef(sg);
+    c->sg = (Sg *)Py_NewRef((PyObject *)sg);
     c->nid = nid;
     c->npath = npath;
     return (PyObject *)c;
@@ -2469,6 +2489,7 @@ sg_cursor(Sg *sg, int64_t nid, int64_t npath)
 static int
 node_traverse(NodeObj *c, visitproc visit, void *arg)
 {
+    Py_VISIT(Py_TYPE((PyObject *)c));
     Py_VISIT(c->sg);
     return 0;
 }
@@ -2484,8 +2505,8 @@ static void
 node_dealloc(NodeObj *c)
 {
     PyObject_GC_UnTrack(c);
-    Py_XDECREF(c->sg);
-    Py_TYPE(c)->tp_free((PyObject *)c);
+    Py_XDECREF((PyObject *)c->sg);
+    obj_free(c);
 }
 
 static int
@@ -2504,8 +2525,8 @@ node_resolve_npath(NodeObj *c)
     Py_DECREF(key);
     if (!l)
         return -1;
-    c->npath = PyList_GET_SIZE(l) > 0
-        ? PyLong_AsLongLong(PyList_GET_ITEM(l, 0)) : NPATH_NONE;
+    c->npath = PyList_Size(l) > 0
+        ? PyLong_AsLongLong(PyList_GetItem(l, 0)) : NPATH_NONE;
     Py_DECREF(l);
     return 0;
 }
@@ -2513,7 +2534,7 @@ node_resolve_npath(NodeObj *c)
 static PyObject *
 node_get_subgraph(NodeObj *c, void *closure)
 {
-    return Py_NewRef(c->sg);
+    return Py_NewRef((PyObject *)c->sg);
 }
 
 static PyObject *
@@ -2556,7 +2577,7 @@ node_raw_cursor(PyObject *cls, PyObject *args)
 {
     PyObject *sg, *nid_o, *npath_o;
     int64_t nid, npath;
-    if (!PyArg_ParseTuple(args, "O!OO", &Sg_Type, &sg, &nid_o, &npath_o))
+    if (!PyArg_ParseTuple(args, "O!OO", Sg_Type, &sg, &nid_o, &npath_o))
         return NULL;
     if (opt_nid(nid_o, -1, &nid) < 0 || opt_nid(npath_o, NPATH_NONE, &npath) < 0)
         return NULL;
@@ -2588,7 +2609,7 @@ node_order(NodeObj *x, NodeObj *y, int op)
 static PyObject *
 node_richcompare(PyObject *a, PyObject *b, int op)
 {
-    if (!PyObject_TypeCheck(b, &Node_Type))
+    if (!PyObject_TypeCheck(b, Node_Type))
         Py_RETURN_NOTIMPLEMENTED;
     if (op != Py_EQ && op != Py_NE)
         return node_order((NodeObj *)a, (NodeObj *)b, op);
@@ -2649,12 +2670,12 @@ static PyObject *
 apply_factory(const AttrInfo *ai, PyObject *v)
 {
     if (ai->fmode == F_PY)
-        return PyObject_CallMethodOneArg(ai->attr, str_factory,
-            v ? v : Py_None);
+        return PyObject_CallMethodObjArgs(ai->attr, str_factory,
+            v ? v : Py_None, NULL);
     if (ai->fmode == F_REF) {
         if (!v || v == Py_None)
             Py_RETURN_NONE;
-        if (PyObject_TypeCheck(v, &Node_Type) && ((NodeObj *)v)->nid >= 0)
+        if (PyObject_TypeCheck(v, Node_Type) && ((NodeObj *)v)->nid >= 0)
             return PyLong_FromLongLong(((NodeObj *)v)->nid);
         if (PyLong_Check(v))
             return Py_NewRef(v);
@@ -2665,7 +2686,7 @@ apply_factory(const AttrInfo *ai, PyObject *v)
     }
     if (!v || v == Py_None)
         v = ai->fdefault;
-    if (PyObject_TypeCheck(v, &Node_Type)) {
+    if (PyObject_TypeCheck(v, Node_Type)) {
         PyErr_SetString(PyExc_TypeError, "Nodes can only be added to LocalRef,"
             " ExternalRef or SubgraphRef attributes.");
         return NULL;
@@ -2704,7 +2725,7 @@ static PyObject *
 ntuple_build(NType *nt, PyObject *base, PyObject *values)
 {
     PyTypeObject *tc = (PyTypeObject *)nt->tuple_cls;
-    PyObject *t = tc->tp_alloc(tc, nt->nattr);
+    PyObject *t = PyType_GenericAlloc(tc, nt->nattr);
     if (!t)
         return NULL;
     Py_ssize_t used = 0;
@@ -2717,7 +2738,7 @@ ntuple_build(NType *nt, PyObject *base, PyObject *values)
         else if (PyErr_Occurred())
             goto fail;
         if (!v && base) {
-            item = Py_NewRef(PyTuple_GET_ITEM(base, i));
+            item = Py_NewRef(PyTuple_GetItem(base, i));
         } else {
             item = apply_factory(ai, v);
             if (!item)
@@ -2727,9 +2748,9 @@ ntuple_build(NType *nt, PyObject *base, PyObject *values)
                 goto fail;
             }
         }
-        PyTuple_SET_ITEM(t, i, item);
+        PyTuple_SetItem(t, i, item);
     }
-    if (values && used != PyDict_GET_SIZE(values)) {
+    if (values && used != PyDict_Size(values)) {
         PyObject *unknown = PyList_New(0), *key, *val, *sep, *joined;
         Py_ssize_t pos = 0;
         while (unknown && PyDict_Next(values, &pos, &key, &val)) {
@@ -2762,12 +2783,12 @@ fail:
 static PyObject *
 mod_ntuple_new(PyObject *m, PyObject *args, PyObject *kwds)
 {
-    if (PyTuple_GET_SIZE(args) != 1) {
+    if (PyTuple_Size(args) != 1) {
         PyErr_SetString(PyExc_TypeError,
             "NodeTuple takes keyword arguments only.");
         return NULL;
     }
-    NType *nt = ntype_of_cls(PyTuple_GET_ITEM(args, 0));
+    NType *nt = ntype_of_cls(PyTuple_GetItem(args, 0));
     if (!nt)
         return NULL;
     return ntuple_build(nt, NULL, kwds);
@@ -2800,13 +2821,13 @@ attrdesc_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 {
     PyObject *attr, *nt;
     int index;
-    if (!PyArg_ParseTuple(args, "OO!i", &attr, &NType_Type, &nt, &index))
+    if (!PyArg_ParseTuple(args, "OO!i", &attr, NType_Type, &nt, &index))
         return NULL;
     if (index < 0 || index >= ((NType *)nt)->nattr) {
         PyErr_SetString(PyExc_ValueError, "bad attribute position");
         return NULL;
     }
-    AttrDesc *d = (AttrDesc *)type->tp_alloc(type, 0);
+    AttrDesc *d = (AttrDesc *)PyType_GenericAlloc(type, 0);
     if (!d)
         return NULL;
     d->attr = Py_NewRef(attr);
@@ -2818,6 +2839,7 @@ attrdesc_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 static int
 attrdesc_traverse(AttrDesc *d, visitproc visit, void *arg)
 {
+    Py_VISIT(Py_TYPE((PyObject *)d));
     Py_VISIT(d->attr);
     Py_VISIT(d->nt);
     return 0;
@@ -2836,7 +2858,7 @@ attrdesc_dealloc(AttrDesc *d)
 {
     PyObject_GC_UnTrack(d);
     attrdesc_clear(d);
-    Py_TYPE(d)->tp_free((PyObject *)d);
+    obj_free(d);
 }
 
 static PyObject *
@@ -2844,7 +2866,7 @@ attrdesc_get(AttrDesc *d, PyObject *obj, PyObject *type)
 {
     if (!obj || obj == Py_None)
         return Py_NewRef(d->attr);
-    if (!PyObject_TypeCheck(obj, &Node_Type)) {
+    if (!PyObject_TypeCheck(obj, Node_Type)) {
         PyErr_SetString(PyExc_TypeError, "descriptor requires a Node");
         return NULL;
     }
@@ -2883,7 +2905,7 @@ attrdesc_set(AttrDesc *d, PyObject *obj, PyObject *value)
         PyErr_SetString(PyExc_TypeError, "Attributes cannot be deleted.");
         return -1;
     }
-    if (!PyObject_TypeCheck(obj, &Node_Type)) {
+    if (!PyObject_TypeCheck(obj, Node_Type)) {
         PyErr_SetString(PyExc_TypeError, "descriptor requires a Node");
         return -1;
     }
@@ -2902,7 +2924,7 @@ sg_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
     int engine = ENGINE_PAGED;
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "|i", kwlist, &engine))
         return NULL;
-    Sg *sg = (Sg *)type->tp_alloc(type, 0);
+    Sg *sg = (Sg *)PyType_GenericAlloc(type, 0);
     if (!sg)
         return NULL;
     state_init(&sg->st, engine == ENGINE_FLAT);
@@ -2916,6 +2938,7 @@ static int
 sg_traverse(Sg *sg, visitproc visit, void *arg)
 {
     State *st = &sg->st;
+    Py_VISIT(Py_TYPE((PyObject *)sg));
     Py_VISIT(st->dir.root);
     for (int i = 0; i < st->ntab; i++) {
         Py_VISIT(st->tabs[i].rows.root);
@@ -2951,7 +2974,7 @@ sg_dealloc(Sg *sg)
     Py_CLEAR(sg->wire_hash);
     Py_CLEAR(sg->arrays_memo);
     state_release(&sg->st, 1);
-    Py_TYPE(sg)->tp_free((PyObject *)sg);
+    obj_free(sg);
 }
 
 static int
@@ -3052,7 +3075,7 @@ sg_nids(Sg *sg, PyObject *args)
                 Py_DECREF(l);
                 return NULL;
             }
-            PyList_SET_ITEM(l, k++, x);
+            PyList_SetItem(l, k++, x);
         }
         return l;
     }
@@ -3073,7 +3096,7 @@ sg_nids(Sg *sg, PyObject *args)
             Py_CLEAR(l);
             break;
         }
-        PyList_SET_ITEM(l, k, x);
+        PyList_SetItem(l, k, x);
     }
     PyMem_Free(o);
     return l;
@@ -3173,7 +3196,7 @@ sg_snapshot(Sg *sg, PyObject *args)
     int frozen;
     if (!PyArg_ParseTuple(args, "O!p", &PyType_Type, &cls, &frozen))
         return NULL;
-    if (!PyType_IsSubtype((PyTypeObject *)cls, &Sg_Type)) {
+    if (!PyType_IsSubtype((PyTypeObject *)cls, Sg_Type)) {
         PyErr_SetString(PyExc_TypeError, "cls must be a subgraph class");
         return NULL;
     }
@@ -3187,7 +3210,7 @@ sg_snapshot(Sg *sg, PyObject *args)
         if (r < 0)
             return NULL;
     }
-    Sg *n = (Sg *)((PyTypeObject *)cls)->tp_alloc((PyTypeObject *)cls, 0);
+    Sg *n = (Sg *)PyType_GenericAlloc((PyTypeObject *)cls, 0);
     if (!n)
         return NULL;
     state_init(&n->st, SG_FLAT(sg));
@@ -3318,7 +3341,7 @@ rows_equal(const State *sa, const State *sb, NType *nt, const slot_t *p,
 static PyObject *
 sg_content_eq(Sg *a, PyObject *arg)
 {
-    if (!PyObject_TypeCheck(arg, &Sg_Type)) {
+    if (!PyObject_TypeCheck(arg, Sg_Type)) {
         PyErr_SetString(PyExc_TypeError, "Expected Subgraph.");
         return NULL;
     }
@@ -3385,10 +3408,10 @@ attr_ints(const State *st, const NType *nt, int i, const slot_t *p,
         out[0] = PyLong_AsLongLongAndOverflow(o, &ovf);
         return !ovf;
     }
-    if (!PyTuple_Check(o) || PyTuple_GET_SIZE(o) != ai->width)
+    if (!PyTuple_Check(o) || PyTuple_Size(o) != ai->width)
         return 0;
     for (int k = 0; k < ai->width; k++) {
-        PyObject *x = PyTuple_GET_ITEM(o, k);
+        PyObject *x = PyTuple_GetItem(o, k);
         if (!PyLong_Check(x))
             return 0;
         out[k] = PyLong_AsLongLongAndOverflow(x, &ovf);
@@ -3424,6 +3447,7 @@ sg_arrays(Sg *sg, PyObject *args)
     if (ti >= 0 && !(o = tab_order(&st->tabs[ti], &n)))
         return NULL;
     PyObject *cols = NULL, *ret = NULL;
+    int64_t *colp[64];
     PyObject *nids = PyBytes_FromStringAndSize(NULL, n * 8);
     if (!nids || !(cols = PyList_New(nt->nattr)))
         goto done;
@@ -3432,41 +3456,44 @@ sg_arrays(Sg *sg, PyObject *args)
             n * 8 * nt->attrs[i].width);
         if (!b)
             goto done;
-        PyList_SET_ITEM(cols, i, b);
+        colp[i] = (int64_t *)PyBytes_AsString(b);
+        PyList_SetItem(cols, i, b);
     }
+    int64_t *nidp = (int64_t *)PyBytes_AsString(nids);
     uint64_t m = 0;
     for (uint64_t k = 0; k < n; k++) {
         const slot_t *p = vec_get(&st->tabs[ti].rows, o[k].row);
         int ok = 1;
-        for (int i = 0; i < nt->nattr && ok == 1; i++) {
-            const AttrInfo *ai = &nt->attrs[i];
-            ok = attr_ints(st, nt, i, p, p[0], (int64_t *)(PyBytes_AS_STRING(
-                PyList_GET_ITEM(cols, i)) + m * 8 * ai->width));
-        }
+        for (int i = 0; i < nt->nattr && ok == 1; i++)
+            ok = attr_ints(st, nt, i, p, p[0],
+                colp[i] + m * nt->attrs[i].width);
         if (ok < 0)
             goto done;
         if (!ok) {
             if (partial)
                 continue;
-            PyErr_Format(PyExc_ValueError, "%s nid=%lld has values that are"
+            PyObject *name = PyType_GetName((PyTypeObject *)nt->cursor_type);
+            PyErr_Format(PyExc_ValueError, "%S nid=%lld has values that are"
                 " None or outside the int64 range and cannot be represented"
-                " as array.",
-                ((PyTypeObject *)nt->cursor_type)->tp_name, (long long)p[0]);
+                " as array.", name, (long long)p[0]);
+            Py_XDECREF(name);
             goto done;
         }
-        ((int64_t *)PyBytes_AS_STRING(nids))[m] = p[0];
-        m++;
+        nidp[m++] = p[0];
     }
     if (m != n) {
-        if (_PyBytes_Resize(&nids, m * 8) < 0)
+        // Rows were skipped: shorten by copying (no _PyBytes_Resize in the
+        // limited API).
+        PyObject *b = PyBytes_FromStringAndSize((char *)nidp, m * 8);
+        Py_DECREF(nids);
+        nids = b;
+        if (!nids)
             goto done;
         for (int i = 0; i < nt->nattr; i++) {
-            PyObject *b = PyList_GET_ITEM(cols, i);
-            if (_PyBytes_Resize(&b, m * 8 * nt->attrs[i].width) < 0) {
-                PyList_SET_ITEM(cols, i, NULL);
+            b = PyBytes_FromStringAndSize((char *)colp[i],
+                m * 8 * nt->attrs[i].width);
+            if (!b || PyList_SetItem(cols, i, b) < 0)
                 goto done;
-            }
-            PyList_SET_ITEM(cols, i, b);
         }
     }
     ret = PyTuple_Pack(2, nids, cols);
@@ -3484,8 +3511,14 @@ static PyObject *
 sg_sizeof(Sg *sg, PyObject *noarg)
 {
     const State *st = &sg->st;
-    double n = Py_TYPE(sg)->tp_basicsize + sizeof(Tab) * st->ntab
+    // Subclasses may be larger than Sg.
+    PyObject *bs = PyObject_GetAttrString((PyObject *)Py_TYPE((PyObject *)sg),
+        "__basicsize__");
+    if (!bs)
+        return NULL;
+    double n = PyLong_AsDouble(bs) + sizeof(Tab) * st->ntab
         + sizeof(Idx) * st->nidx;
+    Py_DECREF(bs);
     for (int i = 0; i < st->nidx; i++) {
         const Idx *ix = &st->idxs[i];
         for (int r = 0; r < ix->nruns; r++)
@@ -3579,9 +3612,9 @@ static PyObject *
 upd_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 {
     PyObject *sg;
-    if (!PyArg_ParseTuple(args, "O!", &Sg_Type, &sg))
+    if (!PyArg_ParseTuple(args, "O!", Sg_Type, &sg))
         return NULL;
-    Upd *u = (Upd *)type->tp_alloc(type, 0);
+    Upd *u = (Upd *)PyType_GenericAlloc(type, 0);
     if (!u)
         return NULL;
     u->sg = (Sg *)Py_NewRef(sg);
@@ -3591,6 +3624,7 @@ upd_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 static int
 upd_traverse(Upd *u, visitproc visit, void *arg)
 {
+    Py_VISIT(Py_TYPE((PyObject *)u));
     Py_VISIT(u->sg);
     return 0;
 }
@@ -3610,8 +3644,8 @@ upd_dealloc(Upd *u)
             txn_abort(u->sg, u->tx);
         u->sg->writing = 0;
     }
-    Py_XDECREF(u->sg);
-    Py_TYPE(u)->tp_free((PyObject *)u);
+    Py_XDECREF((PyObject *)u->sg);
+    obj_free(u);
 }
 
 static PyObject *
@@ -3631,7 +3665,7 @@ upd_enter(Upd *u, PyObject *noarg)
         return NULL;
     u->commit = 1;
     u->valid = 1;
-    return Py_NewRef(u);
+    return Py_NewRef((PyObject *)u);
 }
 
 // Ends the transaction of u: commit (after the checks) or abort. A
@@ -3798,7 +3832,7 @@ upd_insert_rows(Upd *u, PyObject *args)
     NType *nt = ntype_of_cls(cls);
     if (!nt)
         return NULL;
-    if (PyList_GET_SIZE(cols_o) != nt->nattr || nt->nattr > 63) {
+    if (PyList_Size(cols_o) != nt->nattr || nt->nattr > 63) {
         PyErr_SetString(PyExc_ValueError, "one column per attribute expected");
         return NULL;
     }
@@ -3816,7 +3850,7 @@ upd_insert_rows(Upd *u, PyObject *args)
                 "node type has attributes that are not array-representable.");
             goto done;
         }
-        if (PyObject_GetBuffer(PyList_GET_ITEM(cols_o, i), &cb[ncb],
+        if (PyObject_GetBuffer(PyList_GetItem(cols_o, i), &cb[ncb],
                 PyBUF_SIMPLE) < 0)
             goto done;
         ncb++;
@@ -3895,6 +3929,7 @@ typedef struct {
 static int
 curiter_traverse(CurIter *it, visitproc visit, void *arg)
 {
+    Py_VISIT(Py_TYPE((PyObject *)it));
     Py_VISIT(it->sg);
     Py_VISIT(it->nids);
     return 0;
@@ -3904,17 +3939,17 @@ static void
 curiter_dealloc(CurIter *it)
 {
     PyObject_GC_UnTrack(it);
-    Py_XDECREF(it->sg);
+    Py_XDECREF((PyObject *)it->sg);
     Py_XDECREF(it->nids);
-    PyObject_GC_Del(it);
+    obj_free(it);
 }
 
 static PyObject *
 curiter_next(CurIter *it)
 {
-    if (it->pos >= PyList_GET_SIZE(it->nids))
+    if (it->pos >= PyList_Size(it->nids))
         return NULL;
-    long long nid = PyLong_AsLongLong(PyList_GET_ITEM(it->nids, it->pos++));
+    long long nid = PyLong_AsLongLong(PyList_GetItem(it->nids, it->pos++));
     if (nid == -1 && PyErr_Occurred())
         return NULL;
     return sg_cursor(it->sg, nid, NPATH_UNRESOLVED);
@@ -3928,10 +3963,10 @@ sg_cursors(Sg *sg, PyObject *nids)
         PyErr_SetString(PyExc_TypeError, "list expected");
         return NULL;
     }
-    CurIter *it = PyObject_GC_New(CurIter, &CurIter_Type);
+    CurIter *it = PyObject_GC_New(CurIter, CurIter_Type);
     if (!it)
         return NULL;
-    it->sg = (Sg *)Py_NewRef(sg);
+    it->sg = (Sg *)Py_NewRef((PyObject *)sg);
     it->nids = Py_NewRef(nids);
     it->pos = 0;
     PyObject_GC_Track(it);
@@ -3953,12 +3988,12 @@ sg_child(Sg *sg, PyObject *args)
     Py_DECREF(key);
     if (!l)
         return NULL;
-    if (PyList_GET_SIZE(l) != 1) {
+    if (PyList_Size(l) != 1) {
         Py_DECREF(l);
         PyErr_Format(QueryException, "Attribute or path %R not found.", name);
         return NULL;
     }
-    long long npath = PyLong_AsLongLong(PyList_GET_ITEM(l, 0));
+    long long npath = PyLong_AsLongLong(PyList_GetItem(l, 0));
     Py_DECREF(l);
     int ti;
     const slot_t *p = st_row(&sg->st, npath, &ti);
@@ -3979,11 +4014,11 @@ sg_child(Sg *sg, PyObject *args)
 static Upd *
 upd_open(Sg *sg)
 {
-    PyTypeObject *t = g_updater_cls ? (PyTypeObject *)g_updater_cls : &Upd_Type;
-    Upd *u = (Upd *)t->tp_alloc(t, 0);
+    PyTypeObject *t = g_updater_cls ? (PyTypeObject *)g_updater_cls : Upd_Type;
+    Upd *u = (Upd *)PyType_GenericAlloc(t, 0);
     if (!u)
         return NULL;
-    u->sg = (Sg *)Py_NewRef(sg);
+    u->sg = (Sg *)Py_NewRef((PyObject *)sg);
     PyObject *r = upd_enter(u, NULL);
     if (!r) {
         Py_DECREF(u);
@@ -4014,14 +4049,14 @@ ntuple_replace(NType *nt, PyObject *node, int index, PyObject *value)
         return NULL;
     }
     PyTypeObject *tc = (PyTypeObject *)nt->tuple_cls;
-    PyObject *t = tc->tp_alloc(tc, nt->nattr);
+    PyObject *t = PyType_GenericAlloc(tc, nt->nattr);
     if (!t) {
         Py_DECREF(v);
         return NULL;
     }
     for (int i = 0; i < nt->nattr; i++)
-        PyTuple_SET_ITEM(t, i, i == index ? v
-            : Py_NewRef(PyTuple_GET_ITEM(node, i)));
+        PyTuple_SetItem(t, i, i == index ? v
+            : Py_NewRef(PyTuple_GetItem(node, i)));
     return t;
 }
 
@@ -4045,9 +4080,11 @@ sg_add1(Sg *sg, PyObject *args)
             Py_DECREF(node);
             return NULL;
         }
-        Py_SETREF(node, ntuple_replace(nt, node, nt->ref_attr, ref));
-        if (!node)
+        PyObject *n = ntuple_replace(nt, node, nt->ref_attr, ref);
+        Py_DECREF(node);
+        if (!n)
             return NULL;
+        node = n;
     }
     Upd *u = upd_open(sg);
     if (!u) {
@@ -4092,9 +4129,11 @@ sg_set1(Sg *sg, int64_t nid, NType *nt, int index, PyObject *value)
     PyObject *row = row_load(&sg->st, nt, p, nid);
     if (!row)
         return -1;
-    Py_SETREF(row, ntuple_replace(nt, row, index, value));
-    if (!row)
+    PyObject *n = ntuple_replace(nt, row, index, value);
+    Py_DECREF(row);
+    if (!n)
         return -1;
+    row = n;
     Upd *u = upd_open(sg);
     if (!u) {
         Py_DECREF(row);
@@ -4127,9 +4166,13 @@ mod_setup(PyObject *m, PyObject *args, PyObject *kwds)
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "|OOOOOOOO", kwlist, &v[0],
             &v[1], &v[2], &v[3], &v[4], &v[5], &v[6], &v[7]))
         return NULL;
-    for (int i = 0; i < 8; i++)
-        if (v[i])
-            Py_XSETREF(*g[i], Py_NewRef(v[i]));
+    for (int i = 0; i < 8; i++) {
+        if (v[i]) {
+            PyObject *old = *g[i];
+            *g[i] = Py_NewRef(v[i]);
+            Py_XDECREF(old);
+        }
+    }
     Py_RETURN_NONE;
 }
 
@@ -4144,112 +4187,135 @@ static struct PyModuleDef moddef = {
     PyModuleDef_HEAD_INIT, "ordec.core.ordb._ordb", NULL, -1, mod_methods
 };
 
-static int
-block_type(PyTypeObject *t, const char *name, Py_ssize_t basicsize,
-    Py_ssize_t itemsize, destructor dealloc, traverseproc traverse,
-    inquiry clear)
+// The limited API has no static types. Like static types, the heap types
+// below are immutable; those without tp_new cannot be instantiated from
+// Python.
+#define TPFLAGS (Py_TPFLAGS_DEFAULT | Py_TPFLAGS_IMMUTABLETYPE)
+
+static PyTypeObject *
+block_type(const char *name, int basicsize, int itemsize, destructor dealloc,
+    traverseproc traverse, inquiry clear, PyMethodDef *methods)
 {
-    t->tp_name = name;
-    t->tp_basicsize = basicsize;
-    t->tp_itemsize = itemsize;
-    t->tp_dealloc = dealloc;
-    t->tp_flags = Py_TPFLAGS_DEFAULT;
+    PyType_Slot slots[5] = {{Py_tp_dealloc, dealloc}};
+    int n = 1;
     if (traverse) {
-        t->tp_flags |= Py_TPFLAGS_HAVE_GC;
-        t->tp_traverse = traverse;
-        t->tp_clear = clear;
+        slots[n++] = (PyType_Slot){Py_tp_traverse, traverse};
+        slots[n++] = (PyType_Slot){Py_tp_clear, clear};
     }
-    return PyType_Ready(t);
+    if (methods)
+        slots[n++] = (PyType_Slot){Py_tp_methods, methods};
+    PyType_Spec spec = {name, basicsize, itemsize,
+        TPFLAGS | Py_TPFLAGS_DISALLOW_INSTANTIATION
+        | (traverse ? Py_TPFLAGS_HAVE_GC : 0), slots};
+    return (PyTypeObject *)PyType_FromSpec(&spec);
 }
+
+static PyType_Slot ntype_slots[] = {
+    {Py_tp_new, ntype_new},
+    {Py_tp_dealloc, ntype_dealloc},
+    {Py_tp_traverse, ntype_traverse},
+    {Py_tp_clear, ntype_clear},
+    {Py_tp_methods, ntype_methods},
+    {0, NULL}
+};
+
+static PyType_Spec ntype_spec = {"ordec.core.ordb._ordb.NType",
+    sizeof(NType), 0, TPFLAGS | Py_TPFLAGS_HAVE_GC, ntype_slots};
+
+static PyType_Slot node_slots[] = {
+    {Py_tp_dealloc, node_dealloc},
+    {Py_tp_traverse, node_traverse},
+    {Py_tp_clear, node_clear},
+    {Py_tp_richcompare, node_richcompare},
+    {Py_tp_hash, node_hash},
+    {Py_tp_getset, node_getset},
+    {Py_tp_methods, node_methods},
+    {0, NULL}
+};
+
+static PyType_Spec node_spec = {"ordec.core.ordb._ordb.NodeBase",
+    sizeof(NodeObj), 0, TPFLAGS | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HAVE_GC
+    | Py_TPFLAGS_DISALLOW_INSTANTIATION, node_slots};
+
+static PyType_Slot attrdesc_slots[] = {
+    {Py_tp_new, attrdesc_new},
+    {Py_tp_dealloc, attrdesc_dealloc},
+    {Py_tp_traverse, attrdesc_traverse},
+    {Py_tp_clear, attrdesc_clear},
+    {Py_tp_descr_get, attrdesc_get},
+    {Py_tp_descr_set, attrdesc_set},
+    {0, NULL}
+};
+
+static PyType_Spec attrdesc_spec = {"ordec.core.ordb._ordb.AttrDescriptor",
+    sizeof(AttrDesc), 0, TPFLAGS | Py_TPFLAGS_HAVE_GC, attrdesc_slots};
+
+static PyType_Slot sg_slots[] = {
+    {Py_tp_new, sg_new},
+    {Py_tp_dealloc, sg_dealloc},
+    {Py_tp_traverse, sg_traverse},
+    {Py_tp_clear, sg_clear},
+    {Py_tp_methods, sg_methods},
+    {Py_tp_getset, sg_getset},
+    {Py_tp_members, sg_members},
+    {0, NULL}
+};
+
+static PyType_Spec sg_spec = {"ordec.core.ordb._ordb.SubgraphBase",
+    sizeof(Sg), 0, TPFLAGS | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HAVE_GC,
+    sg_slots};
+
+static PyType_Slot upd_slots[] = {
+    {Py_tp_new, upd_new},
+    {Py_tp_dealloc, upd_dealloc},
+    {Py_tp_traverse, upd_traverse},
+    {Py_tp_methods, upd_methods},
+    {Py_tp_members, upd_members},
+    {Py_tp_getset, upd_getset},
+    {0, NULL}
+};
+
+static PyType_Spec upd_spec = {"ordec.core.ordb._ordb.UpdaterBase",
+    sizeof(Upd), 0, TPFLAGS | Py_TPFLAGS_BASETYPE | Py_TPFLAGS_HAVE_GC,
+    upd_slots};
+
+static PyType_Slot curiter_slots[] = {
+    {Py_tp_dealloc, curiter_dealloc},
+    {Py_tp_traverse, curiter_traverse},
+    {Py_tp_iter, PyObject_SelfIter},
+    {Py_tp_iternext, curiter_next},
+    {0, NULL}
+};
+
+static PyType_Spec curiter_spec = {"ordec.core.ordb._ordb.CursorIterator",
+    sizeof(CurIter), 0, TPFLAGS | Py_TPFLAGS_HAVE_GC
+    | Py_TPFLAGS_DISALLOW_INSTANTIATION, curiter_slots};
 
 PyMODINIT_FUNC
 PyInit__ordb(void)
 {
-    FBlock_Type.tp_methods = fblock_methods;
-    FBlockGC_Type.tp_methods = fblock_methods;
-    if (block_type(&Leaf_Type, "_ordb.Leaf", offsetof(Leaf, data),
-            sizeof(slot_t), (destructor)leaf_dealloc, NULL, NULL) < 0
-        || block_type(&LeafGC_Type, "_ordb.LeafGC", offsetof(Leaf, data),
+    if (!(Leaf_Type = block_type("_ordb.Leaf", offsetof(Leaf, data),
+            sizeof(slot_t), (destructor)leaf_dealloc, NULL, NULL, NULL))
+        || !(LeafGC_Type = block_type("_ordb.LeafGC", offsetof(Leaf, data),
             sizeof(slot_t), (destructor)leaf_dealloc,
-            (traverseproc)leaf_traverse, (inquiry)leaf_clear) < 0
-        || block_type(&InnerGC_Type, "_ordb.InnerGC", sizeof(Inner), 0,
+            (traverseproc)leaf_traverse, (inquiry)leaf_clear, NULL))
+        || !(InnerGC_Type = block_type("_ordb.InnerGC", sizeof(Inner), 0,
             (destructor)inner_dealloc, (traverseproc)inner_traverse,
-            (inquiry)inner_clear) < 0
-        || block_type(&FBlock_Type, "_ordb.FBlock", sizeof(FBlock), 0,
-            (destructor)fblock_dealloc, NULL, NULL) < 0
-        || block_type(&FBlockGC_Type, "_ordb.FBlockGC", sizeof(FBlock), 0,
+            (inquiry)inner_clear, NULL))
+        || !(FBlock_Type = block_type("_ordb.FBlock", sizeof(FBlock), 0,
+            (destructor)fblock_dealloc, NULL, NULL, fblock_methods))
+        || !(FBlockGC_Type = block_type("_ordb.FBlockGC", sizeof(FBlock), 0,
             (destructor)fblock_dealloc, (traverseproc)fblock_traverse,
-            (inquiry)fblock_clear) < 0)
+            (inquiry)fblock_clear, fblock_methods)))
         return NULL;
-
-    NType_Type.tp_name = "ordec.core.ordb._ordb.NType";
-    NType_Type.tp_basicsize = sizeof(NType);
-    NType_Type.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC;
-    NType_Type.tp_new = ntype_new;
-    NType_Type.tp_dealloc = (destructor)ntype_dealloc;
-    NType_Type.tp_traverse = (traverseproc)ntype_traverse;
-    NType_Type.tp_clear = (inquiry)ntype_clear;
-    NType_Type.tp_methods = ntype_methods;
-
-    Node_Type.tp_name = "ordec.core.ordb._ordb.NodeBase";
-    Node_Type.tp_basicsize = sizeof(NodeObj);
-    Node_Type.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE
-        | Py_TPFLAGS_HAVE_GC;
-    Node_Type.tp_dealloc = (destructor)node_dealloc;
-    Node_Type.tp_traverse = (traverseproc)node_traverse;
-    Node_Type.tp_clear = (inquiry)node_clear;
-    Node_Type.tp_richcompare = node_richcompare;
-    Node_Type.tp_hash = (hashfunc)node_hash;
-    Node_Type.tp_getset = node_getset;
-    Node_Type.tp_methods = node_methods;
-
-    AttrDesc_Type.tp_name = "ordec.core.ordb._ordb.AttrDescriptor";
-    AttrDesc_Type.tp_basicsize = sizeof(AttrDesc);
-    AttrDesc_Type.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC;
-    AttrDesc_Type.tp_new = attrdesc_new;
-    AttrDesc_Type.tp_dealloc = (destructor)attrdesc_dealloc;
-    AttrDesc_Type.tp_traverse = (traverseproc)attrdesc_traverse;
-    AttrDesc_Type.tp_clear = (inquiry)attrdesc_clear;
-    AttrDesc_Type.tp_descr_get = (descrgetfunc)attrdesc_get;
-    AttrDesc_Type.tp_descr_set = (descrsetfunc)attrdesc_set;
-
-    Sg_Type.tp_name = "ordec.core.ordb._ordb.SubgraphBase";
-    Sg_Type.tp_basicsize = sizeof(Sg);
-    Sg_Type.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE
-        | Py_TPFLAGS_HAVE_GC;
-    Sg_Type.tp_new = sg_new;
-    Sg_Type.tp_dealloc = (destructor)sg_dealloc;
-    Sg_Type.tp_traverse = (traverseproc)sg_traverse;
-    Sg_Type.tp_clear = (inquiry)sg_clear;
-    Sg_Type.tp_methods = sg_methods;
-    Sg_Type.tp_getset = sg_getset;
-    Sg_Type.tp_members = sg_members;
-    Sg_Type.tp_weaklistoffset = offsetof(Sg, weakreflist);
-
-    Upd_Type.tp_name = "ordec.core.ordb._ordb.UpdaterBase";
-    Upd_Type.tp_basicsize = sizeof(Upd);
-    Upd_Type.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE
-        | Py_TPFLAGS_HAVE_GC;
-    Upd_Type.tp_new = upd_new;
-    Upd_Type.tp_dealloc = (destructor)upd_dealloc;
-    Upd_Type.tp_traverse = (traverseproc)upd_traverse;
-    Upd_Type.tp_methods = upd_methods;
-    Upd_Type.tp_members = upd_members;
-    Upd_Type.tp_getset = upd_getset;
-
-    CurIter_Type.tp_name = "ordec.core.ordb._ordb.CursorIterator";
-    CurIter_Type.tp_basicsize = sizeof(CurIter);
-    CurIter_Type.tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HAVE_GC;
-    CurIter_Type.tp_dealloc = (destructor)curiter_dealloc;
-    CurIter_Type.tp_traverse = (traverseproc)curiter_traverse;
-    CurIter_Type.tp_iter = PyObject_SelfIter;
-    CurIter_Type.tp_iternext = (iternextfunc)curiter_next;
-
-    if (PyType_Ready(&CurIter_Type) < 0)
-        return NULL;
-    if (PyType_Ready(&NType_Type) < 0 || PyType_Ready(&Node_Type) < 0
-            || PyType_Ready(&AttrDesc_Type) < 0 || PyType_Ready(&Sg_Type) < 0
-            || PyType_Ready(&Upd_Type) < 0)
+    if (!(NType_Type = (PyTypeObject *)PyType_FromSpec(&ntype_spec))
+            || !(Node_Type = (PyTypeObject *)PyType_FromSpec(&node_spec))
+            || !(AttrDesc_Type = (PyTypeObject *)PyType_FromSpec(
+                &attrdesc_spec))
+            || !(Sg_Type = (PyTypeObject *)PyType_FromSpec(&sg_spec))
+            || !(Upd_Type = (PyTypeObject *)PyType_FromSpec(&upd_spec))
+            || !(CurIter_Type = (PyTypeObject *)PyType_FromSpec(
+                &curiter_spec)))
         return NULL;
 
     str_ntype = PyUnicode_InternFromString("_ntype");
@@ -4264,14 +4330,14 @@ PyInit__ordb(void)
     PyObject *m = PyModule_Create(&moddef);
     if (!m)
         return NULL;
-    if (PyModule_AddObjectRef(m, "NType", (PyObject *)&NType_Type) < 0
-            || PyModule_AddObjectRef(m, "NodeBase", (PyObject *)&Node_Type) < 0
+    if (PyModule_AddObjectRef(m, "NType", (PyObject *)NType_Type) < 0
+            || PyModule_AddObjectRef(m, "NodeBase", (PyObject *)Node_Type) < 0
             || PyModule_AddObjectRef(m, "AttrDescriptor",
-                (PyObject *)&AttrDesc_Type) < 0
+                (PyObject *)AttrDesc_Type) < 0
             || PyModule_AddObjectRef(m, "SubgraphBase",
-                (PyObject *)&Sg_Type) < 0
+                (PyObject *)Sg_Type) < 0
             || PyModule_AddObjectRef(m, "UpdaterBase",
-                (PyObject *)&Upd_Type) < 0
+                (PyObject *)Upd_Type) < 0
             || PyModule_AddIntConstant(m, "ENGINE_PAGED", ENGINE_PAGED) < 0
             || PyModule_AddIntConstant(m, "ENGINE_FLAT", ENGINE_FLAT) < 0
             || PyModule_AddIntConstant(m, "K_INT", K_INT) < 0
