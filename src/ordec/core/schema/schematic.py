@@ -36,8 +36,28 @@ class PinType(Enum):
         return f'{self.__class__.__name__}.{self.name}'
 
 @public
+class HAlign(Enum):
+    Left = 1
+    Right = 2
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}.{self.name}'
+
+    def invert(self):
+        return self.Right if self == self.Left else self.Left
+
+@public
+class VAlign(Enum):
+    Top = 1
+    Bottom = 2
+    Middle = 3
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}.{self.name}'
+
+@public
 class AnnotationKind(Enum):
-    """What a SymbolText or SymbolAnnotation displays."""
+    """What a SymbolAnnotation displays."""
     CellName = 'cellname' #: Name of the instantiated cell (text holds the name).
     InstanceName = 'instancename' #: Name of the SchemInstance (text is None, the name is only known in the schematic).
     Param = 'param' #: A cell parameter, text usually in key=value form.
@@ -87,16 +107,30 @@ class MixinRenderable:
 
 @public
 class Symbol(MixinRenderable, SubgraphRoot):
-    """A symbol of an individual cell."""
+    """
+    A symbol of an individual cell.
+
+    A symbol with a cell starts out with the default SymbolAnnotations:
+    instance name, cell name (the class name of the cell) and one line per
+    cell parameter (as listed by Cell.params_list). Parameters left at their
+    default are hidden (shown=False), unless the Parameter sets
+    hide_default=False; schematics can still show them via an override.
+    Symbols that want other annotations modify or remove these, e.g.
+    ``s.one(SymbolAnnotation.kind_idx.query(AnnotationKind.CellName))``.
+    Construct with default_annotations=False to start without annotations.
+    """
     view_builder = SymbolViewBuilder
     wire_id = WIRE_DOMAIN | 1
     outline = Attr(Rect4R, factory=coerce_tuple(Rect4R, 4))
     cell = LiveRef(Cell)
     #: Optional hint for the position of the SymbolAnnotation block in symbol
-    #: coordinates. None (the default) lets the schematic place the block
-    #: beside the symbol, preferring its east side (see
-    #: :func:`ordec.schematic.place_annotations`). A hint is used if the block
-    #: fits there; it follows the instance orientation.
+    #: coordinates; it follows the instance orientation. Instances that are
+    #: not placed (see :func:`ordec.schematic.place_annotations`) draw the
+    #: block there. place_annotations tries the hint first and uses it if the
+    #: block fits there. None (the default) draws unplaced blocks at the top
+    #: right corner of the outline, but differs from setting that corner by
+    #: hand: place_annotations then searches the spot beside the symbol
+    #: right away, preferring its east side.
     annotation_pos = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
     #: Direction in which the block extends from annotation_pos: East or West.
     annotation_align = Attr(D4, default=D4.East)
@@ -104,6 +138,12 @@ class Symbol(MixinRenderable, SubgraphRoot):
     #: along the stub. False draws them horizontally beside the stub, which
     #: reads better for short labels (e.g. 's', 'g', 'd').
     rotate_pin_labels = Attr(bool, default=True)
+
+    def __new__(cls, default_annotations: bool = True, **kwargs):
+        ret = super().__new__(cls, **kwargs)
+        if default_annotations and ret.cell is not None:
+            ret._add_default_annotations()
+        return ret
 
     def portmap(self, **kwargs):
         def inserter_func(main, sgu, primary_nid):
@@ -114,16 +154,17 @@ class Symbol(MixinRenderable, SubgraphRoot):
         return inserter_func
 
     def place_pins(self, hpadding=3, vpadding=3):
+        """Makes this a box symbol, see :func:`ordec.schematic.symbol_place_pins`."""
         from ...schematic import symbol_place_pins
         symbol_place_pins(self, hpadding=hpadding, vpadding=vpadding)
 
-    def make_box(self):
-        from ...schematic import symbol_make_box
-        symbol_make_box(self)
-
-    def add_default_annotations(self, cell_name: str|None = None, show_cell_name: bool = True):
-        from ...schematic import symbol_add_default_annotations
-        symbol_add_default_annotations(self, cell_name=cell_name, show_cell_name=show_cell_name)
+    def _add_default_annotations(self):
+        self % SymbolAnnotation(kind=AnnotationKind.InstanceName)
+        self % SymbolAnnotation(kind=AnnotationKind.CellName, text=type(self.cell).__name__)
+        non_default = set(self.cell.params_list(skip_default=True))
+        for param in self.cell.params_list():
+            self % SymbolAnnotation(kind=AnnotationKind.Param, text=param,
+                shown=param in non_default)
 
 @public
 class Pin(Node):
@@ -187,34 +228,43 @@ class SymbolArc(Node):
         return ' '.join(d)
 
 @public
-class SymbolText(Node):
+class SymbolAnnotationStack(Node):
     """
-    Text at a fixed position of a Symbol, typically inside its outline
-    (e.g. the cell name inside a box symbol).
+    Stack of SymbolAnnotations at a fixed position of a Symbol, typically
+    inside its outline (e.g. the cell name inside a box symbol). The
+    SymbolAnnotations referencing it are drawn as one line each. The text
+    is never rotated; in rotated or mirrored instances, the alignment
+    follows the instance transform, so that the stack stays on the same
+    side of pos (e.g. inside a corner of the box).
     """
     in_subgraphs = [Symbol]
     wire_id = WIRE_DOMAIN | 17
 
-    pos   = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
-    align = Attr(D4, default=D4.East) #: Direction in which the text extends from pos.
-    kind  = Attr(AnnotationKind, optional=False)
-    text  = Attr(str) #: None for AnnotationKind.InstanceName.
+    pos    = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
+    halign = Attr(HAlign, default=HAlign.Left) #: Left: the text extends right from pos; Right: left.
+    valign = Attr(VAlign, default=VAlign.Top) #: Top: the lines hang below pos; Bottom: they stack upwards.
 
 @public
 class SymbolAnnotation(Node):
     """
-    One line of the annotation block of a Symbol (cell name, instance name,
-    parameter). The block is placed by the schematic outside the symbol
-    itself (see Symbol.annotation_pos and SchemInstance.annotation_pos).
-    Lines are stacked in node order. Only lines with shown=True are drawn;
-    a schematic can override this per instance with SchemAnnotationOverride.
+    One line of annotation text of a Symbol (cell name, instance name,
+    parameter). Lines without ref form the annotation block, which the
+    schematic places outside the symbol itself (see Symbol.annotation_pos
+    and SchemInstance.annotation_pos). Lines are stacked in node order. Only
+    lines with shown=True are drawn; a schematic can override this per
+    instance with SchemAnnotationOverride.
     """
     in_subgraphs = [Symbol]
     wire_id = WIRE_DOMAIN | 18
 
+    #: Fixed stack the line belongs to, None for the annotation block.
+    ref   = LocalRef(SymbolAnnotationStack)
     kind  = Attr(AnnotationKind, optional=False)
     text  = Attr(str) #: None for AnnotationKind.InstanceName.
     shown = Attr(bool, default=True)
+
+    ref_idx = Index(ref)
+    kind_idx = Index(kind)
 
 # Schematic
 # ---------
@@ -397,8 +447,9 @@ class SchemInstance(Node, MixinSourceLoc):
     #: Position of the annotation block in schematic coordinates. Set by
     #: Schematic.place_annotations() in the viewgen pipeline unless the
     #: schematic sets it explicitly. If still None when rendering (e.g. in
-    #: hand-built schematics), the renderer places the block the same way
-    #: without storing the result, ignoring annotation_align.
+    #: hand-built schematics that do not call place_annotations), the block
+    #: is drawn at the symbol's default position (see Symbol.annotation_pos),
+    #: ignoring annotation_align and annotation_wrap.
     annotation_pos = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
     annotation_align = Attr(D4, default=D4.East)
     #: Arrangement of the annotation block: consecutive SymbolAnnotations

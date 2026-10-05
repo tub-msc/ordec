@@ -142,7 +142,6 @@ class Inv(Cell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
-        s.add_default_annotations()
 
         # Define pins for the inverter
         s.vdd = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
@@ -198,7 +197,6 @@ class Ringosc(Cell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
-        s.add_default_annotations()
 
         s.vdd = Pin(pintype=PinType.Inout, align=North)
         s.vss = Pin(pintype=PinType.Inout, align=South)
@@ -249,7 +247,6 @@ class And2(Cell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
-        s.add_default_annotations()
 
         s.vdd = Pin(pos=Vec2R(2.5, 5), pintype=PinType.Inout, align=North)
         s.vss = Pin(pos=Vec2R(2.5, 0), pintype=PinType.Inout, align=South)
@@ -271,7 +268,6 @@ class Or2(Cell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
-        s.add_default_annotations()
 
         s.vdd = Pin(pos=Vec2R(2.5, 5), pintype=PinType.Inout, align=North)
         s.vss = Pin(pos=Vec2R(2.5, 0), pintype=PinType.Inout, align=South)

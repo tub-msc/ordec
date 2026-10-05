@@ -8,23 +8,6 @@ from ..core import *
 from enum import Enum
 import re
 
-class HAlign(Enum):
-    Left = 1
-    Right = 2
-
-    def invert(self):
-        if self == self.Left:
-            return self.Right
-        elif self == self.Right:
-            return self.Left
-        else:
-            return self
-
-class VAlign(Enum):
-    Top = 1
-    Bottom = 2
-    Middle = 3
-
 class ArrowType(Enum):
     Pin = 1
     Port = 2
@@ -33,19 +16,25 @@ def clean_css(css: str) -> str:
     """remove newlines / unneeded spaces from CSS literal string"""
     return re.sub(r"\s+", " ", css).strip()
 
-def annotation_lines(s: Symbol, inst: SchemInstance|None) -> list[tuple[str, AnnotationKind]]:
+def annotation_lines(s: Symbol, inst: SchemInstance|None, stack: SymbolAnnotationStack|None = None) -> list[tuple[str, AnnotationKind]]:
     """
-    The shown lines of the annotation block of symbol s, as (text, kind),
-    with the schematic's SchemAnnotationOverrides applied when drawn as
-    instance inst. Instance name lines are omitted for a symbol on its own.
+    The shown lines of the annotation block of symbol s (or of a fixed
+    stack), as (text, kind), with the schematic's SchemAnnotationOverrides
+    applied when drawn as instance inst. Instance name lines are omitted for
+    a symbol on its own.
     """
-    shown = {a.nid: a.shown for a in s.all(SymbolAnnotation)}
+    overrides = {}
     if inst is not None:
         for o in inst.root.all(SchemAnnotationOverride.ref_idx.query(inst)):
-            shown[o.there.nid] = o.shown
+            overrides[o.there.nid] = o.shown
+    if stack is None:
+        # Index queries cannot select None.
+        annotations = [a for a in s.all(SymbolAnnotation) if a.ref is None]
+    else:
+        annotations = s.all(SymbolAnnotation.ref_idx.query(stack))
     lines = []
-    for a in s.all(SymbolAnnotation):
-        if not shown[a.nid]:
+    for a in annotations:
+        if not overrides.get(a.nid, a.shown):
             continue
         if a.kind == AnnotationKind.InstanceName:
             if inst is None:
@@ -54,6 +43,19 @@ def annotation_lines(s: Symbol, inst: SchemInstance|None) -> list[tuple[str, Ann
         else:
             lines.append((a.text, a.kind))
     return lines
+
+def stack_label_frame(stack: SymbolAnnotationStack, trans: TD4R) -> tuple[TD4R, HAlign, VAlign]:
+    """
+    Frame and alignment of a fixed annotation stack drawn under trans, for
+    draw_label and label_rect. The text stays horizontal, but the quadrant
+    it occupies relative to pos follows trans (Middle rotated by 90 degrees
+    becomes Left).
+    """
+    q = trans.d4 * Vec2R({HAlign.Left: 1, HAlign.Right: -1}[stack.halign],
+        {VAlign.Top: -1, VAlign.Bottom: 1, VAlign.Middle: 0}[stack.valign])
+    halign = HAlign.Left if q.x >= 0 else HAlign.Right
+    valign = VAlign.Top if q.y < 0 else VAlign.Bottom if q.y > 0 else VAlign.Middle
+    return (trans * stack.pos).transl() * East, halign, valign
 
 def annotation_row_chars(row: list) -> int:
     """Length of a text row; its entries are separated by one space."""
@@ -74,24 +76,23 @@ def annotation_rows(lines: list, wrap: int) -> list[list]:
             rows.append([line])
     return rows
 
-def annotation_anchor(s: Symbol, trans: TD4R, inst: SchemInstance|None) -> tuple[TD4R, int] | None:
+def annotation_anchor(s: Symbol, trans: TD4R, inst: SchemInstance|None) -> tuple[TD4R, int]:
     """
     Anchor of the annotation block (position and direction the text extends
     in, see Renderer.draw_label) and its arrangement (wrap, see
     annotation_rows): the instance's annotation_pos and annotation_wrap if
-    set, else the block is placed against the symbol's own geometry (a
-    symbol on its own, or an instance of a schematic that never ran
-    place_annotations; see SchematicRenderer.render_schematic for the
-    latter). None if no line of the block is shown.
+    set. Else (a symbol on its own, or an instance of a schematic that never
+    ran place_annotations), the block is drawn at the symbol's
+    annotation_pos, or at the top right corner of its outline. Rendering
+    never searches for a free spot.
     """
     if inst is not None and inst.annotation_pos is not None:
         return inst.annotation_pos.transl() * inst.annotation_align, inst.annotation_wrap
-    from .annotate import place_block, symbol_obstacles, symbol_body, rect_anchor
-    placed = place_block(s, trans, inst, [r.tofloat() for r in symbol_obstacles(s, trans, inst)])
-    if placed is None:
-        return None
-    rect, wrap = placed
-    return rect_anchor(rect, symbol_body(s, trans, inst)), wrap
+    from .annotate import hint_rect, rect_anchor, symbol_body, block_size
+    length, depth = block_size(annotation_rows(annotation_lines(s, inst), 0))
+    pos = s.annotation_pos if s.annotation_pos is not None else s.outline.northeast
+    rect = hint_rect(s, trans, length, depth, pos)
+    return rect_anchor(rect, symbol_body(s, trans, inst)), 0
 
 def annotation_extent(s: Symbol, trans: TD4R, inst: SchemInstance|None) -> Rect4R | None:
     """
@@ -438,28 +439,20 @@ class SchematicRenderer(Renderer):
         canvas = s.outline
         extent = annotation_extent(s, TD4R(), None)
         if extent is not None:
-            canvas = canvas.extend(Vec2R(extent.lx, extent.ly)).extend(Vec2R(extent.ux, extent.uy))
+            canvas = canvas.extend(extent.southwest).extend(extent.northeast)
         self.setup_canvas(canvas)
         if self.enable_grid:
             self.draw_grid(s.outline)
         self.draw_symbol(s, TD4R())
 
     def render_schematic(self, s: Schematic):
-        from .annotate import block_rects, symbol_body, rect_anchor
-        # Instances that were never placed (schematics built outside the
-        # viewgen pipeline) get their annotation blocks placed here, without
-        # storing the result.
-        self.annotation_anchors = {}
+        # Annotation blocks may lie outside the outline (e.g. of instances
+        # that were never placed, see annotation_anchor).
         canvas = s.outline
-        rects = block_rects(s)
         for inst in s.all(SchemInstance):
-            if inst.nid not in rects:
-                continue
-            rect, wrap = rects[inst.nid]
-            if inst.annotation_pos is None:
-                body = symbol_body(inst.symbol, inst.loc_transform(), inst)
-                self.annotation_anchors[inst.nid] = (rect_anchor(rect, body), wrap)
-            canvas = canvas.extend(rect.southwest).extend(rect.northeast)
+            extent = annotation_extent(inst.symbol, inst.loc_transform(), inst)
+            if extent is not None:
+                canvas = canvas.extend(extent.southwest).extend(extent.northeast)
         self.setup_canvas(canvas)
         if self.enable_grid:
             self.draw_grid(s.outline)
@@ -503,9 +496,6 @@ class SchematicRenderer(Renderer):
         circle.attrib['class'] = 'errorMarker'
         circle.attrib['data-error'] = err.error_type.value
 
-    #: Block (anchor, wrap) by instance nid, filled by render_schematic.
-    annotation_anchors = {}
-
     annotation_class = {
         AnnotationKind.CellName: 'cellName',
         AnnotationKind.InstanceName: 'instanceName',
@@ -522,22 +512,16 @@ class SchematicRenderer(Renderer):
             x=str(lx), y=str(ly), width=str(ux-lx), height=str(uy-ly))
         outline.attrib['class'] = 'symbolOutline'
 
-        for t in s.all(SymbolText):
-            if t.kind == AnnotationKind.InstanceName:
-                if inst is None:
-                    continue
-                text = inst.full_path_label()
-            else:
-                text = t.text
-            self.draw_label(text, trans * t.pos.transl() * t.align,
-                svg_class=self.annotation_class[t.kind])
+        for stack in s.all(SymbolAnnotationStack):
+            lines = annotation_lines(s, inst, stack)
+            if lines:
+                frame, halign, valign = stack_label_frame(stack, trans)
+                rows = [[(text, self.annotation_class[kind])] for text, kind in lines]
+                self.draw_label(rows, frame, halign=halign, valign=valign)
 
         lines = annotation_lines(s, inst)
         if lines:
-            if inst is not None and inst.nid in self.annotation_anchors:
-                anchor, wrap = self.annotation_anchors[inst.nid]
-            else:
-                anchor, wrap = annotation_anchor(s, trans, inst)
+            anchor, wrap = annotation_anchor(s, trans, inst)
             lines = [(text, self.annotation_class[kind]) for text, kind in lines]
             self.draw_label(annotation_rows(lines, wrap), anchor)
 

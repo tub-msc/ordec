@@ -244,20 +244,12 @@ class InstanceParams:
 class SymbolViewBuilder(ViewBuilder):
     @classmethod
     def create_root(cls, cell, root_cls):
-        root = root_cls(cell=cell)
-        # Viewgen bodies that want other annotations remove or modify these.
-        # Plain-function viewgens have no cell to annotate.
-        if cell is not None:
-            root.add_default_annotations()
-        return root
+        return root_cls(cell=cell)
 
     def postprocess(self):
-        from .schema import SymbolPoly, SymbolArc
-        self.root.place_pins(vpadding=2, hpadding=2)
-        # Symbols without own drawing are shown as a box with labels inside.
-        if not any(True for _ in self.root.all(SymbolPoly)) \
-                and not any(True for _ in self.root.all(SymbolArc)):
-            self.root.make_box()
+        # A symbol that sets its own outline has done its own layout.
+        if self.root.outline is None:
+            self.root.place_pins(vpadding=2, hpadding=2)
 
 
 class SchematicViewBuilder(MixinUnresolvedInstances, ViewBuilder):

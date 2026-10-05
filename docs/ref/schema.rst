@@ -31,11 +31,11 @@ show up in the detail view of the web UI. Labels of vertical (North/South)
 pin stubs run along the stub; symbols with short pin names can draw them
 horizontally instead with ``Symbol.rotate_pin_labels = False``.
 
-Besides pins and drawn geometry, a symbol carries text in two forms.
-:class:`SymbolText` is drawn at a fixed position of the symbol, typically
-inside its outline. :class:`SymbolAnnotation` nodes form the annotation
-block (instance name, cell name, parameters), which is placed as a whole
-beside the symbol. Schematics place the blocks after wiring
+Besides pins and drawn geometry, a symbol carries :class:`SymbolAnnotation`
+lines (instance name, cell name, parameters). Lines referencing a
+:class:`SymbolAnnotationStack` are drawn at its fixed position, typically
+inside the symbol outline. The other lines form the annotation
+block, which is placed as a whole beside the symbol. Schematics place the blocks after wiring
 (:func:`ordec.schematic.place_annotations`, stored in
 ``SchemInstance.annotation_pos``): each block goes to the empty spot
 nearest to the symbol's center, preferring the east over the west and the
@@ -52,14 +52,13 @@ schematic may set ``SchemInstance.annotation_pos`` explicitly. Each
 annotation line has a ``shown`` flag, which a schematic can override per
 instance with :class:`SchemAnnotationOverride` to declutter the drawing.
 
-Symbol viewgens start out with the default block (see
-:meth:`Symbol.add_default_annotations`, which hides parameters left at their
+Symbols start out with the default annotations (see
+:class:`Symbol`, which hides parameters left at their
 default unless they are declared with ``Parameter(..., hide_default=False)``)
-and may modify, remove or extend it. A symbol viewgen that draws
-nothing (no :class:`SymbolPoly` or :class:`SymbolArc`) becomes a box symbol
-(:meth:`Symbol.make_box`): the outline is drawn, and the labels are placed
-as :class:`SymbolText` at fixed positions inside the box instead of forming
-an annotation block.
+and may modify, remove or extend them. :meth:`Symbol.place_pins` makes a box
+symbol: it arranges the pins on the sides of the outline, draws the outline
+and puts the annotations into fixed stacks inside the box. Symbol viewgens
+that set no outline get this automatically.
 
 .. autoclass:: Symbol
    :members:
@@ -86,7 +85,15 @@ an annotation block.
    :members:
    :undoc-members:
 
-.. autoclass:: SymbolText
+.. autoclass:: SymbolAnnotationStack
+   :members:
+   :undoc-members:
+
+.. autoclass:: HAlign
+   :members:
+   :undoc-members:
+
+.. autoclass:: VAlign
    :members:
    :undoc-members:
 

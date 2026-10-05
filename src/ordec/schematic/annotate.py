@@ -21,7 +21,7 @@ import logging
 import math
 
 from ..core import *
-from .render import Renderer, SchematicRenderer, VAlign, annotation_lines, annotation_rows, annotation_row_chars
+from .render import Renderer, SchematicRenderer, annotation_lines, annotation_rows, annotation_row_chars, stack_label_frame, annotation_extent
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +65,7 @@ def arc_bbox(arc: SymbolArc) -> Rect4R:
 def symbol_obstacles(s: Symbol, trans: TD4R, inst: SchemInstance|None = None) -> list[Rect4R]:
     """
     Rectangles covering the drawn geometry of symbol s under trans: polygons,
-    arcs, shown pin arrows and pin labels, and fixed SymbolTexts. The outline itself
+    arcs, shown pin arrows and pin labels, and fixed annotation stacks. The outline itself
     is not an obstacle, so blocks may use empty outline space.
     """
     rects = []
@@ -83,14 +83,12 @@ def symbol_obstacles(s: Symbol, trans: TD4R, inst: SchemInstance|None = None) ->
             continue
         label_trans, valign = SchematicRenderer.pin_label_frame(pin, trans_local)
         rects.append(Renderer.label_rect(label_trans, len(pin.full_path_label()), 1, valign=valign))
-    for t in s.all(SymbolText):
-        if t.kind == AnnotationKind.InstanceName:
-            if inst is None:
-                continue
-            text = inst.full_path_label()
-        else:
-            text = t.text
-        rects.append(Renderer.label_rect(trans * t.pos.transl() * t.align, len(text), 1))
+    for stack in s.all(SymbolAnnotationStack):
+        lines = annotation_lines(s, inst, stack)
+        if lines:
+            frame, halign, valign = stack_label_frame(stack, trans)
+            rects.append(Renderer.label_rect(frame, max(len(text) for text, kind in lines),
+                len(lines), halign=halign, valign=valign))
     return rects
 
 def schematic_obstacles(node: Schematic) -> list[Rect4R]:
@@ -150,16 +148,15 @@ def symbol_body(s: Symbol, trans: TD4R, inst: SchemInstance|None) -> Rect4R:
     return Rect4R(min(r.lx for r in rects), min(r.ly for r in rects),
         max(r.ux for r in rects), max(r.uy for r in rects))
 
-def hint_rect(s: Symbol, trans: TD4R, length: R, depth: R) -> Rect4R | None:
+def hint_rect(s: Symbol, trans: TD4R, length: R, depth: R, pos: Vec2R) -> Rect4R:
     """
-    Block rectangle for the symbol's annotation_pos hint. The block extends
-    from the anchor in the annotation_align direction (East or West) and
-    downwards; both directions follow trans, so the block stays on the same
-    side of a rotated or mirrored instance, but the text stays horizontal.
+    Block rectangle for an anchor at pos (in symbol coordinates). The block
+    extends from pos in the symbol's annotation_align direction (East or
+    West) and downwards; both directions follow trans, so the block stays on
+    the same side of a rotated or mirrored instance, but the text stays
+    horizontal.
     """
-    if s.annotation_pos is None:
-        return None
-    p = trans * s.annotation_pos
+    p = trans * pos
     along = trans.d4 * (s.annotation_align * Vec2R(0, 1))
     down = trans.d4 * Vec2R(0, -1)
     if along.x != 0:
@@ -283,9 +280,10 @@ def place_block(s: Symbol, trans: TD4R, inst: SchemInstance|None, obstacles: lis
     sizes = arrangements(lines)
 
     wrap, length, depth = sizes[0]
-    hint = hint_rect(s, trans, length, depth)
-    if hint is not None and fits(hint.tofloat(), obstacles):
-        return hint, wrap
+    if s.annotation_pos is not None:
+        hint = hint_rect(s, trans, length, depth, s.annotation_pos)
+        if fits(hint.tofloat(), obstacles):
+            return hint, wrap
 
     # Grid window: the body plus the reach of the largest arrangement.
     reach_x = PUSH_MARGIN + CLEARANCE + max(length for wrap, length, depth in sizes)
@@ -344,7 +342,6 @@ def block_rects(node: Schematic) -> dict[int, tuple[Rect4R, int]]:
     annotation_pos keep it; the others are placed greedily in instance
     order, seeing the blocks placed before them as obstacles.
     """
-    from .render import annotation_extent
     obstacles = [r.tofloat() for r in schematic_obstacles(node)]
     bodies = {inst.nid: symbol_body(inst.symbol, inst.loc_transform(), inst).tofloat()
         for inst in node.all(SchemInstance)}

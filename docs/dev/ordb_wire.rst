@@ -37,6 +37,7 @@ array, recursive). Everything else is tagged:
   390024, SimColumn, "[blob index, offset, stride, length, dtype, name, quantity]"
   390022, GdsLayer, "[layer, data_type]"
   390023, RGBColor, "[r, g, b]"
+  390025/390026, HAlign / VAlign, member name string
   390030, LocalRef value, nid
   390031, ExternalRef value, nid
   390032, SubgraphRef value, 32-byte wire_hash of the referenced subgraph

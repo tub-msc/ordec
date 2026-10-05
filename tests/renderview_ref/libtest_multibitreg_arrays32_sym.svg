@@ -2,7 +2,7 @@
   <g transform="matrix(1 0 0 -1 0 38.0)">
     <rect x="0.0" y="0.0" width="6.0" height="38.0" class="symbolOutline" />
     <text transform="matrix(0.045 0 0 -0.045 5.875 37.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">MultibitReg_Arrays</text>
-    <text transform="matrix(0.045 0 0 -0.045 5.875 0.785)" dominant-baseline="hanging" text-anchor="end" class="params">bits=32</text>
+    <text transform="matrix(0.045 0 0 -0.045 5.875 0.125)" dominant-baseline="ideographic" text-anchor="end" class="params">bits=32</text>
     <path d="M0.0 0.0 L6.0 0.0 L6.0 38.0 L0.0 38.0 Z" transform="matrix(1 0 0 1 0.0 0.0)" class="symbolPoly" />
     <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(1 0 0 1 3.0 0.2)" class="pinArrow" />
     <text transform="matrix(0 0.045 0.045 0 2.875 0.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel">vss</text>

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from .helpers import (
-    symbol_place_pins, symbol_make_box, symbol_add_default_annotations,
+    symbol_place_pins,
     schem_place, schem_check,
     SchematicError, spice_params,
 )

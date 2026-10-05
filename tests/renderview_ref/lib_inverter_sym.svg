@@ -1,7 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="150.625px" height="150.0px" viewBox="-1.0 -1.0 6.025 6.0">
+<svg xmlns="http://www.w3.org/2000/svg" width="175.625px" height="150.0px" viewBox="-1.0 -1.0 7.025 6.0">
   <g transform="matrix(1 0 0 -1 0 4.0)">
     <rect x="0.0" y="0.0" width="4.0" height="4.0" class="symbolOutline" />
-    <text transform="matrix(0.045 0 0 -0.045 3.125 3.16)" dominant-baseline="hanging" text-anchor="start" class="cellName">Inv</text>
+    <text transform="matrix(0.045 0 0 -0.045 4.125 3.875)" dominant-baseline="hanging" text-anchor="start" class="cellName">Inv</text>
     <path d="M0.0 2.0 L1.0 2.0" transform="matrix(1 0 0 1 0.0 0.0)" class="symbolPoly" />
     <path d="M3.25 2.0 L4.0 2.0" transform="matrix(1 0 0 1 0.0 0.0)" class="symbolPoly" />
     <path d="M1.0 1.0 L1.0 3.0 L2.75 2.0 Z" transform="matrix(1 0 0 1 0.0 0.0)" class="symbolPoly" />

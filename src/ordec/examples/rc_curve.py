@@ -40,6 +40,7 @@ class RC(Cell):
 
         s.auto_wire()
         s.check(add_conn_points=True, add_terminal_taps=True)
+        s.place_annotations()
         return s
 
     @viewgen_noctx(auto_refresh=False)

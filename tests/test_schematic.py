@@ -227,11 +227,11 @@ def test_scheminstance_unresolved_hierarchical_path():
 def test_annotations():
     from .lib.ord import annotations as lib_ann
     import re
-    # Symbol viewgens start with the default block and can adjust it:
+    # Symbol viewgens start with the default annotations and can adjust them:
     sym = lib_ann.Box(n=1).symbol
     assert [(a.kind, a.text, a.shown) for a in sym.all(SymbolAnnotation)] == [
         (AnnotationKind.InstanceName, None, True),
-        (AnnotationKind.CellName, 'Box', False),
+        (AnnotationKind.CellName, 'Box', True), # in a fixed stack
         (AnnotationKind.Param, 'n=1', True),
         (AnnotationKind.Param, 'm=1', False), # left at its default
     ]
@@ -241,11 +241,12 @@ def test_annotations():
     sch = lib_ann.Top().schematic
     # b1 is placed at its symbol's hint, b2 keeps its explicit position; the
     # outline covers both blocks:
-    assert sch.b1.annotation_pos == Vec2R(3, 7)
+    # (stored right-aligned, as the hint lies left of the body center):
+    assert (sch.b1.annotation_pos, sch.b1.annotation_align) == (Vec2R(R('4.025'), 7), West)
     assert sch.b2.annotation_pos == Vec2R(9, 7)
     assert sch.outline.uy >= 7
     svg = sch.render().svg().decode()
-    assert svg.count('>Box<') == 2 # SymbolText of both instances
+    assert svg.count('>Box<') == 2 # fixed stack of both instances
     assert re.findall(r'class="instanceName">(\w+)<', svg) == ['b1', 'b2']
     # b2 places its block explicitly, West-aligned (text-anchor end):
     b2_block = svg.split('class="symbolOutline"')[2]
@@ -256,15 +257,15 @@ def test_annotations():
     s.b = SchemInstance(pos=(0, 0), symbol=lib_ann.Box(n=2).symbol)
     by_text = {a.text: a for a in s.b.symbol.all(SymbolAnnotation)}
     s % SchemAnnotationOverride(ref=s.b, there=by_text['n=2'], shown=False)
-    s % SchemAnnotationOverride(ref=s.b, there=by_text['Box'], shown=True)
+    s % SchemAnnotationOverride(ref=s.b, there=by_text['m=1'], shown=True)
+    s % SchemAnnotationOverride(ref=s.b, there=by_text['Box'], shown=False) # fixed stack
     svg = s.render().svg().decode()
-    assert 'n=2' not in svg
-    assert re.findall(r'class="cellName">Box<', svg) == ['class="cellName">Box<'] * 2
+    assert 'n=2' not in svg and 'm=1' in svg and 'class="cellName"' not in svg
 
-    # Flatter arrangement: instance and cell name share one text row.
+    # Flatter arrangement: instance name and parameter share one text row.
     s.b.annotation_pos = (5, 5)
     s.b.annotation_wrap = 20
-    assert '<tspan class="instanceName">b</tspan> <tspan class="cellName">Box</tspan>' in s.render().svg().decode()
+    assert '<tspan class="instanceName">b</tspan> <tspan class="params">m=1</tspan>' in s.render().svg().decode()
 
 def test_pin_show_flags():
     from ordec.lib.generic_mos import Nmos, Inv
@@ -287,7 +288,7 @@ def test_annotation_placement():
     from ordec.schematic.annotate import block_rects, schematic_obstacles, symbol_body, fits, rect_gap
     from ordec.lib.generic_mos import Inv
     from .lib.ord import strongarm
-    # Inv wires manually (blocks are placed at render time), Strongarm runs
+    # Inv wires manually and calls place_annotations itself, Strongarm runs
     # the viewgen pipeline and has mirrored instances. No block may overlap
     # another shape or block, and all stay close to their instance. For this,
     # the blocks of Inv need a flatter arrangement than the default.

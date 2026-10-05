@@ -33,11 +33,10 @@ def _yosys_json_example():
 
 def _install_mybuf2_symbol(lib: ExtLibrary):
     sym = Symbol(cell=lib["MYBUF2"])
-    sym.add_default_annotations(cell_name="MYBUF2")
+    sym.one(SymbolAnnotation.kind_idx.query(AnnotationKind.CellName)).text = "MYBUF2"
     sym.A = Pin(pintype=PinType.In, align=West)
     sym.Y = Pin(pintype=PinType.Out, align=East)
     sym.place_pins(hpadding=3, vpadding=2)
-    sym.make_box()
     frozen = sym.freeze()
     lib.symbol_funcs["MYBUF2"] = lambda: frozen
 
@@ -61,10 +60,10 @@ def test_extlibrary_read_verilog_symbol_and_schematic():
 
     top_schematic = lib["top"].schematic
     inst = top_schematic.u0
-    # Box symbol: labels are SymbolTexts, no annotation block.
-    assert [(t.kind, t.text) for t in inst.symbol.all(SymbolText)] == [
+    # Box symbol: all labels are in fixed stacks, no annotation block.
+    assert [(a.kind, a.text) for a in inst.symbol.all(SymbolAnnotation)] == [
         (AnnotationKind.InstanceName, None), (AnnotationKind.CellName, "MYBUF2")]
-    assert not list(inst.symbol.all(SymbolAnnotation))
+    assert all(a.ref is not None for a in inst.symbol.all(SymbolAnnotation))
     assert len(list(top_schematic.all(SchemInstanceConn.ref_idx.query(inst)))) == 2
 
 

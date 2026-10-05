@@ -20,7 +20,7 @@ class Res(SimLeafCell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self, rotate_pin_labels=False)
-        s.add_default_annotations(show_cell_name=False)
+        s.one(SymbolAnnotation.kind_idx.query(AnnotationKind.CellName)).shown = False
 
         s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South, show_arrow=False, show_label=False)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North, show_arrow=False, show_label=False)
@@ -72,7 +72,7 @@ class Cap(SimLeafCell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self, rotate_pin_labels=False)
-        s.add_default_annotations(show_cell_name=False)
+        s.one(SymbolAnnotation.kind_idx.query(AnnotationKind.CellName)).shown = False
 
         s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South, show_arrow=False, show_label=False)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North, show_arrow=False, show_label=False)
@@ -111,7 +111,7 @@ class Ind(SimLeafCell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self, rotate_pin_labels=False)
-        s.add_default_annotations(show_cell_name=False)
+        s.one(SymbolAnnotation.kind_idx.query(AnnotationKind.CellName)).shown = False
 
         s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South, show_arrow=False, show_label=False)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North, show_arrow=False, show_label=False)
@@ -146,7 +146,7 @@ class Gnd(SimLeafCell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self, rotate_pin_labels=False)
-        s.add_default_annotations(show_cell_name=False)
+        s.one(SymbolAnnotation.kind_idx.query(AnnotationKind.CellName)).shown = False
 
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North, show_arrow=False, show_label=False)
 
@@ -166,7 +166,7 @@ class NoConn(SimLeafCell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self, rotate_pin_labels=False)
-        s.add_default_annotations(show_cell_name=False)
+        s.one(SymbolAnnotation.kind_idx.query(AnnotationKind.CellName)).shown = False
 
         s.a = Pin(pos=Vec2R(0, 2), pintype=PinType.In, align=West, show_arrow=False, show_label=False)
 
@@ -245,7 +245,7 @@ class Vdc(AcStimulusMixin, SimLeafCell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self, rotate_pin_labels=False)
-        s.add_default_annotations(show_cell_name=False)
+        s.one(SymbolAnnotation.kind_idx.query(AnnotationKind.CellName)).shown = False
 
         s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South, show_arrow=False, show_label=False)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North, show_arrow=False, show_label=False)
@@ -290,7 +290,7 @@ class Idc(AcStimulusMixin, SimLeafCell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self, rotate_pin_labels=False)
-        s.add_default_annotations(show_cell_name=False)
+        s.one(SymbolAnnotation.kind_idx.query(AnnotationKind.CellName)).shown = False
 
         s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South, show_arrow=False, show_label=False)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North, show_arrow=False, show_label=False)
@@ -353,8 +353,8 @@ class PwlMixin(Cell):
     @staticmethod
     def hide_pwl_annotation(s: Symbol):
         """Hides the pwl parameter in the annotation block: waveform data is too long for it."""
-        for a in s.all(SymbolAnnotation):
-            if a.kind == AnnotationKind.Param and a.text.startswith('pwl='):
+        for a in s.all(SymbolAnnotation.kind_idx.query(AnnotationKind.Param)):
+            if a.text.startswith('pwl='):
                 a.shown = False
 
     def ngspice_pwl_spec(self) -> str:
@@ -372,7 +372,7 @@ class Vpwl(AcStimulusMixin, PwlMixin, SimLeafCell):
     def symbol(self) -> Symbol:
         """ Defines the schematic symbol for the PWL source. """
         s = Symbol(cell=self, rotate_pin_labels=False)
-        s.add_default_annotations(show_cell_name=False)
+        s.one(SymbolAnnotation.kind_idx.query(AnnotationKind.CellName)).shown = False
         self.hide_pwl_annotation(s)
 
         s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South, show_arrow=False, show_label=False)
@@ -430,7 +430,6 @@ class Vpulse(AcStimulusMixin, SimLeafCell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self, rotate_pin_labels=False)
-        s.add_default_annotations()
 
         s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South, show_arrow=False, show_label=False)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North, show_arrow=False, show_label=False)
@@ -494,7 +493,6 @@ class Vsin(AcStimulusMixin, SimLeafCell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self, rotate_pin_labels=False)
-        s.add_default_annotations()
 
         s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South, show_arrow=False, show_label=False)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North, show_arrow=False, show_label=False)
@@ -548,7 +546,6 @@ class Ipwl(AcStimulusMixin, PwlMixin, SimLeafCell):
     def symbol(self) -> Symbol:
         """ Defines the schematic symbol for the PWL current source. """
         s = Symbol(cell=self, rotate_pin_labels=False)
-        s.add_default_annotations()
         self.hide_pwl_annotation(s)
 
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North, show_arrow=False, show_label=False)
@@ -613,7 +610,6 @@ class Ipulse(AcStimulusMixin, SimLeafCell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self, rotate_pin_labels=False)
-        s.add_default_annotations()
 
         s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South, show_arrow=False, show_label=False)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North, show_arrow=False, show_label=False)
@@ -685,7 +681,6 @@ class Isin(AcStimulusMixin, SimLeafCell):
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self, rotate_pin_labels=False)
-        s.add_default_annotations()
 
         s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South, show_arrow=False, show_label=False)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North, show_arrow=False, show_label=False)

@@ -221,7 +221,7 @@ class Parameter:
             value_repr (see lib.base.PwlMixin.pwl_waveform_repr).
         hide_default: Whether the default symbol annotations hide the
             parameter while it is left at its default (see
-            :meth:`Symbol.add_default_annotations`). Set it to False for
+            :class:`Symbol`). Set it to False for
             parameters needed to read a schematic, such as device
             dimensions. Boolean parameters at their default are always
             omitted (see :meth:`Cell.params_list`).
