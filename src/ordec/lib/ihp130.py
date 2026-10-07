@@ -962,9 +962,9 @@ class Res(SimLeafCell):
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
-        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
-        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
-        s.bn = Pin(pos=Vec2R(4, 2), pintype=PinType.In, align=East)
+        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South, show_arrow=False, show_label=False, rotate_label=False)
+        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North, show_arrow=False, show_label=False, rotate_label=False)
+        s.bn = Pin(pos=Vec2R(4, 2), pintype=PinType.In, align=East, show_arrow=False, rotate_label=False)
 
         zigzag_height = R(2)
         zigzag_width_half = R(0.625)
@@ -1020,8 +1020,8 @@ class Rsil(Res):
     :ref:`ihp130_substrate_lvs`.
     """
     model_name = "rsil"
-    l = Parameter(R, default=R("0.50u"))
-    w = Parameter(R, default=R("0.50u"))
+    l = Parameter(R, default=R("0.50u"), hide_default=False)
+    w = Parameter(R, default=R("0.50u"), hide_default=False)
 
     @viewgen_noctx
     def layout(self) -> Layout:
@@ -1048,8 +1048,8 @@ class Rppd(Res):
     :ref:`ihp130_substrate_lvs`.
     """
     model_name = "rppd"
-    l = Parameter(R, default=R("0.50u"))
-    w = Parameter(R, default=R("0.50u"))
+    l = Parameter(R, default=R("0.50u"), hide_default=False)
+    w = Parameter(R, default=R("0.50u"), hide_default=False)
 
     @viewgen_noctx
     def layout(self) -> Layout:
@@ -1076,8 +1076,8 @@ class Rhigh(Res):
     :ref:`ihp130_substrate_lvs`.
     """
     model_name = "rhigh"
-    l = Parameter(R, default=R("0.96u"))
-    w = Parameter(R, default=R("0.50u"))
+    l = Parameter(R, default=R("0.96u"), hide_default=False)
+    w = Parameter(R, default=R("0.50u"), hide_default=False)
 
     @viewgen_noctx
     def layout(self) -> Layout:
@@ -1099,8 +1099,8 @@ class Rhigh(Res):
 @public
 class Cmim(SimLeafCell):
     """Fixed SG13G2 MIM capacitor."""
-    l = Parameter(R, default=R("6.99u"))
-    w = Parameter(R, default=R("6.99u"))
+    l = Parameter(R, default=R("6.99u"), hide_default=False)
+    w = Parameter(R, default=R("6.99u"), hide_default=False)
     m = Parameter(int, default=1)
     ic = Parameter(R, optional=True)
 
@@ -1111,8 +1111,8 @@ class Cmim(SimLeafCell):
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
-        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
-        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
+        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South, show_arrow=False, show_label=False, rotate_label=False)
+        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North, show_arrow=False, show_label=False, rotate_label=False)
 
         s % SymbolPoly(vertices=[Vec2R(1.25, 1.8), Vec2R(2.75, 1.8)])
         s % SymbolPoly(vertices=[Vec2R(1.25, 2.2), Vec2R(2.75, 2.2)])

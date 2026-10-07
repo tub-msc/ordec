@@ -277,10 +277,9 @@ def test_annotations():
     assert 'text-anchor="middle"' in s.render().svg().decode()
 
 def test_pin_show_flags():
-    from ordec.lib.generic_mos import Inv
-    s = Symbol(outline=(0, 0, 4, 4))
-    s.a = Pin(pos=(0, 2), align=West, show_arrow=False, show_label=False)
-    svg = s.freeze().render().svg().decode()
+    from ordec.lib.generic_mos import Nmos, Inv
+    # The MOS symbol hides its pin arrows and labels:
+    svg = Nmos().symbol.render().svg().decode()
     assert 'class="pinArrow"' not in svg and 'class="pinLabel' not in svg
     svg = Inv().symbol.render().svg().decode()
     assert svg.count('class="pinArrow"') == 4 and svg.count('class="pinLabel"') == 4

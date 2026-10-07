@@ -15,8 +15,8 @@ from ordec.lib.base import Gnd, Vdc, NoConn, Vpwl
 from ordec.layout import SRouter
 
 cell VcoHalfStage:
-    width = Parameter(R, default=300n)
-    length = Parameter(R, default=130n)
+    width = Parameter(R, default=300n, hide_default=False)
+    length = Parameter(R, default=130n, hide_default=False)
 
     viewgen symbol(self) -> Symbol:
         # vdd_st and vss_st are the current-starved supplies coming in
@@ -514,8 +514,8 @@ cell VcoRing:
         sr.wire_x(vss_st_bar_n.lx)
 
 cell Vco:
-    width = Parameter(R, default=1000n)
-    length = Parameter(R, default=500n)
+    width = Parameter(R, default=1000n, hide_default=False)
+    length = Parameter(R, default=500n, hide_default=False)
     viewgen symbol(self) -> Symbol:
         inout vdd: .align=North
         inout vss
