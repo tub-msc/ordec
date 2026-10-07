@@ -223,6 +223,29 @@ def test_scheminstance_unresolved_hierarchical_path():
     assert conn.here == s.mynet
     assert conn.there == lib_test.MultibitReg_StructOfArrays(bits=4).symbol.data.d[3]
 
+def test_pin_show_flags():
+    from ordec.lib.generic_mos import Inv
+    import re
+    s = Symbol(outline=(0, 0, 4, 4), cell=Inv())
+    s.a = Pin(pos=(0, 2), align=West, show_arrow=False, show_label=False)
+    svg = s.freeze().render().svg().decode()
+    assert 'class="pinArrow"' not in svg and 'class="pinLabel' not in svg
+    svg = Inv().symbol.render().svg().decode()
+    assert svg.count('class="pinArrow"') == 4 and svg.count('class="pinLabel"') == 4
+    # Without rotate_label, labels of vertical stubs are not rotated:
+    for rotate, n_rotated in ((True, 2), (False, 0)):
+        s = Symbol(outline=(0, 0, 4, 4), cell=Inv())
+        s.d = Pin(pos=(2, 4), align=North, rotate_label=rotate)
+        s.s = Pin(pos=(2, 0), align=South, rotate_label=rotate)
+        s.g = Pin(pos=(0, 2), align=West, rotate_label=rotate)
+        svg = s.freeze().render().svg().decode()
+        assert len(re.findall(r'<text transform="matrix\(0 [^>]*class="pinLabel"', svg)) == n_rotated
+    # A centered label of a vertical stub without rotate_label is centered
+    # across the stub:
+    s = Symbol(outline=(0, 0, 4, 4), cell=Inv())
+    s.d = Pin(pos=(2, 4), align=North, rotate_label=False, center_label=True)
+    assert 'text-anchor="middle"' in s.freeze().render().svg().decode()
+
 def test_scheminstance_params_without_viewgen():
     s = Schematic()
     s.myinst = SchemInstance(pos=(0, 0), symbol=Nmos().symbol)

@@ -112,6 +112,18 @@ class Pin(Node):
     #: attaches). Mirroring has no visible effect on pins, so orient is
     #: stored unflipped.
     orient  = Attr(D4, default=D4.R0, factory=unflip)
+    #: Whether the label is centered on the stub. Else, it is beside the
+    #: stub, so that the wire passes by: above horizontal and left of
+    #: vertical stubs. Centered labels suit stubs that do not continue into
+    #: the drawing, e.g. of box symbols (see Symbol.place_pins). Sides and
+    #: directions refer to the drawing, i.e. after the instance transform.
+    center_label = Attr(bool, default=False)
+    #: Whether the label of a vertical stub is rotated to run along it.
+    #: False draws it horizontally, starting at the pin end towards the
+    #: symbol, which reads better for short labels (e.g. 's', 'g', 'd').
+    rotate_label = Attr(bool, default=True)
+    show_label = Attr(bool, default=True) #: Whether the pin name is drawn next to the pin.
+    show_arrow = Attr(bool, default=True) #: Whether the arrow indicating pintype is drawn at the pin.
 
     # Backwards compatibility: align was renamed to orient.
     def __new__(cls, align=None, **kwargs):

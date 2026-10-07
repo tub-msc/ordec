@@ -23,6 +23,12 @@ General stuff
 Symbols
 -------
 
+Pins are drawn as an arrow indicating the pin type plus the pin name. Symbols
+whose drawing makes this obvious (e.g. the terminals of a resistor) can hide
+either one per pin with ``Pin.show_arrow`` and ``Pin.show_label``. Labels of
+vertical (North/South) pin stubs run along the stub; symbols with short pin
+names can draw them horizontally instead with ``Pin.rotate_label = False``.
+
 .. autoclass:: Symbol
    :members:
    :undoc-members:

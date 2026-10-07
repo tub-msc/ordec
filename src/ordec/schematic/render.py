@@ -11,6 +11,7 @@ import re
 class HAlign(Enum):
     Left = 1
     Right = 2
+    Center = 3
 
     def invert(self):
         if self == self.Left:
@@ -109,7 +110,7 @@ class Renderer:
         if space is None:
             space = self.pin_text_space
         g_matrix *= Vec2R(
-            x = {HAlign.Left: +1, HAlign.Right: -1}[halign]*space,
+            x = {HAlign.Left: +1, HAlign.Right: -1, HAlign.Center: 0}[halign]*space,
             y = {VAlign.Bottom: +1, VAlign.Top: -1, VAlign.Middle: 0}[valign]*space,
             ).transl()
 
@@ -139,7 +140,7 @@ class Renderer:
             VAlign.Bottom: 'ideographic',
             VAlign.Middle: 'middle',
             }[valign]
-        tag.attrib['text-anchor'] = {HAlign.Left: 'start', HAlign.Right: 'end'}[halign]
+        tag.attrib['text-anchor'] = {HAlign.Left: 'start', HAlign.Right: 'end', HAlign.Center: 'middle'}[halign]
         tag.attrib['class'] = svg_class
 
 
@@ -396,11 +397,36 @@ class SchematicRenderer(Renderer):
         # Flip by 180 degrees, as the text face the opposite of the pin direction:
         trans_local = trans * pin.pos.transl() * R180 * pin.align
 
-        self.draw_arrow(ArrowType.Pin, pin.pintype, trans_local)
+        if pin.show_arrow:
+            self.draw_arrow(ArrowType.Pin, pin.pintype, trans_local)
 
-        label = pin.full_path_label()
-        self.draw_label(label, trans_local,
-            valign=VAlign.Bottom, svg_class='pinLabel')
+        if pin.show_label:
+            label_trans, halign, valign, space = self.pin_label_frame(pin, trans_local)
+            self.draw_label(pin.full_path_label(), label_trans, halign=halign, valign=valign, space=space, svg_class='pinLabel')
+
+    @classmethod
+    def pin_label_frame(cls, pin: Pin, trans_local: TD4R) -> tuple[TD4R, HAlign, VAlign, float]:
+        """
+        Frame, alignment and space of the label of pin for draw_label,
+        given the pin frame trans_local of draw_pin.
+        """
+        direction = trans_local.d4.unflip()
+        space = cls.pin_text_space
+        if pin.center_label and pin.show_arrow:
+            # A centered label runs into the arrow, which reaches 0.2
+            # into the symbol (see draw_arrow), so it starts past its tip.
+            space += 0.1
+        if direction in (East, West) or pin.rotate_label:
+            # Text along the stub: above (left of) it or centered on it.
+            valign = VAlign.Middle if pin.center_label else VAlign.Bottom
+            return trans_local, HAlign.Left, valign, space
+        else:
+            # Horizontal text, starting at the pin end and extending towards
+            # the symbol (down for South, up for North): left of the stub or
+            # centered on it.
+            halign = HAlign.Center if pin.center_label else HAlign.Left
+            valign = VAlign.Top if direction == South else VAlign.Bottom
+            return trans_local.transl.transl() * West, halign, valign, space
 
     def draw_arrow(self, arrowtype: ArrowType, pt: PinType, trans: TD4R):
         if arrowtype == ArrowType.Pin:
