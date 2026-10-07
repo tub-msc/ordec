@@ -891,7 +891,7 @@ def test_lsp_workspace_folding_selection_and_semantic_tokens(tmp_path):
                 path a
 
         def helper():
-            .align = East
+            .orient = East
             return math
         """)
     path = tmp_path / "mux2.ord"

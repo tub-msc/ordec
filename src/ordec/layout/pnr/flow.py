@@ -631,7 +631,7 @@ def place_and_route(schematic, layout, *, grid, routing_spec, pin_rects,
     insts = {}
     for name, leaf in cells.items():
         setattr(layout, name, LayoutInstance(ref=leaf.cell.layout,
-            pos=Vec2I(0, 0), orientation=D4.R0))
+            pos=Vec2I(0, 0), orient=D4.R0))
         insts[name] = layout[name]
 
     # Floorplan: pick the row count from the target aspect over the core area
@@ -658,7 +658,7 @@ def place_and_route(schematic, layout, *, grid, routing_spec, pin_rects,
         # Derived from the placed instances, not from the placer's output, so
         # the layout stays the sole holder of the placement.
         pins = {name: place.transform_pins(cells[name].pins,
-            (node.pos.x, node.pos.y), node.orientation)
+            (node.pos.x, node.pos.y), node.orient)
             for name, node in insts.items()}
         # Die width: the floorplan target, the widest packed row, or (like a
         # pad-limited chip) the top-edge port pads, one escape column each.

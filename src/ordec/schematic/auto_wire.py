@@ -160,7 +160,7 @@ def place_cells_and_ports(grid: np.ndarray, cells: Iterable[SchemInstance],
             if 0 <= cy < height and 0 <= cx < width:
                 grid[cy][cx] = GRID_PIN
                 key_grid[(cx, cy)] = sc
-                place_direction_marker(cx, cy, sc.align.unflip())
+                place_direction_marker(cx, cy, sc.orient.unflip())
 
     # Place ports
     for port in ports:
@@ -1156,14 +1156,14 @@ def calculate_vertices(outline: Rect4R, cells: Iterable[SchemInstance],
 
 def tap_outline_point(tap: SchemTapPoint) -> Vec2R:
     """Outermost point of a tap point's glyph and net label, which extend
-    from tap.pos toward align * (0, 1) (see Renderer.draw_schem_tappoint)."""
+    from tap.pos toward orient * (0, 1) (see Renderer.draw_schem_tappoint)."""
     node = tap.root
     if tap.ref == node.default_supply or tap.ref == node.default_ground:
         total = 1.0  # supply/ground glyph without label
     else:
         total = Renderer.port_text_space \
             + 0.35 * len(tap.ref.full_path_label())
-    return tap.pos + (tap.align * Vec2R(0, 1)) * total
+    return tap.pos + (tap.orient * Vec2R(0, 1)) * total
 
 def adjust_outline_initial(node: Schematic) -> Rect4R | None:
     """Compute an initial outline enclosing all ports, tap points and
@@ -1190,7 +1190,7 @@ def adjust_outline_initial(node: Schematic) -> Rect4R | None:
         label = port.ref.pin.full_path_label()
         text_width = len(label) * label_char_width
         total = port_text_space + text_width
-        direction = port.align * Vec2R(0, -1)
+        direction = port.orient * Vec2R(0, -1)
         outline = outline.extend(port.pos + direction * total)
     for tap in node.all(SchemTapPoint):
         if outline:
@@ -1249,18 +1249,18 @@ def auto_wire(node: Schematic) -> None:
         net = port.ref
         ports[net] = RoutingPort(
             x=int(port.pos.x), y=int(port.pos.y),
-            net=net, direction=port.align.unflip())
+            net=net, direction=port.orient.unflip())
 
     # Tap points participate in routing like ports and pins: the first
     # terminal seen for a net becomes its routing terminal, every further
     # tap is routed to that terminal like a pin. Wires attach opposite the
-    # tap's glyph and label, which extend toward align * (0, 1).
+    # tap's glyph and label, which extend toward orient * (0, 1).
     extra_terminals: list[RoutingPort] = list()
     for tap in node.all(SchemTapPoint):
         net = tap.ref
         tap_port = RoutingPort(
             x=int(tap.pos.x), y=int(tap.pos.y),
-            net=net, direction=(tap.align * R180).unflip())
+            net=net, direction=(tap.orient * R180).unflip())
         if net in ports:
             if net.auto_wire:
                 connections.append((ports[net], tap_port))
@@ -1284,7 +1284,7 @@ def auto_wire(node: Schematic) -> None:
             pos = pin_sc.pos
             pin_port = RoutingPort(
                 x=int(pos.x), y=int(pos.y), net=net,
-                direction=pin_sc.align.unflip())
+                direction=pin_sc.orient.unflip())
             if net in ports:
                 # External port/tap or previously seen inter-instance net
                 if net.auto_wire:

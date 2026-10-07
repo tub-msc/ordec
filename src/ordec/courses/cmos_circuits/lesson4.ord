@@ -9,17 +9,17 @@ cell DiffPair:
         input bias
         output outp
         output outn
-        inout vdd: .align=North
+        inout vdd: .orient=North
         inout vss
 
     viewgen schematic(self) -> Schematic:
         port inp: .pos=(1,9)
-        port inn: .align=West; .pos=(19,9)
+        port inn: .orient=West; .pos=(19,9)
         port bias: .pos=(1,2)
-        port outp: .align=East; .pos=(1,13)
+        port outp: .orient=East; .pos=(1,13)
         port outn: .pos=(19,13)
-        port vdd: .align=East; .pos=(1,19)
-        port vss: .align=East; .pos=(1,-1)
+        port vdd: .orient=East; .pos=(1,19)
+        port vss: .orient=East; .pos=(1,-1)
 
         net tail
 

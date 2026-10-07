@@ -183,15 +183,15 @@ class OrdTransformer(PythonTransformer):
         self._set_ctx(lhs, ast.Store())
         # Case for symbol statements
         if context_type_name in ["inout", "input", "output"]:
-            # Default align by pin direction: inputs face West, outputs
-            # East, inouts South. A body `.align=` assignment overrides.
+            # Default orient by pin direction: inputs face West, outputs
+            # East, inouts South. A body `.orient=` assignment overrides.
             match context_type_name:
                 case "inout":
-                    inout, align = "Inout", "South"
+                    inout, orient = "Inout", "South"
                 case "input":
-                    inout, align = "In", "West"
+                    inout, orient = "In", "West"
                 case _:
-                    inout, align = "Out", "East"
+                    inout, orient = "Out", "East"
 
             args = []
             func = self.ast_ord_context("add")
@@ -208,10 +208,10 @@ class OrdTransformer(PythonTransformer):
                                 )
                             ),
                             ast.keyword(
-                                arg="align",
+                                arg="orient",
                                 value=self.ast_attribute(
                                     self.ast_core("D4"),
-                                    align
+                                    orient
                                 )
                             )
                         ],

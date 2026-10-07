@@ -6,7 +6,7 @@ from ordec.lib.generic_mos import Nmos, Pmos
 
 cell Nand2:
     viewgen symbol(self) -> Symbol:
-        inout vdd: .align=North
+        inout vdd: .orient=North
         inout vss
         input a
         input b

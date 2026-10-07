@@ -101,7 +101,7 @@ public class OrdDialectParsingTest extends BasePlatformTestCase {
             "Nmos m1: ! .pos == (0, 0)",
             "Nmos m1: net a",
             "Nmos m1: Net x",
-            "port vdd: .pos = (2, 13); .align = North",
+            "port vdd: .pos = (2, 13); .orient = North",
         };
         for (String statement : statements) {
             // the trailing sibling line keeps end-of-file from masking
@@ -210,7 +210,7 @@ public class OrdDialectParsingTest extends BasePlatformTestCase {
     /**
      * ORD nodes live in the Python dialect token sets, so Python PSI may
      * cast them to PyStatement/PyExpression. Regression test for the stub
-     * builder ClassCastException on `.orientation *= MY` in
+     * builder ClassCastException on `.orient *= MY` in
      * vco_pseudodiff.ord, where PyAstAugAssignmentStatement.getTarget cast
      * the ORD local attribute target.
      */
@@ -222,7 +222,7 @@ public class OrdDialectParsingTest extends BasePlatformTestCase {
             + "        net vdd, ring.vx\n"
             + "        path ctr[0]\n"
             + "        Nmos m1:\n"
-            + "            .orientation *= MY\n"
+            + "            .orient *= MY\n"
             + "        Nmos m2, m3\n"
             + "        ! .pos == (0, 0)\n";
         PsiFile psi = myFixture.configureByText("case.ord", source);
@@ -288,7 +288,7 @@ public class OrdDialectParsingTest extends BasePlatformTestCase {
     public void testOrdConstructsAreHighlighted() {
         String source = "cell Nand:\n"
             + "    viewgen schematic(self) -> Schematic:\n"
-            + "        output y: .align=East\n"
+            + "        output y: .orient=East\n"
             + "        net net_conn\n"
             + "        Nmos n1: .$w=1u; .d -- net_conn\n";
         myFixture.configureByText("case.ord", source);
@@ -301,7 +301,7 @@ public class OrdDialectParsingTest extends BasePlatformTestCase {
         assertHighlighted(infos, source, "output");
         assertHighlighted(infos, source, "net ");
         assertHighlighted(infos, source, "Nmos");
-        assertHighlighted(infos, source, "align");
+        assertHighlighted(infos, source, "orient");
         assertHighlighted(infos, source, "$w");
     }
 
@@ -319,7 +319,7 @@ public class OrdDialectParsingTest extends BasePlatformTestCase {
         myFixture.configureByText("case.ord",
             "cell C:\n"
             + "    viewgen v(self) -> Schematic:\n"
-            + "        port y: .align=West; .pos=(signal_count * x_spacing,\n"
+            + "        port y: .orient=West; .pos=(signal_count * x_spacing,\n"
             + "            y_spacing * ((self.N - 1) // 2))\n"
             + "        Nmos m1\n"
             + "        m1.d -- m1.g\n");

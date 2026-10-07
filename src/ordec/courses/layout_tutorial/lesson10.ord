@@ -16,14 +16,14 @@ cell DiffPair:
 
     viewgen schematic(self) -> Schematic:
         port inp: .pos=(1,8)
-        port inn: .align=West; .pos=(19,8)
+        port inn: .orient=West; .pos=(19,8)
         port outp: .pos=(19,13)
-        port outn: .align=East; .pos=(1,13)
+        port outn: .orient=East; .pos=(1,13)
         port tail: .pos=(10,1)
         port vss: .pos=(10,7)
 
         Nmos(w=1u, l=130n, m=2) m1: .pos=(3,6); .g -- inp; .d -- outn; .s -- tail; .b -- vss
-        Nmos(w=1u, l=130n, m=2) m2: .pos=(17,6); .g -- inn; .d -- outp; .s -- tail; .b -- vss; .orientation=FlippedSouth
+        Nmos(w=1u, l=130n, m=2) m2: .pos=(17,6); .g -- inn; .d -- outp; .s -- tail; .b -- vss; .orient=FlippedSouth
 
     viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers

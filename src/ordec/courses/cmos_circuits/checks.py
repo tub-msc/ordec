@@ -483,7 +483,7 @@ def gen_lesson4(g):
 
             **Add the two pair transistors at the EDIT HERE marker:** `m1`
             at position `(4,7)` and `m2` at `(16,7)` with
-            `.orientation=FlippedSouth` so that its gate faces the `inn`
+            `.orient=FlippedSouth` so that its gate faces the `inn`
             port, both `$w=5u` and `$l=130n`.
 
             `DiffPairTb` sweeps `inp` around the **0.7 V** common mode of
@@ -519,9 +519,9 @@ def gen_lesson4(g):
                 where = misplaced(inst, *pos)
                 if where:
                     problems.append(f"the {side} transistor sits {where}")
-                if orientation is not None and inst.orientation != orientation:
+                if orientation is not None and inst.orient != orientation:
                     problems.append(f"the {side} transistor is not "
-                        "mirrored with .orientation=FlippedSouth")
+                        "mirrored with .orient=FlippedSouth")
             if problems:
                 msg = "; ".join(problems)
                 return False, msg[0].upper() + msg[1:] + "."
@@ -1294,9 +1294,9 @@ def gen_lesson11(g):
                             for t in [misplaced(diode, 8, 14)] if t]
                         problems += [f"the output transistor sits {t}"
                             for t in [misplaced(outdev, 12, 14)] if t]
-                        if diode.orientation != FlippedSouth:
+                        if diode.orient != FlippedSouth:
                             problems.append("the diode transistor is not "
-                                "mirrored with .orientation=FlippedSouth")
+                                "mirrored with .orient=FlippedSouth")
             if mirror and resistors == 0 and problems:
                 return False, ("The mirror is wired correctly, but "
                     + ", ".join(problems) + ".")

@@ -34,8 +34,8 @@ def _yosys_json_example():
 def _install_mybuf2_symbol(lib: ExtLibrary):
     sym = Symbol(cell=lib["MYBUF2"])
     sym.one(SymbolAnnotation.kind_idx.query(AnnotationKind.CellName)).text = "MYBUF2"
-    sym.A = Pin(pintype=PinType.In, align=West)
-    sym.Y = Pin(pintype=PinType.Out, align=East)
+    sym.A = Pin(pintype=PinType.In, orient=West)
+    sym.Y = Pin(pintype=PinType.Out, orient=East)
     sym.place_pins(hpadding=3, vpadding=2)
     frozen = sym.freeze()
     lib.symbol_funcs["MYBUF2"] = lambda: frozen

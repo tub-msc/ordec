@@ -557,7 +557,7 @@ class SchematicRenderer(Renderer):
 
     def draw_pin(self, pin: Pin, trans: TD4R):
         # Flip by 180 degrees, as the text face the opposite of the pin direction:
-        trans_local = trans * pin.pos.transl() * R180 * pin.align
+        trans_local = trans * pin.pos.transl() * R180 * pin.orient
 
         if pin.show_arrow:
             self.draw_arrow(ArrowType.Pin, pin.pintype, trans_local)
@@ -627,7 +627,7 @@ class SchematicRenderer(Renderer):
         p.attrib['class']=svg_class
 
     def draw_schem_port(self, p: SchemPort):
-        trans = p.pos.transl() * p.align
+        trans = p.pos.transl() * p.orient
         self.draw_arrow(ArrowType.Port, p.ref.pin.pintype, trans)
 
         label = p.ref.pin.full_path_label()

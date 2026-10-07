@@ -10,7 +10,7 @@ cell RNetworkLoops:
 
         Res R0: .$r=2k; .pos=(5,6)
         Res R1: .$r=3k; .pos=(11,6)
-        Res R2: .$r=1k; .pos=(12,16); .orientation=R180
+        Res R2: .$r=1k; .pos=(12,16); .orient=R180
 
         # EDIT HERE
 

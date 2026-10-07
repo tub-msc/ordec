@@ -305,7 +305,7 @@ def create_symbol_from_subckt(extlib, name, ports) -> Symbol:
     sym = Symbol(cell=extlib[name])
     sym.one(SymbolAnnotation.kind_idx.query(AnnotationKind.CellName)).text = name
     for port in ports:
-        sym[port] = Pin(pintype=PinType.Inout, align=North)
+        sym[port] = Pin(pintype=PinType.Inout, orient=North)
     sym.place_pins(hpadding=3, vpadding=2)
     return sym.freeze()
 
@@ -345,7 +345,7 @@ def create_schematic_from_subckt(extlib, deck, name, device_map) -> Schematic:
     # External ports, aligned opposite their symbol pin alignment.
     for port in subckt.ports:
         pin = symbol[port]
-        schematic % SchemPort(ref=node_to_net[port], align=pin.align * R180)
+        schematic % SchemPort(ref=node_to_net[port], orient=pin.orient * R180)
 
     for inst in subckt.instances:
         child_sym, conns = resolve_instance(extlib, deck, device_map, name, inst, node_to_net)

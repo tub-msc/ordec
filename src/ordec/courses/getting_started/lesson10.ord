@@ -18,12 +18,12 @@ cell RcChain:
             .p -- vin
             .pos=(0,6)
 
-        Res r1: .$r=1k; .p -- vin; .n -- mid; .pos=(8,12); .orientation=R90
+        Res r1: .$r=1k; .p -- vin; .n -- mid; .pos=(8,12); .orient=R90
         Cap c1: .$c=10n; .p -- mid; .n -- vss; .pos=(7,6)
-        Res r2: .$r=5k; .p -- mid; .n -- vout; .pos=(14,12); .orientation=R90
+        Res r2: .$r=5k; .p -- mid; .n -- vout; .pos=(14,12); .orient=R90
         Cap c2: .$c=10n; .p -- vout; .n -- vss; .pos=(13,6)
 
-        vout % SchemTapPoint(pos=(17, 14), align=East)
+        vout % SchemTapPoint(pos=(17, 14), orient=East)
 
     viewgen sim_tran(self) -> Simulation:
         .simulate().tran(1u, 3m)

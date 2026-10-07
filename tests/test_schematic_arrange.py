@@ -52,8 +52,8 @@ def test_place_ports_declaration_order_and_stacking():
         @viewgen_noctx
         def symbol(self):
             s = Symbol(cell=self, outline=Rect4R(0, 0, 4, 4))
-            s.i0 = Pin(pos=Vec2R(0, 1), pintype=PinType.In, align=West)
-            s.i1 = Pin(pos=Vec2R(0, 3), pintype=PinType.In, align=West)
+            s.i0 = Pin(pos=Vec2R(0, 1), pintype=PinType.In, orient=West)
+            s.i1 = Pin(pos=Vec2R(0, 3), pintype=PinType.In, orient=West)
             return s
 
     sym = TwoIn().symbol
@@ -61,8 +61,8 @@ def test_place_ports_declaration_order_and_stacking():
     sch.inst = SchemInstance(symbol=sym, pos=Vec2R(0, 0))
     sch.i0 = Net(pin=sym.i0)
     sch.i1 = Net(pin=sym.i1)
-    p0 = sch.i0 % SchemPort(align=East)
-    p1 = sch.i1 % SchemPort(align=East)
+    p0 = sch.i0 % SchemPort(orient=East)
+    p1 = sch.i1 % SchemPort(orient=East)
 
     schem_place_ports(sch)
 
@@ -90,7 +90,7 @@ def test_place_unplaced_instances():
     sch = Schematic()
     sch.i0 = SchemInstance(symbol=sym, pos=Vec2R(0, 0))
     sch.i1 = SchemInstance(symbol=sym)
-    sch.i2 = SchemInstance(symbol=sym, orientation=D4.R90)
+    sch.i2 = SchemInstance(symbol=sym, orient=D4.R90)
     sch.outline = Rect4R(0, 0, 6, 4)
 
     place_unplaced_instances(sch)
@@ -186,9 +186,9 @@ class TwoTop(Cell):
     @viewgen_noctx
     def symbol(self):
         s = Symbol(cell=self, outline=Rect4R(0, 0, 4, 4))
-        s.a = Pin(pos=Vec2R(1, 4), align=North, pintype=PinType.Inout)
-        s.b = Pin(pos=Vec2R(3, 4), align=North, pintype=PinType.Inout)
-        s.c = Pin(pos=Vec2R(2, 0), align=South, pintype=PinType.Inout)
+        s.a = Pin(pos=Vec2R(1, 4), orient=North, pintype=PinType.Inout)
+        s.b = Pin(pos=Vec2R(3, 4), orient=North, pintype=PinType.Inout)
+        s.c = Pin(pos=Vec2R(2, 0), orient=South, pintype=PinType.Inout)
         return s
 
 
@@ -246,8 +246,8 @@ def test_series_horizontal():
         @viewgen_noctx
         def symbol(self):
             s = Symbol(cell=self, outline=Rect4R(0, 0, 4, 2))
-            s.l = Pin(pos=Vec2R(0, 1), align=West, pintype=PinType.Inout)
-            s.r = Pin(pos=Vec2R(4, 1), align=East, pintype=PinType.Inout)
+            s.l = Pin(pos=Vec2R(0, 1), orient=West, pintype=PinType.Inout)
+            s.r = Pin(pos=Vec2R(4, 1), orient=East, pintype=PinType.Inout)
             return s
 
     sym = RSym().symbol
@@ -276,12 +276,12 @@ def test_series_horizontal():
 
 
 def test_series_rotated_instance():
-    # facing_pin composes inst.orientation * pin.align: the R180
+    # facing_pin composes inst.orient * pin.orient: the R180
     # instance connects through its source, which now faces up.
     sym = Nmos().symbol
     sch = Schematic()
     sch.m1 = SchemInstance(symbol=sym)
-    sch.m2 = SchemInstance(symbol=sym, orientation=R180)
+    sch.m2 = SchemInstance(symbol=sym, orient=R180)
     group = Series(gap=2)
     group.add(sch.m1)
     group.add(sch.m2)
@@ -310,8 +310,8 @@ def test_parallel_auto_connection():
         @viewgen_noctx
         def symbol(self):
             s = Symbol(cell=self, outline=Rect4R(0, 0, 2, 4))
-            s.p = Pin(pos=Vec2R(1, 4), align=North, pintype=PinType.Inout)
-            s.n = Pin(pos=Vec2R(1, 0), align=South, pintype=PinType.Inout)
+            s.p = Pin(pos=Vec2R(1, 4), orient=North, pintype=PinType.Inout)
+            s.n = Pin(pos=Vec2R(1, 0), orient=South, pintype=PinType.Inout)
             return s
 
     sym = RSym().symbol
@@ -570,9 +570,9 @@ class WideCell(Cell):
     @viewgen_noctx
     def symbol(self):
         s = Symbol(cell=self, outline=Rect4R(0, 0, 8, 4))
-        s.o1 = Pin(pos=Vec2R(2, 0), align=South, pintype=PinType.Inout)
-        s.o2 = Pin(pos=Vec2R(6, 0), align=South, pintype=PinType.Inout)
-        s.i = Pin(pos=Vec2R(4, 4), align=North, pintype=PinType.Inout)
+        s.o1 = Pin(pos=Vec2R(2, 0), orient=South, pintype=PinType.Inout)
+        s.o2 = Pin(pos=Vec2R(6, 0), orient=South, pintype=PinType.Inout)
+        s.i = Pin(pos=Vec2R(4, 4), orient=North, pintype=PinType.Inout)
         return s
 
 
@@ -581,8 +581,8 @@ class NarrowCell(Cell):
     @viewgen_noctx
     def symbol(self):
         s = Symbol(cell=self, outline=Rect4R(0, 0, 3, 4))
-        s.t = Pin(pos=Vec2R(1, 4), align=North, pintype=PinType.Inout)
-        s.b = Pin(pos=Vec2R(1, 0), align=South, pintype=PinType.Inout)
+        s.t = Pin(pos=Vec2R(1, 4), orient=North, pintype=PinType.Inout)
+        s.b = Pin(pos=Vec2R(1, 0), orient=South, pintype=PinType.Inout)
         return s
 
 
@@ -699,7 +699,7 @@ class WestPinCell(Cell):
     @viewgen_noctx
     def symbol(self):
         s = Symbol(cell=self, outline=Rect4R(0, 0, 4, 4))
-        s.i = Pin(pos=Vec2R(0, 2), pintype=PinType.In, align=West)
+        s.i = Pin(pos=Vec2R(0, 2), pintype=PinType.In, orient=West)
         return s
 
 
@@ -713,9 +713,9 @@ def test_place_ports_pin_alignment():
     sch.n3 = Net()
     sch.top % SchemInstanceConn(here=sch.n1, there=sym.i)
     sch.bot % SchemInstanceConn(here=sch.n2, there=sym.i)
-    p1 = sch.n1 % SchemPort(align=East)
-    p2 = sch.n2 % SchemPort(align=East)
-    p3 = sch.n3 % SchemPort(align=East) # no pins -> fallback stacking
+    p1 = sch.n1 % SchemPort(orient=East)
+    p2 = sch.n2 % SchemPort(orient=East)
+    p3 = sch.n3 % SchemPort(orient=East) # no pins -> fallback stacking
 
     schem_place_ports(sch)
 
@@ -735,8 +735,8 @@ def test_place_ports_alignment_collision():
     sch.nb = Net()
     sch.l % SchemInstanceConn(here=sch.na, there=sym.i)
     sch.r % SchemInstanceConn(here=sch.nb, there=sym.i)
-    pa = sch.na % SchemPort(align=East)
-    pb = sch.nb % SchemPort(align=East)
+    pa = sch.na % SchemPort(orient=East)
+    pb = sch.nb % SchemPort(orient=East)
 
     schem_place_ports(sch)
 
@@ -785,14 +785,14 @@ def test_place_ports_keeps_defined_positions():
         @viewgen_noctx
         def symbol(self):
             s = Symbol(cell=self, outline=Rect4R(0, 0, 4, 4))
-            s.i0 = Pin(pos=Vec2R(0, 2), pintype=PinType.In, align=West)
+            s.i0 = Pin(pos=Vec2R(0, 2), pintype=PinType.In, orient=West)
             return s
 
     sym = OneIn().symbol
     sch = Schematic(symbol=sym)
     sch.inst = SchemInstance(symbol=sym, pos=Vec2R(0, 0))
     sch.i0 = Net(pin=sym.i0)
-    p0 = sch.i0 % SchemPort(align=East, pos=Vec2R(10, 10))
+    p0 = sch.i0 % SchemPort(orient=East, pos=Vec2R(10, 10))
 
     schem_place_ports(sch)
 

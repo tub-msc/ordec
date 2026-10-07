@@ -20,16 +20,16 @@ cell SeriesNmos:
         # Two independent gates g1/g2, a shared bottom terminal s (also the
         # bulk tie), and the top drain d. The middle source/drain node is
         # internal and has no pin.
-        inout d:  .align=North
-        inout s:  .align=South
+        inout d:  .orient=North
+        inout s:  .orient=South
         input g1
         input g2
 
     viewgen schematic(self) -> Schematic:
         net mid  # shared source/drain diffusion between the two devices
 
-        port d:  .pos=(2, 13); .align=East
-        port s:  .pos=(2, 1);  .align=East
+        port d:  .pos=(2, 13); .orient=East
+        port s:  .pos=(2, 1);  .orient=East
         port g1: .pos=(1, 4)
         port g2: .pos=(1, 10)
 

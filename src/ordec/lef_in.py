@@ -53,7 +53,7 @@ def dir_to_pintype(direction: str) -> PinType:
     return PinType.Inout
 
 
-def dir_to_align(direction: str) -> D4:
+def dir_to_orient(direction: str) -> D4:
     if direction == 'input':
         return Orientation.West
     if direction == 'output':
@@ -128,7 +128,7 @@ def create_symbol(extlib: 'ExtLibrary', name: str, port_spec: OrderedDict[str, t
     for port_name, (direction, width) in port_spec.items():
         pin_kwargs = {
             'pintype': dir_to_pintype(direction),
-            'align': dir_to_align(direction),
+            'orient': dir_to_orient(direction),
         }
         if width == 1:
             sym[port_name] = Pin(**pin_kwargs)

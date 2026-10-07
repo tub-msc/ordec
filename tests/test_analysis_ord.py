@@ -66,7 +66,7 @@ def test_structure_and_syntax_errors():
         cell Inv:
             viewgen layout(self) -> Layout:
                 output bus[0].y:
-                    .align = East
+                    .orient = East
                 path vdd, vss
 
         def helper(x):
@@ -189,7 +189,7 @@ def test_semantic_diagnostics(tmp_path):
             viewgen symbol(self) -> Symbol:
                 input a
             viewgen schematic(self) -> Schematic:
-                port b: .align=West
+                port b: .orient=West
                 ! b.pos.x == 0
                 MissingCell inst:
                     .x -- b
@@ -577,7 +577,7 @@ def test_workspace_cache(tmp_path):
                 path a
 
         def helper():
-            .align = East
+            .orient = East
             return math
         """)
     path = tmp_path / "mux2.ord"

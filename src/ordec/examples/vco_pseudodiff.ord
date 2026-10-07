@@ -20,32 +20,32 @@ cell VcoHalfStage:
 
     viewgen symbol(self) -> Symbol:
         # vdd_st and vss_st are the current-starved supplies coming in
-        inout vdd_st: .align=North
+        inout vdd_st: .orient=North
         inout vss_st
-        inout vdd: .align=North
+        inout vdd: .orient=North
         inout vss
 
-        inout nwell: .align=North
+        inout nwell: .orient=North
         inout psub
 
         input rst_n
         input inp
-        input fb: .align=East
+        input fb: .orient=East
         output out
         output out_n
 
     viewgen schematic(self) -> Schematic:
         net b
 
-        port vdd_st: .align=East; .pos=(1,24)
-        port vdd: .align=East; .pos=(1,28)
-        port nwell: .align=East; .pos=(1,26)
-        port vss_st: .align=East; .pos=(1,6)
-        port vss: .align=East; .pos=(1,2)
-        port psub: .align=East; .pos=(1,4)
+        port vdd_st: .orient=East; .pos=(1,24)
+        port vdd: .orient=East; .pos=(1,28)
+        port nwell: .orient=East; .pos=(1,26)
+        port vss_st: .orient=East; .pos=(1,6)
+        port vss: .orient=East; .pos=(1,2)
+        port psub: .orient=East; .pos=(1,4)
         port inp: .pos=(1,21)
         port rst_n: .pos=(1,9)
-        port fb: .align=East; .pos=(15,15)
+        port fb: .orient=East; .pos=(15,15)
         port out: .pos=(24,18)
         port out_n: .pos=(30,18)
 
@@ -256,11 +256,11 @@ cell VcoHalfStage:
 
 cell VcoRing:
     viewgen symbol(self) -> Symbol:
-        inout vdd_st: .align=North
+        inout vdd_st: .orient=North
         inout vss_st
-        inout vdd: .align=North
+        inout vdd: .orient=North
         inout vss
-        inout nwell: .align=North
+        inout nwell: .orient=North
         inout psub
         input rst_n
 
@@ -271,12 +271,12 @@ cell VcoRing:
 
 
     viewgen schematic(self) -> Schematic:
-        port vdd_st: .pos=(1,21); .align=East
-        port vdd: .pos=(1,25); .align=East
-        port nwell: .pos=(1,23); .align=East
-        port vss_st: .pos=(1,1); .align=East
-        port vss: .pos=(1,-3); .align=East
-        port psub: .pos=(1,-1); .align=East
+        port vdd_st: .pos=(1,21); .orient=East
+        port vdd: .pos=(1,25); .orient=East
+        port nwell: .pos=(1,23); .orient=East
+        port vss_st: .pos=(1,1); .orient=East
+        port vss: .pos=(1,-3); .orient=East
+        port psub: .pos=(1,-1); .orient=East
         port rst_n: .pos=(1,10)
 
         path out_p, out_n
@@ -349,16 +349,16 @@ cell VcoRing:
 
         for i in range(2):
             VcoHalfStage stage_p[i]:
-                .orientation=MX
+                .orient=MX
                 if i == 0:
-                    .orientation *= MY
+                    .orient *= MY
                 ! vss_st_bar_p.contains(.vssbar.rect)
                 ! vdd_st_bar.contains(.vddbar.rect)
                 ! nwell.contains(.nwell.rect)
 
             VcoHalfStage stage_n[i]:
                 if i == 0:
-                    .orientation *= MY
+                    .orient *= MY
                 ! vdd_st_bar.contains(.vddbar.rect)
                 ! vss_st_bar_n.contains(.vssbar.rect)
                 ! nwell.contains(.nwell.rect)
@@ -517,7 +517,7 @@ cell Vco:
     width = Parameter(R, default=1000n, hide_default=False)
     length = Parameter(R, default=500n, hide_default=False)
     viewgen symbol(self) -> Symbol:
-        inout vdd: .align=North
+        inout vdd: .orient=North
         inout vss
 
         input rst_n
@@ -529,8 +529,8 @@ cell Vco:
             output out_n[i]
 
     viewgen schematic(self) -> Schematic:
-        port vdd: .pos=(4,21); .align=East
-        port vss: .pos=(4,0); .align=East
+        port vdd: .pos=(4,21); .orient=East
+        port vss: .pos=(4,0); .orient=East
         port rst_n: .pos=(13,9)
         port vbias: .pos=(4,6)
 
@@ -586,7 +586,7 @@ cell Vco:
             .s -- vdd
             .b -- vdd
             .pos = (11, 16)
-            .orientation = FlippedSouth
+            .orient = FlippedSouth
 
         for mos in m1, m2, m3, m4:
             mos.$l = self.length
@@ -826,12 +826,12 @@ cell VcoTb:
             NoConn nc[2 * i + 0]:
                 .a -- out_n[i]
                 .pos = (22 + 5 * i, 6)
-                .orientation = East
+                .orient = East
 
             NoConn nc[2 * i + 1]:
                 .a -- out_p[i]
                 .pos = (26 + 5 * i, 17)
-                .orientation = West
+                .orient = West
 
         Gnd gnd:
             .p -- vss

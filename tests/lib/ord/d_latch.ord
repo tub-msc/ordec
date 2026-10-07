@@ -9,16 +9,16 @@ cell D_latch:
     viewgen symbol(self) -> Symbol:
         input D: .pos = (1, 7)
         input CLK: .pos = (1, 9)
-        input vdd: .pos = (1, 20); .align = North
-        input vss: .pos = (1, 1); .align = South
+        input vdd: .pos = (1, 20); .orient = North
+        input vss: .pos = (1, 1); .orient = South
         output Q: .pos = (18, 7)
         output Q_not: .pos = (18, 8)
 
     viewgen schematic(self) -> Schematic:
         port D: .pos = (1, 7)
         port CLK: .pos = (1, 9)
-        port vdd: .pos = (1, 20); .align = East
-        port vss: .pos = (1, 1); .align = East
+        port vdd: .pos = (1, 20); .orient = East
+        port vss: .pos = (1, 1); .orient = East
         port Q: .pos = (18, 7)
         port Q_not: .pos = (18, 8)
 

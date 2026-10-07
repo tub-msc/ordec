@@ -109,7 +109,7 @@ def read_gds_structure(structure: Structure, layers: LayerStack, unit: R, extlib
             ref_name = elem.struct_name.decode('ascii')
             layout % LayoutInstance(
                 pos=conv_xy(elem.xy[0]),
-                orientation=gds_to_d4(elem.angle, elem.strans),
+                orient=gds_to_d4(elem.angle, elem.strans),
                 ref=extlib[ref_name].frame,
                 )
         elif isinstance(elem, elements.ARef):
@@ -122,7 +122,7 @@ def read_gds_structure(structure: Structure, layers: LayerStack, unit: R, extlib
                 raise GdsReaderException(f"Found ARef with len(elem.xy) of {len(elem.xy)}, expected 3.") from None
             layout % LayoutInstanceArray(
                 pos=pos_origin,
-                orientation=gds_to_d4(elem.angle, elem.strans),
+                orient=gds_to_d4(elem.angle, elem.strans),
                 ref=extlib[ref_name].frame,
                 cols=elem.cols,
                 rows=elem.rows,

@@ -6,14 +6,14 @@ cell CsAmp:
     viewgen symbol(self) -> Symbol:
         input vin
         output vout
-        inout vdd: .align=North
+        inout vdd: .orient=North
         inout vss
 
     viewgen schematic(self) -> Schematic:
         port vin: .pos=(1,5)
         port vout: .pos=(13,8)
-        port vdd: .align=East; .pos=(1,14)
-        port vss: .align=East; .pos=(1,2)
+        port vdd: .orient=East; .pos=(1,14)
+        port vss: .orient=East; .pos=(1,2)
 
         Res rl: .$r=10k; .p -- vdd; .n -- vout; .pos=(6,9)
 

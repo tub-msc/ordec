@@ -412,7 +412,7 @@ class LayoutInstance(Node, MixinSourceLoc):
             raise AttributeError(*e.args) from None
 
     def loc_transform(self):
-        return self.pos.transl() * self.orientation
+        return self.pos.transl() * self.orient
 
 @public
 class LayoutInstanceArray(LayoutInstance):

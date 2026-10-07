@@ -8,12 +8,12 @@
 .. code-block::
 
     viewgen schematic(self) -> Schematic:
-        port a : .align=East
-        port y : .align=West
+        port a : .orient=East
+        port y : .orient=West
         net vss  # forward declaration, port statement follows in the stack
 
         with Series(gap=4):
-            port vdd: .align=South
+            port vdd: .orient=South
             Pmos pu:
                 .g -- a
                 .b -- vdd
@@ -21,7 +21,7 @@
             Nmos pd:
                 .g -- a
                 .b -- vss
-            port vss: .align=North
+            port vss: .orient=North
 
 Choosing a group
 ----------------
@@ -155,10 +155,10 @@ Positions of schematic elements are determined in this order:
    group with a constrained or directly positioned member follows that
    member instead of being anchored.
 3. Remaining ports are auto-placed on the edge of the content bounding box
-   based on their align (see ``schem_place_ports()`` in
-   ``ordec.schematic.helpers``): the align is the
+   based on their orient (see ``schem_place_ports()`` in
+   ``ordec.schematic.helpers``): the orient is the
    direction the port arrow points, into the drawing. A port with
-   ``align=East`` is placed on the left edge, ``West`` on the right,
+   ``orient=East`` is placed on the left edge, ``West`` on the right,
    ``North`` on the bottom and ``South`` on the top edge. Along the edge,
    the port lines up with the connected pin nearest to its edge, so that
    the wire towards it can run straight.

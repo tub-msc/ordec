@@ -445,7 +445,7 @@ class SchemInstanceSubcursor(tuple):
     Cursor providing transformed access to Symbol contents from SchemInstance.
     Transforms Symbol-space coordinates (Vec2R, Rect4R) to Schematic-space
     based on the instance's position and orientation; directions (D4, e.g.
-    Pin.align) are composed with the instance's orientation.
+    Pin.orient) are composed with the instance's orientation.
     """
     def __repr__(self):
         return f"{type(self).__name__}{tuple.__repr__(self)}"
@@ -487,7 +487,7 @@ class SchemInstanceSubcursor(tuple):
             return self.transform() * inner_ret
         elif isinstance(inner_ret, D4):
             # Directions rotate/mirror with the instance, like coordinates do.
-            return self.inst().orientation * inner_ret
+            return self.inst().orient * inner_ret
         elif isinstance(inner_ret, Node):
             return SchemInstanceSubcursor((self.inst(), inner_ret))
         else:
@@ -551,9 +551,9 @@ class SchemInstance(Node, MixinSourceLoc):
     def loc_transform(self):
         pos = self.pos
         if isinstance(pos, Vec2LinearTerm):
-            return TD4LinearTerm(transl=pos, d4=self.orientation)
+            return TD4LinearTerm(transl=pos, d4=self.orient)
         else:
-            return pos.transl() * self.orientation
+            return pos.transl() * self.orient
 
     @property
     def params(self):
@@ -713,7 +713,7 @@ class SchemTapPoint(Node):
         self.orient = value
 
     def loc_transform(self):
-        return self.pos.transl() * self.align
+        return self.pos.transl() * self.orient
 
 @public
 class SchemConnPoint(Node):

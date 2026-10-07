@@ -160,7 +160,7 @@ def test_attr_undefined():
 def test_subgraph_load():
     with pytest.raises(ModelViolation, match=r"Missing root node"):
         MutableSubgraph.load({
-            100: Pin(pintype=PinType.In, pos=Vec2R(x=0, y=2), align=R0),
+            100: Pin(pintype=PinType.In, pos=Vec2R(x=0, y=2), orient=R0),
         })
 
     with pytest.raises(ModelViolation, match=r"Missing root node"):
@@ -170,9 +170,9 @@ def test_subgraph_load():
 
     s_dict = {
         0: Symbol.Tuple(outline=None),
-        100: Pin(pintype=PinType.In, pos=Vec2R(x=0, y=2), align=R0),
+        100: Pin(pintype=PinType.In, pos=Vec2R(x=0, y=2), orient=R0),
         101: NPath(parent=None, name='a', ref=100),
-        102: Pin(pintype=PinType.Out, pos=Vec2R(x=4, y=2), align=R0),
+        102: Pin(pintype=PinType.Out, pos=Vec2R(x=4, y=2), orient=R0),
         103: NPath(parent=None, name='y', ref=102),
     }
     s = MutableSubgraph.load(s_dict).subgraph

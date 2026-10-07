@@ -148,7 +148,7 @@ courses_testdata = {
             # EDIT HERE
             """, """
             net mid
-            Res r1: .$r=1k; .p -- vin; .n -- vout; .pos=(8,16); .orientation=R90
+            Res r1: .$r=1k; .p -- vin; .n -- vout; .pos=(8,16); .orient=R90
             Ind l1: .$l=1m; .pos=(8,11); .n -- mid; .p -- vout
             Cap c1: .$c=100n; .pos=(8,6); .p -- mid; .n -- vss
             """),
@@ -567,7 +567,7 @@ courses_testdata = {
             # EDIT HERE
             """, """
             Nmos m1: .$w=5u; .$l=130n; .g -- inp; .d -- outp; .s -- tail; .b -- vss; .pos=(4,7)
-            Nmos m2: .$w=5u; .$l=130n; .g -- inn; .d -- outn; .s -- tail; .b -- vss; .pos=(16,7); .orientation=FlippedSouth
+            Nmos m2: .$w=5u; .$l=130n; .g -- inn; .d -- outn; .s -- tail; .b -- vss; .pos=(16,7); .orient=FlippedSouth
             """),
         ]),
         # Lesson 5: ring oscillator bug hunt. The inversion-count check
@@ -662,12 +662,12 @@ courses_testdata = {
             Res rl_p: .$r=30k; .p -- vdd; .n -- outx; .pos=(4,14)
             Res rl_n: .$r=30k; .p -- vdd; .n -- out; .pos=(12,14)
             Nmos m1: .$w=5u; .$l=130n; .g -- inp; .d -- outx; .s -- tail; .b -- vss; .pos=(4,7)
-            Nmos m2: .$w=5u; .$l=130n; .g -- inn; .d -- out; .s -- tail; .b -- vss; .pos=(16,7); .orientation=FlippedSouth
+            Nmos m2: .$w=5u; .$l=130n; .g -- inn; .d -- out; .s -- tail; .b -- vss; .pos=(16,7); .orient=FlippedSouth
             """, """
-            Pmos m3: .$w=5u; .$l=300n; .g -- outx; .d -- outx; .s -- vdd; .b -- vdd; .pos=(8,14); .orientation=FlippedSouth
+            Pmos m3: .$w=5u; .$l=300n; .g -- outx; .d -- outx; .s -- vdd; .b -- vdd; .pos=(8,14); .orient=FlippedSouth
             Pmos m4: .$w=5u; .$l=300n; .g -- outx; .d -- out; .s -- vdd; .b -- vdd; .pos=(12,14)
             Nmos m1: .$w=5u; .$l=300n; .g -- inp; .d -- outx; .s -- tail; .b -- vss; .pos=(4,7)
-            Nmos m2: .$w=5u; .$l=300n; .g -- inn; .d -- out; .s -- tail; .b -- vss; .pos=(16,7); .orientation=FlippedSouth
+            Nmos m2: .$w=5u; .$l=300n; .g -- inn; .d -- out; .s -- tail; .b -- vss; .pos=(16,7); .orient=FlippedSouth
             """),
         ]),
     ]),

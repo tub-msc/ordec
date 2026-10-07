@@ -252,7 +252,7 @@ def expand_instancearrays(layout: Layout):
             for row in range(ainst.rows):
                 layout % LayoutInstance(
                     pos=ainst.pos + row*ainst.vec_row + col*ainst.vec_col,
-                    orientation=ainst.orientation,
+                    orient=ainst.orient,
                     ref=ainst.ref,
                 )
         ainst.remove()

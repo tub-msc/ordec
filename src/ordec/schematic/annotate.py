@@ -76,7 +76,7 @@ def symbol_obstacles(s: Symbol, trans: TD4R, inst: SchemInstance|None = None) ->
     for pin in s.all(Pin):
         # Same frame as Renderer.draw_pin: the stub is a 0.4 x 0.4 arrow
         # centered on the pin, the label hangs off it.
-        trans_local = trans * pin.pos.transl() * R180 * pin.align
+        trans_local = trans * pin.pos.transl() * R180 * pin.orient
         if pin.show_arrow:
             rects.append(trans_local * Rect4R(R(-0.2), R(-0.2), R(0.2), R(0.2)))
         if not pin.show_label:
@@ -99,7 +99,7 @@ def schematic_obstacles(node: Schematic) -> list[Rect4R]:
         for a, b in zip(v, v[1:]):
             rects.append(_bbox([a, b]))
     for port in node.all(SchemPort):
-        trans = port.pos.transl() * port.align
+        trans = port.pos.transl() * port.orient
         # Port arrow (see Renderer.draw_arrow, non-centered) and label.
         rects.append(trans * Rect4R(R(-0.25), R(-0.5), R(0.25), R(0)))
         label = port.ref.pin.full_path_label()

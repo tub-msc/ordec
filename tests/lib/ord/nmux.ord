@@ -12,7 +12,7 @@ cell Nto1:
     viewgen symbol(self) -> Symbol:
         path d_in
         path s_in
-        inout vdd: .align=North
+        inout vdd: .orient=North
         inout vss
         output y
 
@@ -50,13 +50,13 @@ cell Nto1:
             px = -x_spacing
             py = (i * y_spacing) + 2
             port d_in[i]: .pos=(px, py)
-            port d_in[i + 1]: .align=East; .pos=(px, py+1)
+            port d_in[i + 1]: .orient=East; .pos=(px, py+1)
 
         # Place select ports horizontally along the bottom
         for i in range(signal_count):
             px = (i * x_spacing) - 2
             py = -y_spacing
-            port s_in[i]: .align=North; .pos=(px, py)
+            port s_in[i]: .orient=North; .pos=(px, py)
 
 
         # ------------------------------------------------------------

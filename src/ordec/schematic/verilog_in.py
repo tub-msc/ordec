@@ -85,11 +85,11 @@ def create_symbol(extlib, name, port_spec: OrderedDict[str, tuple[str, int]]) ->
     sym.one(SymbolAnnotation.kind_idx.query(AnnotationKind.CellName)).text = name
     for port_name, (direction, width) in port_spec.items():
         if direction == 'input':
-            p = Pin(pintype=PinType.In, align=West)
+            p = Pin(pintype=PinType.In, orient=West)
         elif direction == 'output':
-            p = Pin(pintype=PinType.Out, align=East)
+            p = Pin(pintype=PinType.Out, orient=East)
         else:
-            p = Pin(pintype=PinType.Inout, align=North)
+            p = Pin(pintype=PinType.Inout, orient=North)
         if width == 1:
             sym[port_name] = p
         else:
@@ -170,7 +170,7 @@ def create_schematic(extlib, module_name, module_data: dict[str, Any]) -> Schema
         bit_to_net[bit] = schematic[path_name]
 
     for bit, pin in port_bits.items():
-        schematic % SchemPort(ref=bit_to_net[bit], align=pin.align*R180)
+        schematic % SchemPort(ref=bit_to_net[bit], orient=pin.orient*R180)
 
     for cell_name, cell_data in module_data.get('cells', {}).items():
         cell_type = cell_data.get('type')

@@ -6,8 +6,8 @@ from ordec.lib.generic_mos import Nmos, Pmos
 
 cell Strongarm:
     viewgen symbol(self) -> Symbol:
-        input vdd: .pos = (1, 30); .align = North
-        input vss: .pos = (1, 1); .align = South
+        input vdd: .pos = (1, 30); .orient = North
+        input vss: .pos = (1, 1); .orient = South
         input CLK: .pos = (1, 3)
         input in1: .pos = (10, 10)
         input in2: .pos = (10, 7)
@@ -15,8 +15,8 @@ cell Strongarm:
         output out2: .pos = (25, 19)
 
     viewgen schematic(self) -> Schematic:
-        port vdd: .pos = (1, 30); .align = East
-        port vss: .pos = (1, 1); .align = East
+        port vdd: .pos = (1, 30); .orient = East
+        port vss: .pos = (1, 1); .orient = East
         port CLK: .pos = (1, 3)
         port in1: .pos = (10, 10)
         port in2: .pos = (10, 7)
@@ -33,12 +33,12 @@ cell Strongarm:
 
         Pmos s1: .pos = (3, 22); .s -- vdd; .b -- vdd; .g -- CLK; .d -- p
         Pmos s3: .pos = (11, 22); .s -- vdd; .b -- vdd; .g -- CLK; .d -- out1
-        Pmos m5: .pos = (23, 22); .s -- vdd; .b -- vdd; .g -- out2; .d -- out1; .orientation = FlippedSouth
+        Pmos m5: .pos = (23, 22); .s -- vdd; .b -- vdd; .g -- out2; .d -- out1; .orient = FlippedSouth
         Pmos m6: .pos = (29, 22); .s -- vdd; .b -- vdd; .g -- out1; .d -- out2
-        Pmos s4: .pos = (41, 22); .s -- vdd; .b -- vdd; .g -- CLK; .d -- out2; .orientation = FlippedSouth
-        Pmos s2: .pos = (49, 22); .s -- vdd; .b -- vdd; .g -- CLK; .d -- q; .orientation = FlippedSouth
-        Nmos m3: .pos = (23, 14); .b -- vss; .s -- p; .d -- out1; .g -- out2; .orientation = FlippedSouth
+        Pmos s4: .pos = (41, 22); .s -- vdd; .b -- vdd; .g -- CLK; .d -- out2; .orient = FlippedSouth
+        Pmos s2: .pos = (49, 22); .s -- vdd; .b -- vdd; .g -- CLK; .d -- q; .orient = FlippedSouth
+        Nmos m3: .pos = (23, 14); .b -- vss; .s -- p; .d -- out1; .g -- out2; .orient = FlippedSouth
         Nmos m4: .pos = (29, 14); .b -- vss; .s -- q; .d -- out2; .g -- out1
         Nmos m1: .pos = (19, 8); .b -- vss; .s -- r; .g -- in1; .d -- p
-        Nmos m2: .pos = (33, 8); .b -- vss; .s -- r; .g -- in2; .d -- q; .orientation = FlippedSouth
+        Nmos m2: .pos = (33, 8); .b -- vss; .s -- r; .g -- in2; .d -- q; .orient = FlippedSouth
         Nmos m7: .pos = (24, 1); .b -- vss; .d -- r; .s -- vss; .g -- CLK

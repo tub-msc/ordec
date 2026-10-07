@@ -336,7 +336,7 @@
       }
     },
     "local-attribute": {
-      "comment": "Leading-dot access to the current node: .pos, .align, .d and method calls like .plot2d(...) (dotted_atom in ord.lark). The lookbehind keeps ordinary attribute access like m1.pos untouched.",
+      "comment": "Leading-dot access to the current node: .pos, .orient, .d and method calls like .plot2d(...) (dotted_atom in ord.lark). The lookbehind keeps ordinary attribute access like m1.pos untouched.",
       "patterns": [
         {
           "match": "(?<![\\w)\\]}'\"])(\\.)([_[:alpha:]]\\w*)(?=[ \\t]*\\()",

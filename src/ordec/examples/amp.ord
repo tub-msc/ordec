@@ -8,7 +8,7 @@ cell Amp:
         input vbias
         output vout
         inout vss
-        inout vdd: .align=North
+        inout vdd: .orient=North
     viewgen schematic(self) -> Schematic:
         net m0g
         port vdd: .pos=(15,18)
@@ -17,7 +17,7 @@ cell Amp:
         port vbias: .pos=(0,14)
         port vout: .pos=(20, 8)
 
-        Res r0: .pos=(5, 3); .$r=100k; .orientation=R90; .p -- vin; .n -- m0g
+        Res r0: .pos=(5, 3); .$r=100k; .orient=R90; .p -- vin; .n -- m0g
         Res r1: .pos=(6, 6); .$r=400k; .n -- m0g; .p -- vout
 
         Nmos m0: .pos=(13,3); .d--vout; .g -- m0g; .s -- vss; .b -- vss; .$l=130n; .$w=5u

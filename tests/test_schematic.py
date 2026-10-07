@@ -54,7 +54,7 @@ def test_schematic_net_partitioned_unlabeled_main():
     s.r1 = SchemInstance(res.portmap(p=s.n, n=s.n2), pos=Vec2R(0, 2))
     s.r2 = SchemInstance(res.portmap(p=s.n, n=s.n2), pos=Vec2R(6, 2))
     s.r3 = SchemInstance(res.portmap(p=s.n, n=s.n), pos=Vec2R(12, 2))
-    s.n % SchemPort(pos=Vec2R(0, 8), align=East)
+    s.n % SchemPort(pos=Vec2R(0, 8), orient=East)
     s.n % SchemWire(vertices=[Vec2R(0, 8), Vec2R(2, 8), Vec2R(2, 6)])
     s.n % SchemWire(vertices=[Vec2R(8, 6), Vec2R(8, 8), Vec2R(11, 8),
                               Vec2R(14, 8), Vec2R(14, 6)])
@@ -273,7 +273,7 @@ def test_annotations():
     sym % SymbolAnnotation(kind=AnnotationKind.CellName, text='X',
         ref=sym % SymbolAnnotationStack(pos=(2, 2), valign=VAlign.Middle))
     s = Schematic(outline=(0, 0, 4, 4))
-    s.x = SchemInstance(pos=(4, 0), orientation=R90, symbol=sym.freeze())
+    s.x = SchemInstance(pos=(4, 0), orient=R90, symbol=sym.freeze())
     assert 'text-anchor="middle"' in s.render().svg().decode()
 
 def test_pin_show_flags():
@@ -288,14 +288,14 @@ def test_pin_show_flags():
     # Without rotate_label, labels of vertical stubs are not rotated:
     for rotate, n_rotated in ((True, 2), (False, 0)):
         s = Symbol(outline=(0, 0, 4, 4))
-        s.d = Pin(pos=(2, 4), align=North, rotate_label=rotate)
-        s.s = Pin(pos=(2, 0), align=South, rotate_label=rotate)
-        s.g = Pin(pos=(0, 2), align=West, rotate_label=rotate)
+        s.d = Pin(pos=(2, 4), orient=North, rotate_label=rotate)
+        s.s = Pin(pos=(2, 0), orient=South, rotate_label=rotate)
+        s.g = Pin(pos=(0, 2), orient=West, rotate_label=rotate)
         assert s.freeze().render().svg().decode().count('<text transform="matrix(0 ') == n_rotated
     # A centered label of a vertical stub without rotate_label is centered
     # across the stub:
     s = Symbol(outline=(0, 0, 4, 4))
-    s.d = Pin(pos=(2, 4), align=North, rotate_label=False, center_label=True)
+    s.d = Pin(pos=(2, 4), orient=North, rotate_label=False, center_label=True)
     assert 'text-anchor="middle"' in s.freeze().render().svg().decode()
 
 def test_annotation_placement():
