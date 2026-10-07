@@ -123,7 +123,8 @@ def lef_symbol_specs(lef_data: Any) -> OrderedDict[str, OrderedDict[str, tuple[s
 
 
 def create_symbol(extlib: 'ExtLibrary', name: str, port_spec: OrderedDict[str, tuple[str, int]]) -> Symbol:
-    sym = Symbol(caption=name, cell=extlib[name])
+    sym = Symbol(cell=extlib[name])
+    sym.one(SymbolAnnotation.kind_idx.query(AnnotationKind.CellName)).text = name
     for port_name, (direction, width) in port_spec.items():
         pin_kwargs = {
             'pintype': dir_to_pintype(direction),

@@ -163,6 +163,7 @@ def test_schematic_double_instance():
     assert any(e.error_type == SchemErrorType.OverlappingInstances for e in errors)
 
 def test_scheminstance_unresolved_resolution():
+    sym = Nmos(l='2u', w='5u').symbol
     s_ref = MutableSubgraph.load({
         0: Schematic.Tuple(symbol=None, outline=None, cell=None, default_supply=None, default_ground=None),
         1: Net.Tuple(pin=None),
@@ -173,12 +174,12 @@ def test_scheminstance_unresolved_resolution():
         6: NPath.Tuple(parent=None, name='d', ref=5),
         7: Net.Tuple(pin=None),
         8: NPath.Tuple(parent=None, name='b', ref=7),
-        9: SchemInstance.Tuple(pos=Vec2R(R('1.'), R('2.')), orient=R0, symbol=Nmos(l='2u', w='5u').symbol),
+        9: SchemInstance.Tuple(pos=Vec2R(R('1.'), R('2.')), orient=R0, symbol=sym),
         10: NPath.Tuple(parent=None, name='myinst', ref=9),
-        11: SchemInstanceConn.Tuple(ref=9, here=1, there=1),
-        12: SchemInstanceConn.Tuple(ref=9, here=3, there=3),
-        13: SchemInstanceConn.Tuple(ref=9, here=5, there=5),
-        14: SchemInstanceConn.Tuple(ref=9, here=7, there=7),
+        11: SchemInstanceConn.Tuple(ref=9, here=1, there=sym.g.nid),
+        12: SchemInstanceConn.Tuple(ref=9, here=3, there=sym.s.nid),
+        13: SchemInstanceConn.Tuple(ref=9, here=5, there=sym.d.nid),
+        14: SchemInstanceConn.Tuple(ref=9, here=7, there=sym.b.nid),
     })
 
     s = Schematic()
@@ -223,10 +224,55 @@ def test_scheminstance_unresolved_hierarchical_path():
     assert conn.here == s.mynet
     assert conn.there == lib_test.MultibitReg_StructOfArrays(bits=4).symbol.data.d[3]
 
+def test_annotations():
+    from .lib.ord import annotations as lib_ann
+    import re
+    # Symbol viewgens start with the default annotations and can adjust them:
+    sym = lib_ann.Box(n=1).symbol
+    assert [(a.kind, a.text, a.shown) for a in sym.all(SymbolAnnotation)] == [
+        (AnnotationKind.InstanceName, None, True),
+        (AnnotationKind.CellName, 'Box', True), # in a fixed stack
+        (AnnotationKind.Param, 'n=1', True),
+        (AnnotationKind.Param, 'm=1', False), # left at its default
+    ]
+    # A symbol on its own has no instance name to show:
+    assert 'class="instanceName"' not in sym.render().svg().decode()
+
+    sch = lib_ann.Top().schematic
+    svg = sch.render().svg().decode()
+    assert svg.count('>Box<') == 2 # fixed stack of both instances
+    assert re.findall(r'class="instanceName">(\w+)<', svg) == ['b1', 'b2']
+    # b2 places its block explicitly, West-aligned (text-anchor end):
+    b2_block = svg.split('class="symbolOutline"')[2]
+    assert 'text-anchor="end"' in b2_block and 'n=2' in b2_block
+
+    # Per-instance overrides of the shown flag:
+    s = Schematic(outline=(0, 0, 8, 8))
+    s.b = SchemInstance(pos=(0, 0), symbol=lib_ann.Box(n=2).symbol)
+    by_text = {a.text: a for a in s.b.symbol.all(SymbolAnnotation)}
+    s % SchemAnnotationOverride(ref=s.b, there=by_text['n=2'], shown=False)
+    s % SchemAnnotationOverride(ref=s.b, there=by_text['m=1'], shown=True)
+    s % SchemAnnotationOverride(ref=s.b, there=by_text['Box'], shown=False) # fixed stack
+    svg = s.render().svg().decode()
+    assert 'n=2' not in svg and 'm=1' in svg and 'class="cellName"' not in svg
+
+    # Flatter arrangement: instance name and parameter share one text row.
+    s.b.annotation_pos = (5, 5)
+    s.b.annotation_wrap = 20
+    assert '<tspan class="instanceName">b</tspan> <tspan class="params">m=1</tspan>' in s.render().svg().decode()
+
+    # A stack centered vertically on pos is centered horizontally in an
+    # instance rotated by 90 degrees:
+    sym = Symbol(outline=(0, 0, 4, 4))
+    sym % SymbolAnnotation(kind=AnnotationKind.CellName, text='X',
+        ref=sym % SymbolAnnotationStack(pos=(2, 2), valign=VAlign.Middle))
+    s = Schematic(outline=(0, 0, 4, 4))
+    s.x = SchemInstance(pos=(4, 0), orientation=R90, symbol=sym.freeze())
+    assert 'text-anchor="middle"' in s.render().svg().decode()
+
 def test_pin_show_flags():
     from ordec.lib.generic_mos import Inv
-    import re
-    s = Symbol(outline=(0, 0, 4, 4), cell=Inv())
+    s = Symbol(outline=(0, 0, 4, 4))
     s.a = Pin(pos=(0, 2), align=West, show_arrow=False, show_label=False)
     svg = s.freeze().render().svg().decode()
     assert 'class="pinArrow"' not in svg and 'class="pinLabel' not in svg
@@ -234,15 +280,14 @@ def test_pin_show_flags():
     assert svg.count('class="pinArrow"') == 4 and svg.count('class="pinLabel"') == 4
     # Without rotate_label, labels of vertical stubs are not rotated:
     for rotate, n_rotated in ((True, 2), (False, 0)):
-        s = Symbol(outline=(0, 0, 4, 4), cell=Inv())
+        s = Symbol(outline=(0, 0, 4, 4))
         s.d = Pin(pos=(2, 4), align=North, rotate_label=rotate)
         s.s = Pin(pos=(2, 0), align=South, rotate_label=rotate)
         s.g = Pin(pos=(0, 2), align=West, rotate_label=rotate)
-        svg = s.freeze().render().svg().decode()
-        assert len(re.findall(r'<text transform="matrix\(0 [^>]*class="pinLabel"', svg)) == n_rotated
+        assert s.freeze().render().svg().decode().count('<text transform="matrix(0 ') == n_rotated
     # A centered label of a vertical stub without rotate_label is centered
     # across the stub:
-    s = Symbol(outline=(0, 0, 4, 4), cell=Inv())
+    s = Symbol(outline=(0, 0, 4, 4))
     s.d = Pin(pos=(2, 4), align=North, rotate_label=False, center_label=True)
     assert 'text-anchor="middle"' in s.freeze().render().svg().decode()
 

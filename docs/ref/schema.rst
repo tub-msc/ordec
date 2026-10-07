@@ -29,6 +29,27 @@ either one per pin with ``Pin.show_arrow`` and ``Pin.show_label``. Labels of
 vertical (North/South) pin stubs run along the stub; symbols with short pin
 names can draw them horizontally instead with ``Pin.rotate_label = False``.
 
+Besides pins and drawn geometry, a symbol carries :class:`SymbolAnnotation`
+lines (instance name, cell name, parameters). Lines referencing a
+:class:`SymbolAnnotationStack` are drawn at its fixed position, typically
+inside the symbol outline. The other lines form the annotation
+block, which is drawn as a whole beside the symbol: at
+``SchemInstance.annotation_pos`` if the schematic sets it, else at
+``Symbol.annotation_pos`` or the top right corner of the outline. By
+default, every annotation line is a text row of its own; with
+``SchemInstance.annotation_wrap``, consecutive lines share a row. The sides
+follow the instance orientation, the text stays horizontal. Each
+annotation line has a ``shown`` flag, which a schematic can override per
+instance with :class:`SchemAnnotationOverride` to declutter the drawing.
+
+Symbols start out with the default annotations (see
+:class:`Symbol`, which hides parameters left at their
+default unless they are declared with ``Parameter(..., hide_default=False)``)
+and may modify, remove or extend them. :meth:`Symbol.place_pins` makes a box
+symbol: it arranges the pins on the sides of the outline, draws the outline
+and puts the annotations into fixed stacks inside the box. Symbol viewgens
+that set no outline get this automatically.
+
 .. autoclass:: Symbol
    :members:
    :undoc-members:
@@ -47,6 +68,26 @@ names can draw them horizontally instead with ``Pin.rotate_label = False``.
    :undoc-members:
 
 .. autoclass:: SymbolArc
+   :members:
+   :undoc-members:
+
+.. autoclass:: AnnotationKind
+   :members:
+   :undoc-members:
+
+.. autoclass:: SymbolAnnotationStack
+   :members:
+   :undoc-members:
+
+.. autoclass:: HAlign
+   :members:
+   :undoc-members:
+
+.. autoclass:: VAlign
+   :members:
+   :undoc-members:
+
+.. autoclass:: SymbolAnnotation
    :members:
    :undoc-members:
 
@@ -74,6 +115,10 @@ Schematics
    :undoc-members:
 
 .. autoclass:: SchemInstanceConn
+   :members:
+   :undoc-members:
+
+.. autoclass:: SchemAnnotationOverride
    :members:
    :undoc-members:
 

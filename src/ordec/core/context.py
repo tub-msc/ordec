@@ -247,7 +247,9 @@ class SymbolViewBuilder(ViewBuilder):
         return root_cls(cell=cell)
 
     def postprocess(self):
-        self.root.place_pins(vpadding=2, hpadding=2)
+        # A symbol that sets its own outline has done its own layout.
+        if self.root.outline is None:
+            self.root.place_pins(vpadding=2, hpadding=2)
 
 
 class SchematicViewBuilder(MixinUnresolvedInstances, ViewBuilder):

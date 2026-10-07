@@ -21,14 +21,20 @@ def spice_params(params: dict) -> list[str]:
 
 def symbol_place_pins(node: Symbol, hpadding=3, vpadding=3):
     """
-    Arranges all Pins of a symbol, setting their pos attributes.
-    Based on their align attribute, Pins are arranged on four sides of a rectangle.
-    The outline rectangle is furthermore created.
+    Makes node a box symbol. Its Pins are arranged on the four sides of a
+    rectangle based on their align attribute, which becomes the outline and
+    is drawn as a SymbolPoly. Pin labels are centered on the pins
+    (center_label), as no stub runs inside the box. The SymbolAnnotations
+    are put into fixed stacks inside the box: instance name top left, cell
+    name top right, parameters at the bottom right. SymbolAnnotations added later stay in the
+    annotation block. Call it once per symbol: each call adds another box
+    and set of stacks.
     """
 
     pin_by_align = {South:[], North:[], West:[], East:[]}
     for pin in node.all(Pin):
         pin_by_align[pin.align].append(pin)
+        pin.center_label = True
 
     height=max(len(pin_by_align[East]), len(pin_by_align[West]))+2*vpadding-1
     width=max(len(pin_by_align[North]), len(pin_by_align[South]))+2*hpadding-1
@@ -42,8 +48,18 @@ def symbol_place_pins(node: Symbol, hpadding=3, vpadding=3):
     for i, pin in enumerate(pin_by_align[East]):
         pin.pos = Vec2R(x=width,y=vpadding+i)
 
-    node.outline = Rect4R(lx=0, ly=0, ux=width, uy=height)
+    o = Rect4R(lx=0, ly=0, ux=width, uy=height)
+    node.outline = o
+    node % SymbolPoly(vertices=[Vec2R(o.lx, o.ly), Vec2R(o.ux, o.ly),
+        Vec2R(o.ux, o.uy), Vec2R(o.lx, o.uy), Vec2R(o.lx, o.ly)])
 
+    stacks = {
+        AnnotationKind.InstanceName: node % SymbolAnnotationStack(pos=o.northwest),
+        AnnotationKind.CellName: node % SymbolAnnotationStack(pos=o.northeast, halign=HAlign.Right),
+        AnnotationKind.Param: node % SymbolAnnotationStack(pos=o.southeast, halign=HAlign.Right, valign=VAlign.Bottom),
+    }
+    for a in list(node.all(SymbolAnnotation)):
+        a.ref = stacks[a.kind]
 
 def schem_place(schem: Schematic, gap=None, port_margin=None):
     """
