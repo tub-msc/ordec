@@ -653,7 +653,7 @@ def place_and_route(schematic, layout, *, grid, routing_spec, pin_rects,
         order = place.order_cells_sa(cells, nets, cfg)
         slots, packed_w = place.place_rows(cells, order, cfg)
         for name, slot in slots.items():
-            insts[name].update(pos=Vec2I(*slot.pos), orientation=slot.orient)
+            insts[name].update(pos=Vec2I(*slot.pos), orient=slot.orient)
         rows = {name: slot.row for name, slot in slots.items()}
         # Derived from the placed instances, not from the placer's output, so
         # the layout stays the sole holder of the placement.

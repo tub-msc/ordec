@@ -174,7 +174,7 @@ def test_scheminstance_unresolved_resolution():
         6: NPath.Tuple(parent=None, name='d', ref=5),
         7: Net.Tuple(pin=None),
         8: NPath.Tuple(parent=None, name='b', ref=7),
-        9: SchemInstance.Tuple(pos=Vec2R(R('1.'), R('2.')), orientation=R0, symbol=sym),
+        9: SchemInstance.Tuple(pos=Vec2R(R('1.'), R('2.')), orient=R0, symbol=sym),
         10: NPath.Tuple(parent=None, name='myinst', ref=9),
         11: SchemInstanceConn.Tuple(ref=9, here=1, there=sym.g.nid),
         12: SchemInstanceConn.Tuple(ref=9, here=3, there=sym.s.nid),

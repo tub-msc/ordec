@@ -26,6 +26,10 @@ WIRE_DOMAIN = 3 << 16
 # Enums
 # -----
 
+def unflip(d4):
+    """Attr factory for orientations on which mirroring has no visible effect."""
+    return d4.unflip() if isinstance(d4, D4) else d4
+
 @public
 class PinType(Enum):
     In = 'in'
@@ -179,7 +183,10 @@ class Pin(Node):
 
     pintype = Attr(PinType, default=PinType.Inout)
     pos     = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
-    align   = Attr(D4, default=D4.R0)
+    #: Direction in which the pin points out of the symbol (the side its wire
+    #: attaches). Mirroring has no visible effect on pins, so orient is
+    #: stored unflipped.
+    orient  = Attr(D4, default=D4.R0, factory=unflip)
     #: Vertical alignment of the label relative to its text line, which runs
     #: along the stub (see draw_label): Bottom puts the label above
     #: horizontal and left of vertical stubs, Middle centers it on the stub.
@@ -193,6 +200,20 @@ class Pin(Node):
     rotate_label = Attr(bool, default=True)
     show_label = Attr(bool, default=True) #: Whether the pin name is drawn next to the pin. Hidden pin names still show in the detail view of the web UI.
     show_arrow = Attr(bool, default=True) #: Whether the arrow indicating pintype is drawn at the pin.
+
+    # Backwards compatibility: align was renamed to orient.
+    def __new__(cls, align=None, **kwargs):
+        if align is not None:
+            kwargs['orient'] = align
+        return super().__new__(cls, **kwargs)
+
+    @property
+    def align(self):
+        return self.orient
+
+    @align.setter
+    def align(self, value):
+        self.orient = value
 
 @public
 class SymbolPoly(GenericPolyR, MixinPolygonalChain):
@@ -364,12 +385,21 @@ class Net(Node):
         self.port.pos = value
 
     @property
+    def orient(self):
+        return self.port.orient
+
+    @orient.setter
+    def orient(self, value):
+        self.port.orient = value
+
+    # Backwards compatibility: align was renamed to orient.
+    @property
     def align(self):
-        return self.port.align
+        return self.port.orient
 
     @align.setter
     def align(self, value):
-        self.port.align = value
+        self.port.orient = value
 
 @public
 class SchemPort(Node):
@@ -384,7 +414,23 @@ class SchemPort(Node):
     pos = ConstrainableAttr(Vec2R, placeholder=Vec2LinearTerm,
         factory=coerce_tuple(Vec2R, 2))
     pos_idx = Index(pos)
-    align = Attr(D4, default=D4.R0)
+    #: Direction in which the port arrow points, towards the wire; the label
+    #: is on the far side. Stored unflipped, like Pin.orient.
+    orient = Attr(D4, default=D4.R0, factory=unflip)
+
+    # Backwards compatibility: align was renamed to orient.
+    def __new__(cls, align=None, **kwargs):
+        if align is not None:
+            kwargs['orient'] = align
+        return super().__new__(cls, **kwargs)
+
+    @property
+    def align(self):
+        return self.orient
+
+    @align.setter
+    def align(self, value):
+        self.orient = value
 
 @public
 class SchemWire(GenericPolyR, MixinPolygonalChain):
@@ -459,7 +505,9 @@ class SchemInstance(Node, MixinSourceLoc):
 
     pos = ConstrainableAttr(Vec2R, placeholder=Vec2LinearTerm,
         factory=coerce_tuple(Vec2R, 2))
-    orientation = Attr(D4, default=D4.R0)
+    #: Rotation and mirroring of the symbol, applied after it is moved to pos
+    #: (see loc_transform).
+    orient = Attr(D4, default=D4.R0)
     #: Position of the annotation block in schematic coordinates. Set by
     #: Schematic.place_annotations() in the viewgen pipeline unless the
     #: schematic sets it explicitly. If still None when rendering (e.g. in
@@ -482,12 +530,24 @@ class SchemInstance(Node, MixinSourceLoc):
     #: and schem_check).
     symbol = SubgraphRef(Symbol)
 
-    def __new__(cls, connect=None, **kwargs):
+    def __new__(cls, connect=None, orientation=None, **kwargs):
+        # Backwards compatibility: orientation was renamed to orient.
+        if orientation is not None:
+            kwargs['orient'] = orientation
         main = super().__new__(cls, **kwargs)
         if connect is None:
             return main
         else:
             return FuncInserter(partial(connect, main))
+
+    # Backwards compatibility: orientation was renamed to orient.
+    @property
+    def orientation(self):
+        return self.orient
+
+    @orientation.setter
+    def orientation(self, value):
+        self.orient = value
 
     def loc_transform(self):
         pos = self.pos
@@ -635,7 +695,23 @@ class SchemTapPoint(Node):
 
     pos = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
     pos_idx = Index(pos)
-    align = Attr(D4, default=D4.R0)
+    #: Direction in which the tap glyph and its label extend away from pos,
+    #: i.e. away from the wire. Stored unflipped, like Pin.orient.
+    orient = Attr(D4, default=D4.R0, factory=unflip)
+
+    # Backwards compatibility: align was renamed to orient.
+    def __new__(cls, align=None, **kwargs):
+        if align is not None:
+            kwargs['orient'] = align
+        return super().__new__(cls, **kwargs)
+
+    @property
+    def align(self):
+        return self.orient
+
+    @align.setter
+    def align(self, value):
+        self.orient = value
 
     def loc_transform(self):
         return self.pos.transl() * self.align
