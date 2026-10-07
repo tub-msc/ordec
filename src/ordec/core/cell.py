@@ -219,14 +219,21 @@ class Parameter:
             instantiation, so a parameter with a factory whose canonical
             values do not repr evaluably on their own pairs it with a
             value_repr (see lib.base.PwlMixin.pwl_waveform_repr).
+        hide_default: Whether the default symbol annotations hide the
+            parameter while it is left at its default (see
+            :class:`Symbol`). Set it to False for
+            parameters needed to read a schematic, such as device
+            dimensions. Boolean parameters at their default are always
+            omitted (see :meth:`Cell.params_list`).
     """
     def __init__(self, t: type, optional: bool = False, default=None,
-            factory=None, value_repr=None):
+            factory=None, value_repr=None, hide_default=True):
         self.type = t
         self.optional = optional
         self.default = default
         self.factory = factory
         self.custom_value_repr = value_repr
+        self.hide_default = hide_default
         self.name = None
         # Prevent the docstring of Parameter to be shown for every individual
         # Parameter instance in a Cell subclass.
@@ -457,14 +464,18 @@ class Cell(metaclass=MetaCell):
         """
         pass
 
-    def params_list(self, use_repr=False) -> list[str]:
+    def params_list(self, use_repr=False, skip_default=False) -> list[str]:
+        """
+        Parameters as key=value strings. Boolean parameters left at their
+        default are always omitted; skip_default=True also omits the other
+        parameters left at their default, unless they set hide_default=False.
+        """
         param_items = []
-        for k in self._class_params:
+        for k, param in self._class_params.items():
             v = getattr(self, k)
             if v is None:
                 continue
-            # Hide boolean parameters left at their default:
-            if isinstance(v, bool) and v == self._class_params[k].default:
+            if v == param.default and (isinstance(v, bool) or (skip_default and param.hide_default)):
                 continue
             param_items.append((k, v))
         if use_repr:
