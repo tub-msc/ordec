@@ -44,17 +44,25 @@ def annotation_lines(s: Symbol, inst: SchemInstance|None, stack: SymbolAnnotatio
             lines.append((a.text, a.kind))
     return lines
 
+def transform_align(halign: HAlign, valign: VAlign, trans: TD4R) -> tuple[HAlign, VAlign]:
+    """
+    Alignment under trans of horizontal text anchored at a point in symbol
+    coordinates. The text stays horizontal, but the quadrant it occupies
+    relative to the point follows trans (a 90 degree rotation turns Middle
+    into Center and vice versa).
+    """
+    q = trans.d4 * Vec2R({HAlign.Left: 1, HAlign.Right: -1, HAlign.Center: 0}[halign],
+        {VAlign.Top: -1, VAlign.Bottom: 1, VAlign.Middle: 0}[valign])
+    halign = HAlign.Left if q.x > 0 else HAlign.Right if q.x < 0 else HAlign.Center
+    valign = VAlign.Top if q.y < 0 else VAlign.Bottom if q.y > 0 else VAlign.Middle
+    return halign, valign
+
 def stack_label_frame(stack: SymbolAnnotationStack, trans: TD4R) -> tuple[TD4R, HAlign, VAlign]:
     """
     Frame and alignment of a fixed annotation stack drawn under trans, for
-    draw_label and label_rect. The text stays horizontal, but the quadrant
-    it occupies relative to pos follows trans (Middle rotated by 90 degrees
-    becomes Left).
+    draw_label and label_rect, see transform_align.
     """
-    q = trans.d4 * Vec2R({HAlign.Left: 1, HAlign.Right: -1}[stack.halign],
-        {VAlign.Top: -1, VAlign.Bottom: 1, VAlign.Middle: 0}[stack.valign])
-    halign = HAlign.Left if q.x >= 0 else HAlign.Right
-    valign = VAlign.Top if q.y < 0 else VAlign.Bottom if q.y > 0 else VAlign.Middle
+    halign, valign = transform_align(stack.halign, stack.valign, trans)
     return (trans * stack.pos).transl() * East, halign, valign
 
 def annotation_row_chars(row: list) -> int:
@@ -76,23 +84,26 @@ def annotation_rows(lines: list, wrap: int) -> list[list]:
             rows.append([line])
     return rows
 
-def annotation_anchor(s: Symbol, trans: TD4R, inst: SchemInstance|None) -> tuple[TD4R, int]:
+def annotation_anchor(s: Symbol, trans: TD4R, inst: SchemInstance|None) -> tuple[TD4R, HAlign, int]:
     """
-    Anchor of the annotation block (position and direction the text extends
-    in, see Renderer.draw_label) and its arrangement (wrap, see
-    annotation_rows): the instance's annotation_pos and annotation_wrap if
+    Anchor of the annotation block (frame and halign for
+    Renderer.draw_label) and its arrangement (wrap, see annotation_rows):
+    the instance's annotation_pos, annotation_halign and annotation_wrap if
     set. Else (a symbol on its own, or an instance of a schematic that never
     ran place_annotations), the block is drawn at the symbol's
     annotation_pos, or at the top right corner of its outline. Rendering
     never searches for a free spot.
     """
     if inst is not None and inst.annotation_pos is not None:
-        return inst.annotation_pos.transl() * inst.annotation_align, inst.annotation_wrap
+        return inst.annotation_pos.transl() * East, inst.annotation_halign, inst.annotation_wrap
     from .annotate import hint_rect, rect_anchor, symbol_body, block_size
     length, depth = block_size(annotation_rows(annotation_lines(s, inst), 0))
-    pos = s.annotation_pos if s.annotation_pos is not None else s.outline.northeast
-    rect = hint_rect(s, trans, length, depth, pos)
-    return rect_anchor(rect, symbol_body(s, trans, inst)), 0
+    if s.annotation_pos is not None:
+        rect = hint_rect(trans, length, depth, s.annotation_pos, s.annotation_halign)
+    else:
+        rect = hint_rect(trans, length, depth, s.outline.northeast, HAlign.Left)
+    pos, halign = rect_anchor(rect, symbol_body(s, trans, inst))
+    return pos.transl() * East, halign, 0
 
 def annotation_extent(s: Symbol, trans: TD4R, inst: SchemInstance|None) -> Rect4R | None:
     """
@@ -102,9 +113,9 @@ def annotation_extent(s: Symbol, trans: TD4R, inst: SchemInstance|None) -> Rect4
     lines = annotation_lines(s, inst)
     if not lines:
         return None
-    anchor, wrap = annotation_anchor(s, trans, inst)
+    anchor, halign, wrap = annotation_anchor(s, trans, inst)
     rows = annotation_rows(lines, wrap)
-    return Renderer.label_rect(anchor, max(annotation_row_chars(row) for row in rows), len(rows))
+    return Renderer.label_rect(anchor, max(annotation_row_chars(row) for row in rows), len(rows), halign=halign)
 
 class Renderer:
     """
@@ -178,7 +189,13 @@ class Renderer:
             frame *= R90
         if space is None:
             space = cls.pin_text_space
-        length = (space + cls.label_char_width * n_chars) * {HAlign.Left: 1, HAlign.Right: -1}[halign]
+        length = cls.label_char_width * n_chars
+        if halign == HAlign.Left:
+            x0, x1 = 0, space + length
+        elif halign == HAlign.Right:
+            x0, x1 = -(space + length), 0
+        else:
+            x0, x1 = -length/2, length/2
         depth = cls.font_size_actual_grid_units * n_lines
         if valign == VAlign.Top:
             y0, y1 = -(space + depth), 0
@@ -186,7 +203,7 @@ class Renderer:
             y0, y1 = 0, space + depth
         else:
             y0, y1 = -depth/2, depth/2
-        return frame * Rect4R(min(0, length), y0, max(0, length), y1)
+        return frame * Rect4R(x0, y0, x1, y1)
 
     def draw_label(self, text: str|list[list[tuple[str, str]]], trans: TD4R, halign=HAlign.Left, valign=VAlign.Top, space=None, svg_class: str=""):
         """
@@ -216,7 +233,7 @@ class Renderer:
         if space is None:
             space = self.pin_text_space
         g_matrix *= Vec2R(
-            x = {HAlign.Left: +1, HAlign.Right: -1}[halign]*space,
+            x = {HAlign.Left: +1, HAlign.Right: -1, HAlign.Center: 0}[halign]*space,
             y = {VAlign.Bottom: +1, VAlign.Top: -1, VAlign.Middle: 0}[valign]*space,
             ).transl()
 
@@ -262,7 +279,7 @@ class Renderer:
             VAlign.Bottom: 'ideographic',
             VAlign.Middle: 'middle',
             }[valign]
-        tag.attrib['text-anchor'] = {HAlign.Left: 'start', HAlign.Right: 'end'}[halign]
+        tag.attrib['text-anchor'] = {HAlign.Left: 'start', HAlign.Right: 'end', HAlign.Center: 'middle'}[halign]
         if svg_class:
             tag.attrib['class'] = svg_class
 
@@ -521,9 +538,9 @@ class SchematicRenderer(Renderer):
 
         lines = annotation_lines(s, inst)
         if lines:
-            anchor, wrap = annotation_anchor(s, trans, inst)
+            anchor, halign, wrap = annotation_anchor(s, trans, inst)
             lines = [(text, self.annotation_class[kind]) for text, kind in lines]
-            self.draw_label(annotation_rows(lines, wrap), anchor)
+            self.draw_label(annotation_rows(lines, wrap), anchor, halign=halign)
 
         for poly in s.all(SymbolPoly):
             p = ET.SubElement(self.cur_group, 'path', d=poly.svg_path(),
@@ -545,30 +562,31 @@ class SchematicRenderer(Renderer):
         if pin.show_arrow:
             self.draw_arrow(ArrowType.Pin, pin.pintype, trans_local)
 
-        label_trans, valign = self.pin_label_frame(pin, trans_local)
+        label_trans, valign, space = self.pin_label_frame(pin, trans_local)
         # Hidden labels stay in the SVG for the detail view (see css).
         svg_class = 'pinLabel' if pin.show_label else 'pinLabel detail'
-        self.draw_label(pin.full_path_label(), label_trans, valign=valign, svg_class=svg_class)
+        self.draw_label(pin.full_path_label(), label_trans, valign=valign, space=space, svg_class=svg_class)
 
-    @staticmethod
-    def pin_label_frame(pin: Pin, trans_local: TD4R) -> tuple[TD4R, VAlign]:
+    @classmethod
+    def pin_label_frame(cls, pin: Pin, trans_local: TD4R) -> tuple[TD4R, VAlign, float]:
         """
-        Frame and vertical alignment of the label of pin for draw_label and
-        label_rect, given the pin frame trans_local of draw_pin.
+        Frame, vertical alignment and space of the label of pin for
+        draw_label and label_rect, given the pin frame trans_local of
+        draw_pin.
         """
         direction = trans_local.d4.unflip()
-        # Labels go below horizontal stubs and left of vertical stubs. This
-        # keeps the area above horizontal stubs free, where symbols like the
-        # MOS place their annotation block.
-        if direction in (East, West):
-            return trans_local, VAlign.Top
-        elif pin.root.rotate_pin_labels:
-            return trans_local, VAlign.Bottom
+        if direction in (East, West) or pin.rotate_label:
+            space = cls.pin_text_space
+            if pin.valign == VAlign.Middle and pin.show_arrow:
+                # A centered label runs into the arrow, which reaches 0.2
+                # into the symbol (see draw_arrow), so it starts past its tip.
+                space += 0.1
+            return trans_local, pin.valign, space
         else:
             # Horizontal text left of the stub, starting at the pin end and
             # extending towards the symbol (down for South, up for North).
             valign = VAlign.Top if direction == South else VAlign.Bottom
-            return trans_local.transl.transl() * West, valign
+            return trans_local.transl.transl() * West, valign, cls.pin_text_space
 
     def draw_arrow(self, arrowtype: ArrowType, pt: PinType, trans: TD4R):
         if arrowtype == ArrowType.Pin:

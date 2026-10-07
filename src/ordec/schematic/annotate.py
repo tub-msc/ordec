@@ -21,7 +21,7 @@ import logging
 import math
 
 from ..core import *
-from .render import Renderer, SchematicRenderer, annotation_lines, annotation_rows, annotation_row_chars, stack_label_frame, annotation_extent
+from .render import Renderer, SchematicRenderer, annotation_lines, annotation_rows, annotation_row_chars, stack_label_frame, transform_align, annotation_extent
 
 logger = logging.getLogger(__name__)
 
@@ -81,8 +81,8 @@ def symbol_obstacles(s: Symbol, trans: TD4R, inst: SchemInstance|None = None) ->
             rects.append(trans_local * Rect4R(R(-0.2), R(-0.2), R(0.2), R(0.2)))
         if not pin.show_label:
             continue
-        label_trans, valign = SchematicRenderer.pin_label_frame(pin, trans_local)
-        rects.append(Renderer.label_rect(label_trans, len(pin.full_path_label()), 1, valign=valign))
+        label_trans, valign, space = SchematicRenderer.pin_label_frame(pin, trans_local)
+        rects.append(Renderer.label_rect(label_trans, len(pin.full_path_label()), 1, valign=valign, space=space))
     for stack in s.all(SymbolAnnotationStack):
         lines = annotation_lines(s, inst, stack)
         if lines:
@@ -148,23 +148,18 @@ def symbol_body(s: Symbol, trans: TD4R, inst: SchemInstance|None) -> Rect4R:
     return Rect4R(min(r.lx for r in rects), min(r.ly for r in rects),
         max(r.ux for r in rects), max(r.uy for r in rects))
 
-def hint_rect(s: Symbol, trans: TD4R, length: R, depth: R, pos: Vec2R) -> Rect4R:
+def hint_rect(trans: TD4R, length: R, depth: R, pos: Vec2R, halign: HAlign) -> Rect4R:
     """
     Block rectangle for an anchor at pos (in symbol coordinates). The block
-    extends from pos in the symbol's annotation_align direction (East or
-    West) and downwards; both directions follow trans, so the block stays on
-    the same side of a rotated or mirrored instance, but the text stays
-    horizontal.
+    extends from pos to the side given by halign and downwards; both follow
+    trans (see transform_align), so the block stays on the same side of a
+    rotated or mirrored instance, but the text stays horizontal.
     """
-    p = trans * pos
-    along = trans.d4 * (s.annotation_align * Vec2R(0, 1))
-    down = trans.d4 * Vec2R(0, -1)
-    if along.x != 0:
-        dx, dy = along.x * length, down.y * depth
-    else:
-        # A 90 degree rotation swaps the roles of the two directions.
-        dx, dy = down.x * length, along.y * depth
-    return _bbox([p, p + Vec2R(dx, dy)])
+    halign, valign = transform_align(halign, VAlign.Top, trans)
+    x = {HAlign.Left: 0, HAlign.Center: -length/2, HAlign.Right: -length}[halign]
+    y = {VAlign.Bottom: 0, VAlign.Middle: -depth/2, VAlign.Top: -depth}[valign]
+    p = trans * pos + Vec2R(x, y)
+    return Rect4R(p.x, p.y, p.x + length, p.y + depth)
 
 def fits(rect: FloatRect, obstacles: list[FloatRect]) -> bool:
     c = float(CLEARANCE)
@@ -281,7 +276,7 @@ def place_block(s: Symbol, trans: TD4R, inst: SchemInstance|None, obstacles: lis
 
     wrap, length, depth = sizes[0]
     if s.annotation_pos is not None:
-        hint = hint_rect(s, trans, length, depth, s.annotation_pos)
+        hint = hint_rect(trans, length, depth, s.annotation_pos, s.annotation_halign)
         if fits(hint.tofloat(), obstacles):
             return hint, wrap
 
@@ -324,16 +319,16 @@ def place_block(s: Symbol, trans: TD4R, inst: SchemInstance|None, obstacles: lis
     x, y = pos
     return Rect4R(x, y, x + length, y + depth), wrap
 
-def rect_anchor(rect: Rect4R, body: Rect4R) -> TD4R:
+def rect_anchor(rect: Rect4R, body: Rect4R) -> tuple[Vec2R, HAlign]:
     """
-    Anchor (annotation_pos and annotation_align) that draws the block in
-    rect. Blocks left of the center of the symbol body are right-aligned
-    (West), so that their text ends at the symbol like the text of the other
-    blocks starts at it.
+    Anchor (annotation_pos and annotation_halign) that draws the block in
+    rect. Blocks left of the center of the symbol body are right-aligned, so
+    that their text ends at the symbol like the text of the other blocks
+    starts at it.
     """
     if rect.cx < body.cx:
-        return rect.northeast.transl() * West
-    return rect.northwest.transl() * East
+        return rect.northeast, HAlign.Right
+    return rect.northwest, HAlign.Left
 
 def block_rects(node: Schematic) -> dict[int, tuple[Rect4R, int]]:
     """
@@ -361,7 +356,7 @@ def block_rects(node: Schematic) -> dict[int, tuple[Rect4R, int]]:
 
 def place_annotations(node: Schematic):
     """
-    Sets annotation_pos, annotation_align and annotation_wrap of every
+    Sets annotation_pos, annotation_halign and annotation_wrap of every
     SchemInstance that has no annotation_pos, see block_rects, and extends
     node.outline over all blocks.
     """
@@ -372,9 +367,8 @@ def place_annotations(node: Schematic):
             continue
         rect, wrap = rects[inst.nid]
         if inst.annotation_pos is None:
-            anchor = rect_anchor(rect, symbol_body(inst.symbol, inst.loc_transform(), inst))
-            inst.annotation_pos = anchor.transl
-            inst.annotation_align = anchor.d4
+            inst.annotation_pos, inst.annotation_halign = rect_anchor(rect,
+                symbol_body(inst.symbol, inst.loc_transform(), inst))
             inst.annotation_wrap = wrap
         if outline is not None:
             outline = outline.extend(rect.southwest).extend(rect.northeast)

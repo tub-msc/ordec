@@ -39,12 +39,18 @@ class PinType(Enum):
 class HAlign(Enum):
     Left = 1
     Right = 2
+    Center = 3
 
     def __repr__(self):
         return f'{self.__class__.__name__}.{self.name}'
 
     def invert(self):
-        return self.Right if self == self.Left else self.Left
+        """Swaps Left and Right; Center stays."""
+        if self == self.Left:
+            return self.Right
+        elif self == self.Right:
+            return self.Left
+        return self
 
 @public
 class VAlign(Enum):
@@ -132,12 +138,11 @@ class Symbol(MixinRenderable, SubgraphRoot):
     #: hand: place_annotations then searches the spot beside the symbol
     #: right away, preferring its east side.
     annotation_pos = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
-    #: Direction in which the block extends from annotation_pos: East or West.
-    annotation_align = Attr(D4, default=D4.East)
-    #: Whether labels of vertical pin stubs (North/South) are rotated to run
-    #: along the stub. False draws them horizontally beside the stub, which
-    #: reads better for short labels (e.g. 's', 'g', 'd').
-    rotate_pin_labels = Attr(bool, default=True)
+    #: Side the block extends to from annotation_pos (Left: it extends right
+    #: of it); the block always hangs below annotation_pos. Like
+    #: SymbolAnnotationStack.halign, it follows the instance transform. Only
+    #: used together with annotation_pos.
+    annotation_halign = Attr(HAlign, default=HAlign.Left)
 
     def __new__(cls, default_annotations: bool = True, **kwargs):
         ret = super().__new__(cls, **kwargs)
@@ -175,6 +180,17 @@ class Pin(Node):
     pintype = Attr(PinType, default=PinType.Inout)
     pos     = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
     align   = Attr(D4, default=D4.R0)
+    #: Vertical alignment of the label relative to its text line, which runs
+    #: along the stub (see draw_label): Bottom puts the label above
+    #: horizontal and left of vertical stubs, Middle centers it on the stub.
+    #: Not used for stubs that are vertical in the drawing if rotate_label is
+    #: False (the label is then horizontal, left of the stub).
+    valign  = Attr(VAlign, default=VAlign.Bottom)
+    #: Whether the label of a vertical stub is rotated to run along it.
+    #: False draws it horizontally left of the stub, which reads better for
+    #: short labels (e.g. 's', 'g', 'd'). Vertical refers to the drawing, i.e.
+    #: after the instance transform.
+    rotate_label = Attr(bool, default=True)
     show_label = Attr(bool, default=True) #: Whether the pin name is drawn next to the pin. Hidden pin names still show in the detail view of the web UI.
     show_arrow = Attr(bool, default=True) #: Whether the arrow indicating pintype is drawn at the pin.
 
@@ -241,7 +257,7 @@ class SymbolAnnotationStack(Node):
     wire_id = WIRE_DOMAIN | 17
 
     pos    = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
-    halign = Attr(HAlign, default=HAlign.Left) #: Left: the text extends right from pos; Right: left.
+    halign = Attr(HAlign, default=HAlign.Left) #: Left: the text extends right from pos; Right: left; Center: centered on pos.
     valign = Attr(VAlign, default=VAlign.Top) #: Top: the lines hang below pos; Bottom: they stack upwards.
 
 @public
@@ -449,9 +465,12 @@ class SchemInstance(Node, MixinSourceLoc):
     #: schematic sets it explicitly. If still None when rendering (e.g. in
     #: hand-built schematics that do not call place_annotations), the block
     #: is drawn at the symbol's default position (see Symbol.annotation_pos),
-    #: ignoring annotation_align and annotation_wrap.
+    #: ignoring annotation_halign and annotation_wrap.
     annotation_pos = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
-    annotation_align = Attr(D4, default=D4.East)
+    #: Side the block extends to from annotation_pos, in schematic
+    #: coordinates (Left: it extends right of it). Only used together with
+    #: annotation_pos; the block always hangs below it.
+    annotation_halign = Attr(HAlign, default=HAlign.Left)
     #: Arrangement of the annotation block: consecutive SymbolAnnotations
     #: share a text row as long as it stays within annotation_wrap
     #: characters; 0 means one per row. Set together with annotation_pos:
@@ -639,7 +658,6 @@ class SchemErrorMarker(Node):
     wire_id = WIRE_DOMAIN | 16
     ref = LocalRef(Schematic)
     pos = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
-    align = Attr(D4, default=D4.R0)
     error_type = Attr(SchemErrorType)
 
 # PolyVec2R vertex nodes (defined in .base) may appear in Symbol and Schematic

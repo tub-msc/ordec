@@ -29,7 +29,7 @@ either one per pin with ``Pin.show_arrow`` and ``Pin.show_label``. Hidden pin
 names remain part of the rendered SVG (class ``detail``, like the grid) and
 show up in the detail view of the web UI. Labels of vertical (North/South)
 pin stubs run along the stub; symbols with short pin names can draw them
-horizontally instead with ``Symbol.rotate_pin_labels = False``.
+horizontally instead with ``Pin.rotate_label = False``.
 
 Besides pins and drawn geometry, a symbol carries :class:`SymbolAnnotation`
 lines (instance name, cell name, parameters). Lines referencing a

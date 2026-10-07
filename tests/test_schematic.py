@@ -242,7 +242,7 @@ def test_annotations():
     # b1 is placed at its symbol's hint, b2 keeps its explicit position; the
     # outline covers both blocks:
     # (stored right-aligned, as the hint lies left of the body center):
-    assert (sch.b1.annotation_pos, sch.b1.annotation_align) == (Vec2R(R('4.025'), 7), West)
+    assert (sch.b1.annotation_pos, sch.b1.annotation_halign) == (Vec2R(R('4.025'), 7), HAlign.Right)
     assert sch.b2.annotation_pos == Vec2R(9, 7)
     assert sch.outline.uy >= 7
     svg = sch.render().svg().decode()
@@ -267,6 +267,15 @@ def test_annotations():
     s.b.annotation_wrap = 20
     assert '<tspan class="instanceName">b</tspan> <tspan class="params">m=1</tspan>' in s.render().svg().decode()
 
+    # A stack centered vertically on pos is centered horizontally in an
+    # instance rotated by 90 degrees:
+    sym = Symbol(outline=(0, 0, 4, 4))
+    sym % SymbolAnnotation(kind=AnnotationKind.CellName, text='X',
+        ref=sym % SymbolAnnotationStack(pos=(2, 2), valign=VAlign.Middle))
+    s = Schematic(outline=(0, 0, 4, 4))
+    s.x = SchemInstance(pos=(4, 0), orientation=R90, symbol=sym.freeze())
+    assert 'text-anchor="middle"' in s.render().svg().decode()
+
 def test_pin_show_flags():
     from ordec.lib.generic_mos import Nmos, Inv
     # The MOS symbol hides its pin arrows and labels. Hidden labels are
@@ -276,12 +285,12 @@ def test_pin_show_flags():
     assert svg.count('class="pinLabel detail"') == 4
     svg = Inv().symbol.render().svg().decode()
     assert svg.count('class="pinArrow"') == 4 and svg.count('class="pinLabel"') == 4
-    # Without rotate_pin_labels, labels of vertical stubs are not rotated:
+    # Without rotate_label, labels of vertical stubs are not rotated:
     for rotate, n_rotated in ((True, 2), (False, 0)):
-        s = Symbol(outline=(0, 0, 4, 4), rotate_pin_labels=rotate)
-        s.d = Pin(pos=(2, 4), align=North)
-        s.s = Pin(pos=(2, 0), align=South)
-        s.g = Pin(pos=(0, 2), align=West)
+        s = Symbol(outline=(0, 0, 4, 4))
+        s.d = Pin(pos=(2, 4), align=North, rotate_label=rotate)
+        s.s = Pin(pos=(2, 0), align=South, rotate_label=rotate)
+        s.g = Pin(pos=(0, 2), align=West, rotate_label=rotate)
         assert s.freeze().render().svg().decode().count('<text transform="matrix(0 ') == n_rotated
 
 def test_annotation_placement():
@@ -304,7 +313,7 @@ def test_annotation_placement():
             assert rect_gap(rect.tofloat(), body.tofloat()) == 0
             if inst.annotation_pos is not None:
                 # Blocks left of their symbol are right-aligned.
-                assert (inst.annotation_align == West) == (rect.cx < body.cx)
+                assert (inst.annotation_halign == HAlign.Right) == (rect.cx < body.cx)
     assert all(wrap > 0 for rect, wrap in block_rects(Inv().schematic).values())
 
 def test_scheminstance_params_without_viewgen():

@@ -23,7 +23,8 @@ def symbol_place_pins(node: Symbol, hpadding=3, vpadding=3):
     """
     Makes node a box symbol. Its Pins are arranged on the four sides of a
     rectangle based on their align attribute, which becomes the outline and
-    is drawn as a SymbolPoly. The SymbolAnnotations are put into fixed stacks
+    is drawn as a SymbolPoly. Pin labels are centered on the pins
+    (valign=Middle), as no stub runs inside the box. The SymbolAnnotations are put into fixed stacks
     inside the box: instance name top left, cell name top right, parameters
     at the bottom right. SymbolAnnotations added later stay in the
     annotation block. Call it once per symbol: each call adds another box
@@ -33,6 +34,7 @@ def symbol_place_pins(node: Symbol, hpadding=3, vpadding=3):
     pin_by_align = {South:[], North:[], West:[], East:[]}
     for pin in node.all(Pin):
         pin_by_align[pin.align].append(pin)
+        pin.valign = VAlign.Middle
 
     height=max(len(pin_by_align[East]), len(pin_by_align[West]))+2*vpadding-1
     width=max(len(pin_by_align[North]), len(pin_by_align[South]))+2*hpadding-1
@@ -529,8 +531,7 @@ def _check_terminals(node: Schematic, g: ConnectivityGraph,
             for pin_nid in pins_missing:
                 pin = inst.symbol.subgraph.cursor_at(pin_nid)
                 pin_pos = inst.loc_transform() * pin.pos
-                pin_align = inst.loc_transform().d4 * pin.align
-                node.root % SchemErrorMarker(pos=pin_pos, error_type=SchemErrorType.UnconnectedPin, align=pin_align)
+                node.root % SchemErrorMarker(pos=pin_pos, error_type=SchemErrorType.UnconnectedPin)
             if len(pins_stray) > 0:
                 node.root % SchemErrorMarker(pos=inst.pos, error_type=SchemErrorType.StrayPinsInPortmap)
         for conn in node.all(SchemInstanceConn.ref_idx.query(inst)):

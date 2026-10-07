@@ -23,4 +23,4 @@ cell Top:
     viewgen schematic(self) -> Schematic:
         net a, y
         Box b1: .$n=1; .pos=(2, 2); .a -- a; .y -- y
-        Box b2: .$n=2; .pos=(10, 2); .a -- a; .y -- y; .annotation_pos=(9, 7); .annotation_align=West
+        Box b2: .$n=2; .pos=(10, 2); .a -- a; .y -- y; .annotation_pos=(9, 7); .annotation_halign=HAlign.Right
