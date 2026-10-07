@@ -361,11 +361,27 @@ class LayoutInstance(Node, MixinSourceLoc):
 
     pos = ConstrainableAttr(Vec2I, factory=coerce_tuple(Vec2I, 2),
         placeholder=Vec2LinearTerm)
-    orientation = Attr(D4, default=D4.R0)
+    #: Rotation and mirroring of the sub-layout, applied after it is moved
+    #: to pos (see loc_transform).
+    orient = Attr(D4, default=D4.R0)
     #: Can be a Layout or a frame (which is also a Layout). None only while
     #: the instance is unresolved in its view context; resolved at the latest
     #: in postprocess.
     ref = SubgraphRef(Layout)
+
+    # Backwards compatibility: orientation was renamed to orient.
+    def __new__(cls, orientation=None, **kwargs):
+        if orientation is not None:
+            kwargs['orient'] = orientation
+        return super().__new__(cls, **kwargs)
+
+    @property
+    def orientation(self):
+        return self.orient
+
+    @orientation.setter
+    def orientation(self, value):
+        self.orient = value
 
     @property
     def params(self):

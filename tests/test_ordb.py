@@ -96,12 +96,16 @@ def test_mixin_attr_inheritance():
 
 def test_node():
     #n = Node()
-    n = Pin(pintype=PinType.Inout, pos=Vec2R(x=2, y=4), align=R180)
+    n = Pin(pintype=PinType.Inout, pos=Vec2R(x=2, y=4), orient=R180)
     m = n.set(pintype=PinType.Out)
     assert n.pintype == PinType.Inout
     assert m.pintype == PinType.Out
-    assert n.align == R180
-    assert m.align == R180
+    assert n.orient == R180
+    assert m.orient == R180
+    # align is the former name of orient; mirroring (MY keeps (0, 1)) is dropped:
+    assert Pin(align=MY).orient == R0
+    assert SchemInstance(orientation=MY).orient == MY # former name, mirroring kept
+    assert LayoutInstance(orientation=MY).orient == MY
 
     with pytest.raises(AttributeError, match='has no attribute'):
         n.hello = 'world'
@@ -146,7 +150,7 @@ def test_node_attrs_hashable():
 def test_attr_default():
     p = Pin(pos=Vec2R(0, 2))
     assert p.pos == Vec2R(0, 2)
-    assert p.align == R0
+    assert p.orient == R0
     assert p.pintype == PinType.Inout
 
 def test_attr_undefined():
@@ -222,9 +226,9 @@ def test_subgraph_table():
 def test_subgraph_matches():
     ref = MutableSubgraph.load({
         0: Symbol.Tuple(outline=None, caption=None),
-        100: Pin.Tuple(pintype=PinType.In, pos=Vec2R(x=0, y=2), align=R0),
+        100: Pin.Tuple(pintype=PinType.In, pos=Vec2R(x=0, y=2), orient=R0),
         101: NPath.Tuple(parent=None, name='a', ref=100),
-        102: Pin.Tuple(pintype=PinType.Out, pos=Vec2R(x=4, y=2), align=R0),
+        102: Pin.Tuple(pintype=PinType.Out, pos=Vec2R(x=4, y=2), orient=R0),
         103: NPath.Tuple(parent=None, name='y', ref=102),
     })
 

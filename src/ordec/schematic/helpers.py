@@ -515,8 +515,7 @@ def _check_terminals(node: Schematic, g: ConnectivityGraph,
             for pin_nid in pins_missing:
                 pin = inst.symbol.subgraph.cursor_at(pin_nid)
                 pin_pos = inst.loc_transform() * pin.pos
-                pin_align = inst.loc_transform().d4 * pin.align
-                node.root % SchemErrorMarker(pos=pin_pos, error_type=SchemErrorType.UnconnectedPin, align=pin_align)
+                node.root % SchemErrorMarker(pos=pin_pos, error_type=SchemErrorType.UnconnectedPin)
             if len(pins_stray) > 0:
                 node.root % SchemErrorMarker(pos=inst.pos, error_type=SchemErrorType.StrayPinsInPortmap)
         for conn in node.all(SchemInstanceConn.ref_idx.query(inst)):
