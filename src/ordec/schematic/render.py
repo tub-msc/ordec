@@ -89,9 +89,10 @@ def annotation_anchor(s: Symbol, trans: TD4R, inst: SchemInstance|None) -> tuple
     Anchor of the annotation block (frame and halign for
     Renderer.draw_label) and its arrangement (wrap, see annotation_rows):
     the instance's annotation_pos, annotation_halign and annotation_wrap if
-    set. Else (a symbol on its own, or an instance without
-    annotation_pos), the block is drawn at the symbol's annotation_pos, or
-    at the top right corner of its outline.
+    set. Else (a symbol on its own, or an instance of a schematic that never
+    ran place_annotations), the block is drawn at the symbol's
+    annotation_pos, or at the top right corner of its outline. Rendering
+    never searches for a free spot.
     """
     if inst is not None and inst.annotation_pos is not None:
         return inst.annotation_pos.transl() * East, inst.annotation_halign, inst.annotation_wrap
@@ -462,8 +463,8 @@ class SchematicRenderer(Renderer):
         self.draw_symbol(s, TD4R())
 
     def render_schematic(self, s: Schematic):
-        # Annotation blocks may lie outside the outline, see
-        # annotation_anchor.
+        # Annotation blocks may lie outside the outline (e.g. of instances
+        # that were never placed, see annotation_anchor).
         canvas = s.outline
         for inst in s.all(SchemInstance):
             extent = annotation_extent(inst.symbol, inst.loc_transform(), inst)

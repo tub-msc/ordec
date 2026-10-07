@@ -239,6 +239,12 @@ def test_annotations():
     assert 'class="instanceName"' not in sym.render().svg().decode()
 
     sch = lib_ann.Top().schematic
+    # b1 is placed at its symbol's hint, b2 keeps its explicit position; the
+    # outline covers both blocks:
+    # (stored right-aligned, as the hint lies left of the body center):
+    assert (sch.b1.annotation_pos, sch.b1.annotation_halign) == (Vec2R(R('4.025'), 7), HAlign.Right)
+    assert sch.b2.annotation_pos == Vec2R(9, 7)
+    assert sch.outline.uy >= 7
     svg = sch.render().svg().decode()
     assert svg.count('>Box<') == 2 # fixed stack of both instances
     assert re.findall(r'class="instanceName">(\w+)<', svg) == ['b1', 'b2']
@@ -290,6 +296,29 @@ def test_pin_show_flags():
     s = Symbol(outline=(0, 0, 4, 4))
     s.d = Pin(pos=(2, 4), align=North, rotate_label=False, center_label=True)
     assert 'text-anchor="middle"' in s.freeze().render().svg().decode()
+
+def test_annotation_placement():
+    from ordec.schematic.annotate import block_rects, schematic_obstacles, symbol_body, fits, rect_gap
+    from ordec.lib.generic_mos import Inv
+    from .lib.ord import strongarm
+    # Inv wires manually and calls place_annotations itself, Strongarm runs
+    # the viewgen pipeline and has mirrored instances. No block may overlap
+    # another shape or block, and all stay close to their instance. For this,
+    # the blocks of Inv need a flatter arrangement than the default.
+    for sch in (Inv().schematic, strongarm.Strongarm().schematic):
+        obstacles = [r.tofloat() for r in schematic_obstacles(sch)]
+        rects = block_rects(sch)
+        assert len(rects) == len(list(sch.all(SchemInstance)))
+        for nid, (rect, wrap) in rects.items():
+            others = [r.tofloat() for n, (r, w) in rects.items() if n != nid]
+            assert fits(rect.tofloat(), obstacles + others)
+            inst = sch.cursor_at(nid)
+            body = symbol_body(inst.symbol, inst.loc_transform(), inst)
+            assert rect_gap(rect.tofloat(), body.tofloat()) == 0
+            if inst.annotation_pos is not None:
+                # Blocks left of their symbol are right-aligned.
+                assert (inst.annotation_halign == HAlign.Right) == (rect.cx < body.cx)
+    assert all(wrap > 0 for rect, wrap in block_rects(Inv().schematic).values())
 
 def test_scheminstance_params_without_viewgen():
     s = Schematic()

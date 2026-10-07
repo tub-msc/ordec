@@ -33,12 +33,20 @@ Besides pins and drawn geometry, a symbol carries :class:`SymbolAnnotation`
 lines (instance name, cell name, parameters). Lines referencing a
 :class:`SymbolAnnotationStack` are drawn at its fixed position, typically
 inside the symbol outline. The other lines form the annotation
-block, which is drawn as a whole beside the symbol: at
-``SchemInstance.annotation_pos`` if the schematic sets it, else at
-``Symbol.annotation_pos`` or the top right corner of the outline. By
-default, every annotation line is a text row of its own; with
-``SchemInstance.annotation_wrap``, consecutive lines share a row. The sides
-follow the instance orientation, the text stays horizontal. Each
+block, which is placed as a whole beside the symbol. Schematics place the blocks after wiring
+(:func:`ordec.schematic.place_annotations`, stored in
+``SchemInstance.annotation_pos``): each block goes to the empty spot
+nearest to the symbol's center, preferring the east over the west and the
+north over the south side, where empty means no overlap with wires, ports,
+tap points, drawn symbol geometry, pin labels or other blocks. Blocks also
+keep away from other instances, so that it stays clear where they belong. By
+default, every annotation line is a text row of its own. Where a flatter
+block gets closer to the symbol, consecutive lines share a row
+(``SchemInstance.annotation_wrap``). The sides follow the instance
+orientation, the text stays horizontal; blocks left of their symbol are
+right-aligned. A symbol may hint a
+position with ``Symbol.annotation_pos``, which is tried first, and a
+schematic may set ``SchemInstance.annotation_pos`` explicitly. Each
 annotation line has a ``shown`` flag, which a schematic can override per
 instance with :class:`SchemAnnotationOverride` to declutter the drawing.
 

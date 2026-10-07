@@ -141,6 +141,7 @@ class Inv(Cell):
         s.outline = Rect4R(lx=0, ly=1, ux=10, uy=13)
 
         s.check(add_conn_points=True)
+        s.place_annotations()
         return s
 
 @public
@@ -190,6 +191,7 @@ class Ringosc(Cell):
         s.vdd % SchemWire(vertices=[Vec2R(12, 7), Vec2R(12, 6)])
 
         s.check(add_conn_points=True)
+        s.place_annotations()
         return s
 
 @public

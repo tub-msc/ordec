@@ -133,10 +133,14 @@ class Symbol(MixinRenderable, SubgraphRoot):
     wire_id = WIRE_DOMAIN | 1
     outline = Attr(Rect4R, factory=coerce_tuple(Rect4R, 4))
     cell = LiveRef(Cell)
-    #: Optional position of the SymbolAnnotation block in symbol
-    #: coordinates; it follows the instance orientation. Instances without
-    #: annotation_pos of their own draw the block there. None (the default)
-    #: draws it at the top right corner of the outline.
+    #: Optional hint for the position of the SymbolAnnotation block in symbol
+    #: coordinates; it follows the instance orientation. Instances that are
+    #: not placed (see :func:`ordec.schematic.place_annotations`) draw the
+    #: block there. place_annotations tries the hint first and uses it if the
+    #: block fits there. None (the default) draws unplaced blocks at the top
+    #: right corner of the outline, but differs from setting that corner by
+    #: hand: place_annotations then searches the spot beside the symbol
+    #: right away, preferring its east side.
     annotation_pos = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
     #: Side the block extends to from annotation_pos (Left: it extends right
     #: of it); the block always hangs below annotation_pos. Like
@@ -324,6 +328,10 @@ class Schematic(MixinRenderable, SubgraphRoot):
         from ...schematic.helpers import place_unplaced_instances
         place_unplaced_instances(self)
 
+    def place_annotations(self):
+        from ...schematic import place_annotations
+        place_annotations(self)
+
     def check(self, add_conn_points=False, add_terminal_taps=False):
         from ...schematic import schem_check
         schem_check(self, add_conn_points=add_conn_points, add_terminal_taps=add_terminal_taps)
@@ -499,10 +507,12 @@ class SchemInstance(Node, MixinSourceLoc):
     #: Rotation and mirroring of the symbol, applied after it is moved to pos
     #: (see loc_transform).
     orient = Attr(D4, default=D4.R0)
-    #: Position of the annotation block in schematic coordinates. If None,
-    #: the block is drawn at the symbol's default position (see
-    #: Symbol.annotation_pos), ignoring annotation_halign and
-    #: annotation_wrap.
+    #: Position of the annotation block in schematic coordinates. Set by
+    #: Schematic.place_annotations() in the viewgen pipeline unless the
+    #: schematic sets it explicitly. If still None when rendering (e.g. in
+    #: hand-built schematics that do not call place_annotations), the block
+    #: is drawn at the symbol's default position (see Symbol.annotation_pos),
+    #: ignoring annotation_halign and annotation_wrap.
     annotation_pos = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
     #: Side the block extends to from annotation_pos, in schematic
     #: coordinates (Left: it extends right of it). Only used together with
@@ -510,7 +520,9 @@ class SchemInstance(Node, MixinSourceLoc):
     annotation_halign = Attr(HAlign, default=HAlign.Left)
     #: Arrangement of the annotation block: consecutive SymbolAnnotations
     #: share a text row as long as it stays within annotation_wrap
-    #: characters; 0 means one per row.
+    #: characters; 0 means one per row. Set together with annotation_pos:
+    #: place_annotations() chooses flatter blocks where vertical space is
+    #: scarce.
     annotation_wrap = Attr(int, default=0)
     #: None only while the instance is unresolved in its view context; must be
     #: resolved before the schematic is finalized (checked in postprocess

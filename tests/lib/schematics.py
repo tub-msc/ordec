@@ -32,6 +32,7 @@ class RotateTest(Cell):
         )
 
         s.outline = Rect4R(lx=0, ly=0, ux=25, uy=13)
+        s.place_annotations()
         return s
 
 
@@ -224,6 +225,7 @@ class NetNamingTest(Cell):
         s.i0 = SchemInstance(Res('1k').symbol.portmap(n=a, p=s.b), pos=Vec2R(4, 2))
         s.i2 = SchemInstance(Res('1k').symbol.portmap(n=c, p=s.d), pos=Vec2R(9, 2))
         s.check(add_conn_points=True, add_terminal_taps=True)
+        s.place_annotations()
         return s
 
 
@@ -442,5 +444,8 @@ class TestNmosInv(Cell):
             add_conn_points=self.add_conn_points,
             add_terminal_taps=self.add_terminal_taps,
         )
+        # no_wiring keeps the default block positions, as reference for them.
+        if self.variant != "no_wiring":
+            s.place_annotations()
 
         return s

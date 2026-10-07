@@ -16,7 +16,7 @@ cell Box:
         cell_name = .one(SymbolAnnotation.kind_idx.query(AnnotationKind.CellName))
         cell_name.text = "Box"
         cell_name.ref = . % SymbolAnnotationStack(pos=(1.2, 2))
-        # Block above the box:
+        # Hint: block above the box, used if it fits there.
         .annotation_pos = (1, 5)
 
 cell Top:

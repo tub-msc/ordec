@@ -6,5 +6,6 @@ from .helpers import (
     schem_place, schem_check,
     SchematicError, spice_params,
 )
+from .annotate import place_annotations
 from .netlister import Netlister
 from .auto_wire import auto_wire, adjust_outline_initial
