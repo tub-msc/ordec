@@ -395,14 +395,11 @@ class SchematicRenderer(Renderer):
             font-weight: bold;
             fill: #f00;
         }
-        .pinLabel, .pinArrow {
-            fill: #4d994d;
-        }
-        .params, .cellName {
-            fill: #80b380;
+        .pinLabel, .pinArrow, .params, .cellName {
+            fill: #000;
         }
         .symbolOutline {
-            stroke: #a3cca3;
+            stroke: none;
         }
         .symbolPoly {
             stroke: #000;
@@ -417,17 +414,20 @@ class SchematicRenderer(Renderer):
         .grid {
             fill: #ccc;
         }
+        .detail {
+            display: none;
+        }
         .schemWire, .tapPoint {
-            stroke: #cc0;
+            stroke: #1a80e6;
         }
         .schemWire {
             stroke-linecap: square;
         }
         .connPoint, .tapPointLabel {
-            fill: #cc0;
+            fill: #1a80e6;
         }
         .portArrow, .portLabel {
-            fill: #39f;
+            fill: #1a80e6;
         }
         .errorMarker {
             fill: rgba(255, 0, 0, 0.25);
@@ -442,7 +442,7 @@ class SchematicRenderer(Renderer):
     def draw_grid(self, rect: Rect4R, dot_size: float = 0.1):
         lx, ly, ux, uy = rect.tofloat()
         with self.subgroup():
-            self.cur_group.attrib['class']='grid'
+            self.cur_group.attrib['class']='grid detail'
 
             for x in range(math.floor(lx), math.ceil(ux)+1):
                 for y in range(math.floor(ly), math.ceil(uy)+1):
@@ -520,7 +520,9 @@ class SchematicRenderer(Renderer):
     }
 
     def draw_symbol(self, s: Symbol, trans: TD4R, inst: SchemInstance|None=None):
-        # Draw outline
+        # The outline rect is not drawn (stroke: none), but stays in the SVG
+        # as the hit area for click-to-source (see pointer-events rule in css
+        # and svg.js) and to identify instance groups in the web UI.
         rect = trans * s.outline
         lx, ly, ux, uy = rect.tofloat()
         outline = ET.SubElement(self.cur_group, 'rect',
@@ -560,9 +562,10 @@ class SchematicRenderer(Renderer):
         if pin.show_arrow:
             self.draw_arrow(ArrowType.Pin, pin.pintype, trans_local)
 
-        if pin.show_label:
-            label_trans, halign, valign, space = self.pin_label_frame(pin, trans_local)
-            self.draw_label(pin.full_path_label(), label_trans, halign=halign, valign=valign, space=space, svg_class='pinLabel')
+        label_trans, halign, valign, space = self.pin_label_frame(pin, trans_local)
+        # Hidden labels stay in the SVG for the detail view (see css).
+        svg_class = 'pinLabel' if pin.show_label else 'pinLabel detail'
+        self.draw_label(pin.full_path_label(), label_trans, halign=halign, valign=valign, space=space, svg_class=svg_class)
 
     @classmethod
     def pin_label_frame(cls, pin: Pin, trans_local: TD4R) -> tuple[TD4R, HAlign, VAlign, float]:

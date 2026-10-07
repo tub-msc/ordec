@@ -197,7 +197,7 @@ class Pin(Node):
     #: False draws it horizontally, starting at the pin end towards the
     #: symbol, which reads better for short labels (e.g. 's', 'g', 'd').
     rotate_label = Attr(bool, default=True)
-    show_label = Attr(bool, default=True) #: Whether the pin name is drawn next to the pin.
+    show_label = Attr(bool, default=True) #: Whether the pin name is drawn next to the pin. Hidden pin names still show in the detail view of the web UI.
     show_arrow = Attr(bool, default=True) #: Whether the arrow indicating pintype is drawn at the pin.
 
     # Backwards compatibility: align was renamed to orient.

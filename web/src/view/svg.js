@@ -18,6 +18,10 @@ export class SvgView extends View {
         this.svg = null;
         this.baseTransform = null;
         this.resizeObserver = null;
+        // View mode, kept across updates: the default view hides the grid
+        // and the pin labels that symbols mark as hidden (class "detail" in
+        // render.py); the detail view shows them.
+        this.detail = false;
 
         this.onLvsSelect = (data) => {
             if (data && !this.selectionApplies(data.schemView, data.schemWireHash)) {
@@ -238,7 +242,25 @@ export class SvgView extends View {
 
         const statusBar = document.createElement('div');
         statusBar.className = 'viewer-statusbar schem-statusbar';
-        statusBar.appendChild(this.coordsDisplay.element);
+        const modeSwitch = document.createElement('div');
+        modeSwitch.className = 'schem-mode-switch';
+        for (const [detail, label] of [[false, 'Default'], [true, 'Detail']]) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.textContent = label;
+            button.onclick = () => {
+                this.detail = detail;
+                applyMode();
+            };
+            modeSwitch.appendChild(button);
+        }
+        const applyMode = () => {
+            this.svgNode.classList.toggle('schem-detail', this.detail);
+            modeSwitch.children[0].classList.toggle('active', !this.detail);
+            modeSwitch.children[1].classList.toggle('active', this.detail);
+        };
+        applyMode();
+        statusBar.append(modeSwitch, this.coordsDisplay.element);
         schemRoot.append(svgHost, statusBar);
 
         svg.on('mousemove', (event) => {
