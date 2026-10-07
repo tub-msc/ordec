@@ -18,9 +18,9 @@ export class SvgView extends View {
         this.svg = null;
         this.baseTransform = null;
         this.resizeObserver = null;
-        // View mode, kept across updates: the default view hides the grid
-        // and the pin labels that symbols mark as hidden (class "detail" in
-        // render.py); the detail view shows them.
+        // Details toggle, kept across updates: off hides the grid and the pin
+        // labels that symbols mark as hidden (class "detail" in render.py),
+        // on shows them.
         this.detail = false;
 
         this.onLvsSelect = (data) => {
@@ -242,25 +242,21 @@ export class SvgView extends View {
 
         const statusBar = document.createElement('div');
         statusBar.className = 'viewer-statusbar schem-statusbar';
-        const modeSwitch = document.createElement('div');
-        modeSwitch.className = 'schem-mode-switch';
-        for (const [detail, label] of [[false, 'Default'], [true, 'Detail']]) {
-            const button = document.createElement('button');
-            button.type = 'button';
-            button.textContent = label;
-            button.onclick = () => {
-                this.detail = detail;
-                applyMode();
-            };
-            modeSwitch.appendChild(button);
-        }
-        const applyMode = () => {
+        const detailToggle = document.createElement('button');
+        detailToggle.type = 'button';
+        detailToggle.className = 'schem-detail-toggle';
+        detailToggle.title = 'Show the grid and the pin names hidden by symbols';
+        const applyDetail = () => {
             this.svgNode.classList.toggle('schem-detail', this.detail);
-            modeSwitch.children[0].classList.toggle('active', !this.detail);
-            modeSwitch.children[1].classList.toggle('active', this.detail);
+            detailToggle.classList.toggle('active', this.detail);
+            detailToggle.textContent = `Details: ${this.detail ? 'on' : 'off'}`;
         };
-        applyMode();
-        statusBar.append(modeSwitch, this.coordsDisplay.element);
+        detailToggle.onclick = () => {
+            this.detail = !this.detail;
+            applyDetail();
+        };
+        applyDetail();
+        statusBar.append(detailToggle, this.coordsDisplay.element);
         schemRoot.append(svgHost, statusBar);
 
         svg.on('mousemove', (event) => {
