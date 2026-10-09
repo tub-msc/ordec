@@ -55,14 +55,14 @@ export class LvsView extends View {
         resContent.appendChild(this.el);
     }
 
-    update(data, wireHash) {
+    update(msgData, wireHash) {
         const circuitMap = new Map();
-        data.circuits.forEach(circuit => {
+        msgData.circuits.forEach(circuit => {
             circuitMap.set(circuit.nid, { ...circuit, itemsByType: { pin: [], net: [], device: [], subcircuit: [] } });
         });
 
         const itemMap = new Map();
-        data.items.forEach(item => {
+        msgData.items.forEach(item => {
             itemMap.set(item.nid, item);
             const circuit = circuitMap.get(item.circuit_nid);
             if (circuit && circuit.itemsByType[item.item_type]) {
@@ -71,9 +71,9 @@ export class LvsView extends View {
         });
 
         const isMismatch = (i) => i.status !== 'match' && i.status !== 'warning';
-        const mismatchItemCount = data.items.filter(isMismatch).length;
-        const statusClass = data.status === 'match' ? 'lvs-pass' : 'lvs-fail';
-        const statusText = data.status === 'match' ? 'PASS' : 'FAIL';
+        const mismatchItemCount = msgData.items.filter(isMismatch).length;
+        const statusClass = msgData.status === 'match' ? 'lvs-pass' : 'lvs-fail';
+        const statusText = msgData.status === 'match' ? 'PASS' : 'FAIL';
         const summaryText = mismatchItemCount > 0
             ? `${mismatchItemCount} mismatch${mismatchItemCount > 1 ? 'es' : ''}`
             : 'All match';
@@ -103,7 +103,7 @@ export class LvsView extends View {
             textSpan('Objects'), textSpan('Layout'), textSpan('Reference'));
         body.appendChild(colHeader);
 
-        data.circuits.forEach(circuit => {
+        msgData.circuits.forEach(circuit => {
             const circuitData = circuitMap.get(circuit.nid);
             const allItems = Object.values(circuitData.itemsByType).flat();
             const hasMismatches = circuit.status !== 'match' || allItems.some(isMismatch);
@@ -222,13 +222,13 @@ export class LvsView extends View {
         // reach of the now-disabled Deselect button).
         if (this.selectedItemNid !== null) {
             if (this.el.querySelector('.lvs-item-row.selected')) {
-                this.emitSelection(itemMap.get(this.selectedItemNid), circuitMap, data, false);
+                this.emitSelection(itemMap.get(this.selectedItemNid), circuitMap, msgData, false);
             } else {
                 this.deselect();
             }
         }
 
-        this.attachEventHandlers(itemMap, circuitMap, data);
+        this.attachEventHandlers(itemMap, circuitMap, msgData);
     }
 
     statusIcon(status) {

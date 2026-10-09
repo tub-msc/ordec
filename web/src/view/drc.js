@@ -39,19 +39,19 @@ export class DrcView extends View {
         resContent.appendChild(this.el);
     }
 
-    update(data, wireHash) {
+    update(msgData, wireHash) {
         const catMap = new Map();
-        data.categories.forEach(cat => {
+        msgData.categories.forEach(cat => {
             catMap.set(cat.nid, { ...cat, items: [], count: 0 });
         });
 
         const cellMap = new Map();
-        (data.cells || []).forEach(cell => {
+        (msgData.cells || []).forEach(cell => {
             cellMap.set(cell.nid, cell);
         });
 
         const itemMap = new Map();
-        data.items.forEach(item => {
+        msgData.items.forEach(item => {
             itemMap.set(item.nid, item);
             const cat = catMap.get(item.category_nid);
             if (cat) {
@@ -60,8 +60,8 @@ export class DrcView extends View {
             }
         });
 
-        const totalCount = data.items.length;
-        const catCount = data.categories.length;
+        const totalCount = msgData.items.length;
+        const catCount = msgData.categories.length;
 
         // Built with createElement/textContent rather than by interpolating
         // into an HTML string: category, cell and shape names are design
@@ -82,7 +82,7 @@ export class DrcView extends View {
         const categoriesEl = document.createElement('div');
         categoriesEl.className = 'drc-categories';
 
-        data.categories.forEach(cat => {
+        msgData.categories.forEach(cat => {
             const catData = catMap.get(cat.nid);
             const catEl = document.createElement('div');
             catEl.className = 'drc-category';
@@ -112,7 +112,7 @@ export class DrcView extends View {
             itemsEl.className = 'drc-items';
             catData.items.forEach((item, idx) => {
                 itemsEl.appendChild(
-                    this.buildItem(data, item, idx, cellMap, deselectBtn));
+                    this.buildItem(msgData, item, idx, cellMap, deselectBtn));
             });
             catEl.appendChild(itemsEl);
 
@@ -137,7 +137,7 @@ export class DrcView extends View {
         // the now-disabled Deselect button).
         if (this.selectedItemNid !== null) {
             if (this.el.querySelector('.drc-item.selected')) {
-                this.emitSelection(itemMap.get(this.selectedItemNid), data, cellMap, false);
+                this.emitSelection(itemMap.get(this.selectedItemNid), msgData, cellMap, false);
             } else {
                 this.deselect();
             }

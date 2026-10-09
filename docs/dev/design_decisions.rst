@@ -11,3 +11,4 @@ We collect some past and future design decisions here.
 - Do not generate code for the user. Eliminate the need for boilerplate and overly verbose code.
 - The ORD or Python design input should act as single source of truth.
 - Try to minimize external dependencies, especially if they are large and at risk of becoming unmaintained. Currently, myst-nb seems like the largest dependency, but it is only relevant for the documentation and presentation, not for the core components themselves.
+- ORDB hashes and equality (``hash()``/``==`` of subgraphs, ``wire_hash``) identify exact content. Do not add normalized or fuzzy hash variants (e.g. ignoring source locations or nid numbering) to the ORDB core: the wire exchange and SubgraphRef encoding rely on exact identity. A consumer needing a weaker equivalence computes it itself.

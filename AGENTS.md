@@ -138,7 +138,7 @@ When generating or modifying code:
 ### Use of Git and commit messages
 
 - Do not create a new git branch unless the user asks you to. Do not create a git commit unless the user asks you to. If a commit seems to belong elsewhere than the current branch, ASK rather than switch.
-- Commit messages should be **concise and use plain tone**. The subject should start with a concise area prefix (hub:, webui:, ordb:, ...). Unless the diff is particularly large or convoluted, the message body should not summarize the diff. The message body should focus on *why* changes were made rather than repeat *what* changes were made. Try to choose a subject line that sufficiently explains the change and leave out the message body. The subject should say *what changed*, naming concrete identifiers or files touched if possible.
+- Commit messages should be **concise and use plain tone**. The subject should start with a concise area prefix (hub:, webui:, ordb:, ...). Unless the diff is particularly large or convoluted, the message body should not summarize the diff. The message body should focus on *why* changes were made rather than repeat *what* changes were made. Try to choose a subject line that sufficiently explains the change and leave out the message body. The subject should say *what changed*, naming concrete identifiers or files touched if possible. Keep the subject at most 72 characters (drop identifiers rather than exceed it) and wrap the body at 72 characters.
 
 ### Terminology
 

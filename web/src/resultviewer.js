@@ -432,10 +432,11 @@ export class ResultViewer {
             this.courseController.onReportPending();
         } else {
             // The lesson() view is not being requested. This happens when it
-            // was declared with @generate_func(auto_refresh=False) (expensive
-            // checks, e.g. LVS/DRC) and is evaluated only when the user
-            // clicks the in-panel Refresh overlay; the marker reflects this
-            // "not checked" state. Plain @generate_func lessons auto-refresh
+            // was declared with @viewgen_noctx(auto_refresh=False) (not
+            // recommended, see lesson_check_src in server.py) and is evaluated
+            // only when the user clicks the in-panel Refresh overlay; the
+            // marker reflects this
+            // "not checked" state. Plain @viewgen_noctx lessons auto-refresh
             // and never end up here.
             this.courseController.onReportUnchecked();
         }

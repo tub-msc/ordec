@@ -865,6 +865,14 @@ def lesson_check_src(course_name, entry):
     after the student's code, so the cell is in scope. Only the named generator
     is imported, so the checks module and the cells it imports do not leak into
     the lesson globals.
+
+    The returned ``lesson()`` view generator should be a plain
+    ``@viewgen_noctx``, keeping ``auto_refresh`` at its default (True). Do this
+    even for slow checks (KLayout DRC/LVS, corner simulations): the course
+    marker and the score only follow the student's edits if the check runs
+    after every edit. With ``auto_refresh=False``, the lesson stays "unchecked"
+    after each edit until the student clicks Refresh. The frontend still
+    handles that case, but no course should rely on it.
     """
     gen = entry['lesson_gen']
     return (
