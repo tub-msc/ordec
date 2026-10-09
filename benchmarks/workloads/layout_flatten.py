@@ -8,9 +8,9 @@ Mirrors the layout webdata pipeline (src/ordec/layout/webdata.py:21-76 with
 helpers.py flatten and expand_geom): a frozen hierarchical layout is
 mutable-copied, every instance is inlined by re-inserting its cell's
 transformed shapes, every LRect is then .replace()d by an LPoly with four
-vertices (NType bucket migration -- the expand_rects pattern), the result
-is frozen and fully scanned. The expand phase iterates the bucket snapshot
-returned by all(LRect) while removing exactly those nodes.
+vertices (node type change under the same nid -- the expand_rects pattern),
+the result is frozen and fully scanned. The expand phase iterates the query
+result of all(LRect) while removing exactly those nodes.
 """
 
 from ordec.core.ordb import FuncInserter

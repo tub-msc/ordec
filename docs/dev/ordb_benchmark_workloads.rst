@@ -26,7 +26,8 @@ What an engine does:
 - **freeze**: an immutable snapshot; the mutable subgraph stays usable.
 - **thaw**: a new mutable subgraph from a snapshot.
 - **fork**: an independent mutable copy of a mutable subgraph.
-- **compact**: a content-identical snapshot with compacted storage.
+- **compact**: a content-identical snapshot, with compacted storage if the
+  engine has anything to compact (``keyed`` does not).
 
 Engine names: ``keyed`` (tables keyed by nid), the only engine of the
 native core; see :doc:`ordb_core`. Result files may also contain the
@@ -54,9 +55,10 @@ Schema
 Node types used by the workloads; all attributes are int or str. ``LocalRef``
 stores a nid of the same subgraph, ``ExternalRef`` a nid of another subgraph
 resolved through a ``SubgraphRef`` (a reference to a frozen subgraph).
-``Index(attr)`` = NID bucket per attr value; ``Index(attr, sortkey=order)`` =
-SORTED bucket; ``CombinedIndex([a, b], unique=True)`` = NID bucket keyed by the
-value pair, enforcing uniqueness at commit. ``NonLeaf`` types can own named
+``Index(attr)`` = equality index on attr, results ordered by nid;
+``Index(attr, sortkey=order)`` = results ordered by order, ties by nid;
+``CombinedIndex([a, b], unique=True)`` = index keyed by the value pair,
+enforcing uniqueness at commit. ``NonLeaf`` types can own named
 children (paths); named insertion creates one extra path node (NPath) per name,
 itself indexed by (parent, name) and by referenced nid. Every subgraph has a
 root node at nid 0; nids allocate sequentially from ``nid_alloc_start``.
@@ -116,7 +118,7 @@ LLabel), built in one txn each; a frozen top with I instances named ``i0..``
 referencing cell rand(C) at dx,dy = rand(100000). Timed: **copy** = mutable
 copy of the top; **flatten** = for each LInst: re-insert every cell shape
 translated by (dx, dy) (own txn per insert), then remove the instance;
-**expand** = replace every LRect (iterating the bucket snapshot) by an LPoly
+**expand** = replace every LRect (iterating the query result) by an LPoly
 plus 4 corner vertices, reusing the rect's nid; **freeze**; **scan** = 3 passes
 over all LPoly, LVertex, LLabel reading attributes.
 
@@ -172,19 +174,20 @@ Draw order per patch op: r, then the op's own draws in the order named. Params
 (default): N=10000, K=32, p=20 (permille), compact_every=0 (set e.g.
 ``--param snapshot_chain.compact_every=8`` to exercise explicit compaction).
 small: N=1000, K=8. large: N=50000, K=64. Chain depth K is what this workload
-exists to measure -- copy-on-write backends only reveal their cost at depth --
-so the default keeps K high rather than trimming it for runtime.
+exists to measure -- retained memory across many generations shows how much
+snapshots share -- so the default keeps K high rather than trimming it for
+runtime.
 
 micro_remove_all / micro_insert_descending / micro_replace / micro_abort
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Single phase each. NType-bucket micros:
+Single phase each. Per-type table micros (abort: transaction rollback):
 
 - **remove** (n Box prebuilt, untimed): one txn removing all n nids one-by-one
   in ascending order.
 - **insert**: one txn inserting Box(val=nid) at explicit nids n..1
-  (descending), forcing head insertion into the NID bucket.
-- **replace** (n Box prebuilt): for each Box cursor (bucket snapshot), replace
+  (descending), so each insert goes before all existing Box nodes.
+- **replace** (n Box prebuilt): for each Box cursor (query result), replace
   it by MPoly(val) reusing the nid (own txn each).
 - **abort** (n UNode(val=i) prebuilt): ``rounds`` times, one txn inserting
   ``batch`` fresh UNodes then one duplicate val → unique violation at commit →
@@ -257,7 +260,7 @@ JSON result format
       "results": [
         {
           "workload": "snapshot_chain",
-          "backend": "paged",
+          "backend": "keyed",
           "params": {"n": 10000, "k": 32, "patch_permille": 20,
                      "compact_every": 0, "scale": "default", "seed": 1},
           "warmup": 1,

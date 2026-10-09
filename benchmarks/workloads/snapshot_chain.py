@@ -10,10 +10,8 @@ thawing the newest snapshot, patching a small fraction p of the graph
 (60% attribute updates / 25% inserts / 15% removals) in one transaction,
 and freezing again. ALL generations are kept alive, so retained memory
 measures structure sharing. The read phase then scans and point-queries
-the newest generation, which for chained backends pays the chain-depth
-cost; compact_every > 0 flattens the newest snapshot periodically.
-
-This is the delta-chain sweet spot and the full-copy worst case.
+the newest generation; compact_every > 0 calls compact() on the newest
+snapshot periodically.
 """
 
 from ..prng import Lcg
@@ -29,10 +27,10 @@ _TAGS = 64
         'small':   dict(n=1000, k=8, patch_permille=20, compact_every=0),
         # Explicit compact() every C generations via
         # --param snapshot_chain.compact_every=C (0 = never).
-        # Chain depth k is the whole point of this workload: at small k a
-        # copy-on-write backend looks competitive because it never pays for a
-        # deep chain. Keep the default deep enough to show that -- it is cheap
-        # (a few hundred ms), so there is no reason to trim it.
+        # Chain depth k is the whole point of this workload: retained memory
+        # across many generations shows how much snapshots share. Keep the
+        # default deep -- it is cheap (a few hundred ms), so there is no
+        # reason to trim it.
         'default': dict(n=10000, k=32, patch_permille=20, compact_every=0),
         'large':   dict(n=50000, k=64, patch_permille=20, compact_every=0),
     },

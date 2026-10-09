@@ -2,17 +2,18 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-W6 micro_* -- index-bucket micro-benchmarks (absorbed from the former
+W6 micro_* -- per-type table micro-benchmarks (absorbed from the former
 tests/bench_ordb_index.py) plus a transaction-abort micro.
 
-All four stress the per-type (NType) index bucket, which holds the nids of
-all nodes of one type and is therefore the largest bucket in practice:
+The first three stress the per-type table, which holds all nodes of one
+type and is therefore the largest table in practice:
 
 - micro_remove_all:        remove N nodes one-by-one in one transaction
-                           (bucket.remove per node; O(n^2) with pvector).
+                           (O(n^2) with the former pvector engine).
 - micro_insert_descending: insert N nodes with descending nids; each insert
-                           lands at bucket position 0 (slice-rebuild path
-                           with pvector).
+                           goes before all existing nodes of the type
+                           (slice-rebuild path with the former pvector
+                           engine).
 - micro_replace:           replace each Box by an MPoly reusing the nid
                            (mirrors ordec.layout.helpers.expand_rects).
 - micro_abort:             transaction of B inserts ending in a
@@ -36,14 +37,15 @@ def _build(n):
 _PARAMS = {
     'tiny':    dict(n=100),
     'small':   dict(n=1000),
-    # micro_remove_all/insert_descending are O(n^2) on pvector buckets, so the
-    # everyday tier stays small; use --scale large to measure that asymptote.
+    # micro_remove_all/insert_descending were O(n^2) with the former pvector
+    # engine, so the everyday tier stays small; use --scale large to measure
+    # that asymptote.
     'default': dict(n=3000),
     'large':   dict(n=50000),
 }
 
 @workload('micro_remove_all', phases=('remove',), params=_PARAMS,
-    mirrors='bulk node removal (NType bucket shrink)')
+    mirrors='bulk node removal (per-type table shrink)')
 def micro_remove_all(params, seed):
     n = params['n']
     sg = _build(n)
@@ -59,7 +61,7 @@ def micro_remove_all(params, seed):
     return WorkloadRun(t.phase_ns, final=frozen, retained=[frozen])
 
 @workload('micro_insert_descending', phases=('insert',), params=_PARAMS,
-    mirrors='out-of-order nid insertion (bucket head insert)')
+    mirrors='out-of-order nid insertion (insert before existing nids)')
 def micro_insert_descending(params, seed):
     n = params['n']
     root = MicroRoot()
@@ -74,7 +76,7 @@ def micro_insert_descending(params, seed):
     return WorkloadRun(t.phase_ns, final=frozen, retained=[frozen])
 
 @workload('micro_replace', phases=('replace',), params=_PARAMS,
-    mirrors='ordec.layout.helpers.expand_rects (NType bucket migration)')
+    mirrors='ordec.layout.helpers.expand_rects (node type change under same nid)')
 def micro_replace(params, seed):
     n = params['n']
     sg = _build(n)

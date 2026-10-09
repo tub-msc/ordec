@@ -24,7 +24,7 @@ A subgraph state consists of:
   attribute slots in layout order.
 - **The nid directory**, one record ``[table, references]`` per nid: the
   table of the node (0: no node), and the number of LocalRefs pointing at
-  the nid. The counter replaces reverse-reference buckets: a node can be
+  the nid. The counter replaces a reverse-reference index: a node can be
   removed if its counter is zero at commit.
 - **One index per declared** :class:`~ordec.core.ordb.Index`: a persistent
   B+tree of entries ``(h, s, nid)``, exactly one per indexed live node.

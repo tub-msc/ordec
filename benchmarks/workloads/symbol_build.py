@@ -7,8 +7,8 @@ W1 symbol_build -- many small subgraph builds, insert-dominated.
 Mirrors view generators like ordec.lib.base Res.symbol: M small symbol-like
 subgraphs, each built with per-statement transactions (every attribute
 assignment / '%' insert opens its own updater, exactly like real generator
-code), then frozen. Stresses transaction begin/commit overhead and small-
-bucket index insertion.
+code), then frozen. Stresses transaction begin/commit overhead and index
+insertion into small subgraphs.
 """
 
 from ..prng import Lcg

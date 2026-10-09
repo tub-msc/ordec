@@ -24,7 +24,7 @@
 #
 # ## Principle 1: schema-based
 #
-# All ORDB data must conform to some predefined schema. Usually, we would use the Node and SubgraphHead subclasses defined in {ref}`data-schema` (which are for IC design data), but for this example we will define a small example schema describing a planet with airports and flights that connect airports.
+# All ORDB data must conform to some predefined schema. Usually, we would use the Node and SubgraphRoot subclasses defined in {ref}`data-schema` (which are for IC design data), but for this example we will define a small example schema describing a planet with airports and flights that connect airports.
 
 # +
 from ordec.core.ordb import *

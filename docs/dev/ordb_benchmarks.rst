@@ -20,7 +20,7 @@ The top-level ``benchmarks/`` package (not shipped in the wheel) compares
 the storage engines on synthetic workloads shaped like real ORDeC usage: many
 small view builds, layout flatten/expand, read-only render scans,
 simulation-hierarchy construction, freeze/thaw generation chains, and
-index-bucket micros. :doc:`ordb_benchmark_workloads` writes out what they
+per-type table micros. :doc:`ordb_benchmark_workloads` writes out what they
 do, along with the PRNG, the checksum and the JSON output, so that
 another implementation could run the same workloads.
 

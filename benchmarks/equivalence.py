@@ -174,7 +174,7 @@ class _FuzzDriver:
                 snap = self.snaps[rng.randint(len(self.snaps))][0]
                 if snap.compact() != snap:
                     raise AssertionError(f"{self.name}: compact() changed content")
-        else: # big transaction: exercises index runs and table compaction
+        else: # big transactions: index leaf splits, then removals across many leaves
             m = dict(self.model)
             with self.cur.updater() as u:
                 for _ in range(70):
