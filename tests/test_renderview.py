@@ -120,6 +120,9 @@ testdata = [
         refdir / "ordtest_ringosc_migrated_sch.svg"),
     testcase(ord_lambda('tests.lib.ord.strongarm', 'Strongarm', 'schematic'),
         refdir / "ordtest_strongarm_sch.svg"),
+    # Annotation blocks in a flatter arrangement (annotation_wrap > 0):
+    testcase(ord_lambda('tests.lib.ord.annotations', 'TallStack', 'schematic'),
+        refdir / "ordtest_tallstack_sch.svg"),
 ]
 
 @pytest.mark.parametrize("testcase", testdata, ids=lambda t: t.ref_file.with_suffix("").name)

@@ -17,7 +17,7 @@
     <circle cx="12.0" cy="1.0" r="0.1625" class="connPoint" />
     <g>
       <rect x="4.0" y="2.0" width="4.0" height="4.0" class="symbolOutline" />
-      <text transform="matrix(0.045 0 0 -0.045 6.625 6.57)" dominant-baseline="hanging" text-anchor="start"><tspan x="0" y="0em" class="instanceName">i0</tspan><tspan x="0" y="1em" class="cellName">Inv</tspan></text>
+      <text transform="matrix(0.045 0 0 -0.045 6.5 6.445)" dominant-baseline="hanging" text-anchor="start"><tspan x="0" y="0em" class="instanceName">i0</tspan><tspan x="0" y="1em" class="cellName">Inv</tspan></text>
       <path d="M0.0 2.0 L1.0 2.0" transform="matrix(1 0 0 1 4.0 2.0)" class="symbolPoly" />
       <path d="M3.25 2.0 L4.0 2.0" transform="matrix(1 0 0 1 4.0 2.0)" class="symbolPoly" />
       <path d="M1.0 1.0 L1.0 3.0 L2.75 2.0 Z" transform="matrix(1 0 0 1 4.0 2.0)" class="symbolPoly" />
@@ -33,7 +33,7 @@
     </g>
     <g>
       <rect x="10.0" y="2.0" width="4.0" height="4.0" class="symbolOutline" />
-      <text transform="matrix(0.045 0 0 -0.045 12.625 6.57)" dominant-baseline="hanging" text-anchor="start"><tspan x="0" y="0em" class="instanceName">i1</tspan><tspan x="0" y="1em" class="cellName">Inv</tspan></text>
+      <text transform="matrix(0.045 0 0 -0.045 12.5 6.445)" dominant-baseline="hanging" text-anchor="start"><tspan x="0" y="0em" class="instanceName">i1</tspan><tspan x="0" y="1em" class="cellName">Inv</tspan></text>
       <path d="M0.0 2.0 L1.0 2.0" transform="matrix(1 0 0 1 10.0 2.0)" class="symbolPoly" />
       <path d="M3.25 2.0 L4.0 2.0" transform="matrix(1 0 0 1 10.0 2.0)" class="symbolPoly" />
       <path d="M1.0 1.0 L1.0 3.0 L2.75 2.0 Z" transform="matrix(1 0 0 1 10.0 2.0)" class="symbolPoly" />
@@ -49,7 +49,7 @@
     </g>
     <g>
       <rect x="16.0" y="2.0" width="4.0" height="4.0" class="symbolOutline" />
-      <text transform="matrix(0.045 0 0 -0.045 18.625 6.57)" dominant-baseline="hanging" text-anchor="start"><tspan x="0" y="0em" class="instanceName">i2</tspan><tspan x="0" y="1em" class="cellName">Inv</tspan></text>
+      <text transform="matrix(0.045 0 0 -0.045 18.5 6.445)" dominant-baseline="hanging" text-anchor="start"><tspan x="0" y="0em" class="instanceName">i2</tspan><tspan x="0" y="1em" class="cellName">Inv</tspan></text>
       <path d="M0.0 2.0 L1.0 2.0" transform="matrix(1 0 0 1 16.0 2.0)" class="symbolPoly" />
       <path d="M3.25 2.0 L4.0 2.0" transform="matrix(1 0 0 1 16.0 2.0)" class="symbolPoly" />
       <path d="M1.0 1.0 L1.0 3.0 L2.75 2.0 Z" transform="matrix(1 0 0 1 16.0 2.0)" class="symbolPoly" />

@@ -133,6 +133,10 @@ class Symbol(MixinRenderable, SubgraphRoot):
     wire_id = WIRE_DOMAIN | 1
     outline = Attr(Rect4R, factory=coerce_tuple(Rect4R, 4))
     cell = LiveRef(Cell)
+    #: Whether this is a box symbol (see place_pins). Annotation blocks of
+    #: box symbols prefer the spot above the top left corner, those of drawn
+    #: symbols the spot beside them (see :func:`ordec.schematic.place_annotations`).
+    is_box = Attr(bool, default=False)
 
     def __new__(cls, default_annotations: bool = True, **kwargs):
         ret = super().__new__(cls, **kwargs)
@@ -181,7 +185,9 @@ class Pin(Node):
     #: False draws it horizontally, starting at the pin end towards the
     #: symbol, which reads better for short labels (e.g. 's', 'g', 'd').
     rotate_label = Attr(bool, default=True)
-    show_label = Attr(bool, default=True) #: Whether the pin name is drawn next to the pin. Hidden pin names still show in the detail view of the web UI.
+    #: Whether the pin name is drawn next to the pin. Hidden pin names still
+    #: show in the detail view of the web UI.
+    show_label = Attr(bool, default=True)
     show_arrow = Attr(bool, default=True) #: Whether the arrow indicating pintype is drawn at the pin.
 
     # Backwards compatibility: align was renamed to orient.

@@ -60,10 +60,10 @@ def test_extlibrary_read_verilog_symbol_and_schematic():
 
     top_schematic = lib["top"].schematic
     inst = top_schematic.u0
-    # Box symbol: all labels are in fixed stacks, no annotation block.
-    assert [(a.key, a.value) for a in inst.symbol.all(SymbolAnnotation)] == [
-        (AnnotationKind.InstanceName, None), (AnnotationKind.CellName, "MYBUF2")]
-    assert all(a.ref is not None for a in inst.symbol.all(SymbolAnnotation))
+    # Box symbol: the cell name fits into the middle of the box, the
+    # instance name stays in the annotation block beside it.
+    assert [(a.key, a.value, a.ref is not None) for a in inst.symbol.all(SymbolAnnotation)] == [
+        (AnnotationKind.InstanceName, None, False), (AnnotationKind.CellName, "MYBUF2", True)]
     assert len(list(top_schematic.all(SchemInstanceConn.ref_idx.query(inst)))) == 2
 
 

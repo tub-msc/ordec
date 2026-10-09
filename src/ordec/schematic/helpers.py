@@ -8,6 +8,8 @@ from collections import defaultdict
 from dataclasses import dataclass
 from ..core import *
 from .auto_wire import tap_outline_point
+from .annotate import pin_obstacles
+from .render import Renderer
 
 def spice_params(params: dict) -> list[str]:
     """Helper function for Netlister.add(). This function is in helper.py
@@ -21,14 +23,17 @@ def spice_params(params: dict) -> list[str]:
 
 def symbol_place_pins(node: Symbol, hpadding=3, vpadding=3):
     """
-    Makes node a box symbol. Its Pins are arranged on the four sides of a
+    Makes node a box symbol (is_box). Its Pins are arranged on the four sides of a
     rectangle based on their orient attribute, which becomes the outline and
     is drawn as a SymbolPoly. Pin labels are centered on the pins
-    (center_label), as no stub runs inside the box. The SymbolAnnotations
-    are put into fixed stacks inside the box: instance name top left, cell
-    name top right, parameters at the bottom right. SymbolAnnotations added later stay in the
-    annotation block. Call it once per symbol: each call adds another box
-    and set of stacks.
+    (center_label), as no stub runs inside the box. Pin positions and box
+    size depend only on the pin counts and paddings, not on any text. The
+    cell name is put into a fixed stack inside the box, at the first of
+    these spots where it does not overlap pin labels: middle center, top
+    center, bottom center, middle left, middle right. The instance name, the
+    parameters and a cell name that fits nowhere stay in the annotation
+    block, which place_annotations puts beside the box. Call it once per
+    symbol: each call adds another box.
     """
 
     pin_by_orient = {South:[], North:[], West:[], East:[]}
@@ -50,16 +55,30 @@ def symbol_place_pins(node: Symbol, hpadding=3, vpadding=3):
 
     o = Rect4R(lx=0, ly=0, ux=width, uy=height)
     node.outline = o
+    node.is_box = True
     node % SymbolPoly(vertices=[Vec2R(o.lx, o.ly), Vec2R(o.ux, o.ly),
         Vec2R(o.ux, o.uy), Vec2R(o.lx, o.uy), Vec2R(o.lx, o.ly)])
 
-    stacks = {
-        AnnotationKind.InstanceName: node % SymbolAnnotationStack(pos=o.northwest),
-        AnnotationKind.CellName: node % SymbolAnnotationStack(pos=o.northeast, halign=HAlign.Right),
-    }
-    params = node % SymbolAnnotationStack(pos=o.southeast, halign=HAlign.Right, valign=VAlign.Bottom)
-    for a in list(node.all(SymbolAnnotation)):
-        a.ref = stacks.get(a.key, params)
+    spots = [
+        (o.center, HAlign.Center, VAlign.Middle),
+        (o.north, HAlign.Center, VAlign.Top),
+        (o.south, HAlign.Center, VAlign.Bottom),
+        (o.west, HAlign.Left, VAlign.Middle),
+        (o.east, HAlign.Right, VAlign.Middle),
+    ]
+    pin_rects = [r for pin in node.all(Pin) for r in pin_obstacles(pin, TD4R())]
+    for a in list(node.all(SymbolAnnotation.key_idx.query(AnnotationKind.CellName))):
+        for pos, halign, valign in spots:
+            rect = Renderer.label_rect(pos.transl() * East, len(a.value or ''), 1,
+                halign=halign, valign=valign)
+            inside = o.lx <= rect.lx and rect.ux <= o.ux and o.ly <= rect.ly and rect.uy <= o.uy
+            if inside and not any(rect_overlap(rect, r) for r in pin_rects):
+                a.ref = node % SymbolAnnotationStack(pos=pos, halign=halign, valign=valign)
+                break
+
+def rect_overlap(a: Rect4R, b: Rect4R) -> bool:
+    """Whether a and b overlap; touching rectangles do not."""
+    return a.lx < b.ux and b.lx < a.ux and a.ly < b.uy and b.ly < a.uy
 
 def schem_place(schem: Schematic, gap=None, port_margin=None):
     """
@@ -74,8 +93,10 @@ def schem_place(schem: Schematic, gap=None, port_margin=None):
 
     No SchemWires are drawn. The schematic is checked with
     add_terminal_taps=True, so connectivity is represented by SchemTapPoints;
-    Nets should be created with auto_wire=False. The outline is set to the
-    resulting bounding box; freezing is left to the caller.
+    Nets should be created with auto_wire=False. Last, the annotation blocks
+    are placed (see place_annotations), as in the viewgen pipeline. The
+    outline is set to the resulting bounding box; freezing is left to the
+    caller.
 
     Args:
         schem: Mutable schematic to place.
@@ -132,6 +153,7 @@ def schem_place(schem: Schematic, gap=None, port_margin=None):
     if outline is None:
         outline = Rect4R(0, 0, 1, 1)
     schem.outline = outline
+    schem.place_annotations()
 
 
 def schem_content_bbox(node: Schematic) -> Rect4R | None:

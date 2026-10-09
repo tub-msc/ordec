@@ -23,8 +23,8 @@
     <circle cx="5.0" cy="14.0" r="0.1625" class="connPoint" />
     <g>
       <rect x="6.0" y="3.0" width="6.0" height="5.0" class="symbolOutline" />
-      <text transform="matrix(0.045 0 0 -0.045 6.125 7.875)" dominant-baseline="hanging" text-anchor="start" class="instanceName">I[0]</text>
-      <text transform="matrix(0.045 0 0 -0.045 11.875 7.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">DFF</text>
+      <text transform="matrix(0.045 0 0 -0.045 9.0 5.5)" dominant-baseline="middle" text-anchor="middle" class="cellName">DFF</text>
+      <text transform="matrix(0.045 0 0 -0.045 5.8 8.86)" dominant-baseline="hanging" text-anchor="start" class="instanceName">I[0]</text>
       <path d="M0.0 0.0 L6.0 0.0 L6.0 5.0 L0.0 5.0 Z" transform="matrix(1 0 0 1 6.0 3.0)" class="symbolPoly" />
       <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(1 0 0 1 9.0 3.2)" class="pinArrow" />
       <text transform="matrix(0 0.045 0.045 0 9.0 3.225)" dominant-baseline="middle" text-anchor="start" class="pinLabel">vss</text>
@@ -39,8 +39,8 @@
     </g>
     <g>
       <rect x="6.0" y="11.0" width="6.0" height="5.0" class="symbolOutline" />
-      <text transform="matrix(0.045 0 0 -0.045 6.125 15.875)" dominant-baseline="hanging" text-anchor="start" class="instanceName">I[1]</text>
-      <text transform="matrix(0.045 0 0 -0.045 11.875 15.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">DFF</text>
+      <text transform="matrix(0.045 0 0 -0.045 9.0 13.5)" dominant-baseline="middle" text-anchor="middle" class="cellName">DFF</text>
+      <text transform="matrix(0.045 0 0 -0.045 5.8 16.86)" dominant-baseline="hanging" text-anchor="start" class="instanceName">I[1]</text>
       <path d="M0.0 0.0 L6.0 0.0 L6.0 5.0 L0.0 5.0 Z" transform="matrix(1 0 0 1 6.0 11.0)" class="symbolPoly" />
       <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(1 0 0 1 9.0 11.2)" class="pinArrow" />
       <text transform="matrix(0 0.045 0.045 0 9.0 11.225)" dominant-baseline="middle" text-anchor="start" class="pinLabel">vss</text>
@@ -55,8 +55,8 @@
     </g>
     <g>
       <rect x="6.0" y="19.0" width="6.0" height="5.0" class="symbolOutline" />
-      <text transform="matrix(0.045 0 0 -0.045 6.125 23.875)" dominant-baseline="hanging" text-anchor="start" class="instanceName">I[2]</text>
-      <text transform="matrix(0.045 0 0 -0.045 11.875 23.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">DFF</text>
+      <text transform="matrix(0.045 0 0 -0.045 9.0 21.5)" dominant-baseline="middle" text-anchor="middle" class="cellName">DFF</text>
+      <text transform="matrix(0.045 0 0 -0.045 5.8 24.86)" dominant-baseline="hanging" text-anchor="start" class="instanceName">I[2]</text>
       <path d="M0.0 0.0 L6.0 0.0 L6.0 5.0 L0.0 5.0 Z" transform="matrix(1 0 0 1 6.0 19.0)" class="symbolPoly" />
       <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(1 0 0 1 9.0 19.2)" class="pinArrow" />
       <text transform="matrix(0 0.045 0.045 0 9.0 19.225)" dominant-baseline="middle" text-anchor="start" class="pinLabel">vss</text>

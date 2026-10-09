@@ -28,8 +28,8 @@
     <text transform="matrix(0 0.045 0.045 0 18.0 11.35)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">vss</text>
     <g>
       <rect x="7.0" y="3.0" width="4.0" height="4.0" class="symbolOutline" />
-      <text transform="matrix(0.045 0 0 -0.045 7.125 6.875)" dominant-baseline="hanging" text-anchor="start" class="instanceName">i1</text>
-      <text transform="matrix(0.045 0 0 -0.045 10.875 6.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Inv</text>
+      <text transform="matrix(0.045 0 0 -0.045 9.0 5.0)" dominant-baseline="middle" text-anchor="middle" class="cellName">Inv</text>
+      <text transform="matrix(0.045 0 0 -0.045 6.8 7.86)" dominant-baseline="hanging" text-anchor="start" class="instanceName">i1</text>
       <path d="M0.0 0.0 L4.0 0.0 L4.0 4.0 L0.0 4.0 Z" transform="matrix(1 0 0 1 7.0 3.0)" class="symbolPoly" />
       <path d="M0 0 L0.2 -0.2 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 -0.2 Z" transform="matrix(-1 0 0 -1 9.0 6.8)" class="pinArrow" />
       <text transform="matrix(0 0.045 0.045 0 9.0 6.775)" dominant-baseline="middle" text-anchor="end" class="pinLabel">vdd</text>
@@ -42,8 +42,7 @@
     </g>
     <g>
       <rect x="7.0" y="12.0" width="4.0" height="5.0" class="symbolOutline" />
-      <text transform="matrix(0.045 0 0 -0.045 7.125 16.875)" dominant-baseline="hanging" text-anchor="start" class="instanceName">dl1</text>
-      <text transform="matrix(0.045 0 0 -0.045 10.875 16.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">D_latch</text>
+      <text transform="matrix(0.045 0 0 -0.045 6.275 18.52)" dominant-baseline="hanging" text-anchor="start"><tspan x="0" y="0em" class="instanceName">dl1</tspan><tspan x="0" y="1em" class="cellName">D_latch</tspan></text>
       <path d="M0.0 0.0 L4.0 0.0 L4.0 5.0 L0.0 5.0 Z" transform="matrix(1 0 0 1 7.0 12.0)" class="symbolPoly" />
       <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 7.2 14.0)" class="pinArrow" />
       <text transform="matrix(0.045 0 0 -0.045 7.225 14.0)" dominant-baseline="middle" text-anchor="start" class="pinLabel">D</text>
@@ -60,8 +59,7 @@
     </g>
     <g>
       <rect x="16.0" y="12.0" width="4.0" height="5.0" class="symbolOutline" />
-      <text transform="matrix(0.045 0 0 -0.045 16.125 16.875)" dominant-baseline="hanging" text-anchor="start" class="instanceName">dl2</text>
-      <text transform="matrix(0.045 0 0 -0.045 19.875 16.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">D_latch</text>
+      <text transform="matrix(0.045 0 0 -0.045 15.275 18.52)" dominant-baseline="hanging" text-anchor="start"><tspan x="0" y="0em" class="instanceName">dl2</tspan><tspan x="0" y="1em" class="cellName">D_latch</tspan></text>
       <path d="M0.0 0.0 L4.0 0.0 L4.0 5.0 L0.0 5.0 Z" transform="matrix(1 0 0 1 16.0 12.0)" class="symbolPoly" />
       <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 16.2 14.0)" class="pinArrow" />
       <text transform="matrix(0.045 0 0 -0.045 16.225 14.0)" dominant-baseline="middle" text-anchor="start" class="pinLabel">D</text>

@@ -368,6 +368,10 @@ class SchematicViewBuilder(MixinUnresolvedInstances, ViewBuilder):
         # were placed above. auto_wire() and check() rely on this.
         assert not self.solver.undefined_attrs()
 
+        # Wiring does not depend on any text (net names, tap labels,
+        # annotations): renaming a net or changing a parameter never reroutes.
+        # Text adapts to the wiring instead: terminal taps and annotation
+        # blocks are added afterwards.
         self.root.auto_wire()
         self.root.check(add_conn_points=True, add_terminal_taps=True)
         # Last, since conn points, taps and wires are obstacles for the blocks.

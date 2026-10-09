@@ -41,7 +41,7 @@ def annotation_lines(s: Symbol, inst: SchemInstance|None, stack: SymbolAnnotatio
                 continue
             lines.append((inst.full_path_label(), 'instanceName'))
         elif a.key == AnnotationKind.CellName:
-            lines.append((a.value, 'cellName'))
+            lines.append((a.value or '', 'cellName'))
         else:
             lines.append((f'{a.key}={a.value}', 'params'))
     return lines
@@ -93,11 +93,14 @@ def annotation_anchor(s: Symbol, trans: TD4R, inst: SchemInstance|None) -> tuple
     the instance's annotation_pos, annotation_halign and annotation_wrap if
     set. Else (a symbol on its own, or an instance of a schematic that never
     ran place_annotations), the block hangs from the top right corner of the
-    symbol outline. Rendering never searches for a free spot.
+    symbol outline, pin_text_space right of it. Rendering never searches for
+    a free spot. The text starts right at the anchor (space=0 in
+    draw_label): the placement keeps the block apart from other shapes.
     """
     if inst is not None and inst.annotation_pos is not None:
         return inst.annotation_pos.transl() * East, inst.annotation_halign, inst.annotation_wrap
-    return (trans * s.outline).northeast.transl() * East, HAlign.Left, 0
+    corner = (trans * s.outline).northeast
+    return (corner + Vec2R(Renderer.pin_text_space, 0)).transl() * East, HAlign.Left, 0
 
 def annotation_extent(s: Symbol, trans: TD4R, inst: SchemInstance|None) -> Rect4R | None:
     """
@@ -109,7 +112,7 @@ def annotation_extent(s: Symbol, trans: TD4R, inst: SchemInstance|None) -> Rect4
         return None
     anchor, halign, wrap = annotation_anchor(s, trans, inst)
     rows = annotation_rows(lines, wrap)
-    return Renderer.label_rect(anchor, max(annotation_row_chars(row) for row in rows), len(rows), halign=halign)
+    return Renderer.label_rect(anchor, max(annotation_row_chars(row) for row in rows), len(rows), halign=halign, space=0)
 
 class Renderer:
     """
@@ -526,7 +529,7 @@ class SchematicRenderer(Renderer):
         lines = annotation_lines(s, inst)
         if lines:
             anchor, halign, wrap = annotation_anchor(s, trans, inst)
-            self.draw_label(annotation_rows(lines, wrap), anchor, halign=halign)
+            self.draw_label(annotation_rows(lines, wrap), anchor, halign=halign, space=0)
 
         for poly in s.all(SymbolPoly):
             p = ET.SubElement(self.cur_group, 'path', d=poly.svg_path(),

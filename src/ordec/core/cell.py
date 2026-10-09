@@ -486,8 +486,11 @@ class Cell(metaclass=MetaCell):
         while left at their default unless the Parameter sets
         hide_default=False.
         """
-        return [(k, v, v != self._class_params[k].default or not self._class_params[k].hide_default)
-            for k, v in self.params_items()]
+        ret = []
+        for k, v in self.params_items():
+            param = self._class_params[k]
+            ret.append((k, v, v != param.default or not param.hide_default))
+        return ret
 
     def params_list(self, use_repr=False) -> list[str]:
         """Parameters as key=value strings, see params_items."""

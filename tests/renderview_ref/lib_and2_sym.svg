@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="208.12499999999997px" height="175.0px" viewBox="-1.0 -1.0 8.325 7.0">
   <g transform="matrix(1 0 0 -1 0 5.0)">
     <rect x="0.0" y="0.0" width="5.0" height="5.0" class="symbolOutline" />
-    <text transform="matrix(0.045 0 0 -0.045 5.125 4.875)" dominant-baseline="hanging" text-anchor="start" class="cellName">And2</text>
+    <text transform="matrix(0.045 0 0 -0.045 5.125 5.0)" dominant-baseline="hanging" text-anchor="start" class="cellName">And2</text>
     <path d="M0.0 2.0 L1.0 2.0" transform="matrix(1 0 0 1 0.0 0.0)" class="symbolPoly" />
     <path d="M0.0 3.0 L1.0 3.0" transform="matrix(1 0 0 1 0.0 0.0)" class="symbolPoly" />
     <path d="M4.0 2.5 L5.0 2.5" transform="matrix(1 0 0 1 0.0 0.0)" class="symbolPoly" />

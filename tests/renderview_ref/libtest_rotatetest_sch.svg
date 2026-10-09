@@ -2,7 +2,7 @@
   <g transform="matrix(1 0 0 -1 0 13.0)">
     <g>
       <rect x="1.0" y="1.0" width="5.0" height="5.0" class="symbolOutline" />
-      <text transform="matrix(0.045 0 0 -0.045 4.125 6.32)" dominant-baseline="hanging" text-anchor="start"><tspan x="0" y="0em" class="instanceName">R0</tspan><tspan x="0" y="1em" class="cellName">Or2</tspan></text>
+      <text transform="matrix(0.045 0 0 -0.045 4.0 6.195)" dominant-baseline="hanging" text-anchor="start"><tspan x="0" y="0em" class="instanceName">R0</tspan><tspan x="0" y="1em" class="cellName">Or2</tspan></text>
       <path d="M0.0 2.0 L1.3 2.0" transform="matrix(1 0 0 1 1.0 1.0)" class="symbolPoly" />
       <path d="M0.0 3.0 L1.3 3.0" transform="matrix(1 0 0 1 1.0 1.0)" class="symbolPoly" />
       <path d="M4.0 2.5 L5.0 2.5" transform="matrix(1 0 0 1 1.0 1.0)" class="symbolPoly" />
@@ -24,7 +24,7 @@
     </g>
     <g>
       <rect x="7.0" y="1.0" width="5.0" height="5.0" class="symbolOutline" />
-      <text transform="matrix(0.045 0 0 -0.045 7.875 5.945)" dominant-baseline="hanging" text-anchor="end"><tspan x="0" y="0em" class="instanceName">R90</tspan><tspan x="0" y="1em" class="cellName">Or2</tspan></text>
+      <text transform="matrix(0.045 0 0 -0.045 11.0 3.125)" dominant-baseline="hanging" text-anchor="start"><tspan x="0" y="0em" class="instanceName">R90</tspan><tspan x="0" y="1em" class="cellName">Or2</tspan></text>
       <path d="M0.0 2.0 L1.3 2.0" transform="matrix(0 1 -1 0 12.0 1.0)" class="symbolPoly" />
       <path d="M0.0 3.0 L1.3 3.0" transform="matrix(0 1 -1 0 12.0 1.0)" class="symbolPoly" />
       <path d="M4.0 2.5 L5.0 2.5" transform="matrix(0 1 -1 0 12.0 1.0)" class="symbolPoly" />
@@ -46,7 +46,7 @@
     </g>
     <g>
       <rect x="13.0" y="1.0" width="5.0" height="5.0" class="symbolOutline" />
-      <text transform="matrix(0.045 0 0 -0.045 14.25 1.875)" dominant-baseline="hanging" text-anchor="end"><tspan x="0" y="0em" class="instanceName">R180</tspan><tspan x="0" y="1em" class="cellName">Or2</tspan></text>
+      <text transform="matrix(0.045 0 0 -0.045 14.375 2.125)" dominant-baseline="hanging" text-anchor="end"><tspan x="0" y="0em" class="instanceName">R180</tspan><tspan x="0" y="1em" class="cellName">Or2</tspan></text>
       <path d="M0.0 2.0 L1.3 2.0" transform="matrix(-1 0 0 -1 18.0 6.0)" class="symbolPoly" />
       <path d="M0.0 3.0 L1.3 3.0" transform="matrix(-1 0 0 -1 18.0 6.0)" class="symbolPoly" />
       <path d="M4.0 2.5 L5.0 2.5" transform="matrix(-1 0 0 -1 18.0 6.0)" class="symbolPoly" />
@@ -68,7 +68,7 @@
     </g>
     <g>
       <rect x="19.0" y="1.0" width="5.0" height="5.0" class="symbolOutline" />
-      <text transform="matrix(0.045 0 0 -0.045 23.125 2.875)" dominant-baseline="hanging" text-anchor="start"><tspan x="0" y="0em" class="instanceName">R270</tspan><tspan x="0" y="1em" class="cellName">Or2</tspan></text>
+      <text transform="matrix(0.045 0 0 -0.045 23.0 3.125)" dominant-baseline="hanging" text-anchor="start"><tspan x="0" y="0em" class="instanceName">R270</tspan><tspan x="0" y="1em" class="cellName">Or2</tspan></text>
       <path d="M0.0 2.0 L1.3 2.0" transform="matrix(0 -1 1 0 19.0 6.0)" class="symbolPoly" />
       <path d="M0.0 3.0 L1.3 3.0" transform="matrix(0 -1 1 0 19.0 6.0)" class="symbolPoly" />
       <path d="M4.0 2.5 L5.0 2.5" transform="matrix(0 -1 1 0 19.0 6.0)" class="symbolPoly" />
@@ -90,7 +90,7 @@
     </g>
     <g>
       <rect x="1.0" y="7.0" width="5.0" height="5.0" class="symbolOutline" />
-      <text transform="matrix(0.045 0 0 -0.045 2.25 12.32)" dominant-baseline="hanging" text-anchor="end"><tspan x="0" y="0em" class="instanceName">MY</tspan><tspan x="0" y="1em" class="cellName">Or2</tspan></text>
+      <text transform="matrix(0.045 0 0 -0.045 2.375 12.195)" dominant-baseline="hanging" text-anchor="end"><tspan x="0" y="0em" class="instanceName">MY</tspan><tspan x="0" y="1em" class="cellName">Or2</tspan></text>
       <path d="M0.0 2.0 L1.3 2.0" transform="matrix(-1 0 0 1 6.0 7.0)" class="symbolPoly" />
       <path d="M0.0 3.0 L1.3 3.0" transform="matrix(-1 0 0 1 6.0 7.0)" class="symbolPoly" />
       <path d="M4.0 2.5 L5.0 2.5" transform="matrix(-1 0 0 1 6.0 7.0)" class="symbolPoly" />
@@ -112,7 +112,7 @@
     </g>
     <g>
       <rect x="7.0" y="7.0" width="5.0" height="5.0" class="symbolOutline" />
-      <text transform="matrix(0.045 0 0 -0.045 7.875 8.875)" dominant-baseline="hanging" text-anchor="end"><tspan x="0" y="0em" class="instanceName">MY90</tspan><tspan x="0" y="1em" class="cellName">Or2</tspan></text>
+      <text transform="matrix(0.045 0 0 -0.045 11.0 9.125)" dominant-baseline="hanging" text-anchor="start"><tspan x="0" y="0em" class="instanceName">MY90</tspan><tspan x="0" y="1em" class="cellName">Or2</tspan></text>
       <path d="M0.0 2.0 L1.3 2.0" transform="matrix(0 -1 -1 0 12.0 12.0)" class="symbolPoly" />
       <path d="M0.0 3.0 L1.3 3.0" transform="matrix(0 -1 -1 0 12.0 12.0)" class="symbolPoly" />
       <path d="M4.0 2.5 L5.0 2.5" transform="matrix(0 -1 -1 0 12.0 12.0)" class="symbolPoly" />
@@ -134,7 +134,7 @@
     </g>
     <g>
       <rect x="13.0" y="7.0" width="5.0" height="5.0" class="symbolOutline" />
-      <text transform="matrix(0.045 0 0 -0.045 16.125 7.875)" dominant-baseline="hanging" text-anchor="start"><tspan x="0" y="0em" class="instanceName">MX</tspan><tspan x="0" y="1em" class="cellName">Or2</tspan></text>
+      <text transform="matrix(0.045 0 0 -0.045 16.0 8.125)" dominant-baseline="hanging" text-anchor="start"><tspan x="0" y="0em" class="instanceName">MX</tspan><tspan x="0" y="1em" class="cellName">Or2</tspan></text>
       <path d="M0.0 2.0 L1.3 2.0" transform="matrix(1 0 0 -1 13.0 12.0)" class="symbolPoly" />
       <path d="M0.0 3.0 L1.3 3.0" transform="matrix(1 0 0 -1 13.0 12.0)" class="symbolPoly" />
       <path d="M4.0 2.5 L5.0 2.5" transform="matrix(1 0 0 -1 13.0 12.0)" class="symbolPoly" />
@@ -156,7 +156,7 @@
     </g>
     <g>
       <rect x="19.0" y="7.0" width="5.0" height="5.0" class="symbolOutline" />
-      <text transform="matrix(0.045 0 0 -0.045 22.125 12.695)" dominant-baseline="hanging" text-anchor="start"><tspan x="0" y="0em" class="instanceName">MX90</tspan><tspan x="0" y="1em" class="cellName">Or2</tspan></text>
+      <text transform="matrix(0.045 0 0 -0.045 22.0 12.57)" dominant-baseline="hanging" text-anchor="start"><tspan x="0" y="0em" class="instanceName">MX90</tspan><tspan x="0" y="1em" class="cellName">Or2</tspan></text>
       <path d="M0.0 2.0 L1.3 2.0" transform="matrix(0 1 1 0 19.0 7.0)" class="symbolPoly" />
       <path d="M0.0 3.0 L1.3 3.0" transform="matrix(0 1 1 0 19.0 7.0)" class="symbolPoly" />
       <path d="M4.0 2.5 L5.0 2.5" transform="matrix(0 1 1 0 19.0 7.0)" class="symbolPoly" />

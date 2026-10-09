@@ -16,8 +16,7 @@
     <circle cx="2.0" cy="3.0" r="0.1625" class="connPoint" />
     <g>
       <rect x="0.0" y="21.0" width="5.0" height="3.0" class="symbolOutline" />
-      <text transform="matrix(0.045 0 0 -0.045 0.125 23.875)" dominant-baseline="hanging" text-anchor="start" class="instanceName">load</text>
-      <text transform="matrix(0.045 0 0 -0.045 4.875 23.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">LoadPair</text>
+      <text transform="matrix(0.045 0 0 -0.045 -0.9 25.52)" dominant-baseline="hanging" text-anchor="start"><tspan x="0" y="0em" class="instanceName">load</tspan><tspan x="0" y="1em" class="cellName">LoadPair</tspan></text>
       <path d="M0.0 0.0 L5.0 0.0 L5.0 3.0 L0.0 3.0 Z" transform="matrix(1 0 0 1 0.0 21.0)" class="symbolPoly" />
       <path d="M0 0 L0.2 -0.2 L0.2 -0.2 L0 -0.4 L-0.2 -0.2 L-0.2 -0.2 Z" transform="matrix(-1 0 0 -1 2.0 23.8)" class="pinArrow" />
       <text transform="matrix(0 0.045 0.045 0 2.0 23.775)" dominant-baseline="middle" text-anchor="end" class="pinLabel">vdd</text>
@@ -28,8 +27,8 @@
     </g>
     <g>
       <rect x="0.0" y="12.0" width="5.0" height="5.0" class="symbolOutline" />
-      <text transform="matrix(0.045 0 0 -0.045 0.125 16.875)" dominant-baseline="hanging" text-anchor="start" class="instanceName">dp</text>
-      <text transform="matrix(0.045 0 0 -0.045 4.875 16.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">DiffPair</text>
+      <text transform="matrix(0.045 0 0 -0.045 2.5 14.5)" dominant-baseline="middle" text-anchor="middle" class="cellName">DiffPair</text>
+      <text transform="matrix(0.045 0 0 -0.045 -0.2 17.86)" dominant-baseline="hanging" text-anchor="start" class="instanceName">dp</text>
       <path d="M0.0 0.0 L5.0 0.0 L5.0 5.0 L0.0 5.0 Z" transform="matrix(1 0 0 1 0.0 12.0)" class="symbolPoly" />
       <path d="M0 0 L0.2 -0.2 L0.2 -0.4 L0 -0.4 L-0.2 -0.4 L-0.2 -0.2 Z" transform="matrix(0 -1 1 0 0.2 14.0)" class="pinArrow" />
       <text transform="matrix(0.045 0 0 -0.045 0.225 14.0)" dominant-baseline="middle" text-anchor="start" class="pinLabel">inp</text>
@@ -44,7 +43,7 @@
     </g>
     <g>
       <rect x="0.0" y="4.0" width="4.0" height="4.0" class="symbolOutline" />
-      <text transform="matrix(0.045 0 0 -0.045 2.375 8.89)" dominant-baseline="hanging" text-anchor="start"><tspan x="0" y="0em" class="instanceName">tail</tspan><tspan x="0" y="1em" class="cellName">Nmos</tspan><tspan x="0" y="2em" class="params">l=1u</tspan><tspan x="0" y="3em" class="params">w=1u</tspan></text>
+      <text transform="matrix(0.045 0 0 -0.045 2.25 8.765)" dominant-baseline="hanging" text-anchor="start"><tspan x="0" y="0em" class="instanceName">tail</tspan><tspan x="0" y="1em" class="cellName">Nmos</tspan><tspan x="0" y="2em" class="params">l=1u</tspan><tspan x="0" y="3em" class="params">w=1u</tspan></text>
       <path d="M2.0 0.0 L2.0 1.25 L1.3 1.25 L1.3 2.75 L2.0 2.75 L2.0 4.0" transform="matrix(1 0 0 1 0.0 4.0)" class="symbolPoly" />
       <path d="M1.0 1.25 L1.0 2.75" transform="matrix(1 0 0 1 0.0 4.0)" class="symbolPoly" />
       <path d="M0.0 2.0 L1.0 2.0" transform="matrix(1 0 0 1 0.0 4.0)" class="symbolPoly" />

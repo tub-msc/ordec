@@ -22,3 +22,37 @@ cell Top:
         net a, y
         Box b1: .$n=1; .pos=(2, 2); .a -- a; .y -- y
         Box b2: .$n=2; .pos=(10, 2); .a -- a; .y -- y; .annotation_pos=(9, 7); .annotation_halign=HAlign.Right
+
+cell Tall:
+    """
+    Resistor with all its parameters shown (like the ihp130 resistors): its
+    annotation block (eight lines) is taller than the symbol.
+    """
+    r = Parameter(R, default=1k, hide_default=False)
+    l = Parameter(R, default=10u, hide_default=False)
+    w = Parameter(R, default=1u, hide_default=False)
+    b = Parameter(int, default=0, hide_default=False)
+    ps = Parameter(R, default=180n, hide_default=False)
+    m = Parameter(int, default=1, hide_default=False)
+    tc1 = Parameter(R, default=2m, hide_default=False)
+    tc2 = Parameter(R, default=50u, hide_default=False)
+
+    viewgen symbol(self) -> Symbol:
+        inout p: .pos=(2, 4); .orient=North; .show_arrow=False; .show_label=False
+        inout n: .pos=(2, 0); .orient=South; .show_arrow=False; .show_label=False
+        . % SymbolPoly(vertices=[(2, 0), (2, 1), (1.375, 1.25), (2.625, 1.75),
+            (1.375, 2.25), (2.625, 2.75), (2, 3), (2, 4)])
+        .outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
+
+cell TallStack:
+    """
+    String of Tall resistors, like in a resistor ladder: beside each
+    resistor, there is only room for a block of its own height, so the
+    blocks get a flatter arrangement (annotation_wrap).
+    """
+    viewgen schematic(self) -> Schematic:
+        net n0, n1, n2, n3, n4
+        Tall r1: .pos=(2, 2); .n -- n0; .p -- n1
+        Tall r2: .pos=(2, 7); .n -- n1; .p -- n2
+        Tall r3: .pos=(2, 12); .n -- n2; .p -- n3
+        Tall r4: .pos=(2, 17); .n -- n3; .p -- n4

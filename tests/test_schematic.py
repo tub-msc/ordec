@@ -306,22 +306,53 @@ def test_annotation_placement():
     from .lib.ord import strongarm
     # Inv wires manually and calls place_annotations itself, Strongarm runs
     # the viewgen pipeline and has mirrored instances. No block may overlap
-    # another shape or block, and all stay close to their instance. For this,
-    # the blocks of Inv need a flatter arrangement than the default.
+    # another shape or block, and all stay close to their instance.
     for sch in (Inv().schematic, strongarm.Strongarm().schematic):
         obstacles = [r.tofloat() for r in schematic_obstacles(sch)]
         rects = block_rects(sch)
         assert len(rects) == len(list(sch.all(SchemInstance)))
-        for nid, (rect, wrap) in rects.items():
-            others = [r.tofloat() for n, (r, w) in rects.items() if n != nid]
+        for nid, (rect, wrap, halign) in rects.items():
+            others = [r.tofloat() for n, (r, w, h) in rects.items() if n != nid]
             assert fits(rect.tofloat(), obstacles + others)
             inst = sch.cursor_at(nid)
             body = symbol_body(inst.symbol, inst.loc_transform(), inst)
             assert rect_gap(rect.tofloat(), body.tofloat()) == 0
-            if inst.annotation_pos is not None:
+            if rect.ux <= body.lx:
                 # Blocks left of their symbol are right-aligned.
-                assert (inst.annotation_halign == HAlign.Right) == (rect.cx < body.cx)
-    assert all(wrap > 0 for rect, wrap in block_rects(Inv().schematic).values())
+                assert halign == HAlign.Right
+    # An explicitly placed block is an obstacle for the blocks of instances
+    # before it in node order, too:
+    s = Schematic(outline=(0, 0, 20, 10))
+    s.a = SchemInstance(pos=(2, 2), symbol=Nmos().symbol)
+    s.b = SchemInstance(pos=(12, 2), symbol=Nmos().symbol, annotation_pos=(5, 5))
+    rects = block_rects(s)
+    assert fits(rects[s.a.nid][0].tofloat(), [rects[s.b.nid][0].tofloat()])
+    # VcoRing leaves stage_n[0] no empty spot. Its block covers a wire then,
+    # but still stays nearer to its own symbol than to any other.
+    from ordec.examples.vco_pseudodiff import VcoRing
+    sch = VcoRing().schematic
+    bodies = {inst.nid: symbol_body(inst.symbol, inst.loc_transform(), inst).tofloat()
+        for inst in sch.all(SchemInstance)}
+    for nid, (rect, wrap, halign) in block_rects(sch).items():
+        others = [rect_gap(rect.tofloat(), b) for n, b in bodies.items() if n != nid]
+        assert rect_gap(rect.tofloat(), bodies[nid]) < min(others)
+    # Blocks of box symbols go above their top left corner, left-aligned and
+    # moved further left where pin labels are in the way (the others go
+    # beside their symbols, see above).
+    from .lib.ord import d_latch
+    sch = d_latch.D_latch().schematic
+    for nid, (rect, wrap, halign) in block_rects(sch).items():
+        inst = sch.cursor_at(nid)
+        outline = inst.loc_transform() * inst.symbol.outline
+        assert inst.symbol.is_box and halign == HAlign.Left
+        assert rect.lx <= outline.lx and rect.ly >= outline.uy
+    # Rotations by 90 degrees keep East as preferred side: the NoConn
+    # instances of VcoTb (R90 and R270) all get their block on the right.
+    from ordec.examples.vco_pseudodiff import VcoTb
+    sch = VcoTb().schematic
+    for i in range(4):
+        nc = sch.nc[i]
+        assert nc.annotation_pos.x > (nc.loc_transform() * nc.symbol.outline).cx
 
 def test_scheminstance_params_without_viewgen():
     s = Schematic()
