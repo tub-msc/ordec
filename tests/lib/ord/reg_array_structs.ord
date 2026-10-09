@@ -7,8 +7,8 @@ from ordec.lib.generic_mos import Nmos,Pmos
 cell MultibitReg_ArrayOfStructs:
     bits = Parameter(int)
     viewgen symbol(self) -> Symbol:
-        input vdd: .align=North
-        input vss: .align=South
+        input vdd: .orient=North
+        input vss: .orient=South
         path bit
         for i in range(self.bits):
             path bit[i]

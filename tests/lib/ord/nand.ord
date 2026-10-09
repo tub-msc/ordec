@@ -9,15 +9,15 @@ cell Nand:
         output y
         input a
         input b
-        inout vdd: .align=North
+        inout vdd: .orient=North
         inout vss
 
     viewgen schematic(self) -> Schematic:
         port y: .pos=(25,6)
         port a: .pos=(1,4)
         port b: .pos=(1,17)
-        port vdd: .align=East; .pos=(1,23)
-        port vss: .align=East; .pos=(1,1)
+        port vdd: .orient=East; .pos=(1,23)
+        port vss: .orient=East; .pos=(1,1)
 
         net net_conn
 

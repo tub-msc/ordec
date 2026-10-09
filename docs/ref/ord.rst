@@ -65,10 +65,10 @@ A **node statement** is the ``A B`` construct that creates and names an element 
 2. **Node instance statements** — the type is a Cell class or instance, e.g., ``Nmos x``
 3. **Node keyword statements** — the type is a built-in keyword, e.g., ``input x``, ``output y``, ``port z``, ``net a``, ``path p``
 
-The pin and port keywords come with direction-based align defaults: ``input``
-pins face ``West``, ``output`` pins ``East``, and ``inout`` pins ``South``. A
-``port`` defaults to the flipped align of its symbol pin, so e.g. a
-West-facing input pin yields an East-facing port. An ``.align=`` assignment
+The pin and port keywords come with direction-based orient defaults:
+``input`` pins face ``West``, ``output`` pins ``East``, and ``inout`` pins
+``South``. A ``port`` defaults to the flipped orient of its symbol pin, so e.g. a
+West-facing input pin yields an East-facing port. An ``.orient=`` assignment
 in the statement body overrides these defaults.
 
 The ``net`` and ``path`` keywords create a ``Net`` or ``PathNode``, e.g.
@@ -95,16 +95,16 @@ To demonstrate how the ORD context works and how the conversion from ORD to Pyth
 
     cell Inv:
         viewgen symbol(self) -> Symbol:
-            inout vdd: .align=North
-            inout vss: .align=South
-            input a: .align=West
-            output y: .align=East
+            inout vdd: .orient=North
+            inout vss: .orient=South
+            input a: .orient=West
+            output y: .orient=East
 
         viewgen schematic(self) -> Schematic:
-            port vdd: .pos=(2,13); .align=North
-            port vss: .pos=(2,1); .align=South
-            port y: .pos=(9,7); .align=West
-            port a: .pos=(1,7); .align=East
+            port vdd: .pos=(2,13); .orient=North
+            port vss: .pos=(2,1); .orient=South
+            port y: .pos=(9,7); .orient=West
+            port a: .pos=(1,7); .orient=East
 
             Nmos pd:
                 .s -- vss
@@ -193,37 +193,37 @@ of the example.
     class Inv(Cell):
         @viewgen
         def symbol(self) -> Symbol:
-            vdd = context.add(('vdd',), Pin(pintype=PinType.Inout, align=D4.South))
+            vdd = context.add(('vdd',), Pin(pintype=PinType.Inout, orient=D4.South))
             with vdd.ctx():
-                context.root().align = North
-            vss = context.add(('vss',), Pin(pintype=PinType.Inout, align=D4.South))
+                context.root().orient = North
+            vss = context.add(('vss',), Pin(pintype=PinType.Inout, orient=D4.South))
             with vss.ctx():
-                context.root().align = South
-            a = context.add(('a',), Pin(pintype=PinType.In, align=D4.West))
+                context.root().orient = South
+            a = context.add(('a',), Pin(pintype=PinType.In, orient=D4.West))
             with a.ctx():
-                context.root().align = West
-            y = context.add(('y',), Pin(pintype=PinType.Out, align=D4.East))
+                context.root().orient = West
+            y = context.add(('y',), Pin(pintype=PinType.Out, orient=D4.East))
             with y.ctx():
-                context.root().align = East
+                context.root().orient = East
 
         @viewgen
         def schematic(self) -> Schematic:
             vdd = context.add_port(('vdd',))
             with vdd.ctx():
                 context.root().pos = (2,13)
-                context.root().align = North
+                context.root().orient = North
             vss = context.add_port(('vss',))
             with vss.ctx():
                 context.root().pos = (2,1)
-                context.root().align = South
+                context.root().orient = South
             y = context.add_port(('y',))
             with y.ctx():
                 context.root().pos = (9,7)
-                context.root().align = West
+                context.root().orient = West
             a = context.add_port(('a',))
             with a.ctx():
                 context.root().pos = (1,7)
-                context.root().align = East
+                context.root().orient = East
 
             pd = context.add_element(('pd',), Nmos)
             with pd.ctx():

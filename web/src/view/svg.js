@@ -18,6 +18,10 @@ export class SvgView extends View {
         this.svg = null;
         this.baseTransform = null;
         this.resizeObserver = null;
+        // Details toggle, kept across updates: off hides the grid and the pin
+        // labels that symbols mark as hidden (class "detail" in render.py),
+        // on shows them.
+        this.detail = false;
 
         this.onLvsSelect = (data) => {
             if (data && !this.selectionApplies(data.schemView, data.schemWireHash)) {
@@ -238,7 +242,21 @@ export class SvgView extends View {
 
         const statusBar = document.createElement('div');
         statusBar.className = 'viewer-statusbar schem-statusbar';
-        statusBar.appendChild(this.coordsDisplay.element);
+        const detailToggle = document.createElement('button');
+        detailToggle.type = 'button';
+        detailToggle.className = 'schem-detail-toggle';
+        detailToggle.title = 'Show the grid and the pin names hidden by symbols';
+        const applyDetail = () => {
+            this.svgNode.classList.toggle('schem-detail', this.detail);
+            detailToggle.classList.toggle('active', this.detail);
+            detailToggle.textContent = `Details: ${this.detail ? 'on' : 'off'}`;
+        };
+        detailToggle.onclick = () => {
+            this.detail = !this.detail;
+            applyDetail();
+        };
+        applyDetail();
+        statusBar.append(detailToggle, this.coordsDisplay.element);
         schemRoot.append(svgHost, statusBar);
 
         svg.on('mousemove', (event) => {

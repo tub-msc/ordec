@@ -8,9 +8,9 @@ cell SR_flip_flop:
     viewgen symbol(self) -> Symbol:
         input S: .pos = (1, 16)
         input R: .pos = (1, 6)
-        input CLK: .pos = (8, 12); .align = North
-        input vdd: .pos = (2, 22); .align = North
-        input vss: .pos = (2, 0); .align = South
+        input CLK: .pos = (8, 12); .orient = North
+        input vdd: .pos = (2, 22); .orient = North
+        input vss: .pos = (2, 0); .orient = South
         output Q: .pos = (33, 16)
         output Q_not: .pos = (33, 6)
 

@@ -6,7 +6,7 @@ from ordec.lib.generic_mos import Nmos, Pmos
 
 cell Inv:
     viewgen symbol(self) -> Symbol:
-        inout vdd: .align=North
+        inout vdd: .orient=North
         inout vss
         input a
         output y
@@ -18,7 +18,7 @@ cell Inv:
         port y
 
         # Coordinate-free schematic: the stack is auto-anchored at (0, 0),
-        # ports are auto-placed based on their align.
+        # ports are auto-placed based on their orient.
         with Col(gap=4):
             Pmos pu:
                 .s -- vdd
@@ -34,7 +34,7 @@ cell Inv:
 
 cell InvAnchored:
     viewgen symbol(self) -> Symbol:
-        inout vdd: .align=North
+        inout vdd: .orient=North
         inout vss
         input a
         output y

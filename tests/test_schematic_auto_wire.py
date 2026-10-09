@@ -73,10 +73,10 @@ def test_place_and_draw_connections():
     # Minimal schematic providing the ORDB nodes; 4x4 symbol outline with
     # pins at the edge midpoints.
     sym = Symbol()
-    sym.S = Pin(align=South)
-    sym.N = Pin(align=North)
-    sym.W = Pin(align=West)
-    sym.E = Pin(align=East)
+    sym.S = Pin(orient=South)
+    sym.N = Pin(orient=North)
+    sym.W = Pin(orient=West)
+    sym.E = Pin(orient=East)
     sym.place_pins(hpadding=2, vpadding=2)
     symf = sym.freeze()
 
@@ -124,7 +124,7 @@ def test_place_and_draw_connections():
     # them); pin_conns keeps the subcursors for the grid assertions below.
     connections = [
         (port, RoutingPort(int(pin_sc.pos.x), int(pin_sc.pos.y), port.net,
-                           pin_sc.align.unflip()))
+                           pin_sc.orient.unflip()))
         for port, pin_sc in pin_conns
     ]
 
@@ -179,15 +179,15 @@ def test_ripup_keeps_terminal_connected():
     io_sym = Symbol()
     for name, align in (('a1', West), ('y1', East), ('a2', West),
                         ('y2', East), ('vdd', North), ('vss', South)):
-        io_sym[name] = Pin(align=align)
+        io_sym[name] = Pin(orient=align)
     io_sym.place_pins(hpadding=2, vpadding=2)
     iof = io_sym.freeze()
 
     sym = Symbol()
-    sym.S = Pin(align=South)
-    sym.N = Pin(align=North)
-    sym.W = Pin(align=West)
-    sym.E = Pin(align=East)
+    sym.S = Pin(orient=South)
+    sym.N = Pin(orient=North)
+    sym.W = Pin(orient=West)
+    sym.E = Pin(orient=East)
     sym.place_pins(hpadding=2, vpadding=2)
     symf = sym.freeze()
 
@@ -202,12 +202,12 @@ def test_ripup_keeps_terminal_connected():
                            pos=Vec2R(14, 3))
     s.pu_r = SchemInstance(symf.portmap(W=s.a2, S=s.y2, N=s.vdd, E=s.vdd),
                            pos=Vec2R(14, 11))
-    s.a1 % SchemPort(pos=Vec2R(0, 5), align=East)
-    s.a2 % SchemPort(pos=Vec2R(0, 4), align=East)
-    s.y1 % SchemPort(pos=Vec2R(20, 7), align=West)
-    s.y2 % SchemPort(pos=Vec2R(20, 6), align=West)
-    s.vdd % SchemPort(pos=Vec2R(4, 17), align=South)
-    s.vss % SchemPort(pos=Vec2R(4, 1), align=North)
+    s.a1 % SchemPort(pos=Vec2R(0, 5), orient=East)
+    s.a2 % SchemPort(pos=Vec2R(0, 4), orient=East)
+    s.y1 % SchemPort(pos=Vec2R(20, 7), orient=West)
+    s.y2 % SchemPort(pos=Vec2R(20, 6), orient=West)
+    s.vdd % SchemPort(pos=Vec2R(4, 17), orient=South)
+    s.vss % SchemPort(pos=Vec2R(4, 1), orient=North)
 
     s.auto_wire()
     s.check(add_conn_points=True, add_terminal_taps=True)
@@ -363,7 +363,7 @@ def test_tap_point_routing_and_outline():
     attaches wires to them (from the side opposite the glyph/label), and the
     initial outline covers the tap position plus its label."""
     sym = Symbol()
-    sym.E = Pin(align=East)
+    sym.E = Pin(orient=East)
     sym.place_pins(hpadding=2, vpadding=2)
     symf = sym.freeze()
 
@@ -371,7 +371,7 @@ def test_tap_point_routing_and_outline():
     s.n = Net()
     s.i = SchemInstance(symf.portmap(E=s.n), pos=Vec2R(0, 0))
     # Tap east of the instance, glyph/label extending further east (R270).
-    s.n % SchemTapPoint(pos=Vec2R(10, 2), align=R270)
+    s.n % SchemTapPoint(pos=Vec2R(10, 2), orient=R270)
 
     s.auto_wire()
     s.check(add_conn_points=True, add_terminal_taps=True)

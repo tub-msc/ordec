@@ -188,7 +188,7 @@ module.exports = grammar(python, {
       )),
     ),
 
-    // Leading-dot access to the current node, e.g. `.align` or the
+    // Leading-dot access to the current node, e.g. `.orient` or the
     // bare `.` (dotted_atom in ord.lark)
     ord_local_attribute: $ => seq(
       '.',

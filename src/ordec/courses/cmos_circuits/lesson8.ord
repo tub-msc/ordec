@@ -7,15 +7,15 @@ cell Nand2:
         output y
         input a
         input b
-        inout vdd: .align=North
+        inout vdd: .orient=North
         inout vss
 
     viewgen schematic(self) -> Schematic:
         port y: .pos=(18,12)
         port a: .pos=(1,15)
         port b: .pos=(1,9)
-        port vdd: .align=East; .pos=(1,18)
-        port vss: .align=East; .pos=(1,0)
+        port vdd: .orient=East; .pos=(1,18)
+        port vss: .orient=East; .pos=(1,0)
 
         # EDIT HERE
         Nmos n1: .pos=(4,1); .s -- vss; .d -- y; .g -- a; .b -- vss

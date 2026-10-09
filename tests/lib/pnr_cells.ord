@@ -57,16 +57,16 @@ cell InvChain:
     n = Parameter(int, default=8)
 
     viewgen symbol(self) -> Symbol:
-        input a:   .align=West
-        output y:  .align=East
-        inout vdd: .align=North
-        inout vss: .align=South
+        input a:   .orient=West
+        output y:  .orient=East
+        inout vdd: .orient=North
+        inout vss: .orient=South
 
     viewgen schematic(self) -> Schematic:
-        port a:   .align=East; .pos=(0, 10)
-        port y:   .align=West; .pos=(20 + 8 * self.n, 10)
-        port vdd: .align=East; .pos=(0, 18)
-        port vss: .align=East; .pos=(0, 2)
+        port a:   .orient=East; .pos=(0, 10)
+        port y:   .orient=West; .pos=(20 + 8 * self.n, 10)
+        port vdd: .orient=East; .pos=(0, 18)
+        port vss: .orient=East; .pos=(0, 2)
 
         path inv, nd
         for i in range(self.n - 1):
@@ -89,24 +89,24 @@ cell DffArray:
     n = Parameter(int, default=4)
 
     viewgen symbol(self) -> Symbol:
-        input clk: .align=West
-        input rst: .align=West
-        inout vdd: .align=North
-        inout vss: .align=South
+        input clk: .orient=West
+        input rst: .orient=West
+        inout vdd: .orient=North
+        inout vss: .orient=South
         path d, q
         for i in range(self.n):
-            input d[i]:  .align=West
-            output q[i]: .align=East
+            input d[i]:  .orient=West
+            output q[i]: .orient=East
 
     viewgen schematic(self) -> Schematic:
-        port clk: .align=East; .pos=(0, 48)
-        port rst: .align=East; .pos=(0, 44)
-        port vdd: .align=East; .pos=(0, 52)
-        port vss: .align=East; .pos=(0, 2)
+        port clk: .orient=East; .pos=(0, 48)
+        port rst: .orient=East; .pos=(0, 44)
+        port vdd: .orient=East; .pos=(0, 52)
+        port vss: .orient=East; .pos=(0, 2)
         path d, q
         for i in range(self.n):
-            port d[i]: .align=East; .pos=(0, 8 + 8 * i)
-            port q[i]: .align=West; .pos=(60, 8 + 8 * i)
+            port d[i]: .orient=East; .pos=(0, 8 + 8 * i)
+            port q[i]: .orient=West; .pos=(60, 8 + 8 * i)
 
         path ff, qn
         for i in range(self.n):
@@ -127,24 +127,24 @@ cell Crossbar:
     n = Parameter(int, default=4)
 
     viewgen symbol(self) -> Symbol:
-        input busA: .align=West
-        input busB: .align=West
-        inout vdd:  .align=North
-        inout vss:  .align=South
+        input busA: .orient=West
+        input busB: .orient=West
+        inout vdd:  .orient=North
+        inout vss:  .orient=South
         path sel, y
         for i in range(self.n):
-            input sel[i]: .align=West
-            output y[i]:  .align=East
+            input sel[i]: .orient=West
+            output y[i]:  .orient=East
 
     viewgen schematic(self) -> Schematic:
-        port vdd:  .align=East; .pos=(0, 0)
-        port vss:  .align=East; .pos=(0, 4)
-        port busA: .align=East; .pos=(0, 8)
-        port busB: .align=East; .pos=(0, 12)
+        port vdd:  .orient=East; .pos=(0, 0)
+        port vss:  .orient=East; .pos=(0, 4)
+        port busA: .orient=East; .pos=(0, 8)
+        port busB: .orient=East; .pos=(0, 12)
         path sel, y, m
         for i in range(self.n):
-            port sel[i]: .align=East; .pos=(0, 20 + 6 * i)
-            port y[i]:   .align=West; .pos=(40, 10 * i)
+            port sel[i]: .orient=East; .pos=(0, 20 + 6 * i)
+            port y[i]:   .orient=West; .pos=(40, 10 * i)
         for i in range(self.n):
             Mux m[i]:
                 .pos = (20, 10 * i)
@@ -162,26 +162,26 @@ cell RippleAdder:
     n = Parameter(int, default=4)
 
     viewgen symbol(self) -> Symbol:
-        input cin:   .align=West
-        output cout: .align=East
-        inout vdd:   .align=North
-        inout vss:   .align=South
+        input cin:   .orient=West
+        output cout: .orient=East
+        inout vdd:   .orient=North
+        inout vss:   .orient=South
         path a, b, sum
         for i in range(self.n):
-            input a[i]:    .align=West
-            input b[i]:    .align=West
-            output sum[i]: .align=East
+            input a[i]:    .orient=West
+            input b[i]:    .orient=West
+            output sum[i]: .orient=East
 
     viewgen schematic(self) -> Schematic:
         path a, b, sum
         for i in range(self.n):
-            port a[i]:   .align=East; .pos=(0, 16 * i)
-            port b[i]:   .align=East; .pos=(0, 16 * i + 4)
-            port sum[i]: .align=West; .pos=(46, 16 * i)
-        port cin:  .align=East; .pos=(0, 16 * self.n)
-        port cout: .align=West; .pos=(46, 16 * self.n)
-        port vdd:  .align=East; .pos=(0, 16 * self.n + 4)
-        port vss:  .align=East; .pos=(0, 16 * self.n + 8)
+            port a[i]:   .orient=East; .pos=(0, 16 * i)
+            port b[i]:   .orient=East; .pos=(0, 16 * i + 4)
+            port sum[i]: .orient=West; .pos=(46, 16 * i)
+        port cin:  .orient=East; .pos=(0, 16 * self.n)
+        port cout: .orient=West; .pos=(46, 16 * self.n)
+        port vdd:  .orient=East; .pos=(0, 16 * self.n + 4)
+        port vss:  .orient=East; .pos=(0, 16 * self.n + 8)
 
         # carry[i] is the carry into bit i: carry[0]=cin, carry[n]=cout.
         path cy
@@ -227,22 +227,22 @@ cell TiedReset:
     n = Parameter(int, default=4)
 
     viewgen symbol(self) -> Symbol:
-        input clk: .align=West
-        inout vdd: .align=North
-        inout vss: .align=South
+        input clk: .orient=West
+        inout vdd: .orient=North
+        inout vss: .orient=South
         path d, q
         for i in range(self.n):
-            input d[i]:  .align=West
-            output q[i]: .align=East
+            input d[i]:  .orient=West
+            output q[i]: .orient=East
 
     viewgen schematic(self) -> Schematic:
-        port clk: .align=East; .pos=(0, 0)
-        port vdd: .align=East; .pos=(0, 4)
-        port vss: .align=East; .pos=(0, 8)
+        port clk: .orient=East; .pos=(0, 0)
+        port vdd: .orient=East; .pos=(0, 4)
+        port vss: .orient=East; .pos=(0, 8)
         path d, q
         for i in range(self.n):
-            port d[i]: .align=East; .pos=(0, 14 + 10 * i)
-            port q[i]: .align=West; .pos=(40, 10 * i)
+            port d[i]: .orient=East; .pos=(0, 14 + 10 * i)
+            port q[i]: .orient=West; .pos=(40, 10 * i)
         path ff, qn
         for i in range(self.n):
             net qn[i]
@@ -260,16 +260,16 @@ cell TiedReset:
 cell InvPair:
     """Two inverters in series (a composite, non-foundry sub-cell)."""
     viewgen symbol(self) -> Symbol:
-        input a:   .align=West
-        output y:  .align=East
-        inout vdd: .align=North
-        inout vss: .align=South
+        input a:   .orient=West
+        output y:  .orient=East
+        inout vdd: .orient=North
+        inout vss: .orient=South
 
     viewgen schematic(self) -> Schematic:
-        port a:   .align=East; .pos=(0, 10)
-        port y:   .align=West; .pos=(30, 10)
-        port vdd: .align=East; .pos=(0, 18)
-        port vss: .align=East; .pos=(0, 2)
+        port a:   .orient=East; .pos=(0, 10)
+        port y:   .orient=West; .pos=(30, 10)
+        port vdd: .orient=East; .pos=(0, 18)
+        port vss: .orient=East; .pos=(0, 2)
         net mid
         Inv i0:
             .pos = (10, 10)
@@ -283,16 +283,16 @@ cell PairChain:
     n = Parameter(int, default=3)
 
     viewgen symbol(self) -> Symbol:
-        input a:   .align=West
-        output y:  .align=East
-        inout vdd: .align=North
-        inout vss: .align=South
+        input a:   .orient=West
+        output y:  .orient=East
+        inout vdd: .orient=North
+        inout vss: .orient=South
 
     viewgen schematic(self) -> Schematic:
-        port a:   .align=East; .pos=(0, 10)
-        port y:   .align=West; .pos=(20 + 10 * self.n, 10)
-        port vdd: .align=East; .pos=(0, 18)
-        port vss: .align=East; .pos=(0, 2)
+        port a:   .orient=East; .pos=(0, 10)
+        port y:   .orient=West; .pos=(20 + 10 * self.n, 10)
+        port vdd: .orient=East; .pos=(0, 18)
+        port vss: .orient=East; .pos=(0, 2)
         path pr, nd
         for i in range(self.n - 1):
             net nd[i]
@@ -317,18 +317,18 @@ cell SplitSupply:
     rather than emitting a layout that silently merges the two supplies.
     """
     viewgen symbol(self) -> Symbol:
-        input a:     .align=West
-        output y:    .align=East
-        inout vdd:   .align=North
-        inout vdd2:  .align=North
-        inout vss:   .align=South
+        input a:     .orient=West
+        output y:    .orient=East
+        inout vdd:   .orient=North
+        inout vdd2:  .orient=North
+        inout vss:   .orient=South
 
     viewgen schematic(self) -> Schematic:
-        port a:    .align=East; .pos=(0, 10)
-        port y:    .align=West; .pos=(30, 10)
-        port vdd:  .align=East; .pos=(0, 18)
-        port vdd2: .align=East; .pos=(0, 22)
-        port vss:  .align=East; .pos=(0, 2)
+        port a:    .orient=East; .pos=(0, 10)
+        port y:    .orient=West; .pos=(30, 10)
+        port vdd:  .orient=East; .pos=(0, 18)
+        port vdd2: .orient=East; .pos=(0, 22)
+        port vss:  .orient=East; .pos=(0, 2)
         net mid
         Inv i0:
             .pos = (10, 10)
@@ -350,16 +350,16 @@ cell MisnamedSupply:
     requires them rather than guessing.
     """
     viewgen symbol(self) -> Symbol:
-        input a:   .align=West
-        output y:  .align=East
-        inout vcc: .align=North
-        inout vss: .align=South
+        input a:   .orient=West
+        output y:  .orient=East
+        inout vcc: .orient=North
+        inout vss: .orient=South
 
     viewgen schematic(self) -> Schematic:
-        port a:   .align=East; .pos=(0, 10)
-        port y:   .align=West; .pos=(20, 10)
-        port vcc: .align=East; .pos=(0, 18)
-        port vss: .align=East; .pos=(0, 2)
+        port a:   .orient=East; .pos=(0, 10)
+        port y:   .orient=West; .pos=(20, 10)
+        port vcc: .orient=East; .pos=(0, 18)
+        port vss: .orient=East; .pos=(0, 2)
         Inv i0:
             .pos = (10, 10)
             .A -- a; .Y -- y; .VDD -- vcc; .VSS -- vss
@@ -378,16 +378,16 @@ cell HandGeometry:
     spacing, and only LVS catches the short. The engine refuses instead.
     """
     viewgen symbol(self) -> Symbol:
-        input a:   .align=West
-        output y:  .align=East
-        inout vdd: .align=North
-        inout vss: .align=South
+        input a:   .orient=West
+        output y:  .orient=East
+        inout vdd: .orient=North
+        inout vss: .orient=South
 
     viewgen schematic(self) -> Schematic:
-        port a:   .align=East; .pos=(0, 10)
-        port y:   .align=West; .pos=(20, 10)
-        port vdd: .align=East; .pos=(0, 18)
-        port vss: .align=East; .pos=(0, 2)
+        port a:   .orient=East; .pos=(0, 10)
+        port y:   .orient=West; .pos=(20, 10)
+        port vdd: .orient=East; .pos=(0, 18)
+        port vss: .orient=East; .pos=(0, 2)
         Inv i0:
             .pos = (10, 10)
             .A -- a; .Y -- y; .VDD -- vdd; .VSS -- vss
@@ -408,16 +408,16 @@ cell DeviceLeaf:
     The engine places standard cells, so it has nothing to flatten this into.
     """
     viewgen symbol(self) -> Symbol:
-        input g:   .align=West
-        inout d:   .align=East
-        inout vdd: .align=North
-        inout vss: .align=South
+        input g:   .orient=West
+        inout d:   .orient=East
+        inout vdd: .orient=North
+        inout vss: .orient=South
 
     viewgen schematic(self) -> Schematic:
-        port g:   .align=East; .pos=(0, 10)
-        port d:   .align=West; .pos=(20, 10)
-        port vdd: .align=East; .pos=(0, 18)
-        port vss: .align=East; .pos=(0, 2)
+        port g:   .orient=East; .pos=(0, 10)
+        port d:   .orient=West; .pos=(20, 10)
+        port vdd: .orient=East; .pos=(0, 18)
+        port vss: .orient=East; .pos=(0, 2)
         Nmos m0:
             .pos = (10, 10)
             .g -- g; .d -- d; .s -- vss; .b -- vss

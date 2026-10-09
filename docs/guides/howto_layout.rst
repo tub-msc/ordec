@@ -39,7 +39,7 @@ In ORD syntax, named child nodes are created with declaration blocks; in Python,
 Orientations
 ------------
 
-Instance orientation is set via the ``orientation`` attribute using the :class:`~ordec.core.geoprim.D4` enum (dihedral group: four rotations, four mirrored variants). Each value has two interchangeable names, a rotation/mirror name and a compass alias. **The compass aliases do not map to rotation angles the way one might guess** — they denote the direction the cell's top edge faces after the transform, while the rotation names follow the mathematical convention (``R90`` = 90° counterclockwise):
+Instance orientation is set via the ``orient`` attribute using the :class:`~ordec.core.geoprim.D4` enum (dihedral group: four rotations, four mirrored variants). Each value has two interchangeable names, a rotation/mirror name and a compass alias. **The compass aliases do not map to rotation angles the way one might guess** — they denote the direction the cell's top edge faces after the transform, while the rotation names follow the mathematical convention (``R90`` = 90° counterclockwise):
 
 ============ ======== ===== =========================================================
 Compass name D4 value Short Effect on the placed cell
@@ -54,7 +54,7 @@ FlippedWest  MX90     FW    mirrored, then rotated; top edge faces west
 FlippedEast  MY90     FE    mirrored, then rotated; top edge faces east
 ============ ======== ===== =========================================================
 
-So for a vertical resistor whose ``term_p`` is at the top: ``.orientation = East`` makes ``term_p`` face east, and ``.orientation = FlippedNorth`` flips it upside down (``term_p`` faces south) without mirroring left/right. The short names in the third column follow the familiar DEF orientation naming. The same enum is used for schematic instances and pin alignment.
+So for a vertical resistor whose ``term_p`` is at the top: ``.orient = East`` makes ``term_p`` face east, and ``.orient = FlippedNorth`` flips it upside down (``term_p`` faces south) without mirroring left/right. The short names in the third column follow the familiar DEF orientation naming. The same enum is used for schematic instances and pin alignment.
 
 Geometric constraints
 ---------------------
@@ -64,7 +64,7 @@ Positions and dimensions are usually not given as absolute numbers but as linear
 .. code-block:: text
 
     Rsil(l='1u') r3:
-        .orientation = FlippedNorth
+        .orient = FlippedNorth
         ! .term_n.cx == r1.term_n.cx          # align centers horizontally
         ! r1.term_n.cy == .term_n.cy + 2500   # 2.5 µm vertical spacing
 

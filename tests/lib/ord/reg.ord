@@ -7,8 +7,8 @@ from ..schematics import DFF
 cell MultibitReg_Arrays:
     bits = Parameter(int)
     viewgen symbol(self) -> Symbol:
-        input vdd: .align=North
-        input vss: .align=South
+        input vdd: .orient=North
+        input vss: .orient=South
         path d
         path q
         for i in range(self.bits):
@@ -17,8 +17,8 @@ cell MultibitReg_Arrays:
         input clk
 
     viewgen schematic(self) -> Schematic:
-        port vss: .pos=(1,0); .align=East
-        port vdd: .pos=(1,1); .align=East
+        port vss: .pos=(1,0); .orient=East
+        port vdd: .pos=(1,1); .orient=East
         port clk: .pos=(1,2)
         path d
         path q

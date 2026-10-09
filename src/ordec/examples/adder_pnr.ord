@@ -29,26 +29,26 @@ cell RippleAdder:
     """N-bit ripple-carry adder: s = a + b + cin, one full adder per bit."""
 
     viewgen symbol(self) -> Symbol:
-        input cin: .align=West
-        output cout: .align=East
-        inout vdd: .align=North
-        inout vss: .align=South
+        input cin: .orient=West
+        output cout: .orient=East
+        inout vdd: .orient=North
+        inout vss: .orient=South
         path a, b, s
         for i in range(N):
-            input a[i]: .align=West
-            input b[i]: .align=West
-            output s[i]: .align=East
+            input a[i]: .orient=West
+            input b[i]: .orient=West
+            output s[i]: .orient=East
 
     viewgen schematic(self) -> Schematic:
         path a, b, s
         for i in range(N):
-            port a[i]: .align=East; .pos=(0, 20 * i + 17)
-            port b[i]: .align=East; .pos=(0, 20 * i + 7)
-            port s[i]: .align=West; .pos=(54, 20 * i + 16)
-        port cin: .align=East; .pos=(0, 0)
-        port cout: .align=West; .pos=(54, 20 * N - 14)
-        port vdd: .align=East; .pos=(0, 20 * N + 4)
-        port vss: .align=East; .pos=(0, 20 * N + 2)
+            port a[i]: .orient=East; .pos=(0, 20 * i + 17)
+            port b[i]: .orient=East; .pos=(0, 20 * i + 7)
+            port s[i]: .orient=West; .pos=(54, 20 * i + 16)
+        port cin: .orient=East; .pos=(0, 0)
+        port cout: .orient=West; .pos=(54, 20 * N - 14)
+        port vdd: .orient=East; .pos=(0, 20 * N + 4)
+        port vss: .orient=East; .pos=(0, 20 * N + 2)
 
         # carry[i] is the carry into bit i: carry[0] = cin, carry[N] = cout.
         path cy

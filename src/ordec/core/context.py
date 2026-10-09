@@ -247,7 +247,9 @@ class SymbolViewBuilder(ViewBuilder):
         return root_cls(cell=cell)
 
     def postprocess(self):
-        self.root.place_pins(vpadding=2, hpadding=2)
+        # A symbol that sets its own outline has done its own layout.
+        if self.root.outline is None:
+            self.root.place_pins(vpadding=2, hpadding=2)
 
 
 class SchematicViewBuilder(MixinUnresolvedInstances, ViewBuilder):
@@ -366,8 +368,14 @@ class SchematicViewBuilder(MixinUnresolvedInstances, ViewBuilder):
         # were placed above. auto_wire() and check() rely on this.
         assert not self.solver.undefined_attrs()
 
+        # Wiring does not depend on any text (net names, tap labels,
+        # annotations): renaming a net or changing a parameter never reroutes.
+        # Text adapts to the wiring instead: terminal taps and annotation
+        # blocks are added afterwards.
         self.root.auto_wire()
         self.root.check(add_conn_points=True, add_terminal_taps=True)
+        # Last, since conn points, taps and wires are obstacles for the blocks.
+        self.root.place_annotations()
 
 
 class LayoutViewBuilder(MixinUnresolvedInstances, ViewBuilder):

@@ -9,7 +9,7 @@ import com.jetbrains.python.parsing.ExpressionParsing;
 
 /**
  * Expression-level ORD delta: the leading-dot access to the current node
- * (dotted_atom in ord.lark), e.g. `.align = North` or the bare `.`. It is
+ * (dotted_atom in ord.lark), e.g. `.orient = North` or the bare `.`. It is
  * the only ORD expression form Python tokens cannot express. The connection
  * operator `--` needs no handling (it parses as subtraction of a negation,
  * exactly as in ord.lark), and `.$l`/`t.$w` parse as ordinary attribute

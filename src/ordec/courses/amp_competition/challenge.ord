@@ -7,13 +7,13 @@ cell Amp:
         input vin
         input ibias
         output vout
-        inout vdd: .align=North
+        inout vdd: .orient=North
         inout vss
 
     viewgen schematic(self) -> Schematic:
-        port vdd: .align=East; .pos=(1,14)
-        port vss: .align=East; .pos=(1,2)
-        port ibias: .pos=(4,9); .align=South
+        port vdd: .orient=East; .pos=(1,14)
+        port vss: .orient=East; .pos=(1,2)
+        port ibias: .pos=(4,9); .orient=South
         port vin: .pos=(9,7)
         port vout: .pos=(19,7)
 

@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="196.875px" height="592.5000000000001px" viewBox="1.0 -0.35 7.875 23.700000000000003">
+  <g transform="matrix(1 0 0 -1 0 23.0)">
+    <path d="M4.0 6.0 L4.0 7.0" class="schemWire" />
+    <path d="M4.0 11.0 L4.0 12.0" class="schemWire" />
+    <path d="M4.0 16.0 L4.0 17.0" class="schemWire" />
+    <path d="M0 0 L0 0.5" transform="matrix(-1 0 0 -1 4.0 2.0)" class="tapPoint" />
+    <text transform="matrix(0 0.045 0.045 0 4.0 1.35)" dominant-baseline="middle" text-anchor="end" class="tapPointLabel">n0</text>
+    <path d="M0 0 L0 0.5" transform="matrix(1 0 0 1 4.0 21.0)" class="tapPoint" />
+    <text transform="matrix(0 0.045 0.045 0 4.0 21.65)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">n4</text>
+    <g>
+      <rect x="2.0" y="2.0" width="4.0" height="4.0" class="symbolOutline" />
+      <text transform="matrix(0.045 0 0 -0.045 4.875 6.23)" dominant-baseline="hanging" text-anchor="start"><tspan x="0" y="0em"><tspan class="instanceName">r1</tspan> <tspan class="cellName">Tall</tspan></tspan><tspan x="0" y="1em"><tspan class="params">r=1k</tspan> <tspan class="params">l=10u</tspan></tspan><tspan x="0" y="2em"><tspan class="params">w=1u</tspan> <tspan class="params">b=0</tspan></tspan><tspan x="0" y="3em" class="params">ps=180n</tspan><tspan x="0" y="4em"><tspan class="params">m=1</tspan> <tspan class="params">tc1=2m</tspan></tspan><tspan x="0" y="5em" class="params">tc2=50u</tspan></text>
+      <path d="M2.0 0.0 L2.0 1.0 L1.375 1.25 L2.625 1.75 L1.375 2.25 L2.625 2.75 L2.0 3.0 L2.0 4.0" transform="matrix(1 0 0 1 2.0 2.0)" class="symbolPoly" />
+      <text transform="matrix(0 0.045 0.045 0 3.875 5.875)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel detail">p</text>
+      <text transform="matrix(0 0.045 0.045 0 3.875 2.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel detail">n</text>
+    </g>
+    <g>
+      <rect x="2.0" y="7.0" width="4.0" height="4.0" class="symbolOutline" />
+      <text transform="matrix(0.045 0 0 -0.045 4.875 11.23)" dominant-baseline="hanging" text-anchor="start"><tspan x="0" y="0em"><tspan class="instanceName">r2</tspan> <tspan class="cellName">Tall</tspan></tspan><tspan x="0" y="1em"><tspan class="params">r=1k</tspan> <tspan class="params">l=10u</tspan></tspan><tspan x="0" y="2em"><tspan class="params">w=1u</tspan> <tspan class="params">b=0</tspan></tspan><tspan x="0" y="3em" class="params">ps=180n</tspan><tspan x="0" y="4em"><tspan class="params">m=1</tspan> <tspan class="params">tc1=2m</tspan></tspan><tspan x="0" y="5em" class="params">tc2=50u</tspan></text>
+      <path d="M2.0 0.0 L2.0 1.0 L1.375 1.25 L2.625 1.75 L1.375 2.25 L2.625 2.75 L2.0 3.0 L2.0 4.0" transform="matrix(1 0 0 1 2.0 7.0)" class="symbolPoly" />
+      <text transform="matrix(0 0.045 0.045 0 3.875 10.875)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel detail">p</text>
+      <text transform="matrix(0 0.045 0.045 0 3.875 7.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel detail">n</text>
+    </g>
+    <g>
+      <rect x="2.0" y="12.0" width="4.0" height="4.0" class="symbolOutline" />
+      <text transform="matrix(0.045 0 0 -0.045 4.875 16.23)" dominant-baseline="hanging" text-anchor="start"><tspan x="0" y="0em"><tspan class="instanceName">r3</tspan> <tspan class="cellName">Tall</tspan></tspan><tspan x="0" y="1em"><tspan class="params">r=1k</tspan> <tspan class="params">l=10u</tspan></tspan><tspan x="0" y="2em"><tspan class="params">w=1u</tspan> <tspan class="params">b=0</tspan></tspan><tspan x="0" y="3em" class="params">ps=180n</tspan><tspan x="0" y="4em"><tspan class="params">m=1</tspan> <tspan class="params">tc1=2m</tspan></tspan><tspan x="0" y="5em" class="params">tc2=50u</tspan></text>
+      <path d="M2.0 0.0 L2.0 1.0 L1.375 1.25 L2.625 1.75 L1.375 2.25 L2.625 2.75 L2.0 3.0 L2.0 4.0" transform="matrix(1 0 0 1 2.0 12.0)" class="symbolPoly" />
+      <text transform="matrix(0 0.045 0.045 0 3.875 15.875)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel detail">p</text>
+      <text transform="matrix(0 0.045 0.045 0 3.875 12.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel detail">n</text>
+    </g>
+    <g>
+      <rect x="2.0" y="17.0" width="4.0" height="4.0" class="symbolOutline" />
+      <text transform="matrix(0.045 0 0 -0.045 4.875 21.89)" dominant-baseline="hanging" text-anchor="start"><tspan x="0" y="0em"><tspan class="instanceName">r4</tspan> <tspan class="cellName">Tall</tspan></tspan><tspan x="0" y="1em" class="params">r=1k</tspan><tspan x="0" y="2em" class="params">l=10u</tspan><tspan x="0" y="3em"><tspan class="params">w=1u</tspan> <tspan class="params">b=0</tspan></tspan><tspan x="0" y="4em" class="params">ps=180n</tspan><tspan x="0" y="5em" class="params">m=1</tspan><tspan x="0" y="6em" class="params">tc1=2m</tspan><tspan x="0" y="7em" class="params">tc2=50u</tspan></text>
+      <path d="M2.0 0.0 L2.0 1.0 L1.375 1.25 L2.625 1.75 L1.375 2.25 L2.625 2.75 L2.0 3.0 L2.0 4.0" transform="matrix(1 0 0 1 2.0 17.0)" class="symbolPoly" />
+      <text transform="matrix(0 0.045 0.045 0 3.875 20.875)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel detail">p</text>
+      <text transform="matrix(0 0.045 0.045 0 3.875 17.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel detail">n</text>
+    </g>
+  </g>
+</svg>

@@ -53,7 +53,7 @@ def dir_to_pintype(direction: str) -> PinType:
     return PinType.Inout
 
 
-def dir_to_align(direction: str) -> D4:
+def dir_to_orient(direction: str) -> D4:
     if direction == 'input':
         return Orientation.West
     if direction == 'output':
@@ -123,11 +123,12 @@ def lef_symbol_specs(lef_data: Any) -> OrderedDict[str, OrderedDict[str, tuple[s
 
 
 def create_symbol(extlib: 'ExtLibrary', name: str, port_spec: OrderedDict[str, tuple[str, int]]) -> Symbol:
-    sym = Symbol(caption=name, cell=extlib[name])
+    sym = Symbol(cell=extlib[name])
+    sym.one(SymbolAnnotation.key_idx.query(AnnotationKind.CellName)).value = name
     for port_name, (direction, width) in port_spec.items():
         pin_kwargs = {
             'pintype': dir_to_pintype(direction),
-            'align': dir_to_align(direction),
+            'orient': dir_to_orient(direction),
         }
         if width == 1:
             sym[port_name] = Pin(**pin_kwargs)

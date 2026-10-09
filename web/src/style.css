@@ -1497,8 +1497,60 @@ body.theme-dark .spotlight-buttons .spotlight-skip {
     background-color: var(--color-bg-toolbar);
     color: var(--color-text);
 }
+/* Elements separated by divider lines like in .resviewhead; the last one
+   (coordinates) takes the remaining space. */
 .schem-statusbar {
+    gap: 0;
+    padding: 0;
+}
+.schem-statusbar > * {
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+}
+.schem-statusbar > :last-child {
+    flex-grow: 1;
     justify-content: flex-end;
+}
+.schem-statusbar > :not(:first-child) {
+    background-image: linear-gradient(var(--color-toolbar-border), var(--color-toolbar-border));
+    background-size: 1px calc(100% - 6px);
+    background-position: left center;
+    background-repeat: no-repeat;
+}
+/* Details toggle of schematics and symbols. Elements of class "detail"
+   (grid, pin labels hidden by the symbol) are hidden by the SVG's own
+   stylesheet (see render.py); the toggle shows them. Its circle is filled
+   while on, like the dot of the auto-refresh toggle. */
+.schem-svg.schem-detail .detail {
+    display: inline;
+}
+.schem-detail-toggle {
+    gap: 6px;
+    font-family: var(--font-sans);
+    font-size: var(--font-size-sm);
+    color: var(--color-text);
+    background-color: transparent;
+    border: none;
+    cursor: pointer;
+}
+.schem-detail-toggle::before {
+    content: '';
+    width: 7px;
+    height: 7px;
+    box-sizing: border-box;
+    border: 1px solid currentColor;
+    border-radius: 50%;
+}
+.schem-detail-toggle.active::before {
+    background-color: currentColor;
+}
+.schem-detail-toggle:hover {
+    background-color: rgba(0, 0, 0, 0.06);
+}
+body.theme-dark .schem-detail-toggle:hover {
+    background-color: rgba(255, 255, 255, 0.08);
 }
 .viewer-coordinates {
     font-family: var(--font-mono);
@@ -1611,6 +1663,15 @@ body.theme-dark .spotlight-buttons .spotlight-skip {
 /* -- Symbol stroke (theme-aware) --------------------------------- */
 .symbolPoly {
     stroke: var(--color-symbol-stroke) !important;
+}
+/* Symbol text and pin arrows share the color of the symbol drawing. */
+.pinLabel, .pinArrow, .params, .cellName {
+    fill: var(--color-symbol-stroke) !important;
+}
+/* Net names have the wiring color; their semi-transparent outline in the
+   background color (see render.py) fades out wires crossing them. */
+.portLabel, .tapPointLabel {
+    stroke: var(--color-bg) !important;
 }
 
 /* -- Scrollbar --------------------------------------------------- */

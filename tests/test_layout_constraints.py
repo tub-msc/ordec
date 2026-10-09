@@ -221,7 +221,7 @@ def test_layoutinstance_subcursor_constraints():
 
     for orientation in D4:
         layout2 = Layout(ref_layers=layers)
-        layout2.layout1_inst = LayoutInstance(orientation=orientation, ref=layout1)
+        layout2.layout1_inst = LayoutInstance(orient=orientation, ref=layout1)
 
         assert isinstance(layout2.layout1_inst.myrect.rect, Rect4LinearTerm)
         s = Solver(layout2)

@@ -8,9 +8,9 @@ ORD declarations and SI literals
 cell Inv:
     viewgen layout(self) -> Layout:
         port vdd:
-            .align = North
+            .orient = North
         output y:
-            .align = East
+            .orient = East
         Nmos n1:
             .g -- y
             .$l = 400n
@@ -218,7 +218,7 @@ Context paths, subscripts and dotted path targets
 
 viewgen symbol(self) -> Symbol:
     output bus[0].y:
-        .align = East
+        .orient = East
     path ring.vdd, arr[1]
 
 --------------------------------------------------------------------------------
@@ -580,7 +580,7 @@ Dotted viewgen return types and direction pin kinds
 cell Amp:
     viewgen layout(self) -> lib.Layout:
         input inp:
-            .align = West
+            .orient = West
         inout io
         Nmos n1: pass
 

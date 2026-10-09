@@ -6,14 +6,14 @@ cell InvAmp:
     viewgen symbol(self) -> Symbol:
         input a
         output y
-        inout vdd: .align=North
+        inout vdd: .orient=North
         inout vss
 
     viewgen schematic(self) -> Schematic:
         port a: .pos=(1,7)
         port y: .pos=(15,7)
-        port vdd: .align=East; .pos=(1,14)
-        port vss: .align=East; .pos=(1,1)
+        port vdd: .orient=East; .pos=(1,14)
+        port vss: .orient=East; .pos=(1,1)
 
         Nmos pd: .$w=1u; .$l=130n; .g -- a; .d -- y; .s -- vss; .b -- vss; .pos=(5,2)
         Pmos pu: .$w=2u; .$l=130n; .g -- a; .d -- y; .s -- vdd; .b -- vdd; .pos=(5,8)

@@ -40,10 +40,10 @@ cell A_Default:
     """Star of three Rsil resistors around internal net c."""
 
     viewgen symbol(self) -> Symbol:
-        inout x: .align=North
-        inout y: .align=East
+        inout x: .orient=North
+        inout y: .orient=East
         inout z
-        inout sub: .align=West
+        inout sub: .orient=West
 
     viewgen schematic(self) -> Schematic:
         net c  # star center
@@ -54,8 +54,8 @@ cell A_Default:
         port sub: .pos=(1,8)
 
         Rsil r1: .$l=L_RX; .pos=(3,12); .n -- c; .p -- x; .bn -- sub
-        Rsil r2: .$l=L_RY; .pos=(8,12); .orientation=East; .n -- c; .p -- y; .bn -- sub
-        Rsil r3: .$l=L_RZ; .pos=(3,9); .orientation=FlippedNorth; .n -- c; .p -- z; .bn -- sub
+        Rsil r2: .$l=L_RY; .pos=(8,12); .orient=East; .n -- c; .p -- y; .bn -- sub
+        Rsil r3: .$l=L_RZ; .pos=(3,9); .orient=FlippedNorth; .n -- c; .p -- z; .bn -- sub
 
     viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
@@ -66,11 +66,11 @@ cell A_Default:
         Rsil(l=L_RX) r1:
             ! .pos == (0, 3000)
         Rsil(l=L_RZ) r3:
-            .orientation = FlippedNorth  # term_p faces south
+            .orient = FlippedNorth  # term_p faces south
             ! .term_n.cx == r1.term_n.cx
             ! r1.term_n.cy == .term_n.cy + 2500
         Rsil(l=L_RY) r2:
-            .orientation = East  # term_n west (star side), term_p east
+            .orient = East  # term_n west (star side), term_p east
             ! .term_n.lx == r1.poly_body.ux + 1500
             ! .term_n.cy == 0.5*r1.term_n.cy + 0.5*r3.term_n.cy
 
@@ -103,9 +103,9 @@ cell B_Hier:
     """Two A_Default instances chained through rp1, with the y-loop through rp2."""
 
     viewgen symbol(self) -> Symbol:
-        inout x: .align=North
+        inout x: .orient=North
         inout z
-        inout sub: .align=West
+        inout sub: .orient=West
 
     viewgen schematic(self) -> Schematic:
         net i1, i2  # z-chain: a1.x -- rp1 -- a2.z
@@ -116,9 +116,9 @@ cell B_Hier:
         port sub: .pos=(1,13)
 
         A_Default a1: .pos=(4,4); .x -- i1; .y -- y1; .z -- z; .sub -- sub
-        Rppd rp1: .$l=L_RP1; .pos=(8,11); .orientation=FlippedSouth; .n -- i1; .p -- i2; .bn -- sub
+        Rppd rp1: .$l=L_RP1; .pos=(8,11); .orient=FlippedSouth; .n -- i1; .p -- i2; .bn -- sub
         A_Default a2: .pos=(4,18); .x -- x; .y -- y2; .z -- i2; .sub -- sub
-        Rppd rp2: .$l=L_RP2; .pos=(15,11); .orientation=FlippedSouth; .n -- y1; .p -- y2; .bn -- sub
+        Rppd rp2: .$l=L_RP2; .pos=(15,11); .orient=FlippedSouth; .n -- y1; .p -- y2; .bn -- sub
 
     viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
@@ -166,18 +166,18 @@ cell C_Hier:
     """Two B_Hier instances and one Rsil in parallel between ports z and x."""
 
     viewgen symbol(self) -> Symbol:
-        inout x: .align=North
+        inout x: .orient=North
         inout z
-        inout sub: .align=West
+        inout sub: .orient=West
 
     viewgen schematic(self) -> Schematic:
-        port z: .pos=(1,3); .align=East
-        port x: .pos=(1,10); .align=East
+        port z: .pos=(1,3); .orient=East
+        port x: .pos=(1,10); .orient=East
         port sub: .pos=(1,6)
 
         B_Hier b1: .pos=(4,4); .z -- z; .x -- x; .sub -- sub
         B_Hier b2: .pos=(10,4); .z -- z; .x -- x; .sub -- sub
-        Rsil rs: .$l=L_RS; .pos=(20,4); .orientation=FlippedSouth; .n -- z; .p -- x; .bn -- sub
+        Rsil rs: .$l=L_RS; .pos=(20,4); .orient=FlippedSouth; .n -- z; .p -- x; .bn -- sub
 
     viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
@@ -241,18 +241,18 @@ cell C_FlatLayout:
     """
 
     viewgen symbol(self) -> Symbol:
-        inout x: .align=North
+        inout x: .orient=North
         inout z
-        inout sub: .align=West
+        inout sub: .orient=West
 
     viewgen schematic(self) -> Schematic:
-        port z: .pos=(1,3); .align=East
-        port x: .pos=(1,10); .align=East
+        port z: .pos=(1,3); .orient=East
+        port x: .pos=(1,10); .orient=East
         port sub: .pos=(1,6)
 
         B_Hier b1: .pos=(4,4); .z -- z; .x -- x; .sub -- sub
         B_Hier b2: .pos=(10,4); .z -- z; .x -- x; .sub -- sub
-        Rsil rs: .$l=L_RS; .pos=(20,4); .orientation=FlippedSouth; .n -- z; .p -- x; .bn -- sub
+        Rsil rs: .$l=L_RS; .pos=(20,4); .orient=FlippedSouth; .n -- z; .p -- x; .bn -- sub
 
     viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
@@ -267,11 +267,11 @@ cell C_FlatLayout:
                     if j == 0:
                         ! .pos == (9000*k, 3000)
                 Rsil(l=L_RZ) r3[i]:
-                    .orientation = FlippedNorth
+                    .orient = FlippedNorth
                     ! .term_n.cx == r1[i].term_n.cx
                     ! r1[i].term_n.cy == .term_n.cy + 2500
                 Rsil(l=L_RY) r2[i]:
-                    .orientation = East
+                    .orient = East
                     ! .term_n.lx == r1[i].poly_body.ux + 1500
                     ! .term_n.cy == 0.5*r1[i].term_n.cy + 0.5*r3[i].term_n.cy
                 # Star net of cluster i (cf. cell A_Default).
@@ -348,13 +348,13 @@ cell C_FlatSchematic:
     """
 
     viewgen symbol(self) -> Symbol:
-        inout x: .align=North
+        inout x: .orient=North
         inout z
-        inout sub: .align=West
+        inout sub: .orient=West
 
     viewgen schematic(self) -> Schematic:
-        port z: .pos=(1,3); .align=East
-        port x: .pos=(1,36); .align=East
+        port z: .pos=(1,3); .orient=East
+        port x: .pos=(1,36); .orient=East
         port sub: .pos=(1,20)
 
         path c1, c2, i1, i2, y1, y2
@@ -371,18 +371,18 @@ cell C_FlatSchematic:
 
             # lower star (was b<k+1>.a1)
             Rsil a1r1[k]: .$l=L_RX; .pos=(3+xo,12); .n -- c1[k]; .p -- i1[k]; .bn -- sub
-            Rsil a1r2[k]: .$l=L_RY; .pos=(8+xo,12); .orientation=East; .n -- c1[k]; .p -- y1[k]; .bn -- sub
-            Rsil a1r3[k]: .$l=L_RZ; .pos=(3+xo,9); .orientation=FlippedNorth; .n -- c1[k]; .p -- z; .bn -- sub
+            Rsil a1r2[k]: .$l=L_RY; .pos=(8+xo,12); .orient=East; .n -- c1[k]; .p -- y1[k]; .bn -- sub
+            Rsil a1r3[k]: .$l=L_RZ; .pos=(3+xo,9); .orient=FlippedNorth; .n -- c1[k]; .p -- z; .bn -- sub
             # z-chain resistor (was b<k+1>.rp1)
             Rppd rp1[k]: .$l=L_RP1; .pos=(3+xo,18); .n -- i1[k]; .p -- i2[k]; .bn -- sub
             # upper star (was b<k+1>.a2)
-            Rsil a2r3[k]: .$l=L_RZ; .pos=(3+xo,27); .orientation=FlippedNorth; .n -- c2[k]; .p -- i2[k]; .bn -- sub
+            Rsil a2r3[k]: .$l=L_RZ; .pos=(3+xo,27); .orient=FlippedNorth; .n -- c2[k]; .p -- i2[k]; .bn -- sub
             Rsil a2r1[k]: .$l=L_RX; .pos=(3+xo,30); .n -- c2[k]; .p -- x; .bn -- sub
-            Rsil a2r2[k]: .$l=L_RY; .pos=(8+xo,30); .orientation=East; .n -- c2[k]; .p -- y2[k]; .bn -- sub
+            Rsil a2r2[k]: .$l=L_RY; .pos=(8+xo,30); .orient=East; .n -- c2[k]; .p -- y2[k]; .bn -- sub
             # y-loop resistor (was b<k+1>.rp2)
-            Rppd rp2[k]: .$l=L_RP2; .pos=(17+xo,17); .orientation=FlippedSouth; .n -- y1[k]; .p -- y2[k]; .bn -- sub
+            Rppd rp2[k]: .$l=L_RP2; .pos=(17+xo,17); .orient=FlippedSouth; .n -- y1[k]; .p -- y2[k]; .bn -- sub
 
-        Rsil rs: .$l=L_RS; .pos=(42,12); .orientation=FlippedSouth; .n -- z; .p -- x; .bn -- sub
+        Rsil rs: .$l=L_RS; .pos=(42,12); .orient=FlippedSouth; .n -- z; .p -- x; .bn -- sub
 
     viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
@@ -439,10 +439,10 @@ cell A_Moved:
     """
 
     viewgen symbol(self) -> Symbol:
-        inout x: .align=North
-        inout c: .align=East
+        inout x: .orient=North
+        inout c: .orient=East
         inout z
-        inout sub: .align=West
+        inout sub: .orient=West
 
     viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
@@ -451,7 +451,7 @@ cell A_Moved:
         Rsil(l=L_RX) r1:
             ! .pos == (0, 3000)
         Rsil(l=L_RZ) r3:
-            .orientation = FlippedNorth
+            .orient = FlippedNorth
             ! .term_n.cx == r1.term_n.cx
             ! r1.term_n.cy == .term_n.cy + 2500
 
@@ -478,9 +478,9 @@ cell B_Moved:
     """
 
     viewgen symbol(self) -> Symbol:
-        inout x: .align=North
+        inout x: .orient=North
         inout z
-        inout sub: .align=West
+        inout sub: .orient=West
 
     viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
@@ -498,11 +498,11 @@ cell B_Moved:
         # The two moved y-arm resistors, placed where A_Default.r2 sat inside a1/a2,
         # by referencing the nested resistor geometry directly (a1.r1.poly_body).
         Rsil(l=L_RY) ry1:
-            .orientation = East
+            .orient = East
             ! .term_n.lx == a1.r1.poly_body.ux + 1500
             ! .term_n.cy == 0.5*a1.x.cy + 0.5*a1.z.cy
         Rsil(l=L_RY) ry2:
-            .orientation = East
+            .orient = East
             ! .term_n.lx == a2.r1.poly_body.ux + 1500
             ! .term_n.cy == 0.5*a2.x.cy + 0.5*a2.z.cy
 
@@ -549,18 +549,18 @@ cell C_Moved:
     """
 
     viewgen symbol(self) -> Symbol:
-        inout x: .align=North
+        inout x: .orient=North
         inout z
-        inout sub: .align=West
+        inout sub: .orient=West
 
     viewgen schematic(self) -> Schematic:
-        port z: .pos=(1,3); .align=East
-        port x: .pos=(1,10); .align=East
+        port z: .pos=(1,3); .orient=East
+        port x: .pos=(1,10); .orient=East
         port sub: .pos=(1,6)
 
         B_Hier b1: .pos=(4,4); .z -- z; .x -- x; .sub -- sub
         B_Hier b2: .pos=(10,4); .z -- z; .x -- x; .sub -- sub
-        Rsil rs: .$l=L_RS; .pos=(20,4); .orientation=FlippedSouth; .n -- z; .p -- x; .bn -- sub
+        Rsil rs: .$l=L_RS; .pos=(20,4); .orient=FlippedSouth; .n -- z; .p -- x; .bn -- sub
 
     viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers

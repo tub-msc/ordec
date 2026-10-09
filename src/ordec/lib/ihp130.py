@@ -986,6 +986,9 @@ class Res(SimLeafCell):
     ``ps`` apart, joined at alternating ends, so a large resistance becomes
     a compact meander. With three or more stripes, Rppd and Rhigh need
     ``ps`` >= 400 nm on SG13G2.
+
+    The annotation block of the symbol shows the nominal resistance derived
+    from the geometry (``r=...``, see :meth:`nominal_resistance`).
     """
     l = Parameter(R)
     w = Parameter(R)
@@ -993,16 +996,33 @@ class Res(SimLeafCell):
     ps = Parameter(R, default=R("0.18u"))
     m = Parameter(int, default=1)
 
+    #: Bend length factor of the resistor models (resistors_mod.lib).
+    model_kappa = 1.85
+
+    def nominal_resistance(self) -> float:
+        """
+        Nominal typical-corner resistance in ohms, following the geometry
+        formula of the ngspice models (resistors_mod.lib): sheet resistance
+        over the effective length and width plus the end resistance. This is
+        an estimate for display (meanders are the least accurate case, at
+        about 9 percent); simulation uses the models themselves.
+        """
+        w = float(self.w)
+        weff = w + self.model_dw
+        leff = (self.b + 1)*float(self.l) + (2/self.model_kappa*weff + float(self.ps))*self.b
+        return (self.model_rsh*leff/weff + 2*self.model_rz/w) / self.m
+
     def ngspice_current_pins(self):
         return {"i": "p"}
 
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
+        s % SymbolAnnotation(key='r', value=str(R(f'{self.nominal_resistance():.3g}')))
 
-        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
-        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
-        s.bn = Pin(pos=Vec2R(4, 2), pintype=PinType.In, align=East)
+        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, orient=South, show_arrow=False, show_label=False, rotate_label=False)
+        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, orient=North, show_arrow=False, show_label=False, rotate_label=False)
+        s.bn = Pin(pos=Vec2R(4, 2), pintype=PinType.In, orient=East, show_arrow=False, rotate_label=False)
 
         zigzag_height = R(2)
         zigzag_width_half = R(0.625)
@@ -1058,8 +1078,13 @@ class Rsil(Res):
     :ref:`ihp130_substrate_lvs`.
     """
     model_name = "rsil"
-    l = Parameter(R, default=R("0.50u"))
-    w = Parameter(R, default=R("0.50u"))
+    l = Parameter(R, default=R("0.50u"), hide_default=False)
+    w = Parameter(R, default=R("0.50u"), hide_default=False)
+
+    # Typical-corner model constants (rsh_rsil, weff, rzspec), see nominal_resistance:
+    model_rsh = 7.0
+    model_dw = 0.01e-6
+    model_rz = 4.5e-6
 
     @viewgen_noctx
     def layout(self) -> Layout:
@@ -1086,8 +1111,13 @@ class Rppd(Res):
     :ref:`ihp130_substrate_lvs`.
     """
     model_name = "rppd"
-    l = Parameter(R, default=R("0.50u"))
-    w = Parameter(R, default=R("0.50u"))
+    l = Parameter(R, default=R("0.50u"), hide_default=False)
+    w = Parameter(R, default=R("0.50u"), hide_default=False)
+
+    # Typical-corner model constants (rsh_rppd, weff, rzspec), see nominal_resistance:
+    model_rsh = 260.0
+    model_dw = 0.006e-6
+    model_rz = 35e-6
 
     @viewgen_noctx
     def layout(self) -> Layout:
@@ -1114,8 +1144,13 @@ class Rhigh(Res):
     :ref:`ihp130_substrate_lvs`.
     """
     model_name = "rhigh"
-    l = Parameter(R, default=R("0.96u"))
-    w = Parameter(R, default=R("0.50u"))
+    l = Parameter(R, default=R("0.96u"), hide_default=False)
+    w = Parameter(R, default=R("0.50u"), hide_default=False)
+
+    # Typical-corner model constants (rsh_rhigh, weff, rzspec), see nominal_resistance:
+    model_rsh = 1360.0
+    model_dw = -0.04e-6
+    model_rz = 80e-6
 
     @viewgen_noctx
     def layout(self) -> Layout:
@@ -1137,8 +1172,8 @@ class Rhigh(Res):
 @public
 class Cmim(SimLeafCell):
     """Fixed SG13G2 MIM capacitor."""
-    l = Parameter(R, default=R("6.99u"))
-    w = Parameter(R, default=R("6.99u"))
+    l = Parameter(R, default=R("6.99u"), hide_default=False)
+    w = Parameter(R, default=R("6.99u"), hide_default=False)
     m = Parameter(int, default=1)
     ic = Parameter(R, optional=True)
 
@@ -1149,8 +1184,8 @@ class Cmim(SimLeafCell):
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
-        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
-        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
+        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, orient=South, show_arrow=False, show_label=False, rotate_label=False)
+        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, orient=North, show_arrow=False, show_label=False, rotate_label=False)
 
         s % SymbolPoly(vertices=[Vec2R(1.25, 1.8), Vec2R(2.75, 1.8)])
         s % SymbolPoly(vertices=[Vec2R(1.25, 2.2), Vec2R(2.75, 2.2)])

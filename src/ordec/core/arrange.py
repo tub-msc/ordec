@@ -493,7 +493,7 @@ class ConnectingGroup(ArrangementGroup):
         if override is not None:
             return override
         candidates = [pin for pin in inst.symbol.all(Pin)
-            if (inst.orientation * pin.align).unflip() == side]
+            if (inst.orient * pin.orient).unflip() == side]
         if len(candidates) != 1:
             raise ValueError(
                 f"{type(self).__name__} requires exactly one "

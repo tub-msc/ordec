@@ -26,11 +26,50 @@ WIRE_DOMAIN = 3 << 16
 # Enums
 # -----
 
+def unflip(d4):
+    """Attr factory for orientations on which mirroring has no visible effect."""
+    return d4.unflip() if isinstance(d4, D4) else d4
+
 @public
 class PinType(Enum):
     In = 'in'
     Out = 'out'
     Inout = 'inout'
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}.{self.name}'
+
+@public
+class HAlign(Enum):
+    Left = 1
+    Right = 2
+    Center = 3
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}.{self.name}'
+
+    def invert(self):
+        """Swaps Left and Right; Center stays."""
+        if self == self.Left:
+            return self.Right
+        elif self == self.Right:
+            return self.Left
+        return self
+
+@public
+class VAlign(Enum):
+    Top = 1
+    Bottom = 2
+    Middle = 3
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}.{self.name}'
+
+@public
+class AnnotationKind(Enum):
+    """Keys of the SymbolAnnotations that do not show a parameter."""
+    CellName = 'cellname' #: Name of the instantiated cell (value holds the name).
+    InstanceName = 'instancename' #: Name of the SchemInstance (value is None, the name is only known in the schematic).
 
     def __repr__(self):
         return f'{self.__class__.__name__}.{self.name}'
@@ -77,12 +116,33 @@ class MixinRenderable:
 
 @public
 class Symbol(MixinRenderable, SubgraphRoot):
-    """A symbol of an individual cell."""
+    """
+    A symbol of an individual cell.
+
+    A symbol with a cell starts out with the default SymbolAnnotations:
+    instance name, cell name (the class name of the cell) and one line per
+    cell parameter (see Cell.annotation_params). Parameters left at their
+    default are hidden (shown=False), unless the Parameter sets
+    hide_default=False; schematics can still show them via an override.
+    Symbols that want other annotations modify, remove or add to these, e.g.
+    ``s.one(SymbolAnnotation.key_idx.query(AnnotationKind.CellName))`` or
+    ``s.one(SymbolAnnotation.key_idx.query('w'))``.
+    Construct with default_annotations=False to start without annotations.
+    """
     view_builder = SymbolViewBuilder
     wire_id = WIRE_DOMAIN | 1
     outline = Attr(Rect4R, factory=coerce_tuple(Rect4R, 4))
-    caption = Attr(str)
     cell = LiveRef(Cell)
+    #: Whether this is a box symbol (see place_pins). Annotation blocks of
+    #: box symbols prefer the spot above the top left corner, those of drawn
+    #: symbols the spot beside them (see :func:`ordec.schematic.place_annotations`).
+    is_box = Attr(bool, default=False)
+
+    def __new__(cls, default_annotations: bool = True, **kwargs):
+        ret = super().__new__(cls, **kwargs)
+        if default_annotations and ret.cell is not None:
+            ret._add_default_annotations()
+        return ret
 
     def portmap(self, **kwargs):
         def inserter_func(main, sgu, primary_nid):
@@ -93,8 +153,15 @@ class Symbol(MixinRenderable, SubgraphRoot):
         return inserter_func
 
     def place_pins(self, hpadding=3, vpadding=3):
+        """Makes this a box symbol, see :func:`ordec.schematic.symbol_place_pins`."""
         from ...schematic import symbol_place_pins
         symbol_place_pins(self, hpadding=hpadding, vpadding=vpadding)
+
+    def _add_default_annotations(self):
+        self % SymbolAnnotation(key=AnnotationKind.InstanceName)
+        self % SymbolAnnotation(key=AnnotationKind.CellName, value=type(self.cell).__name__)
+        for k, v, shown in self.cell.annotation_params():
+            self % SymbolAnnotation(key=k, value=str(v), shown=shown)
 
 @public
 class Pin(Node):
@@ -104,7 +171,38 @@ class Pin(Node):
 
     pintype = Attr(PinType, default=PinType.Inout)
     pos     = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
-    align   = Attr(D4, default=D4.R0)
+    #: Direction in which the pin points out of the symbol (the side its wire
+    #: attaches). Mirroring has no visible effect on pins, so orient is
+    #: stored unflipped.
+    orient  = Attr(D4, default=D4.R0, factory=unflip)
+    #: Whether the label is centered on the stub. Else, it is beside the
+    #: stub, so that the wire passes by: above horizontal and left of
+    #: vertical stubs. Centered labels suit stubs that do not continue into
+    #: the drawing, e.g. of box symbols (see Symbol.place_pins). Sides and
+    #: directions refer to the drawing, i.e. after the instance transform.
+    center_label = Attr(bool, default=False)
+    #: Whether the label of a vertical stub is rotated to run along it.
+    #: False draws it horizontally, starting at the pin end towards the
+    #: symbol, which reads better for short labels (e.g. 's', 'g', 'd').
+    rotate_label = Attr(bool, default=True)
+    #: Whether the pin name is drawn next to the pin. Hidden pin names still
+    #: show in the detail view of the web UI.
+    show_label = Attr(bool, default=True)
+    show_arrow = Attr(bool, default=True) #: Whether the arrow indicating pintype is drawn at the pin.
+
+    # Backwards compatibility: align was renamed to orient.
+    def __new__(cls, align=None, **kwargs):
+        if align is not None:
+            kwargs['orient'] = align
+        return super().__new__(cls, **kwargs)
+
+    @property
+    def align(self):
+        return self.orient
+
+    @align.setter
+    def align(self, value):
+        self.orient = value
 
 @public
 class SymbolPoly(GenericPolyR, MixinPolygonalChain):
@@ -155,6 +253,49 @@ class SymbolArc(Node):
             d.append(f"a {r} {r} 0 {large_arc_flag} {sweep_flag} {e_dx} {e_dy}")
         return ' '.join(d)
 
+@public
+class SymbolAnnotationStack(Node):
+    """
+    Stack of SymbolAnnotations at a fixed position of a Symbol, typically
+    inside its outline (e.g. the cell name inside a box symbol). The
+    SymbolAnnotations referencing it are drawn as one line each. The text
+    is never rotated; in rotated or mirrored instances, the alignment
+    follows the instance transform, so that the stack stays on the same
+    side of pos (e.g. inside a corner of the box).
+    """
+    in_subgraphs = [Symbol]
+    wire_id = WIRE_DOMAIN | 17
+
+    pos    = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
+    halign = Attr(HAlign, default=HAlign.Left) #: Left: the text extends right from pos; Right: left; Center: centered on pos.
+    valign = Attr(VAlign, default=VAlign.Top) #: Top: the lines hang below pos; Bottom: they stack upwards.
+
+@public
+class SymbolAnnotation(Node):
+    """
+    One line of annotation text of a Symbol: the cell name, the instance
+    name or a parameter, drawn as key=value. Besides cell parameters,
+    parameter lines can show quantities derived from them, e.g. the nominal
+    resistance of a resistor. Lines without ref form the annotation block,
+    which the schematic places outside the symbol itself (see
+    SchemInstance.annotation_pos). Lines are stacked in node order. Only
+    lines with shown=True are drawn; a schematic can override this per
+    instance with SchemAnnotationOverride.
+    """
+    in_subgraphs = [Symbol]
+    wire_id = WIRE_DOMAIN | 18
+
+    #: Fixed stack the line belongs to, None for the annotation block.
+    ref   = LocalRef(SymbolAnnotationStack)
+    #: What the line shows: an AnnotationKind, or the name of a parameter.
+    key   = Attr(AnnotationKind|str, optional=False,
+        typecheck_custom=lambda val: isinstance(val, (AnnotationKind, str)))
+    value = Attr(str) #: Cell name or parameter value; None for AnnotationKind.InstanceName.
+    shown = Attr(bool, default=True)
+
+    ref_idx = Index(ref)
+    key_idx = Index(key, unique=True)
+
 # Schematic
 # ---------
 
@@ -180,6 +321,10 @@ class Schematic(MixinRenderable, SubgraphRoot):
     def place_unplaced_instances(self):
         from ...schematic.helpers import place_unplaced_instances
         place_unplaced_instances(self)
+
+    def place_annotations(self):
+        from ...schematic import place_annotations
+        place_annotations(self)
 
     def check(self, add_conn_points=False, add_terminal_taps=False):
         from ...schematic import schem_check
@@ -233,12 +378,21 @@ class Net(Node):
         self.port.pos = value
 
     @property
+    def orient(self):
+        return self.port.orient
+
+    @orient.setter
+    def orient(self, value):
+        self.port.orient = value
+
+    # Backwards compatibility: align was renamed to orient.
+    @property
     def align(self):
-        return self.port.align
+        return self.port.orient
 
     @align.setter
     def align(self, value):
-        self.port.align = value
+        self.port.orient = value
 
 @public
 class SchemPort(Node):
@@ -253,7 +407,23 @@ class SchemPort(Node):
     pos = ConstrainableAttr(Vec2R, placeholder=Vec2LinearTerm,
         factory=coerce_tuple(Vec2R, 2))
     pos_idx = Index(pos)
-    align = Attr(D4, default=D4.R0)
+    #: Direction in which the port arrow points, towards the wire; the label
+    #: is on the far side. Stored unflipped, like Pin.orient.
+    orient = Attr(D4, default=D4.R0, factory=unflip)
+
+    # Backwards compatibility: align was renamed to orient.
+    def __new__(cls, align=None, **kwargs):
+        if align is not None:
+            kwargs['orient'] = align
+        return super().__new__(cls, **kwargs)
+
+    @property
+    def align(self):
+        return self.orient
+
+    @align.setter
+    def align(self, value):
+        self.orient = value
 
 @public
 class SchemWire(GenericPolyR, MixinPolygonalChain):
@@ -269,7 +439,7 @@ class SchemInstanceSubcursor(tuple):
     Cursor providing transformed access to Symbol contents from SchemInstance.
     Transforms Symbol-space coordinates (Vec2R, Rect4R) to Schematic-space
     based on the instance's position and orientation; directions (D4, e.g.
-    Pin.align) are composed with the instance's orientation.
+    Pin.orient) are composed with the instance's orientation.
     """
     def __repr__(self):
         return f"{type(self).__name__}{tuple.__repr__(self)}"
@@ -311,7 +481,7 @@ class SchemInstanceSubcursor(tuple):
             return self.transform() * inner_ret
         elif isinstance(inner_ret, D4):
             # Directions rotate/mirror with the instance, like coordinates do.
-            return self.inst().orientation * inner_ret
+            return self.inst().orient * inner_ret
         elif isinstance(inner_ret, Node):
             return SchemInstanceSubcursor((self.inst(), inner_ret))
         else:
@@ -328,25 +498,56 @@ class SchemInstance(Node, MixinSourceLoc):
 
     pos = ConstrainableAttr(Vec2R, placeholder=Vec2LinearTerm,
         factory=coerce_tuple(Vec2R, 2))
-    orientation = Attr(D4, default=D4.R0)
+    #: Rotation and mirroring of the symbol, applied after it is moved to pos
+    #: (see loc_transform).
+    orient = Attr(D4, default=D4.R0)
+    #: Position of the annotation block in schematic coordinates. Set by
+    #: Schematic.place_annotations() in the viewgen pipeline unless the
+    #: schematic sets it explicitly. If still None when rendering (e.g. in
+    #: hand-built schematics that do not call place_annotations), the block
+    #: hangs from the top right corner of the symbol outline, ignoring
+    #: annotation_halign and annotation_wrap.
+    annotation_pos = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
+    #: Side the block extends to from annotation_pos, in schematic
+    #: coordinates (Left: it extends right of it). Only used together with
+    #: annotation_pos; the block always hangs below it.
+    annotation_halign = Attr(HAlign, default=HAlign.Left)
+    #: Arrangement of the annotation block: consecutive SymbolAnnotations
+    #: share a text row as long as it stays within annotation_wrap
+    #: characters; 0 means one per row. Set together with annotation_pos:
+    #: place_annotations() chooses flatter blocks where vertical space is
+    #: scarce.
+    annotation_wrap = Attr(int, default=0)
     #: None only while the instance is unresolved in its view context; must be
     #: resolved before the schematic is finalized (checked in postprocess
     #: and schem_check).
     symbol = SubgraphRef(Symbol)
 
-    def __new__(cls, connect=None, **kwargs):
+    def __new__(cls, connect=None, orientation=None, **kwargs):
+        # Backwards compatibility: orientation was renamed to orient.
+        if orientation is not None:
+            kwargs['orient'] = orientation
         main = super().__new__(cls, **kwargs)
         if connect is None:
             return main
         else:
             return FuncInserter(partial(connect, main))
 
+    # Backwards compatibility: orientation was renamed to orient.
+    @property
+    def orientation(self):
+        return self.orient
+
+    @orientation.setter
+    def orientation(self, value):
+        self.orient = value
+
     def loc_transform(self):
         pos = self.pos
         if isinstance(pos, Vec2LinearTerm):
-            return TD4LinearTerm(transl=pos, d4=self.orientation)
+            return TD4LinearTerm(transl=pos, d4=self.orient)
         else:
-            return pos.transl() * self.orientation
+            return pos.transl() * self.orient
 
     @property
     def params(self):
@@ -392,6 +593,18 @@ class SchemInstanceConn(Node):
     there = ExternalRef(Pin, of_subgraph=lambda c: c.ref.symbol, optional=False) # ExternalRef to Pin in SchemInstance.symbol
 
     ref_pin_idx = CombinedIndex([ref, there], unique=True)
+
+@public
+class SchemAnnotationOverride(Node):
+    """Overrides the shown flag of one SymbolAnnotation for one SchemInstance."""
+    in_subgraphs = [Schematic]
+    wire_id = WIRE_DOMAIN | 19
+
+    ref = LocalRef(SchemInstance, optional=False)
+    ref_idx = Index(ref)
+    there = ExternalRef(SymbolAnnotation, of_subgraph=lambda c: c.ref.symbol, optional=False)
+    ref_there_idx = CombinedIndex([ref, there], unique=True)
+    shown = Attr(bool, optional=False)
 
 
 class SchemInstanceUnresolvedSubcursor(tuple):
@@ -475,10 +688,26 @@ class SchemTapPoint(Node):
 
     pos = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
     pos_idx = Index(pos)
-    align = Attr(D4, default=D4.R0)
+    #: Direction in which the tap glyph and its label extend away from pos,
+    #: i.e. away from the wire. Stored unflipped, like Pin.orient.
+    orient = Attr(D4, default=D4.R0, factory=unflip)
+
+    # Backwards compatibility: align was renamed to orient.
+    def __new__(cls, align=None, **kwargs):
+        if align is not None:
+            kwargs['orient'] = align
+        return super().__new__(cls, **kwargs)
+
+    @property
+    def align(self):
+        return self.orient
+
+    @align.setter
+    def align(self, value):
+        self.orient = value
 
     def loc_transform(self):
-        return self.pos.transl() * self.align
+        return self.pos.transl() * self.orient
 
 @public
 class SchemConnPoint(Node):
@@ -498,7 +727,6 @@ class SchemErrorMarker(Node):
     wire_id = WIRE_DOMAIN | 16
     ref = LocalRef(Schematic)
     pos = Attr(Vec2R, factory=coerce_tuple(Vec2R, 2))
-    align = Attr(D4, default=D4.R0)
     error_type = Attr(SchemErrorType)
 
 # PolyVec2R vertex nodes (defined in .base) may appear in Symbol and Schematic

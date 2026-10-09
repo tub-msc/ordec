@@ -9,20 +9,20 @@ cell DiffPair:
     viewgen symbol(self) -> Symbol:
         input inp
         input inn
-        output outp: .align=North
-        output outn: .align=North
+        output outp: .orient=North
+        output outn: .orient=North
         inout tail
 
 cell LoadPair:
     """Active load block: two pins on the south side."""
     viewgen symbol(self) -> Symbol:
-        inout vdd: .align=North
-        output outp: .align=South
-        output outn: .align=South
+        inout vdd: .orient=North
+        output outp: .orient=South
+        output outn: .orient=South
 
 cell Amp:
     viewgen symbol(self) -> Symbol:
-        inout vdd: .align=North
+        inout vdd: .orient=North
         inout vss
         input ibias
         input inp

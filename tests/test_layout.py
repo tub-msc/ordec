@@ -171,7 +171,7 @@ def test_gds_sref_d4():
     for inst in layout.all(LayoutInstance):
         assert inst.ref == lib['SUB'].frame
 
-        pos_orientation = (inst.pos, inst.orientation)
+        pos_orientation = (inst.pos, inst.orient)
         assert pos_orientation in expected_pos_orientations
         expected_pos_orientations.remove(pos_orientation)
     assert len(expected_pos_orientations) == 0
@@ -226,14 +226,14 @@ def test_gds_aref():
     layout = lib['TOP'].layout
 
     sub_poly_vertices = lib['SUB'].layout.one(LayoutPoly).vertices()
-    # The polys are reversed in the ARef because ainst.orientation mirrors.
+    # The polys are reversed in the ARef because ainst.orient mirrors.
     # origin_idx_reversed is 0 at the moment, but this could change when
     # the GDS poly vertexes are rearranged.
     origin_idx_reversed = len(sub_poly_vertices) - 1 - sub_poly_vertices.index(Vec2I(0, 0))
 
     ainst = layout.one(LayoutInstanceArray)
     assert ainst.pos == Vec2I(10000, 10000)
-    assert ainst.orientation == MX90
+    assert ainst.orient == MX90
     assert ainst.ref == lib['SUB'].frame
     assert ainst.cols == 3
     assert ainst.rows == 2
@@ -256,7 +256,7 @@ def test_gds_aref():
     assert len(list(layout_expand.all(LayoutInstanceArray))) == 0
     pos_expected = pos_expected_orig.copy()
     for inst in layout_expand.all(LayoutInstance):
-        assert inst.orientation == ainst.orientation
+        assert inst.orient == ainst.orient
         assert inst.ref == ainst.ref
         assert inst.pos in pos_expected
         pos_expected.remove(inst.pos)
@@ -307,7 +307,7 @@ def test_flatten():
         layout % LayoutInstance(
             ref=sublayout,
             pos=pos,
-            orientation=orientation
+            orient=orientation
         )
 
         # Layout instance should be gone...
@@ -621,12 +621,12 @@ def test_write_gds():
                 width=100,
                 endtype=PathEndType.Square,
             )
-            l % LayoutInstance(pos=(-100, -100), orientation=MY, ref=Sub().layout)
-            l % LayoutInstance(pos=(-400, -400), orientation=R0, ref=Sub().layout)
+            l % LayoutInstance(pos=(-100, -100), orient=MY, ref=Sub().layout)
+            l % LayoutInstance(pos=(-400, -400), orient=R0, ref=Sub().layout)
 
             l % LayoutInstanceArray(
                 pos=(0, 2000),
-                orientation=R0,
+                orient=R0,
                 ref=Sub2().layout,
                 cols=4,
                 rows=2,
@@ -679,7 +679,7 @@ def test_layoutinstance_subcursor():
     layout1 = layout1.freeze()
 
     layout2 = Layout(ref_layers=layers)
-    layout2.layout1_inst = LayoutInstance(pos=(1000, 2000), orientation=R90, ref=layout1)
+    layout2.layout1_inst = LayoutInstance(pos=(1000, 2000), orient=R90, ref=layout1)
     layout2 = layout2.freeze()
 
     assert layout2.layout1_inst.myrect.parent == layout2.layout1_inst.subcursor()
@@ -687,7 +687,7 @@ def test_layoutinstance_subcursor():
     assert layout2.layout1_inst.subcursor().parent == layout2.layout1_inst
 
     layout3 = Layout(ref_layers=layers) 
-    layout3.layout2_inst = LayoutInstance(pos=(50, 50), orientation=MX, ref=layout2)
+    layout3.layout2_inst = LayoutInstance(pos=(50, 50), orient=MX, ref=layout2)
     layout3 = layout3.freeze()
 
     assert layout3.layout2_inst.layout1_inst.myrect.rect == \
@@ -711,15 +711,15 @@ def test_layoutinstancearray_subcursor():
     layout2 = Layout(ref_layers=layers)
     # I1 has columns AND rows:
     layout2.I1 = LayoutInstanceArray(
-        pos=(1000, 2000), orientation=R90, ref=layout1,
+        pos=(1000, 2000), orient=R90, ref=layout1,
         cols=5, rows=7, vec_col=Vec2I(900, 0), vec_row=Vec2I(0, 900))
     # I2 has only columns:
     layout2.I2 = LayoutInstanceArray(
-        pos=(1000, 2000), orientation=R90, ref=layout1,
+        pos=(1000, 2000), orient=R90, ref=layout1,
         cols=5, vec_col=Vec2I(900, 0))
     # I3 has only rows:
     layout2.I3 = LayoutInstanceArray(
-        pos=(1000, 2000), orientation=R90, ref=layout1,
+        pos=(1000, 2000), orient=R90, ref=layout1,
         rows=7, vec_row=Vec2I(0, 900))
     layout2 = layout2.freeze()
 

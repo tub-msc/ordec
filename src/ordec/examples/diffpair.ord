@@ -9,14 +9,14 @@ cell DiffPair:
         input bias
         output outp
         output outn
-        inout vdd: .align=North
+        inout vdd: .orient=North
         inout vss
 
     viewgen schematic(self) -> Schematic:
         port inp
         port bias
-        port outp: .align=East
-        port inn: .align=West
+        port outp: .orient=East
+        port inn: .orient=West
         port outn
         net vss
 
@@ -28,7 +28,7 @@ cell DiffPair:
                     Nmos m1: .g -- inp; .b -- vss; .d -- outp; .$w=10u
                 with Series():
                     Res rr: .$r=10k
-                    Nmos m2: .orientation=FlippedSouth; .g -- inn; .b -- vss; .d -- outn; .$w=10u
+                    Nmos m2: .orient=FlippedSouth; .g -- inn; .b -- vss; .d -- outn; .$w=10u
             Nmos mtail: .g -- bias; .b -- vss; .$w=20u
             port vss
 

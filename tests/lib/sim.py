@@ -59,9 +59,9 @@ class ResdivHier2(Cell):
     def symbol(self):
         s = Symbol(cell=self)
 
-        s.t = Pin(pintype=PinType.Inout, align=North)
-        s.r = Pin(pintype=PinType.Inout, align=East)
-        s.b = Pin(pintype=PinType.Inout, align=South)
+        s.t = Pin(pintype=PinType.Inout, orient=North)
+        s.r = Pin(pintype=PinType.Inout, orient=East)
+        s.b = Pin(pintype=PinType.Inout, orient=South)
         s.place_pins(vpadding=2, hpadding=2)
 
         return s
@@ -75,16 +75,16 @@ class ResdivHier2(Cell):
         s.b = Net(pin=self.symbol.b)
         s.m = Net()
 
-        s.t % SchemPort(pos=Vec2R(2, 12), align=South)
-        s.r % SchemPort(pos=Vec2R(10, 6), align=West)
-        s.b % SchemPort(pos=Vec2R(2, 0), align=North)
+        s.t % SchemPort(pos=Vec2R(2, 12), orient=South)
+        s.r % SchemPort(pos=Vec2R(10, 6), orient=West)
+        s.b % SchemPort(pos=Vec2R(2, 0), orient=North)
 
         sym_res = Res(r=self.r).symbol
 
         s.I0 = SchemInstance(sym_res.portmap(n=s.b, p=s.m), pos=Vec2R(0, 1))
         s.I1 = SchemInstance(sym_res.portmap(n=s.m, p=s.t), pos=Vec2R(0, 7))
         s.I2 = SchemInstance(sym_res.portmap(n=s.r, p=s.m), pos=Vec2R(9, 4),
-            orientation=R90)
+            orient=R90)
 
         s.outline = Rect4R(lx=0, ly=0, ux=10, uy=12)
 
@@ -107,9 +107,9 @@ class ResdivHier1(Cell):
         s.inputs = PathNode()
         s.outputs = PathNode()
 
-        s.inputs.t = Pin(pintype=PinType.Inout, align=North)
-        s.outputs.r = Pin(pintype=PinType.Inout, align=East)
-        s.inputs.b = Pin(pintype=PinType.Inout, align=South)
+        s.inputs.t = Pin(pintype=PinType.Inout, orient=North)
+        s.outputs.r = Pin(pintype=PinType.Inout, orient=East)
+        s.inputs.b = Pin(pintype=PinType.Inout, orient=South)
         s.place_pins(vpadding=2, hpadding=2)
 
         return s
@@ -131,9 +131,9 @@ class ResdivHier1(Cell):
         s.br = Net()
         s.sub.subsub.m = Net()
 
-        s.t % SchemPort(pos=Vec2R(7, 11), align=South)
-        s.r % SchemPort(pos=Vec2R(15, 5), align=West)
-        s.b % SchemPort(pos=Vec2R(7, -1), align=North)
+        s.t % SchemPort(pos=Vec2R(7, 11), orient=South)
+        s.r % SchemPort(pos=Vec2R(15, 5), orient=West)
+        s.b % SchemPort(pos=Vec2R(7, -1), orient=North)
 
         sym_1 = ResdivHier2(r=100).symbol
         sym_2 = ResdivHier2(r=200).symbol
@@ -323,10 +323,10 @@ class IhpInv(Cell):
         s = Symbol(cell=self)
 
         # Define pins for the inverter
-        s.vdd = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
-        s.vss = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
-        s.a = Pin(pos=Vec2R(0, 2), pintype=PinType.In, align=West)
-        s.y = Pin(pos=Vec2R(4, 2), pintype=PinType.Out, align=East)
+        s.vdd = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, orient=North)
+        s.vss = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, orient=South)
+        s.a = Pin(pos=Vec2R(0, 2), pintype=PinType.In, orient=West)
+        s.y = Pin(pos=Vec2R(4, 2), pintype=PinType.Out, orient=East)
 
         # Draw the inverter symbol
         s % SymbolPoly(vertices=[Vec2R(0, 2), Vec2R(1, 2)])  # Input line
@@ -366,10 +366,10 @@ class IhpInv(Cell):
         s.pd = SchemInstance(nmos.portmap(s=s.vss, b=s.vss, g=s.a, d=s.y), pos=Vec2R(3, 2))
         s.pu = SchemInstance(pmos.portmap(s=s.vdd, b=s.vdd, g=s.a, d=s.y), pos=Vec2R(3, 8))
 
-        s.vdd % SchemPort(pos=Vec2R(2, 13), align=East, ref=self.symbol.vdd)
-        s.vss % SchemPort(pos=Vec2R(2, 1), align=East, ref=self.symbol.vss)
-        s.a % SchemPort(pos=Vec2R(1, 7), align=East, ref=self.symbol.a)
-        s.y % SchemPort(pos=Vec2R(9, 7), align=West, ref=self.symbol.y)
+        s.vdd % SchemPort(pos=Vec2R(2, 13), orient=East, ref=self.symbol.vdd)
+        s.vss % SchemPort(pos=Vec2R(2, 1), orient=East, ref=self.symbol.vss)
+        s.a % SchemPort(pos=Vec2R(1, 7), orient=East, ref=self.symbol.a)
+        s.y % SchemPort(pos=Vec2R(9, 7), orient=West, ref=self.symbol.y)
 
         s.vss % SchemWire([Vec2R(2, 1), Vec2R(5, 1), Vec2R(8, 1), Vec2R(8, 4), Vec2R(7, 4)])
         s.vss % SchemWire([Vec2R(5, 1), s.pd.pos + nmos.s.pos])
@@ -411,7 +411,7 @@ class AcRC(Cell):
 
         s.gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(6, -1))
         s.vsrc = SchemInstance(vsrc.portmap(n=s.vss, p=s.inp), pos=Vec2R(0, 5))
-        s.res = SchemInstance(res.portmap(n=s.out, p=s.inp), pos=Vec2R(10, 8), orientation=West)
+        s.res = SchemInstance(res.portmap(n=s.out, p=s.inp), pos=Vec2R(10, 8), orient=West)
         s.cap = SchemInstance(cap.portmap(n=s.vss, p=s.out), pos=Vec2R(12, 5))
 
         s.auto_wire()
@@ -444,7 +444,7 @@ class SineRL(Cell):
 
         s.gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(6, -1))
         s.vsrc = SchemInstance(vsrc.portmap(n=s.vss, p=s.inp), pos=Vec2R(0, 5))
-        s.res = SchemInstance(res.portmap(n=s.out, p=s.inp), pos=Vec2R(10, 8), orientation=West)
+        s.res = SchemInstance(res.portmap(n=s.out, p=s.inp), pos=Vec2R(10, 8), orient=West)
         s.ind = SchemInstance(ind.portmap(n=s.vss, p=s.out), pos=Vec2R(12, 5))
 
         s.auto_wire()
@@ -480,7 +480,7 @@ class PulsedRC(Cell):
 
         s.gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(6, -1))
         s.vsrc = SchemInstance(vsrc.portmap(n=s.vss, p=s.inp), pos=Vec2R(0, 5))
-        s.res = SchemInstance(res.portmap(n=s.out, p=s.inp), pos=Vec2R(10, 8), orientation = West)
+        s.res = SchemInstance(res.portmap(n=s.out, p=s.inp), pos=Vec2R(10, 8), orient=West)
         s.cap = SchemInstance(cap.portmap(n=s.vss, p=s.out), pos=Vec2R(12, 5))
 
         s.auto_wire()

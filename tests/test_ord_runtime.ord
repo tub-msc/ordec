@@ -34,7 +34,7 @@ def test_symbol_pin_creation():
         # ...or with body:
         Pin d:
             .pintype = PinType.Inout
-            .align = R180
+            .orient = R180
             assert .parent == sym
 
     assert isinstance(root.a, Pin)
@@ -47,7 +47,7 @@ def test_symbol_pin_creation():
     assert root.c.pos is None
     assert isinstance(sym.d, Pin)
     assert root.d.pintype == PinType.Inout
-    assert root.d.align == D4.R180
+    assert root.d.orient == D4.R180
 
 def test_net_path_statements():
     root = Schematic()
@@ -475,10 +475,10 @@ def test_layout_instance_shorthand():
         assert isinstance(a, LayoutInstance)
         assert a.ref == tc.layout
 
-        tc b: .orientation = MX
+        tc b: .orient = MX
         assert isinstance(b, LayoutInstance)
         assert b.ref == tc.layout
-        assert b.orientation == D4.MX
+        assert b.orient == D4.MX
 
 cell ParamLayoutCell:
     w = Parameter(int)

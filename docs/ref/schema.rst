@@ -23,6 +23,51 @@ General stuff
 Symbols
 -------
 
+Pins are drawn as an arrow indicating the pin type plus the pin name. Symbols
+whose drawing makes this obvious (e.g. the terminals of a resistor) can hide
+either one per pin with ``Pin.show_arrow`` and ``Pin.show_label``. Hidden pin
+names remain part of the rendered SVG (class ``detail``, like the grid) and
+show up in the detail view of the web UI. Labels of vertical (North/South)
+pin stubs run along the stub; symbols with short pin names can draw them
+horizontally instead with ``Pin.rotate_label = False``.
+
+Besides pins and drawn geometry, a symbol carries :class:`SymbolAnnotation`
+lines (instance name, cell name, parameters). Each line has a unique
+``key``: an :class:`AnnotationKind` for the instance and cell name, else the
+parameter name, drawn as ``key=value``. Lines referencing a
+:class:`SymbolAnnotationStack` are drawn at its fixed position, typically
+inside the symbol outline. The other lines form the annotation block, which
+is placed as a whole beside the symbol. Schematics place the blocks after
+wiring (:func:`ordec.schematic.place_annotations`, stored in
+``SchemInstance.annotation_pos``): each block goes to the first side of the
+symbol with an empty spot, in the order east, north, west, south, and there
+to the empty spot nearest to the symbol's center, where empty means no
+overlap with wires, ports, tap points, drawn symbol geometry, pin labels or
+other blocks. Blocks of box symbols (``Symbol.is_box``) try the north side
+first, aiming at the spot above the top left corner, like the reference
+designators of ICs in common schematic conventions. Keeping away from other
+instances, so that it stays clear where a block belongs, takes precedence
+over the side. Mirrored instances swap east and west (or north and south),
+so that e.g. mirrored transistors keep their blocks on the outer side;
+rotations by 90 degrees keep the order. By default, every annotation line is
+a text row of its own. Where a flatter block gets closer to the symbol,
+consecutive lines share a row (``SchemInstance.annotation_wrap``). The text
+stays horizontal; blocks left of their symbol are right-aligned. A schematic
+may set ``SchemInstance.annotation_pos`` explicitly; lines that need a fixed
+position within the symbol belong in a :class:`SymbolAnnotationStack`. Each
+annotation line has a ``shown`` flag, which a schematic can override per
+instance with :class:`SchemAnnotationOverride` to declutter the drawing.
+
+Symbols start out with the default annotations (see
+:class:`Symbol`, which hides parameters left at their
+default unless they are declared with ``Parameter(..., hide_default=False)``)
+and may modify, remove or extend them. :meth:`Symbol.place_pins` makes a box
+symbol: it arranges the pins on the sides of the outline (independently of
+any text) and draws the outline. The cell name goes into the middle of the
+box if it fits between the pin labels; the instance name, the parameters
+and a cell name that does not fit form the annotation block beside the box.
+Symbol viewgens that set no outline get this automatically.
+
 .. autoclass:: Symbol
    :members:
    :undoc-members:
@@ -41,6 +86,26 @@ Symbols
    :undoc-members:
 
 .. autoclass:: SymbolArc
+   :members:
+   :undoc-members:
+
+.. autoclass:: AnnotationKind
+   :members:
+   :undoc-members:
+
+.. autoclass:: SymbolAnnotationStack
+   :members:
+   :undoc-members:
+
+.. autoclass:: HAlign
+   :members:
+   :undoc-members:
+
+.. autoclass:: VAlign
+   :members:
+   :undoc-members:
+
+.. autoclass:: SymbolAnnotation
    :members:
    :undoc-members:
 
@@ -68,6 +133,10 @@ Schematics
    :undoc-members:
 
 .. autoclass:: SchemInstanceConn
+   :members:
+   :undoc-members:
+
+.. autoclass:: SchemAnnotationOverride
    :members:
    :undoc-members:
 

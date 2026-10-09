@@ -167,7 +167,7 @@ def read_gds_structure(data, name: str, start: int, end: int, layers: LayerStack
                 x, y = ints(e, XY, 2)
                 add(LayoutInstance(
                     pos=Vec2I(x, y),
-                    orientation=gds_to_d4(e.get(ANGLE), e.get(STRANS)),
+                    orient=gds_to_d4(e.get(ANGLE), e.get(STRANS)),
                     ref=extlib[text(e, SNAME)].frame,
                     ))
             elif kind == AREF:
@@ -177,7 +177,7 @@ def read_gds_structure(data, name: str, start: int, end: int, layers: LayerStack
                 cols, rows = ints(e, COLROW, 2)
                 add(LayoutInstanceArray(
                     pos=pos_origin,
-                    orientation=gds_to_d4(e.get(ANGLE), e.get(STRANS)),
+                    orient=gds_to_d4(e.get(ANGLE), e.get(STRANS)),
                     ref=extlib[text(e, SNAME)].frame,
                     cols=cols,
                     rows=rows,

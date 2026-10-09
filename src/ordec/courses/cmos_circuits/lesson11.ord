@@ -8,16 +8,16 @@ cell Ota:
         input inn
         input bias
         output out
-        inout vdd: .align=North
+        inout vdd: .orient=North
         inout vss
 
     viewgen schematic(self) -> Schematic:
         port inp: .pos=(1,9)
-        port inn: .align=West; .pos=(19,9)
+        port inn: .orient=West; .pos=(19,9)
         port bias: .pos=(1,2)
         port out: .pos=(19,13)
-        port vdd: .align=East; .pos=(1,19)
-        port vss: .align=East; .pos=(1,-1)
+        port vdd: .orient=East; .pos=(1,19)
+        port vss: .orient=East; .pos=(1,-1)
 
         net tail, outx
 
@@ -27,7 +27,7 @@ cell Ota:
         Res rl_p: .$r=30k; .p -- vdd; .n -- outx; .pos=(4,14)
         Res rl_n: .$r=30k; .p -- vdd; .n -- out; .pos=(12,14)
         Nmos m1: .$w=5u; .$l=130n; .g -- inp; .d -- outx; .s -- tail; .b -- vss; .pos=(4,7)
-        Nmos m2: .$w=5u; .$l=130n; .g -- inn; .d -- out; .s -- tail; .b -- vss; .pos=(16,7); .orientation=FlippedSouth
+        Nmos m2: .$w=5u; .$l=130n; .g -- inn; .d -- out; .s -- tail; .b -- vss; .pos=(16,7); .orient=FlippedSouth
 
 cell OtaTb:
     viewgen schematic(self) -> Schematic:

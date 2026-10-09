@@ -9,7 +9,7 @@ cell Mux2:
         output y
         input a
         input b
-        inout vdd: .align=North
+        inout vdd: .orient=North
         inout vss
         input s
 

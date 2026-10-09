@@ -307,7 +307,7 @@ def gen_lesson5(g):
         report.markdown("""
             The three resistors from the previous lesson are back: placed but
             not connected. This time, `R2` is rotated by 180 degrees
-            (`.orientation=R180`), so the `p` pins of *all three* resistors
+            (`.orient=R180`), so the `p` pins of *all three* resistors
             must connect to `mid` — a perfect job for a for loop.
 
             **Connect all pins of the resistors to the appropriate nets.
@@ -384,7 +384,7 @@ def gen_lesson6(g):
             introduced.
 
             **Build a bandstop filter: Add a 1 kΩ resistor from `vin` to
-            `vout` and rotate it by 90 degrees using `.orientation=R90`.
+            `vout` and rotate it by 90 degrees using `.orient=R90`.
             Between `vout` and `vss`, add an inductor (1 mH) in series with a
             capacitor (100 nF).**
 
@@ -432,16 +432,16 @@ def gen_lesson6(g):
 
         label = "Resistor in horizontal orientation"
         try:
-            found = any(inst.orientation in (R90, R270, MX90, MY90)
+            found = any(inst.orient in (R90, R270, MX90, MY90)
                 for inst in instances(Res))
             report.passfail(label, found,
-                hint="Rotate the resistor with `.orientation=R90` (R270, "
+                hint="Rotate the resistor with `.orient=R90` (R270, "
                 "MX90 and MY90 work as well).",
                 instructions="Accepted orientations: R90, R270, MX90, "
                 "MY90.")
         except Exception:
             report.passfail(label, False, instructions=exception_text(),
-                hint="Rotate the resistor with `.orientation=R90` (R270, "
+                hint="Rotate the resistor with `.orient=R90` (R270, "
                 "MX90 and MY90 work as well).")
 
         label = "All instance pins connected"

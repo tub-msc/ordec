@@ -51,7 +51,7 @@ A schema defines node types and their attributes, including the special Subgraph
   class Pin(Node):
       pintype = Attr(PinType, default=PinType.Inout)
       pos     = Attr(Vec2R)
-      align   = Attr(D4, default=D4.R0)
+      orient  = Attr(D4, default=D4.R0)
 
 **Attribute** values must be hashable and should be immutable. Thus, lists and dicts cannot be attributes. To take advantage of ORDB's capabilities, it is also strongly encouraged to use atomic attributes rather than compound types (first normal form).
 

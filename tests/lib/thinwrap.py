@@ -42,7 +42,7 @@ def gallery_wrapper_cell(inners: list[Cell], name: str) -> Cell:
                 for lp in inner.layout.all(LayoutPin):
                     ip = inner.symbol[lp.pin.npath.name]
                     setattr(s, f"{dev}_{lp.pin.npath.name}",
-                        Pin(pintype=ip.pintype, align=ip.align))
+                        Pin(pintype=ip.pintype, orient=ip.orient))
             s.place_pins()
             return s
 
@@ -75,7 +75,7 @@ def gallery_wrapper_cell(inners: list[Cell], name: str) -> Cell:
                 for name in ports:
                     getattr(s, f"{dev}_{name}") % SchemPort(
                         pos=inst.loc_transform() * inner.symbol[name].pos,
-                        align=inner.symbol[name].align,
+                        orient=inner.symbol[name].orient,
                     )
             s.auto_wire()
             return s

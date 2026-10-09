@@ -8,14 +8,14 @@ cell Inv:
     viewgen symbol(self) -> Symbol:
         input a
         output y
-        inout vdd: .align=North
+        inout vdd: .orient=North
         inout vss
 
     viewgen schematic(self) -> Schematic:
         port a: .pos=(1,7)
         port y: .pos=(9,7)
-        port vdd: .align=East; .pos=(2,13)
-        port vss: .align=East; .pos=(2,1)
+        port vdd: .orient=East; .pos=(2,13)
+        port vss: .orient=East; .pos=(2,1)
 
         Nmos(w=1u, l=130n) mn: .pos=(3,2); .s -- vss; .b -- vss; .g -- a; .d -- y
         Pmos(w=1u, l=130n) mp: .pos=(3,8); .s -- vdd; .b -- vdd; .g -- a; .d -- y

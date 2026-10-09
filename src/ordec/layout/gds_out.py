@@ -84,7 +84,7 @@ class GdsGenerator:
                 struct_name=self.directory.name_subgraph(inst.ref).encode('ascii'),
                 xy=[inst.pos],
             )
-            e.angle, e.strans = d4_to_gds(inst.orientation)
+            e.angle, e.strans = d4_to_gds(inst.orient)
 
             struc.append(e)
         for insta in layout.all(LayoutInstanceArray):
@@ -111,7 +111,7 @@ class GdsGenerator:
                 cols=cols,
                 rows=rows,
             )
-            e.angle, e.strans = d4_to_gds(insta.orientation)
+            e.angle, e.strans = d4_to_gds(insta.orient)
 
             struc.append(e)
 

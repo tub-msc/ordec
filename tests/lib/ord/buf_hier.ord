@@ -6,7 +6,7 @@ from ordec.lib.generic_mos import Nmos, Pmos
 
 cell Inv:
     viewgen symbol(self) -> Symbol:
-        inout vdd: .align=North
+        inout vdd: .orient=North
         inout vss
         input a
         output y
@@ -31,7 +31,7 @@ cell Buf:
     """Hierarchical example: two Inv stages in a horizontal series chain."""
 
     viewgen symbol(self) -> Symbol:
-        inout vdd: .align=North
+        inout vdd: .orient=North
         inout vss
         input a
         output y

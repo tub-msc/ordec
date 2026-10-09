@@ -118,6 +118,8 @@ def test_build_schematic_standalone_auto_symbol():
     nmos = next(i.symbol.cell for i in insts if type(i.symbol.cell).__name__ == "Nmos")
     assert nmos.l == R("130n") and nmos.w == R("740n")
     assert nmos.ng == 1 and nmos.m == 1
+    # schem_place also places the annotation blocks:
+    assert all(i.annotation_pos is not None for i in insts)
 
 
 def test_build_larger_cell():

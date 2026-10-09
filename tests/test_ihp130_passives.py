@@ -107,6 +107,9 @@ def test_resistor_op(cell, expected_r):
     # SimPin, so read the 1 V source's branch current instead.
     r = 1.0 / abs(float(h.i_vdc.p.current[0]))
     assert r == pytest.approx(expected_r, rel=0.02)
+    # The estimate shown in the annotation block tracks the simulated value
+    # (meanders are the least accurate case).
+    assert cell.nominal_resistance() == pytest.approx(r, rel=0.1)
 
 
 # Two sizes for the MiM capacitor. A capacitor passes no DC current, so it is

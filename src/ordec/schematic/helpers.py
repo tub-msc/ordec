@@ -8,6 +8,8 @@ from collections import defaultdict
 from dataclasses import dataclass
 from ..core import *
 from .auto_wire import tap_outline_point
+from .annotate import pin_obstacles
+from .render import Renderer
 
 def spice_params(params: dict) -> list[str]:
     """Helper function for Netlister.add(). This function is in helper.py
@@ -21,29 +23,62 @@ def spice_params(params: dict) -> list[str]:
 
 def symbol_place_pins(node: Symbol, hpadding=3, vpadding=3):
     """
-    Arranges all Pins of a symbol, setting their pos attributes.
-    Based on their align attribute, Pins are arranged on four sides of a rectangle.
-    The outline rectangle is furthermore created.
+    Makes node a box symbol (is_box). Its Pins are arranged on the four sides of a
+    rectangle based on their orient attribute, which becomes the outline and
+    is drawn as a SymbolPoly. Pin labels are centered on the pins
+    (center_label), as no stub runs inside the box. Pin positions and box
+    size depend only on the pin counts and paddings, not on any text. The
+    cell name is put into a fixed stack inside the box, at the first of
+    these spots where it does not overlap pin labels: middle center, top
+    center, bottom center, middle left, middle right. The instance name, the
+    parameters and a cell name that fits nowhere stay in the annotation
+    block, which place_annotations puts beside the box. Call it once per
+    symbol: each call adds another box.
     """
 
-    pin_by_align = {South:[], North:[], West:[], East:[]}
+    pin_by_orient = {South:[], North:[], West:[], East:[]}
     for pin in node.all(Pin):
-        pin_by_align[pin.align].append(pin)
+        pin_by_orient[pin.orient].append(pin)
+        pin.center_label = True
 
-    height=max(len(pin_by_align[East]), len(pin_by_align[West]))+2*vpadding-1
-    width=max(len(pin_by_align[North]), len(pin_by_align[South]))+2*hpadding-1
+    height=max(len(pin_by_orient[East]), len(pin_by_orient[West]))+2*vpadding-1
+    width=max(len(pin_by_orient[North]), len(pin_by_orient[South]))+2*hpadding-1
 
-    for i, pin in enumerate(pin_by_align[South]):
+    for i, pin in enumerate(pin_by_orient[South]):
         pin.pos = Vec2R(x=hpadding+i,y=0)
-    for i, pin in enumerate(pin_by_align[North]):
+    for i, pin in enumerate(pin_by_orient[North]):
         pin.pos = Vec2R(x=hpadding+i,y=height)
-    for i, pin in enumerate(pin_by_align[West]):
+    for i, pin in enumerate(pin_by_orient[West]):
         pin.pos = Vec2R(x=0,y=vpadding+i)
-    for i, pin in enumerate(pin_by_align[East]):
+    for i, pin in enumerate(pin_by_orient[East]):
         pin.pos = Vec2R(x=width,y=vpadding+i)
 
-    node.outline = Rect4R(lx=0, ly=0, ux=width, uy=height)
+    o = Rect4R(lx=0, ly=0, ux=width, uy=height)
+    node.outline = o
+    node.is_box = True
+    node % SymbolPoly(vertices=[Vec2R(o.lx, o.ly), Vec2R(o.ux, o.ly),
+        Vec2R(o.ux, o.uy), Vec2R(o.lx, o.uy), Vec2R(o.lx, o.ly)])
 
+    spots = [
+        (o.center, HAlign.Center, VAlign.Middle),
+        (o.north, HAlign.Center, VAlign.Top),
+        (o.south, HAlign.Center, VAlign.Bottom),
+        (o.west, HAlign.Left, VAlign.Middle),
+        (o.east, HAlign.Right, VAlign.Middle),
+    ]
+    pin_rects = [r for pin in node.all(Pin) for r in pin_obstacles(pin, TD4R())]
+    for a in list(node.all(SymbolAnnotation.key_idx.query(AnnotationKind.CellName))):
+        for pos, halign, valign in spots:
+            rect = Renderer.label_rect(pos.transl() * East, len(a.value or ''), 1,
+                halign=halign, valign=valign)
+            inside = o.lx <= rect.lx and rect.ux <= o.ux and o.ly <= rect.ly and rect.uy <= o.uy
+            if inside and not any(rect_overlap(rect, r) for r in pin_rects):
+                a.ref = node % SymbolAnnotationStack(pos=pos, halign=halign, valign=valign)
+                break
+
+def rect_overlap(a: Rect4R, b: Rect4R) -> bool:
+    """Whether a and b overlap; touching rectangles do not."""
+    return a.lx < b.ux and b.lx < a.ux and a.ly < b.uy and b.ly < a.uy
 
 def schem_place(schem: Schematic, gap=None, port_margin=None):
     """
@@ -53,13 +88,15 @@ def schem_place(schem: Schematic, gap=None, port_margin=None):
 
     SchemInstances are arranged in a simple row-based grid targeting a roughly
     square overall shape. SchemPorts are then placed on the edges of the
-    resulting bounding box via schem_place_ports (align-based edges, lined up
+    resulting bounding box via schem_place_ports (orient-based edges, lined up
     with their connected pins).
 
     No SchemWires are drawn. The schematic is checked with
     add_terminal_taps=True, so connectivity is represented by SchemTapPoints;
-    Nets should be created with auto_wire=False. The outline is set to the
-    resulting bounding box; freezing is left to the caller.
+    Nets should be created with auto_wire=False. Last, the annotation blocks
+    are placed (see place_annotations), as in the viewgen pipeline. The
+    outline is set to the resulting bounding box; freezing is left to the
+    caller.
 
     Args:
         schem: Mutable schematic to place.
@@ -116,6 +153,7 @@ def schem_place(schem: Schematic, gap=None, port_margin=None):
     if outline is None:
         outline = Rect4R(0, 0, 1, 1)
     schem.outline = outline
+    schem.place_annotations()
 
 
 def schem_content_bbox(node: Schematic) -> Rect4R | None:
@@ -149,8 +187,8 @@ def schem_content_bbox(node: Schematic) -> Rect4R | None:
 def schem_place_ports(node: Schematic, clearance: int = 2):
     """
     Places all SchemPorts whose pos is still undefined, based on their
-    align. The align is the direction the port arrow points, into the
-    drawing: ports with align=East are placed on the left edge of the
+    orient, the direction the port arrow points, into the
+    drawing: ports with orient=East are placed on the left edge of the
     content bounding box, West on the right, North on the bottom and
     South on the top edge, clearance units outside the content.
 
@@ -163,7 +201,7 @@ def schem_place_ports(node: Schematic, clearance: int = 2):
     unresolved = {East: [], West: [], North: [], South: []}
     for port in node.all(SchemPort):
         if isinstance(port.pos, Vec2LinearTerm):
-            unresolved[port.align.unflip()].append(port)
+            unresolved[port.orient.unflip()].append(port)
     if not any(unresolved.values()):
         return
 
@@ -185,7 +223,7 @@ def schem_place_ports(node: Schematic, clearance: int = 2):
         North: lambda p: (p.y, p.x), South: lambda p: (-p.y, p.x),
     }
 
-    def aligned_cross(port, align):
+    def aligned_cross(port, orient):
         """
         Cross-axis coordinate of the port's nearest connected pin, or
         None if the port's net has no placed pins.
@@ -193,23 +231,23 @@ def schem_place_ports(node: Schematic, clearance: int = 2):
         pins = pin_positions.get(port.ref.nid)
         if not pins:
             return None
-        pin = min(pins, key=nearest_pin_key[align])
-        return math.floor(pin.y if align in (East, West) else pin.x)
+        pin = min(pins, key=nearest_pin_key[orient])
+        return math.floor(pin.y if orient in (East, West) else pin.x)
 
-    # One edge per port align. Ports stack along step, top to bottom on
+    # One edge per port orient. Ports stack along step, top to bottom on
     # the left/right edges, left to right on the bottom/top edges.
     edges = (
-        # align, vertical edge, fixed coordinate, step
+        # orient, vertical edge, fixed coordinate, step
         (East, True, math.floor(bbox.lx) - clearance, -1),
         (West, True, math.ceil(bbox.ux) + clearance, -1),
         (North, False, math.floor(bbox.ly) - clearance, +1),
         (South, False, math.ceil(bbox.uy) + clearance, +1),
     )
-    for align, vertical, fixed, step in edges:
+    for orient, vertical, fixed, step in edges:
         aligned = []
         rest = []
-        for port in unresolved[align]:
-            cross = aligned_cross(port, align)
+        for port in unresolved[orient]:
+            cross = aligned_cross(port, orient)
             if cross is None:
                 rest.append(port)
             else:
@@ -256,7 +294,7 @@ def place_unplaced_instances(schem: Schematic, spacing=4):
 
     for inst in unplaced:
         # Place the instance geometry's left edge at x, with pos.y = 0.
-        r = TD4R(d4=inst.orientation) * inst.symbol.outline
+        r = TD4R(d4=inst.orient) * inst.symbol.outline
         inst.pos = Vec2R(x - r.lx, 0)
         placed = inst.pos.transl() * r
         outline = placed if outline is None else outline \
@@ -272,7 +310,7 @@ def schem_add_pin_tap(inst: SchemInstance, pin: Pin):
     At SchemTapPoint directly at Pin
     """
     net = inst.portmap[pin]
-    net % SchemTapPoint(pos=inst.loc_transform()*pin.pos, align=pin.align)
+    net % SchemTapPoint(pos=inst.loc_transform()*pin.pos, orient=pin.orient)
 
 def first_last_iter(iterable):
     """
@@ -307,9 +345,9 @@ class PinOfInstance:
         return self.conn.here
 
     @property
-    def align(self):
-        #TODO: check if this pin.align transformation works:
-        return self.conn.ref.loc_transform().d4 * self.conn.there.align
+    def orient(self):
+        #TODO: check if this pin.orient transformation works:
+        return self.conn.ref.loc_transform().d4 * self.conn.there.orient
 
     @property
     def ref(self):
@@ -487,7 +525,7 @@ def _check_terminals(node: Schematic, g: ConnectivityGraph,
         net_here = _net_at_pos(node, t.pos)
         if net_here is None:
             if add_terminal_taps:
-                tap = t.ref % SchemTapPoint(pos=t.pos, align=t.align.unflip())
+                tap = t.ref % SchemTapPoint(pos=t.pos, orient=t.orient.unflip())
                 g.add_biedge(t.pos, t.ref)
                 # These taps are added after auto_wire() computed the
                 # outline, so their glyph/label extent is added here.
@@ -515,8 +553,7 @@ def _check_terminals(node: Schematic, g: ConnectivityGraph,
             for pin_nid in pins_missing:
                 pin = inst.symbol.subgraph.cursor_at(pin_nid)
                 pin_pos = inst.loc_transform() * pin.pos
-                pin_align = inst.loc_transform().d4 * pin.align
-                node.root % SchemErrorMarker(pos=pin_pos, error_type=SchemErrorType.UnconnectedPin, align=pin_align)
+                node.root % SchemErrorMarker(pos=pin_pos, error_type=SchemErrorType.UnconnectedPin)
             if len(pins_stray) > 0:
                 node.root % SchemErrorMarker(pos=inst.pos, error_type=SchemErrorType.StrayPinsInPortmap)
         for conn in node.all(SchemInstanceConn.ref_idx.query(inst)):

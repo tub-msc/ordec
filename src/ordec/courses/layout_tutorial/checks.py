@@ -585,7 +585,7 @@ def gen_lesson6(g):
             manufacturable layout needs them.
 
             *Tip: instances can also be rotated and mirrored via
-            `.orientation`. Note that the compass names (`North`, `East`,
+            `.orient`. Note that the compass names (`North`, `East`,
             …) denote where the cell's top edge points; they are not
             rotation angles.*
         """)

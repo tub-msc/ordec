@@ -17,9 +17,7 @@
     <circle cx="12.0" cy="1.0" r="0.1625" class="connPoint" />
     <g>
       <rect x="4.0" y="2.0" width="4.0" height="4.0" class="symbolOutline" />
-      <text transform="matrix(0.045 0 0 -0.045 7.875 5.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Inv</text>
-      <text transform="matrix(0.045 0 0 -0.045 7.875 2.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
-      <text transform="matrix(0.045 0 0 -0.045 4.125 5.875)" dominant-baseline="hanging" text-anchor="start" class="instanceName">i0</text>
+      <text transform="matrix(0.045 0 0 -0.045 6.5 6.445)" dominant-baseline="hanging" text-anchor="start"><tspan x="0" y="0em" class="instanceName">i0</tspan><tspan x="0" y="1em" class="cellName">Inv</tspan></text>
       <path d="M0.0 2.0 L1.0 2.0" transform="matrix(1 0 0 1 4.0 2.0)" class="symbolPoly" />
       <path d="M3.25 2.0 L4.0 2.0" transform="matrix(1 0 0 1 4.0 2.0)" class="symbolPoly" />
       <path d="M1.0 1.0 L1.0 3.0 L2.75 2.0 Z" transform="matrix(1 0 0 1 4.0 2.0)" class="symbolPoly" />
@@ -35,9 +33,7 @@
     </g>
     <g>
       <rect x="10.0" y="2.0" width="4.0" height="4.0" class="symbolOutline" />
-      <text transform="matrix(0.045 0 0 -0.045 13.875 5.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Inv</text>
-      <text transform="matrix(0.045 0 0 -0.045 13.875 2.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
-      <text transform="matrix(0.045 0 0 -0.045 10.125 5.875)" dominant-baseline="hanging" text-anchor="start" class="instanceName">i1</text>
+      <text transform="matrix(0.045 0 0 -0.045 12.5 6.445)" dominant-baseline="hanging" text-anchor="start"><tspan x="0" y="0em" class="instanceName">i1</tspan><tspan x="0" y="1em" class="cellName">Inv</tspan></text>
       <path d="M0.0 2.0 L1.0 2.0" transform="matrix(1 0 0 1 10.0 2.0)" class="symbolPoly" />
       <path d="M3.25 2.0 L4.0 2.0" transform="matrix(1 0 0 1 10.0 2.0)" class="symbolPoly" />
       <path d="M1.0 1.0 L1.0 3.0 L2.75 2.0 Z" transform="matrix(1 0 0 1 10.0 2.0)" class="symbolPoly" />
@@ -53,9 +49,7 @@
     </g>
     <g>
       <rect x="16.0" y="2.0" width="4.0" height="4.0" class="symbolOutline" />
-      <text transform="matrix(0.045 0 0 -0.045 19.875 5.875)" dominant-baseline="hanging" text-anchor="end" class="cellName">Inv</text>
-      <text transform="matrix(0.045 0 0 -0.045 19.875 2.125)" dominant-baseline="ideographic" text-anchor="end" class="params" />
-      <text transform="matrix(0.045 0 0 -0.045 16.125 5.875)" dominant-baseline="hanging" text-anchor="start" class="instanceName">i2</text>
+      <text transform="matrix(0.045 0 0 -0.045 18.5 6.445)" dominant-baseline="hanging" text-anchor="start"><tspan x="0" y="0em" class="instanceName">i2</tspan><tspan x="0" y="1em" class="cellName">Inv</tspan></text>
       <path d="M0.0 2.0 L1.0 2.0" transform="matrix(1 0 0 1 16.0 2.0)" class="symbolPoly" />
       <path d="M3.25 2.0 L4.0 2.0" transform="matrix(1 0 0 1 16.0 2.0)" class="symbolPoly" />
       <path d="M1.0 1.0 L1.0 3.0 L2.75 2.0 Z" transform="matrix(1 0 0 1 16.0 2.0)" class="symbolPoly" />
@@ -70,12 +64,12 @@
       <text transform="matrix(0.045 0 0 -0.045 19.875 4.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel">y</text>
     </g>
     <g>
-      <path d="M0 0 L0.25 -0.25 L0.25 -0.25 L0 -0.5 L-0.25 -0.25 L-0.25 -0.25 Z" transform="matrix(0 -1 1 0 2.0 7.0)" class="portArrow" />
-      <text transform="matrix(0.045 0 0 -0.045 1.35 7.0)" dominant-baseline="middle" text-anchor="end" class="portLabel">vdd</text>
+      <path d="M0 0 L0.25 -0.25 L0.25 -0.25 L0 -0.5 L-0.25 -0.25 L-0.25 -0.25 Z" transform="matrix(0 -1 1 0 2.25 7.0)" class="portArrow" />
+      <text transform="matrix(0.045 0 0 -0.045 1.6 7.0)" dominant-baseline="middle" text-anchor="end" class="portLabel">vdd</text>
     </g>
     <g>
-      <path d="M0 0 L0.25 -0.25 L0.25 -0.25 L0 -0.5 L-0.25 -0.25 L-0.25 -0.25 Z" transform="matrix(0 -1 1 0 2.0 1.0)" class="portArrow" />
-      <text transform="matrix(0.045 0 0 -0.045 1.35 1.0)" dominant-baseline="middle" text-anchor="end" class="portLabel">vss</text>
+      <path d="M0 0 L0.25 -0.25 L0.25 -0.25 L0 -0.5 L-0.25 -0.25 L-0.25 -0.25 Z" transform="matrix(0 -1 1 0 2.25 1.0)" class="portArrow" />
+      <text transform="matrix(0.045 0 0 -0.045 1.6 1.0)" dominant-baseline="middle" text-anchor="end" class="portLabel">vss</text>
     </g>
     <g>
       <path d="M0 0 L0.25 0 L0.25 -0.25 L0 -0.5 L-0.25 -0.25 L-0.25 0 Z" transform="matrix(0 1 -1 0 22.0 4.0)" class="portArrow" />

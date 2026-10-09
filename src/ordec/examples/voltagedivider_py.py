@@ -25,6 +25,7 @@ class VoltageDivider(Cell):
         s.a % SchemWire([Vec2R(7, 10), Vec2R(7, 11)])
         s.b % SchemWire([Vec2R(7, 15), Vec2R(7, 16)])
         s.check(add_conn_points=True)
+        s.place_annotations()
         return s
 
     @viewgen_noctx(auto_refresh=False)
