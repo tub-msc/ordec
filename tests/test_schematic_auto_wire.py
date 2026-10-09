@@ -10,6 +10,7 @@ import numpy as np
 
 from ordec.core import *
 from ordec.core.schema.schematic import SchemInstanceSubcursor
+from ordec.lib.generic_mos import Nmos
 from ordec.schematic.auto_wire import (
     RoutingPort, GridConn, place_cells_and_ports, draw_connections,
     _blocked_masks_by_node, _direction_bit,
@@ -356,6 +357,21 @@ def test_ripup_rejected_when_reroute_rides_own_net():
     vertices, net_y, net_a = route_ripup_overlap_maze()
     assert not vertices[net_a]
     assert_anchor_hosts_branch(vertices[net_y], ends={(5, 1), (7, 7)})
+
+
+def test_shortcut_without_branch_point():
+    """Net y first joins the adjacent pins m1.d and m2.s, a path without
+    interior points to branch off. Routing m2.b must then fall back to
+    regular routing instead of raising."""
+    s = Schematic()
+    s.a, s.b, s.x, s.y, s.z = Net(), Net(), Net(), Net(), Net()
+    sym = Nmos().symbol
+    s.m1 = SchemInstance(sym.portmap(s=s.x, b=s.x, g=s.a, d=s.y), pos=Vec2R(2, 2))
+    s.m2 = SchemInstance(sym.portmap(s=s.y, b=s.y, g=s.b, d=s.z), pos=Vec2R(2, 7))
+    s.auto_wire()
+
+    vertices = [list(w.vertices()) for w in s.all(SchemWire.ref_idx.query(s.y))]
+    assert [Vec2R(4, 6), Vec2R(4, 7)] in vertices
 
 
 def test_tap_point_routing_and_outline():

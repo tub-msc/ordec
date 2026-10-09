@@ -948,27 +948,27 @@ def draw_connections(grid: np.ndarray, connections: list[GridConn],
         start_new, end_new = adjust_start_end_for_direction(start, start_dir, end, end_dir)
 
         if start != end_new and end != start_new:
-            shortcut_available = False
             # Shortcut mode: if this net already has routed paths, try to
             # branch off an existing path via reverse A* instead of routing
             # all the way back to the original start
-            if allow_shortcut and SHORTCUT_ENABLED and len(port_drawing_dict[net]) != 0:
-                shortcut_available = True
-                shortcut_start_points = port_drawing_dict[net]
+            path_list = list()
+            if allow_shortcut and SHORTCUT_ENABLED:
                 # Collect interior points of existing paths as branch candidates
-                path_list = list()
-                for shortcut in shortcut_start_points:
+                for shortcut in port_drawing_dict[net]:
                     path_list.extend(shortcut[1:-1])
                     if shortcut:
                         x, y = shortcut[0]
                         if grid[y][x] < GRID_BLOCKED:
                             path_list.append(shortcut[0])
                 path_list = list(dict.fromkeys(path_list))
+            # No candidates (e.g. the net's only path joins two adjacent
+            # pins, so it has no interior points): route like a first
+            # connection
+            shortcut_available = bool(path_list)
+            if shortcut_available:
                 if end_new in path_list:
                     # Endpoint already lies on an existing path --> trivial connection
                     path = [end_new]
-                elif not path_list:
-                    raise IndexError(f"Shortcut doesn't have valid branch point to connect net '{net.full_path_label()}'")
                 else:
                     # Try reverse A* from endpoint to any existing path point
                     path = reverse_a_star(
