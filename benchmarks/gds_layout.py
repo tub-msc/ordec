@@ -29,7 +29,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--cell', default='sg13g2_Filler2000')
     parser.add_argument('--instances', type=int, default=4,
-        help="placements of the cell in the top layout for the flattening webdata stage")
+        help="placements of the cell in the top layout for the webdata_top stage")
     args = parser.parse_args()
 
     times = {}

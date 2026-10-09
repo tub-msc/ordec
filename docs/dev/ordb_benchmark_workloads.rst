@@ -110,17 +110,17 @@ M=5, K=4, P=2, V=3.
 layout_flatten — phases: copy, flatten, expand, freeze, scan
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Mirrors the layout flatten/expand webdata pipeline. Untimed setup: C frozen
-cells of S shapes (per shape: layer=rand(8), x=rand(10000), y=rand(10000);
-even shapes an LRect with ux=x+1+rand(500), uy=y+1+rand(500), odd shapes an
-LPoly with 4 vertices x+rand(500), y+rand(500) each; every 8th shape adds an
-LLabel), built in one txn each; a frozen top with I instances named ``i0..``
-referencing cell rand(C) at dx,dy = rand(100000). Timed: **copy** = mutable
-copy of the top; **flatten** = for each LInst: re-insert every cell shape
-translated by (dx, dy) (own txn per insert), then remove the instance;
-**expand** = replace every LRect (iterating the query result) by an LPoly
-plus 4 corner vertices, reusing the rect's nid; **freeze**; **scan** = 3 passes
-over all LPoly, LVertex, LLabel reading attributes.
+Mirrors ``flatten`` and ``expand_geom`` of ``ordec.layout.helpers``. Untimed
+setup: C frozen cells of S shapes (per shape: layer=rand(8), x=rand(10000),
+y=rand(10000); even shapes an LRect with ux=x+1+rand(500), uy=y+1+rand(500),
+odd shapes an LPoly with 4 vertices x+rand(500), y+rand(500) each; every 8th
+shape adds an LLabel), built in one txn each; a frozen top with I instances
+named ``i0..`` referencing cell rand(C) at dx,dy = rand(100000). Timed:
+**copy** = mutable copy of the top; **flatten** = for each LInst: re-insert
+every cell shape translated by (dx, dy) (own txn per insert), then remove the
+instance; **expand** = replace every LRect (iterating the query result) by an
+LPoly plus 4 corner vertices, reusing the rect's nid; **freeze**; **scan** = 3
+passes over all LPoly, LVertex, LLabel reading attributes.
 
 Params (default): C=5, S=40, I=50. small: 5/20/20. large: 10/200/2000.
 tiny: 2/8/4.
