@@ -4,13 +4,13 @@ from ordec.lib import Res
 cell Divider:
     viewgen symbol(self) -> Symbol:
         output vout
-        inout vdd: .align=North
+        inout vdd: .orient=North
         inout vss
 
     viewgen schematic(self) -> Schematic:
         port vout: .pos=(13,8)
-        port vdd: .align=East; .pos=(1,14)
-        port vss: .align=East; .pos=(1,2)
+        port vdd: .orient=East; .pos=(1,14)
+        port vss: .orient=East; .pos=(1,2)
 
         # Resistors from vdd to vout and from vout to vss:
         # EDIT HERE

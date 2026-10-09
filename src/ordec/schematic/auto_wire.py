@@ -1249,7 +1249,7 @@ def auto_wire(node: Schematic) -> None:
         net = port.ref
         ports[net] = RoutingPort(
             x=int(port.pos.x), y=int(port.pos.y),
-            net=net, direction=port.orient.unflip())
+            net=net, direction=port.orient)
 
     # Tap points participate in routing like ports and pins: the first
     # terminal seen for a net becomes its routing terminal, every further
@@ -1260,7 +1260,7 @@ def auto_wire(node: Schematic) -> None:
         net = tap.ref
         tap_port = RoutingPort(
             x=int(tap.pos.x), y=int(tap.pos.y),
-            net=net, direction=(tap.orient * R180).unflip())
+            net=net, direction=tap.orient * R180)
         if net in ports:
             if net.auto_wire:
                 connections.append((ports[net], tap_port))

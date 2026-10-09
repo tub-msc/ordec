@@ -25,7 +25,7 @@ def layoutgl_example() -> Layout:
     # hierarchical transfer and rect rendering of the viewer.
     sub = Layout(ref_layers=layers)
     sub % LayoutRect(layer=layers.Metal3.pin, rect=Rect4I(0, -500, 500, 0))
-    l % LayoutInstance(pos=Vec2I(250, 250), orientation=D4.R90, ref=sub.freeze())
+    l % LayoutInstance(pos=Vec2I(250, 250), orient=D4.R90, ref=sub.freeze())
     l % LayoutLabel(
         layer=layers.Metal3.pin,
         pos=Vec2I(500,500),

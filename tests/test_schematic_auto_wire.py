@@ -178,9 +178,9 @@ def test_ripup_keeps_terminal_connected():
     terminal are now rerouted in full instead.
     """
     io_sym = Symbol()
-    for name, align in (('a1', West), ('y1', East), ('a2', West),
-                        ('y2', East), ('vdd', North), ('vss', South)):
-        io_sym[name] = Pin(orient=align)
+    for name, orient in (('a1', West), ('y1', East), ('a2', West),
+            ('y2', East), ('vdd', North), ('vss', South)):
+        io_sym[name] = Pin(orient=orient)
     io_sym.place_pins(hpadding=2, vpadding=2)
     iof = io_sym.freeze()
 

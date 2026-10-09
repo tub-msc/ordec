@@ -201,7 +201,7 @@ def schem_place_ports(node: Schematic, clearance: int = 2):
     unresolved = {East: [], West: [], North: [], South: []}
     for port in node.all(SchemPort):
         if isinstance(port.pos, Vec2LinearTerm):
-            unresolved[port.orient.unflip()].append(port)
+            unresolved[port.orient].append(port)
     if not any(unresolved.values()):
         return
 
@@ -525,7 +525,7 @@ def _check_terminals(node: Schematic, g: ConnectivityGraph,
         net_here = _net_at_pos(node, t.pos)
         if net_here is None:
             if add_terminal_taps:
-                tap = t.ref % SchemTapPoint(pos=t.pos, orient=t.orient.unflip())
+                tap = t.ref % SchemTapPoint(pos=t.pos, orient=t.orient)
                 g.add_biedge(t.pos, t.ref)
                 # These taps are added after auto_wire() computed the
                 # outline, so their glyph/label extent is added here.

@@ -36,7 +36,7 @@ class RotateTest(Cell):
         return s
 
 
-class PortAlignTest(Cell):
+class PortOrientTest(Cell):
     @viewgen_noctx
     def symbol(self):
         s = Symbol(cell=self)
@@ -67,7 +67,7 @@ class PortAlignTest(Cell):
         return s
 
 
-class TapAlignTest(Cell):
+class TapOrientTest(Cell):
     @viewgen_noctx
     def schematic(self):
         s = Schematic(cell=self)

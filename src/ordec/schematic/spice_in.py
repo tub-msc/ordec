@@ -342,7 +342,7 @@ def create_schematic_from_subckt(extlib, deck, name, device_map) -> Schematic:
             schematic[path] = Net(auto_wire=False)
         node_to_net[nd] = schematic[path]
 
-    # External ports, aligned opposite their symbol pin alignment.
+    # External ports, oriented opposite their symbol pins.
     for port in subckt.ports:
         pin = symbol[port]
         schematic % SchemPort(ref=node_to_net[port], orient=pin.orient * R180)

@@ -179,11 +179,11 @@ class Renderer:
         Estimated bounding box of a label drawn by draw_label with the same
         arguments, using label_char_width per character.
         """
-        align = trans.d4.unflip()
-        if align in (West, South):
+        direction = trans.d4.unflip()
+        if direction in (West, South):
             halign = halign.invert()
         frame = trans.transl.transl()
-        if align in (North, South):
+        if direction in (North, South):
             frame *= R90
         if space is None:
             space = cls.pin_text_space
@@ -215,16 +215,16 @@ class Renderer:
         separated by spaces.
         """
 
-        align = trans.d4.unflip()
+        direction = trans.d4.unflip()
         pos = trans.transl
 
-        if align in (West, South):
+        if direction in (West, South):
             halign = halign.invert()
 
         # g_matrix has same basic translation as trans, but limits rotations of text
         # to 0 or 90 degrees (so that you never have to rotate your head by 180 degrees)
         g_matrix = pos.transl()
-        if align in (South, North):
+        if direction in (South, North):
              g_matrix *= R90
 
         # Furthermore, g_matrix adds some space (padding):
