@@ -6,6 +6,7 @@ Developer's Corner
    :caption: Contents:
 
    setup
+   c_extensions
    containers_and_ci
    hub
    webui

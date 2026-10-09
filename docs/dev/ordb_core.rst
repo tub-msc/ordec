@@ -12,24 +12,7 @@ functions shared between files are hidden from the extension's exports.
 :mod:`ordec.core.ordb.base` keeps the schema language, the public classes
 and all error messages. There is no pure-Python fallback; the benchmark
 suite's differential fuzz (``benchmarks/equivalence.py``) is the safety net.
-
-Building
---------
-
-The core is a regular setuptools extension: ``pip3 install -e .`` builds it
-into the source tree (``src/ordec/core/ordb/_ordb.*.so``). After changing the
-C sources, run the same command again. For a quick rebuild during
-development, ``python3 setup.py build_ext --inplace`` does the same if
-setuptools is installed.
-
-The core and ``_gdsrecords.c`` use only the limited API of Python 3.11
-(``Py_LIMITED_API`` in the sources), so one abi3 build (``_ordb.abi3.so``)
-serves all Python versions from 3.11. The limited API has no static types,
-no access to type object fields and no macros like ``PyTuple_GET_ITEM``:
-the types are heap types created with ``PyType_FromSpec``, and the function
-forms of the macros cost 2 to 3% on the benchmarks. A version-specific
-build left in the source tree (``_ordb.cpython-313-*.so``) is imported in
-preference to the abi3 one; delete it after switching.
+For building, see :doc:`c_extensions`.
 
 Data layout
 -----------

@@ -7,8 +7,8 @@ The Docker container (see Readme) is the easiest way to try out ORDeC. Details o
 
 For development, it is recommended not to use Docker. The setup below is tested with Debian 12.
 
-- Install required packages: :code:`sudo apt-get install ngspice npm python3 chromium-driver jupyter-notebook`
-- Install the Python ordec package in editable/"develop" mode: :code:`pip3 install -e .\[test\]`
+- Install required packages: :code:`sudo apt-get install ngspice npm python3 python3-dev build-essential chromium-driver jupyter-notebook`
+- Install the Python ordec package in editable/"develop" mode: :code:`pip3 install -e .\[test\]`. This also builds the C extensions; rerun it after C sources change (see :doc:`c_extensions`).
 - Install additional dependencies for building the documentation: :code:`pip3 install -r docs/requirements.txt`
 
 .. note::
