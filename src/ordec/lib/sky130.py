@@ -215,13 +215,13 @@ class Ringosc(Cell):
 
     @viewgen_noctx
     def schematic(self) -> Schematic:
-        s = Symbol(cell=self, symbol=self.symbol)
+        s = Schematic(cell=self, symbol=self.symbol)
 
         s.y0 = Net()
         s.y1 = Net()
-        s.y2 = Net()
-        s.vdd = Net()
-        s.vss = Net()
+        s.y2 = Net(pin=self.symbol.y)
+        s.vdd = Net(pin=self.symbol.vdd)
+        s.vss = Net(pin=self.symbol.vss)
 
         inv = Inv().symbol
         s.i0 = SchemInstance(inv.portmap(vdd=s.vdd, vss=s.vss, a=s.y2, y=s.y0), pos=Vec2R(4, 2))
@@ -248,6 +248,7 @@ class Ringosc(Cell):
         s.vdd % SchemWire(vertices=[Vec2R(12, 7), Vec2R(12, 6)])
 
         s.check(add_conn_points=True)
+        s.place_annotations()
         return s
 
 @public
