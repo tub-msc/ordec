@@ -48,6 +48,13 @@ class Mos(SimLeafCell):
     sb = Parameter(R, default=R(0)) #: OD-to-poly distance, other side (0 = no stress model)
     sd = Parameter(R, default=R(0)) #: Poly-to-poly distance for multi-finger (0 = no stress model)
 
+    def annotation_params(self) -> list[tuple[str, object, bool]]:
+        # ad, as_, pd and ps are computed from the geometry (see
+        # params_rewrite), so they never equal their default None: hide them
+        # like parameters left at their default.
+        return [(k, v, shown and k not in ('ad', 'as_', 'pd', 'ps'))
+            for k, v, shown in super().annotation_params()]
+
     @classmethod
     def params_rewrite(cls, params: dict) -> dict:
         """Auto-calculate ad/as/pd/ps for interdigitated S-G-D-G-S-... layout."""
