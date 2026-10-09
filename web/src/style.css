@@ -1668,6 +1668,11 @@ body.theme-dark .schem-detail-toggle:hover {
 .pinLabel, .pinArrow, .params, .cellName {
     fill: var(--color-symbol-stroke) !important;
 }
+/* Net names have the wiring color; their semi-transparent outline in the
+   background color (see render.py) fades out wires crossing them. */
+.portLabel, .tapPointLabel {
+    stroke: var(--color-bg) !important;
+}
 
 /* -- Scrollbar --------------------------------------------------- */
 ::-webkit-scrollbar {

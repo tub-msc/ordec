@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from ..core import *
 from enum import Enum
 import re
+from string import Template
 
 class ArrowType(Enum):
     Pin = 1
@@ -378,7 +379,14 @@ class Renderer:
         }
 
 class SchematicRenderer(Renderer):
-    css = clean_css("""
+    #: Color of the wiring: wires, junctions, port arrows, tap points and net
+    #: names. It is inserted into css below instead of being defined as a CSS
+    #: custom property (var()): the SVGs are also opened outside of
+    #: browsers, and e.g. Inkscape and librsvg do not support custom
+    #: properties, so that the wiring would lose its color there.
+    wire_color = '#1a80e6'
+
+    css = clean_css(Template("""
         svg {
             stroke-linecap: butt;
             stroke-linejoin: bevel;
@@ -388,8 +396,10 @@ class SchematicRenderer(Renderer):
             font-family: "Inconsolata", monospace;
             font-stretch: 75%;
         }
-        .instanceName {
+        .instanceName, .cellName {
             font-weight: bold;
+        }
+        .instanceName {
             fill: #f00;
         }
         .pinLabel, .pinArrow, .params, .cellName {
@@ -415,22 +425,27 @@ class SchematicRenderer(Renderer):
             display: none;
         }
         .schemWire, .tapPoint {
-            stroke: #1a80e6;
+            stroke: $wire_color;
         }
         .schemWire {
             stroke-linecap: square;
         }
-        .connPoint, .tapPointLabel {
-            fill: #1a80e6;
+        .connPoint, .portArrow {
+            fill: $wire_color;
         }
-        .portArrow, .portLabel {
-            fill: #1a80e6;
+        .portLabel, .tapPointLabel {
+            fill: $wire_color;
+            paint-order: stroke;
+            stroke: #fff;
+            stroke-opacity: 0.6;
+            stroke-width: 4px;
+            stroke-linejoin: round;
         }
         .errorMarker {
             fill: rgba(255, 0, 0, 0.25);
             stroke: none;
         }
-    """)
+    """).substitute(wire_color=wire_color))
 
     def __init__(self, include_nids: bool=True, enable_css: bool=True, enable_grid: bool=True):
         self.enable_grid = enable_grid
