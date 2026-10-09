@@ -224,7 +224,7 @@ class Parameter:
             :class:`Symbol`). Set it to False for
             parameters needed to read a schematic, such as device
             dimensions. Boolean parameters at their default are always
-            omitted (see :meth:`Cell.params_list`).
+            omitted (see :meth:`Cell.params_items`).
     """
     def __init__(self, t: type, optional: bool = False, default=None,
             factory=None, value_repr=None, hide_default=True):
@@ -464,25 +464,38 @@ class Cell(metaclass=MetaCell):
         """
         pass
 
-    def params_list(self, use_repr=False, skip_default=False) -> list[str]:
+    def params_items(self) -> list[tuple[str, object]]:
         """
-        Parameters as key=value strings. Boolean parameters left at their
-        default are always omitted; skip_default=True also omits the other
-        parameters left at their default, unless they set hide_default=False.
+        Parameters as (key, value) pairs, omitting parameters that are None
+        and boolean parameters left at their default.
         """
-        param_items = []
+        items = []
         for k, param in self._class_params.items():
             v = getattr(self, k)
             if v is None:
                 continue
-            if v == param.default and (isinstance(v, bool) or (skip_default and param.hide_default)):
+            if isinstance(v, bool) and v == param.default:
                 continue
-            param_items.append((k, v))
+            items.append((k, v))
+        return items
+
+    def annotation_params(self) -> list[tuple[str, object, bool]]:
+        """
+        Parameter lines of the default symbol annotations (see
+        :class:`Symbol`) as (key, value, shown): the params_items, hidden
+        while left at their default unless the Parameter sets
+        hide_default=False.
+        """
+        return [(k, v, v != self._class_params[k].default or not self._class_params[k].hide_default)
+            for k, v in self.params_items()]
+
+    def params_list(self, use_repr=False) -> list[str]:
+        """Parameters as key=value strings, see params_items."""
         if use_repr:
             return [f"{k}={self._class_params[k].value_repr(v)}"
-                for k, v in param_items]
+                for k, v in self.params_items()]
         else:
-            return [f"{k}={v}" for k, v in param_items]
+            return [f"{k}={v}" for k, v in self.params_items()]
 
     def __repr__(self):
         return f"{type(self).__name__}({','.join(self.params_list(use_repr=True))})"

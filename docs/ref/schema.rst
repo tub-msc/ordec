@@ -32,7 +32,9 @@ pin stubs run along the stub; symbols with short pin names can draw them
 horizontally instead with ``Pin.rotate_label = False``.
 
 Besides pins and drawn geometry, a symbol carries :class:`SymbolAnnotation`
-lines (instance name, cell name, parameters). Lines referencing a
+lines (instance name, cell name, parameters). Each line has a unique
+``key``: an :class:`AnnotationKind` for the instance and cell name, else the
+parameter name, drawn as ``key=value``. Lines referencing a
 :class:`SymbolAnnotationStack` are drawn at its fixed position, typically
 inside the symbol outline. The other lines form the annotation
 block, which is placed as a whole beside the symbol. Schematics place the blocks after wiring
@@ -46,9 +48,9 @@ default, every annotation line is a text row of its own. Where a flatter
 block gets closer to the symbol, consecutive lines share a row
 (``SchemInstance.annotation_wrap``). The sides follow the instance
 orientation, the text stays horizontal; blocks left of their symbol are
-right-aligned. A symbol may hint a
-position with ``Symbol.annotation_pos``, which is tried first, and a
-schematic may set ``SchemInstance.annotation_pos`` explicitly. Each
+right-aligned. A schematic may set ``SchemInstance.annotation_pos``
+explicitly; lines that need a fixed position within the symbol belong in a
+:class:`SymbolAnnotationStack`. Each
 annotation line has a ``shown`` flag, which a schematic can override per
 instance with :class:`SchemAnnotationOverride` to declutter the drawing.
 

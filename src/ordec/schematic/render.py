@@ -16,10 +16,10 @@ def clean_css(css: str) -> str:
     """remove newlines / unneeded spaces from CSS literal string"""
     return re.sub(r"\s+", " ", css).strip()
 
-def annotation_lines(s: Symbol, inst: SchemInstance|None, stack: SymbolAnnotationStack|None = None) -> list[tuple[str, AnnotationKind]]:
+def annotation_lines(s: Symbol, inst: SchemInstance|None, stack: SymbolAnnotationStack|None = None) -> list[tuple[str, str]]:
     """
     The shown lines of the annotation block of symbol s (or of a fixed
-    stack), as (text, kind), with the schematic's SchemAnnotationOverrides
+    stack), as (text, svg_class), with the schematic's SchemAnnotationOverrides
     applied when drawn as instance inst. Instance name lines are omitted for
     a symbol on its own.
     """
@@ -36,12 +36,14 @@ def annotation_lines(s: Symbol, inst: SchemInstance|None, stack: SymbolAnnotatio
     for a in annotations:
         if not overrides.get(a.nid, a.shown):
             continue
-        if a.kind == AnnotationKind.InstanceName:
+        if a.key == AnnotationKind.InstanceName:
             if inst is None:
                 continue
-            lines.append((inst.full_path_label(), a.kind))
+            lines.append((inst.full_path_label(), 'instanceName'))
+        elif a.key == AnnotationKind.CellName:
+            lines.append((a.value, 'cellName'))
         else:
-            lines.append((a.text, a.kind))
+            lines.append((f'{a.key}={a.value}', 'params'))
     return lines
 
 def transform_align(halign: HAlign, valign: VAlign, trans: TD4R) -> tuple[HAlign, VAlign]:
@@ -67,7 +69,7 @@ def stack_label_frame(stack: SymbolAnnotationStack, trans: TD4R) -> tuple[TD4R, 
 
 def annotation_row_chars(row: list) -> int:
     """Length of a text row; its entries are separated by one space."""
-    return sum(len(text) for text, kind in row) + len(row) - 1
+    return sum(len(text) for text, svg_class in row) + len(row) - 1
 
 def annotation_rows(lines: list, wrap: int) -> list[list]:
     """
@@ -90,20 +92,12 @@ def annotation_anchor(s: Symbol, trans: TD4R, inst: SchemInstance|None) -> tuple
     Renderer.draw_label) and its arrangement (wrap, see annotation_rows):
     the instance's annotation_pos, annotation_halign and annotation_wrap if
     set. Else (a symbol on its own, or an instance of a schematic that never
-    ran place_annotations), the block is drawn at the symbol's
-    annotation_pos, or at the top right corner of its outline. Rendering
-    never searches for a free spot.
+    ran place_annotations), the block hangs from the top right corner of the
+    symbol outline. Rendering never searches for a free spot.
     """
     if inst is not None and inst.annotation_pos is not None:
         return inst.annotation_pos.transl() * East, inst.annotation_halign, inst.annotation_wrap
-    from .annotate import hint_rect, rect_anchor, symbol_body, block_size
-    length, depth = block_size(annotation_rows(annotation_lines(s, inst), 0))
-    if s.annotation_pos is not None:
-        rect = hint_rect(trans, length, depth, s.annotation_pos, s.annotation_halign)
-    else:
-        rect = hint_rect(trans, length, depth, s.outline.northeast, HAlign.Left)
-    pos, halign = rect_anchor(rect, symbol_body(s, trans, inst))
-    return pos.transl() * East, halign, 0
+    return (trans * s.outline).northeast.transl() * East, HAlign.Left, 0
 
 def annotation_extent(s: Symbol, trans: TD4R, inst: SchemInstance|None) -> Rect4R | None:
     """
@@ -513,12 +507,6 @@ class SchematicRenderer(Renderer):
         circle.attrib['class'] = 'errorMarker'
         circle.attrib['data-error'] = err.error_type.value
 
-    annotation_class = {
-        AnnotationKind.CellName: 'cellName',
-        AnnotationKind.InstanceName: 'instanceName',
-        AnnotationKind.Param: 'params',
-    }
-
     def draw_symbol(self, s: Symbol, trans: TD4R, inst: SchemInstance|None=None):
         # The outline rect is not drawn (stroke: none), but stays in the SVG
         # as the hit area for click-to-source (see pointer-events rule in css
@@ -533,13 +521,11 @@ class SchematicRenderer(Renderer):
             lines = annotation_lines(s, inst, stack)
             if lines:
                 frame, halign, valign = stack_label_frame(stack, trans)
-                rows = [[(text, self.annotation_class[kind])] for text, kind in lines]
-                self.draw_label(rows, frame, halign=halign, valign=valign)
+                self.draw_label([[line] for line in lines], frame, halign=halign, valign=valign)
 
         lines = annotation_lines(s, inst)
         if lines:
             anchor, halign, wrap = annotation_anchor(s, trans, inst)
-            lines = [(text, self.annotation_class[kind]) for text, kind in lines]
             self.draw_label(annotation_rows(lines, wrap), anchor, halign=halign)
 
         for poly in s.all(SymbolPoly):

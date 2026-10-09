@@ -7,21 +7,21 @@ schematic instances, run after wiring.
 
 Each block is placed beside its instance without overlapping wires, ports,
 tap points, drawn symbol geometry, pin labels or previously placed blocks.
-The symbol's own annotation_pos hint is tried first. Else the block goes to
-the spot nearest to the symbol's anchor (its center, shifted a bit towards
-the preferred East and North sides, following the instance orientation) that
-the empty regions around and inside the symbol's bounding box offer, keeping
-away from other instances (see candidate_cost). Where this gets the block
-closer, flatter arrangements with several entries per text row are used
-instead of the default one entry per row (see arrangements, place_block).
-Text is never rotated: blocks always read horizontally.
+The block goes to the spot nearest to the symbol's anchor (its center,
+shifted a bit towards the preferred East and North sides, following the
+instance orientation) that the empty regions around and inside the symbol's
+bounding box offer, keeping away from other instances (see
+candidate_cost). Where this gets the block closer, flatter arrangements with
+several entries per text row are used instead of the default one entry per
+row (see arrangements, place_block). Text is never rotated: blocks always
+read horizontally.
 """
 
 import logging
 import math
 
 from ..core import *
-from .render import Renderer, SchematicRenderer, annotation_lines, annotation_rows, annotation_row_chars, stack_label_frame, transform_align, annotation_extent
+from .render import Renderer, SchematicRenderer, annotation_lines, annotation_rows, annotation_row_chars, stack_label_frame, annotation_extent
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +87,7 @@ def symbol_obstacles(s: Symbol, trans: TD4R, inst: SchemInstance|None = None) ->
         lines = annotation_lines(s, inst, stack)
         if lines:
             frame, halign, valign = stack_label_frame(stack, trans)
-            rects.append(Renderer.label_rect(frame, max(len(text) for text, kind in lines),
+            rects.append(Renderer.label_rect(frame, max(len(text) for text, svg_class in lines),
                 len(lines), halign=halign, valign=valign))
     return rects
 
@@ -147,19 +147,6 @@ def symbol_body(s: Symbol, trans: TD4R, inst: SchemInstance|None) -> Rect4R:
         return trans * s.outline
     return Rect4R(min(r.lx for r in rects), min(r.ly for r in rects),
         max(r.ux for r in rects), max(r.uy for r in rects))
-
-def hint_rect(trans: TD4R, length: R, depth: R, pos: Vec2R, halign: HAlign) -> Rect4R:
-    """
-    Block rectangle for an anchor at pos (in symbol coordinates). The block
-    extends from pos to the side given by halign and downwards; both follow
-    trans (see transform_align), so the block stays on the same side of a
-    rotated or mirrored instance, but the text stays horizontal.
-    """
-    halign, valign = transform_align(halign, VAlign.Top, trans)
-    x = {HAlign.Left: 0, HAlign.Center: -length/2, HAlign.Right: -length}[halign]
-    y = {VAlign.Bottom: 0, VAlign.Middle: -depth/2, VAlign.Top: -depth}[valign]
-    p = trans * pos + Vec2R(x, y)
-    return Rect4R(p.x, p.y, p.x + length, p.y + depth)
 
 def fits(rect: FloatRect, obstacles: list[FloatRect]) -> bool:
     c = float(CLEARANCE)
@@ -259,10 +246,9 @@ def place_block(s: Symbol, trans: TD4R, inst: SchemInstance|None, obstacles: lis
     drawn under trans (as instance inst or on its own), avoiding obstacles.
     Returns None if the block is empty.
 
-    The hint is tried first, in the default arrangement. Else, the empty
-    regions around the symbol body are determined (see empty_regions), and
-    every arrangement is tried in every region it fits into, centered on the
-    anchor as far as the region allows. The cheapest candidate wins, see
+    The empty regions around the symbol body are determined (see
+    empty_regions), and every arrangement is tried in every region it fits
+    into, centered on the anchor as far as the region allows. The cheapest candidate wins, see
     candidate_cost; each step towards a flatter arrangement costs
     ARRANGE_COST, so the default line breaking is kept unless a flatter
     block gets closer to the symbol. With no fitting candidate at all, the
@@ -273,12 +259,6 @@ def place_block(s: Symbol, trans: TD4R, inst: SchemInstance|None, obstacles: lis
         return None
     body = symbol_body(s, trans, inst)
     sizes = arrangements(lines)
-
-    wrap, length, depth = sizes[0]
-    if s.annotation_pos is not None:
-        hint = hint_rect(trans, length, depth, s.annotation_pos, s.annotation_halign)
-        if fits(hint.tofloat(), obstacles):
-            return hint, wrap
 
     # Grid window: the body plus the reach of the largest arrangement.
     reach_x = PUSH_MARGIN + CLEARANCE + max(length for wrap, length, depth in sizes)

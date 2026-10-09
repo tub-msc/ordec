@@ -7,8 +7,8 @@ from ordec.lib.generic_mos import Inv, Nmos, Pmos
 def test_example_symbol():
     ref = MutableSubgraph.load({
         0: Symbol.Tuple(outline=Rect4R(lx=R('0.'), ly=R('0.'), ux=R('4.'), uy=R('4.')), cell=Inv()),
-        1: SymbolAnnotation(kind=AnnotationKind.InstanceName),
-        2: SymbolAnnotation(kind=AnnotationKind.CellName, text='Inv'),
+        1: SymbolAnnotation(key=AnnotationKind.InstanceName),
+        2: SymbolAnnotation(key=AnnotationKind.CellName, value='Inv'),
         21: NPath(parent=None, name='vdd', ref=20),
         23: NPath(parent=None, name='vss', ref=22),
         25: NPath(parent=None, name='a', ref=24),

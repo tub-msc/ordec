@@ -107,14 +107,11 @@ class ExtLibraryCell(Cell):
     extlib = Parameter(ExtLibrary)
     name = Parameter(str)
 
-    def params_list(self, use_repr=False, skip_default=False) -> list[str]:
+    def annotation_params(self) -> list[tuple[str, object, bool]]:
         # External cells get no parameter annotations in their symbols: the
         # default would list the ExtLibrary parameter as a Python repr
         # including its memory address (same problem as in unescaped_name
-        # below). repr() keeps the full parameter list so that view names
-        # stay unique.
-        if use_repr:
-            return super().params_list(use_repr=True, skip_default=skip_default)
+        # below).
         return []
 
     def unescaped_name(self):

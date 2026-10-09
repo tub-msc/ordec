@@ -82,7 +82,7 @@ def module_port_spec(module_data: dict[str, Any]) -> OrderedDict[str, tuple[str,
 
 def create_symbol(extlib, name, port_spec: OrderedDict[str, tuple[str, int]]) -> Symbol:
     sym = Symbol(cell=extlib[name])
-    sym.one(SymbolAnnotation.kind_idx.query(AnnotationKind.CellName)).text = name
+    sym.one(SymbolAnnotation.key_idx.query(AnnotationKind.CellName)).value = name
     for port_name, (direction, width) in port_spec.items():
         if direction == 'input':
             p = Pin(pintype=PinType.In, orient=West)

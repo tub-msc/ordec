@@ -303,7 +303,7 @@ def create_symbol_from_subckt(extlib, name, ports) -> Symbol:
     ``PinType.Inout`` and pins are placed automatically.
     """
     sym = Symbol(cell=extlib[name])
-    sym.one(SymbolAnnotation.kind_idx.query(AnnotationKind.CellName)).text = name
+    sym.one(SymbolAnnotation.key_idx.query(AnnotationKind.CellName)).value = name
     for port in ports:
         sym[port] = Pin(pintype=PinType.Inout, orient=North)
     sym.place_pins(hpadding=3, vpadding=2)

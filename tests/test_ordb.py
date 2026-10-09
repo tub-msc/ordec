@@ -244,7 +244,7 @@ def test_subgraph_matches():
     # Change of attribute should lead to inequivalence:
     s2 = s.copy()
     assert s2.subgraph.root_cursor is s2
-    s2.annotation_pos = Vec2R(1, 2)
+    s2.outline = Rect4R(0, 0, 4, 4)
     assert not s2.matches(ref)
     # Original subgraph s should be unaffected:
     assert s.matches(ref)

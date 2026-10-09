@@ -56,10 +56,10 @@ def symbol_place_pins(node: Symbol, hpadding=3, vpadding=3):
     stacks = {
         AnnotationKind.InstanceName: node % SymbolAnnotationStack(pos=o.northwest),
         AnnotationKind.CellName: node % SymbolAnnotationStack(pos=o.northeast, halign=HAlign.Right),
-        AnnotationKind.Param: node % SymbolAnnotationStack(pos=o.southeast, halign=HAlign.Right, valign=VAlign.Bottom),
     }
+    params = node % SymbolAnnotationStack(pos=o.southeast, halign=HAlign.Right, valign=VAlign.Bottom)
     for a in list(node.all(SymbolAnnotation)):
-        a.ref = stacks[a.kind]
+        a.ref = stacks.get(a.key, params)
 
 def schem_place(schem: Schematic, gap=None, port_margin=None):
     """

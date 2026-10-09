@@ -116,8 +116,8 @@ def test_params_list_defaults():
     # while a non-default bool and non-bool defaults (m, k) are kept.
     assert repr(A(x=2)) == "A(x=2,m=1,k=2)"
     assert repr(A(x=2, flag=False)) == "A(x=2,m=1,k=2,flag=False)"
-    # skip_default (used for symbol annotations) respects hide_default:
-    assert A(x=2).params_list(skip_default=True) == ["x=2", "k=2"]
+    # Symbol annotations hide defaults unless hide_default=False:
+    assert A(x=2).annotation_params() == [("x", 2, True), ("m", 1, False), ("k", 2, True)]
 
 # -- Concurrency semantics of Future-based view caching ----------------------
 

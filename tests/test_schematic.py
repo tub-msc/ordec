@@ -229,20 +229,22 @@ def test_annotations():
     import re
     # Symbol viewgens start with the default annotations and can adjust them:
     sym = lib_ann.Box(n=1).symbol
-    assert [(a.kind, a.text, a.shown) for a in sym.all(SymbolAnnotation)] == [
+    assert [(a.key, a.value, a.shown) for a in sym.all(SymbolAnnotation)] == [
         (AnnotationKind.InstanceName, None, True),
         (AnnotationKind.CellName, 'Box', True), # in a fixed stack
-        (AnnotationKind.Param, 'n=1', True),
-        (AnnotationKind.Param, 'm=1', False), # left at its default
+        ('n', '1', True),
+        ('m', '1', False), # left at its default
     ]
+    # Keys are unique per symbol:
+    with pytest.raises(UniqueViolation):
+        sym.thaw() % SymbolAnnotation(key='n', value='2')
     # A symbol on its own has no instance name to show:
     assert 'class="instanceName"' not in sym.render().svg().decode()
 
     sch = lib_ann.Top().schematic
-    # b1 is placed at its symbol's hint, b2 keeps its explicit position; the
+    # b1 is placed by place_annotations, b2 keeps its explicit position; the
     # outline covers both blocks:
-    # (stored right-aligned, as the hint lies left of the body center):
-    assert (sch.b1.annotation_pos, sch.b1.annotation_halign) == (Vec2R(R('4.025'), 7), HAlign.Right)
+    assert sch.b1.annotation_pos is not None
     assert sch.b2.annotation_pos == Vec2R(9, 7)
     assert sch.outline.uy >= 7
     svg = sch.render().svg().decode()
@@ -255,10 +257,10 @@ def test_annotations():
     # Per-instance overrides of the shown flag:
     s = Schematic(outline=(0, 0, 8, 8))
     s.b = SchemInstance(pos=(0, 0), symbol=lib_ann.Box(n=2).symbol)
-    by_text = {a.text: a for a in s.b.symbol.all(SymbolAnnotation)}
-    s % SchemAnnotationOverride(ref=s.b, there=by_text['n=2'], shown=False)
-    s % SchemAnnotationOverride(ref=s.b, there=by_text['m=1'], shown=True)
-    s % SchemAnnotationOverride(ref=s.b, there=by_text['Box'], shown=False) # fixed stack
+    line = lambda key: s.b.symbol.one(SymbolAnnotation.key_idx.query(key))
+    s % SchemAnnotationOverride(ref=s.b, there=line('n'), shown=False)
+    s % SchemAnnotationOverride(ref=s.b, there=line('m'), shown=True)
+    s % SchemAnnotationOverride(ref=s.b, there=line(AnnotationKind.CellName), shown=False) # fixed stack
     svg = s.render().svg().decode()
     assert 'n=2' not in svg and 'm=1' in svg and 'class="cellName"' not in svg
 
@@ -270,7 +272,7 @@ def test_annotations():
     # A stack centered vertically on pos is centered horizontally in an
     # instance rotated by 90 degrees:
     sym = Symbol(outline=(0, 0, 4, 4))
-    sym % SymbolAnnotation(kind=AnnotationKind.CellName, text='X',
+    sym % SymbolAnnotation(key=AnnotationKind.CellName, value='X',
         ref=sym % SymbolAnnotationStack(pos=(2, 2), valign=VAlign.Middle))
     s = Schematic(outline=(0, 0, 4, 4))
     s.x = SchemInstance(pos=(4, 0), orient=R90, symbol=sym.freeze())
