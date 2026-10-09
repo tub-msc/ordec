@@ -70,36 +70,36 @@
       <text transform="matrix(0.045 0 0 -0.045 6.225 22.0)" dominant-baseline="middle" text-anchor="start" class="pinLabel">clk</text>
     </g>
     <g>
-      <path d="M0 0 L0.25 -0.25 L0.25 -0.5 L0 -0.5 L-0.25 -0.5 L-0.25 -0.25 Z" transform="matrix(0 -1 1 0 1.0 0.0)" class="portArrow" />
-      <text transform="matrix(0.045 0 0 -0.045 0.35 0.0)" dominant-baseline="middle" text-anchor="end" class="portLabel">vss</text>
+      <path d="M0 0 L0.25 -0.25 L0.25 -0.5 L0 -0.5 L-0.25 -0.5 L-0.25 -0.25 Z" transform="matrix(0 -1 1 0 1.25 0.0)" class="portArrow" />
+      <text transform="matrix(0.045 0 0 -0.045 0.6 0.0)" dominant-baseline="middle" text-anchor="end" class="portLabel">vss</text>
     </g>
     <g>
-      <path d="M0 0 L0.25 -0.25 L0.25 -0.5 L0 -0.5 L-0.25 -0.5 L-0.25 -0.25 Z" transform="matrix(0 -1 1 0 1.0 1.0)" class="portArrow" />
-      <text transform="matrix(0.045 0 0 -0.045 0.35 1.0)" dominant-baseline="middle" text-anchor="end" class="portLabel">vdd</text>
+      <path d="M0 0 L0.25 -0.25 L0.25 -0.5 L0 -0.5 L-0.25 -0.5 L-0.25 -0.25 Z" transform="matrix(0 -1 1 0 1.25 1.0)" class="portArrow" />
+      <text transform="matrix(0.045 0 0 -0.045 0.6 1.0)" dominant-baseline="middle" text-anchor="end" class="portLabel">vdd</text>
     </g>
     <g>
-      <path d="M0 0 L0.25 -0.25 L0.25 -0.5 L0 -0.5 L-0.25 -0.5 L-0.25 -0.25 Z" transform="matrix(0 -1 1 0 1.0 2.0)" class="portArrow" />
-      <text transform="matrix(0.045 0 0 -0.045 0.35 2.0)" dominant-baseline="middle" text-anchor="end" class="portLabel">clk</text>
+      <path d="M0 0 L0.25 -0.25 L0.25 -0.5 L0 -0.5 L-0.25 -0.5 L-0.25 -0.25 Z" transform="matrix(0 -1 1 0 1.25 2.0)" class="portArrow" />
+      <text transform="matrix(0.045 0 0 -0.045 0.6 2.0)" dominant-baseline="middle" text-anchor="end" class="portLabel">clk</text>
     </g>
     <g>
-      <path d="M0 0 L0.25 -0.25 L0.25 -0.5 L0 -0.5 L-0.25 -0.5 L-0.25 -0.25 Z" transform="matrix(0 -1 1 0 4.0 5.0)" class="portArrow" />
-      <text transform="matrix(0.045 0 0 -0.045 3.35 5.0)" dominant-baseline="middle" text-anchor="end" class="portLabel">d[0]</text>
+      <path d="M0 0 L0.25 -0.25 L0.25 -0.5 L0 -0.5 L-0.25 -0.5 L-0.25 -0.25 Z" transform="matrix(0 -1 1 0 4.25 5.0)" class="portArrow" />
+      <text transform="matrix(0.045 0 0 -0.045 3.6 5.0)" dominant-baseline="middle" text-anchor="end" class="portLabel">d[0]</text>
     </g>
     <g>
       <path d="M0 0 L0.25 0 L0.25 -0.25 L0 -0.5 L-0.25 -0.25 L-0.25 0 Z" transform="matrix(0 1 -1 0 14.0 5.0)" class="portArrow" />
       <text transform="matrix(0.045 0 0 -0.045 14.65 5.0)" dominant-baseline="middle" text-anchor="start" class="portLabel">q[0]</text>
     </g>
     <g>
-      <path d="M0 0 L0.25 -0.25 L0.25 -0.5 L0 -0.5 L-0.25 -0.5 L-0.25 -0.25 Z" transform="matrix(0 -1 1 0 4.0 13.0)" class="portArrow" />
-      <text transform="matrix(0.045 0 0 -0.045 3.35 13.0)" dominant-baseline="middle" text-anchor="end" class="portLabel">d[1]</text>
+      <path d="M0 0 L0.25 -0.25 L0.25 -0.5 L0 -0.5 L-0.25 -0.5 L-0.25 -0.25 Z" transform="matrix(0 -1 1 0 4.25 13.0)" class="portArrow" />
+      <text transform="matrix(0.045 0 0 -0.045 3.6 13.0)" dominant-baseline="middle" text-anchor="end" class="portLabel">d[1]</text>
     </g>
     <g>
       <path d="M0 0 L0.25 0 L0.25 -0.25 L0 -0.5 L-0.25 -0.25 L-0.25 0 Z" transform="matrix(0 1 -1 0 14.0 13.0)" class="portArrow" />
       <text transform="matrix(0.045 0 0 -0.045 14.65 13.0)" dominant-baseline="middle" text-anchor="start" class="portLabel">q[1]</text>
     </g>
     <g>
-      <path d="M0 0 L0.25 -0.25 L0.25 -0.5 L0 -0.5 L-0.25 -0.5 L-0.25 -0.25 Z" transform="matrix(0 -1 1 0 4.0 21.0)" class="portArrow" />
-      <text transform="matrix(0.045 0 0 -0.045 3.35 21.0)" dominant-baseline="middle" text-anchor="end" class="portLabel">d[2]</text>
+      <path d="M0 0 L0.25 -0.25 L0.25 -0.5 L0 -0.5 L-0.25 -0.5 L-0.25 -0.25 Z" transform="matrix(0 -1 1 0 4.25 21.0)" class="portArrow" />
+      <text transform="matrix(0.045 0 0 -0.045 3.6 21.0)" dominant-baseline="middle" text-anchor="end" class="portLabel">d[2]</text>
     </g>
     <g>
       <path d="M0 0 L0.25 0 L0.25 -0.25 L0 -0.5 L-0.25 -0.25 L-0.25 0 Z" transform="matrix(0 1 -1 0 14.0 21.0)" class="portArrow" />

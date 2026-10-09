@@ -612,13 +612,24 @@ class SchematicRenderer(Renderer):
         p=ET.SubElement(self.cur_group, 'path', d=d, transform=m.svg_transform())
         p.attrib['class']=svg_class
 
+    @staticmethod
+    def port_overlap(pt: PinType) -> R:
+        """
+        How far the port arrow reaches over the end of its wire. Arrows with
+        a tip at the wire (In, Inout) overlap it up to their full width
+        (halfheight in draw_arrow), so that they look attached like the flat
+        side of Out arrows.
+        """
+        return R('0.25') if pt in (PinType.In, PinType.Inout) else R(0)
+
     def draw_schem_port(self, p: SchemPort):
         trans = p.pos.transl() * p.orient
-        self.draw_arrow(ArrowType.Port, p.ref.pin.pintype, trans)
+        overlap = self.port_overlap(p.ref.pin.pintype)
+        self.draw_arrow(ArrowType.Port, p.ref.pin.pintype, trans * Vec2R(0, overlap).transl())
 
         label = p.ref.pin.full_path_label()
         self.draw_label(label, trans*R180,
-            space=self.port_text_space, halign=HAlign.Left, valign=VAlign.Middle,
+            space=self.port_text_space - float(overlap), halign=HAlign.Left, valign=VAlign.Middle,
             svg_class='portLabel')
 
     def draw_schem_tappoint(self, p: SchemTapPoint):

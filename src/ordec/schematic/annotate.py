@@ -100,11 +100,12 @@ def schematic_obstacles(node: Schematic) -> list[Rect4R]:
             rects.append(_bbox([a, b]))
     for port in node.all(SchemPort):
         trans = port.pos.transl() * port.orient
-        # Port arrow (see Renderer.draw_arrow, non-centered) and label.
-        rects.append(trans * Rect4R(R(-0.25), R(-0.5), R(0.25), R(0)))
+        # Port arrow (see SchematicRenderer.draw_schem_port) and label.
+        overlap = SchematicRenderer.port_overlap(port.ref.pin.pintype)
+        rects.append(trans * Rect4R(R(-0.25), R(-0.5) + overlap, R(0.25), overlap))
         label = port.ref.pin.full_path_label()
         rects.append(Renderer.label_rect(trans * R180, len(label), 1,
-            valign=VAlign.Middle, space=Renderer.port_text_space))
+            valign=VAlign.Middle, space=Renderer.port_text_space - float(overlap)))
     for tap in node.all(SchemTapPoint):
         trans = tap.loc_transform()
         # Tap glyph (supply/ground glyphs are the largest, up to 1 unit long).
