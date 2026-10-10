@@ -586,7 +586,7 @@ cell Vco:
             .s -- vdd
             .b -- vdd
             .pos = (11, 16)
-            .orient = FlippedSouth
+            .orient = FlippedNorth
 
         for mos in m1, m2, m3, m4:
             mos.$l = self.length

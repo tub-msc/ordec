@@ -21,8 +21,6 @@ def test_D4():
         (R270, MX90),
     )
     for a, b in flip_pairs:
-        assert a.flip() == b
-        assert b.flip() == a
         assert a.det() == 1
         assert b.det() == -1
         assert a.unflip() == a
@@ -30,7 +28,14 @@ def test_D4():
 
     for a in D4:
         assert a.inv() * a == R0
-        assert a * Vec2R(0, 1) == a.flip() * Vec2R(0, 1)
+        assert a * Vec2R(0, 1) == a.unflip() * Vec2R(0, 1)
+
+    # LEF/DEF: F<dir> is <dir> followed by mirroring along the Y axis.
+    for d, fd, name in ((North, FlippedNorth, 'N'), (West, FlippedWest, 'W'),
+            (South, FlippedSouth, 'S'), (East, FlippedEast, 'E')):
+        assert MY * d == fd
+        assert d.lefdef() == name
+        assert fd.lefdef() == 'F' + name
 
 def test_TD4R():
     assert TD4R() * TD4R() == TD4R()

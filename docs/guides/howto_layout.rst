@@ -39,7 +39,7 @@ In ORD syntax, named child nodes are created with declaration blocks; in Python,
 Orientations
 ------------
 
-Instance orientation is set via the ``orient`` attribute using the :class:`~ordec.core.geoprim.D4` enum (dihedral group: four rotations, four mirrored variants). Each value has two interchangeable names, a rotation/mirror name and a compass alias. **The compass aliases do not map to rotation angles the way one might guess** — they denote the direction the cell's top edge faces after the transform, while the rotation names follow the mathematical convention (``R90`` = 90° counterclockwise):
+Instance orientation is set via the ``orient`` attribute using the :class:`~ordec.core.geoprim.D4` enum (dihedral group: four rotations, four mirrored variants). Each value has two interchangeable names, a rotation/mirror name and a compass alias. The compass aliases and their short forms are the LEF/DEF orientation names. For the four rotations, the compass alias is the direction the cell's top edge faces after the transform. **The rotation names follow the mathematical convention** (``R90`` = 90° counterclockwise), so ``East`` is ``R270``, not ``R90``. ``Flipped<Dir>`` is ``<Dir>`` followed by mirroring horizontally (x negated, ``MY * <Dir>``). The top edge keeps facing ``<Dir>`` for ``FlippedNorth`` and ``FlippedSouth``, but faces the opposite way for ``FlippedWest`` and ``FlippedEast``:
 
 ============ ======== ===== =========================================================
 Compass name D4 value Short Effect on the placed cell
@@ -48,13 +48,13 @@ North        R0       N     unchanged; top edge faces north
 West         R90      W     rotated 90° counterclockwise; top edge faces west
 South        R180     S     rotated 180°; top edge faces south
 East         R270     E     rotated 90° **clockwise**; top edge faces east
-FlippedNorth MX       FN    mirrored vertically (y negated); top edge faces south
-FlippedSouth MY       FS    mirrored horizontally (x negated); top edge stays north
-FlippedWest  MX90     FW    mirrored, then rotated; top edge faces west
-FlippedEast  MY90     FE    mirrored, then rotated; top edge faces east
+FlippedNorth MY       FN    mirrored horizontally (x negated); top edge faces north
+FlippedSouth MX       FS    mirrored vertically (y negated); top edge faces south
+FlippedWest  MX90     FW    West, then mirrored horizontally; top edge faces **east**
+FlippedEast  MY90     FE    East, then mirrored horizontally; top edge faces **west**
 ============ ======== ===== =========================================================
 
-So for a vertical resistor whose ``term_p`` is at the top: ``.orient = East`` makes ``term_p`` face east, and ``.orient = FlippedNorth`` flips it upside down (``term_p`` faces south) without mirroring left/right. The short names in the third column follow the familiar DEF orientation naming. The same enum is used for schematic instances and pin alignment.
+So for a vertical resistor whose ``term_p`` is at the top: ``.orient = East`` makes ``term_p`` face east, and ``.orient = FlippedSouth`` flips it upside down (``term_p`` faces south) without mirroring left/right. Standard cell rows alternate between ``North`` and ``FlippedSouth`` for this reason, so that adjacent rows share their power rails. The same enum is used for schematic instances and for the ``orient`` of pins, ports and tap points.
 
 Geometric constraints
 ---------------------
@@ -64,7 +64,7 @@ Positions and dimensions are usually not given as absolute numbers but as linear
 .. code-block:: text
 
     Rsil(l='1u') r3:
-        .orient = FlippedNorth
+        .orient = FlippedSouth
         ! .term_n.cx == r1.term_n.cx          # align centers horizontally
         ! r1.term_n.cy == .term_n.cy + 2500   # 2.5 µm vertical spacing
 

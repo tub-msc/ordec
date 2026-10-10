@@ -112,6 +112,16 @@ Symbol viewgens that set no outline get this automatically.
 Schematics
 ----------
 
+The ``orient`` of pins, ports and tap points is a direction; mirroring has
+no visible effect on them, so it is stored unflipped. :class:`Pin` and
+:class:`SchemPort` point towards their wire: a pin points out of its symbol
+to where the wire attaches, and a port is the inside view of that pin, so an
+input pin facing ``West`` corresponds to a port facing ``East``, with its
+label left of the wire. :class:`SchemTapPoint` instead points away from its
+wire, in the direction its glyph and label extend: a supply tap with
+``orient=North`` draws its arrow upwards, a ground tap with ``orient=South``
+downwards. A tap at an instance pin therefore has the orient of that pin.
+
 .. autoclass:: Schematic
    :members:
    :undoc-members:

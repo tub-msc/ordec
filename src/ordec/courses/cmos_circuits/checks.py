@@ -483,7 +483,7 @@ def gen_lesson4(g):
 
             **Add the two pair transistors at the EDIT HERE marker:** `m1`
             at position `(4,7)` and `m2` at `(16,7)` with
-            `.orient=FlippedSouth` so that its gate faces the `inn`
+            `.orient=FlippedNorth` so that its gate faces the `inn`
             port, both `$w=5u` and `$l=130n`.
 
             `DiffPairTb` sweeps `inp` around the **0.7 V** common mode of
@@ -501,13 +501,13 @@ def gen_lesson4(g):
             if len(pair) < 2:
                 return False, ("Looking for the two pair transistors "
                     "(w=5u, l=130n) besides mtail: m1 at position (4,7) "
-                    "and m2 at (16,7) with orientation FlippedSouth "
+                    "and m2 at (16,7) with orientation FlippedNorth "
                     f"(found {len(pair)} of 2).")
             sides = (
                 ("inp", {'g': sch.inp, 'd': sch.outp, 's': sch.tail,
                     'b': sch.vss}, (4, 7), None),
                 ("inn", {'g': sch.inn, 'd': sch.outn, 's': sch.tail,
-                    'b': sch.vss}, (16, 7), FlippedSouth),
+                    'b': sch.vss}, (16, 7), FlippedNorth),
             )
             problems = []
             for side, target, pos, orientation in sides:
@@ -521,7 +521,7 @@ def gen_lesson4(g):
                     problems.append(f"the {side} transistor sits {where}")
                 if orientation is not None and inst.orient != orientation:
                     problems.append(f"the {side} transistor is not "
-                        "mirrored with .orient=FlippedSouth")
+                        "mirrored with .orient=FlippedNorth")
             if problems:
                 msg = "; ".join(problems)
                 return False, msg[0].upper() + msg[1:] + "."
@@ -1267,7 +1267,7 @@ def gen_lesson11(g):
         ota_hint = (
             "Replace `rl_p` and `rl_n` by two PMOS, both w=5u. `m3` at "
             "(8,14) is diode-connected: `g` and `d` both to `outx`, "
-            "mirrored with FlippedSouth so that it faces `m4`. `m4` at "
+            "mirrored with FlippedNorth so that it faces `m4`. `m4` at "
             "(12,14): `g` to `outx`, `d` to `out`. Both take `s` and "
             "`b` to `vdd`. `m3` carries the current of one branch and "
             "`m4` copies it onto the other.")
@@ -1294,9 +1294,9 @@ def gen_lesson11(g):
                             for t in [misplaced(diode, 8, 14)] if t]
                         problems += [f"the output transistor sits {t}"
                             for t in [misplaced(outdev, 12, 14)] if t]
-                        if diode.orient != FlippedSouth:
+                        if diode.orient != FlippedNorth:
                             problems.append("the diode transistor is not "
-                                "mirrored with .orient=FlippedSouth")
+                                "mirrored with .orient=FlippedNorth")
             if mirror and resistors == 0 and problems:
                 return False, ("The mirror is wired correctly, but "
                     + ", ".join(problems) + ".")

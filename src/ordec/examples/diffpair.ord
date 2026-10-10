@@ -28,7 +28,7 @@ cell DiffPair:
                     Nmos m1: .g -- inp; .b -- vss; .d -- outp; .$w=10u
                 with Series():
                     Res rr: .$r=10k
-                    Nmos m2: .orient=FlippedSouth; .g -- inn; .b -- vss; .d -- outn; .$w=10u
+                    Nmos m2: .orient=FlippedNorth; .g -- inn; .b -- vss; .d -- outn; .$w=10u
             Nmos mtail: .g -- bias; .b -- vss; .$w=20u
             port vss
 

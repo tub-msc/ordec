@@ -567,7 +567,7 @@ courses_testdata = {
             # EDIT HERE
             """, """
             Nmos m1: .$w=5u; .$l=130n; .g -- inp; .d -- outp; .s -- tail; .b -- vss; .pos=(4,7)
-            Nmos m2: .$w=5u; .$l=130n; .g -- inn; .d -- outn; .s -- tail; .b -- vss; .pos=(16,7); .orient=FlippedSouth
+            Nmos m2: .$w=5u; .$l=130n; .g -- inn; .d -- outn; .s -- tail; .b -- vss; .pos=(16,7); .orient=FlippedNorth
             """),
         ]),
         # Lesson 5: ring oscillator bug hunt. The inversion-count check
@@ -662,12 +662,12 @@ courses_testdata = {
             Res rl_p: .$r=30k; .p -- vdd; .n -- outx; .pos=(4,14)
             Res rl_n: .$r=30k; .p -- vdd; .n -- out; .pos=(12,14)
             Nmos m1: .$w=5u; .$l=130n; .g -- inp; .d -- outx; .s -- tail; .b -- vss; .pos=(4,7)
-            Nmos m2: .$w=5u; .$l=130n; .g -- inn; .d -- out; .s -- tail; .b -- vss; .pos=(16,7); .orient=FlippedSouth
+            Nmos m2: .$w=5u; .$l=130n; .g -- inn; .d -- out; .s -- tail; .b -- vss; .pos=(16,7); .orient=FlippedNorth
             """, """
-            Pmos m3: .$w=5u; .$l=300n; .g -- outx; .d -- outx; .s -- vdd; .b -- vdd; .pos=(8,14); .orient=FlippedSouth
+            Pmos m3: .$w=5u; .$l=300n; .g -- outx; .d -- outx; .s -- vdd; .b -- vdd; .pos=(8,14); .orient=FlippedNorth
             Pmos m4: .$w=5u; .$l=300n; .g -- outx; .d -- out; .s -- vdd; .b -- vdd; .pos=(12,14)
             Nmos m1: .$w=5u; .$l=300n; .g -- inp; .d -- outx; .s -- tail; .b -- vss; .pos=(4,7)
-            Nmos m2: .$w=5u; .$l=300n; .g -- inn; .d -- out; .s -- tail; .b -- vss; .pos=(16,7); .orient=FlippedSouth
+            Nmos m2: .$w=5u; .$l=300n; .g -- inn; .d -- out; .s -- tail; .b -- vss; .pos=(16,7); .orient=FlippedNorth
             """),
         ]),
     ]),
