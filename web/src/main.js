@@ -417,18 +417,66 @@ async function initIntegratedMode() {
     return client;
 }
 
-if (queryLocal) {
-    await initLocalMode();
-} else if (queryCourse) {
-    await startCourseMode();
-} else {
-    await initIntegratedMode();
-}
+// Toolbar controls are wired before the mode initialization below, so that
+// they still work if it fails. The Refresh button gets its click handler only
+// once the initialization has succeeded or failed.
+const refreshBtn = document.querySelector("#refresh");
+refreshBtn.onmousedown = (e) => e.preventDefault();
 
-layout.addEventListener('stateChanged', () => {
-    app.client.registerResultViewers(getResultViewers());
-    getCourseController()?.uistateChanged();
+document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.key === 'm') {
+        e.preventDefault();
+        refreshBtn.click();
+    }
 });
+
+document.querySelector("#examples").onclick = () => {
+    // Relative so it works under a URL path prefix (JupyterHub).
+    if (window.onbeforeunload) {
+        window.open('index.html', '_blank');
+    } else {
+        window.location.href = 'index.html';
+    }
+};
+
+fetch('api/version').then(response => response.json()).then(data => {
+    document.querySelector('#version').innerText = data['version'];
+    // Point the Docs toolbar link at the documentation matching the
+    // installed version.
+    document.querySelector('#docs').href = data['docs_url'];
+});
+
+try {
+    if (queryLocal) {
+        await initLocalMode();
+    } else if (queryCourse) {
+        await startCourseMode();
+    } else {
+        await initIntegratedMode();
+    }
+} catch (e) {
+    // Typically a failed fetch of the initial data (server not running or
+    // unreachable). Shown in place of the layout, styled like the exceptions
+    // in result viewers; without it, the workspace would stay blank.
+    const exc = document.createElement('div');
+    exc.className = 'exc';
+    const head = document.createElement('div');
+    head.className = 'exc-head';
+    const etype = document.createElement('span');
+    etype.className = 'exc-type';
+    etype.textContent = 'Error';
+    const message = document.createElement('span');
+    message.className = 'exc-message';
+    message.textContent = `: Failed to load data from server (${e.message}).`;
+    head.append(etype, message);
+    exc.appendChild(head);
+    // The empty layout root would cover the message.
+    layout.destroy();
+    document.querySelector('#workspace').replaceChildren(exc);
+    // Refresh retries the initialization.
+    refreshBtn.onclick = () => window.location.reload();
+    throw e;
+}
 
 function refresh() {
     if (!app.client.localModule) {
@@ -440,15 +488,11 @@ function refresh() {
     app.client.connect();
 }
 
-const refreshBtn = document.querySelector("#refresh");
-refreshBtn.onmousedown = (e) => e.preventDefault();
 refreshBtn.onclick = refresh;
 
-document.addEventListener('keydown', (e) => {
-    if (e.ctrlKey && e.key === 'm') {
-        e.preventDefault();
-        refresh();
-    }
+layout.addEventListener('stateChanged', () => {
+    app.client.registerResultViewers(getResultViewers());
+    getCourseController()?.uistateChanged();
 });
 
 sourceTypeSelect.onchange = () => {
@@ -650,22 +694,6 @@ app.eventBus.on('lvs:request-open-views', (data) => {
     }
 
     openViewsBesideSource(sourceContainer, columnContent);
-});
-
-document.querySelector("#examples").onclick = () => {
-    // Relative so it works under a URL path prefix (JupyterHub).
-    if (window.onbeforeunload) {
-        window.open('index.html', '_blank');
-    } else {
-        window.location.href = 'index.html';
-    }
-};
-
-fetch('api/version').then(response => response.json()).then(data => {
-    document.querySelector('#version').innerText = data['version'];
-    // Point the Docs toolbar link at the documentation matching the
-    // installed version.
-    document.querySelector('#docs').href = data['docs_url'];
 });
 
 schematicCss.then(css => {

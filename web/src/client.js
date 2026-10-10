@@ -68,6 +68,9 @@ export class OrdecClient {
         this.sock = new WebSocket(wsUrl.href, []);
         this.sock.binaryType = 'arraybuffer';
         this.sockOpened = false;
+        // Set once the server answers with an 'exception' message on this
+        // socket (see wsOnClose).
+        this.sockException = false;
         this.sock.onopen = (ev) => this.wsOnOpen(ev);
         this.sock.onmessage = (ev) => this.wsOnMessage(ev);
         this.sock.onclose = (ev) => this.wsOnClose(ev);
@@ -101,6 +104,7 @@ export class OrdecClient {
             // Structured exception dict (see server.py
             // format_user_exception / message_exception).
             this.buildPending = false;
+            this.sockException = true;
             this.exception = msg['exception'];
             this.setStatus('exception');
             // Build errors annotate the failing line in the editor (main.js).
@@ -147,22 +151,32 @@ export class OrdecClient {
             // goes through the hub, which respawns the instance.
             this.onSessionLost?.();
         }
-        if (!this.exception) {
-            //this.exception = "Websocket disconnected.";
-            this.setStatus('disconnected');
+        if (!this.sockException) {
+            // The server closes the socket on its own only after an
+            // 'exception' message (e.g. a wrong auth token), which stays on
+            // display. Any other close means the server is unreachable: show
+            // this in the viewers, which would otherwise keep showing stale
+            // views. Same dict shape and etype as server.py message_exception.
+            const message = this.sockOpened
+                ? 'Lost connection to server.'
+                : 'Could not connect to server.';
+            this.exception = {
+                etype: 'Error',
+                message: message,
+                text: message,
+                frames: [],
+            };
+            this.resultViewers.forEach(rv => rv.updateViewListAndException());
         }
+        this.updateStatus();
     }
 
     wsOnError(errorEvent) {
         if (errorEvent.target !== this.sock) {
             return;
         }
+        // The close event that always follows handles the failure.
         console.error("WebSocket error:", errorEvent);
-        this.inflight.clear();
-        this.buildPending = false;
-        if (!this.exception) {
-            this.setStatus('disconnected');
-        }
     }
 
     wsOnOpen(event) {
@@ -232,7 +246,9 @@ export class OrdecClient {
         if (this.buildPending) {
             this.setStatus('busy');
         } else if (this.exception) {
-            this.setStatus('exception');
+            // Without an 'exception' message on the current socket, the
+            // exception is the connection error set by wsOnClose.
+            this.setStatus(this.sockException ? 'exception' : 'disconnected');
         } else if (this.inflight.size > 0) {
             this.setStatus('busy');
         } else {
