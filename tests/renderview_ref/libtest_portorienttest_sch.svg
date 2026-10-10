@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="250.0px" height="250.0px" viewBox="-1.0 -1.0 10.0 10.0">
-  <g transform="matrix(1 0 0 -1 0 8.0)">
+  <g class="schematic" transform="matrix(1 0 0 -1 0 8.0)">
     <g>
       <path d="M0 0 L0.25 -0.25 L0.25 -0.5 L0 -0.5 L-0.25 -0.5 L-0.25 -0.25 Z" transform="matrix(1 0 0 1 4.0 2.25)" class="portArrow" />
       <text transform="matrix(0 0.045 0.045 0 4.0 1.6)" dominant-baseline="middle" text-anchor="end" class="portLabel">north</text>

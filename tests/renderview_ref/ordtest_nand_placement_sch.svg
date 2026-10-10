@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="500.0px" height="850.0px" viewBox="-4.0 -3.0 20.0 34.0">
-  <g transform="matrix(1 0 0 -1 0 28.0)">
+  <g class="schematic" transform="matrix(1 0 0 -1 0 28.0)">
     <path d="M6.0 28.0 L6.0 27.0 L6.0 25.0 L5.0 25.0 L2.0 25.0 L2.0 24.0" class="schemWire" />
     <path d="M6.0 25.0 L10.0 25.0 L10.0 24.0" class="schemWire" />
     <path d="M5.0 25.0 L5.0 22.0 L4.0 22.0" class="schemWire" />
@@ -33,10 +33,10 @@
       <path d="M4.0 2.0 L1.3 2.0" transform="matrix(1 0 0 1 0.0 20.0)" class="symbolPoly" />
       <path d="M1.7 2.55 L1.3 2.75 L1.7 2.95" transform="matrix(1 0 0 1 0.0 20.0)" class="symbolPoly" />
       <path d="M1.6 1.8 L2.0 2.0 L1.6 2.2" transform="matrix(1 0 0 1 0.0 20.0)" class="symbolPoly" />
-      <text transform="matrix(0.045 0 0 -0.045 0.125 22.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel detail">g</text>
-      <text transform="matrix(0.045 0 0 -0.045 1.875 20.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel detail">d</text>
-      <text transform="matrix(0.045 0 0 -0.045 1.875 23.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel detail">s</text>
-      <text transform="matrix(0.045 0 0 -0.045 3.875 22.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel detail">b</text>
+      <text transform="matrix(0.045 0 0 -0.045 0.125 22.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel detailOnly">g</text>
+      <text transform="matrix(0.045 0 0 -0.045 1.875 20.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel detailOnly">d</text>
+      <text transform="matrix(0.045 0 0 -0.045 1.875 23.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel detailOnly">s</text>
+      <text transform="matrix(0.045 0 0 -0.045 3.875 22.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel detailOnly">b</text>
     </g>
     <g>
       <rect x="8.0" y="20.0" width="4.0" height="4.0" class="symbolOutline" />
@@ -47,10 +47,10 @@
       <path d="M4.0 2.0 L1.3 2.0" transform="matrix(1 0 0 1 8.0 20.0)" class="symbolPoly" />
       <path d="M1.7 2.55 L1.3 2.75 L1.7 2.95" transform="matrix(1 0 0 1 8.0 20.0)" class="symbolPoly" />
       <path d="M1.6 1.8 L2.0 2.0 L1.6 2.2" transform="matrix(1 0 0 1 8.0 20.0)" class="symbolPoly" />
-      <text transform="matrix(0.045 0 0 -0.045 8.125 22.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel detail">g</text>
-      <text transform="matrix(0.045 0 0 -0.045 9.875 20.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel detail">d</text>
-      <text transform="matrix(0.045 0 0 -0.045 9.875 23.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel detail">s</text>
-      <text transform="matrix(0.045 0 0 -0.045 11.875 22.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel detail">b</text>
+      <text transform="matrix(0.045 0 0 -0.045 8.125 22.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel detailOnly">g</text>
+      <text transform="matrix(0.045 0 0 -0.045 9.875 20.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel detailOnly">d</text>
+      <text transform="matrix(0.045 0 0 -0.045 9.875 23.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel detailOnly">s</text>
+      <text transform="matrix(0.045 0 0 -0.045 11.875 22.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel detailOnly">b</text>
     </g>
     <g>
       <rect x="4.0" y="12.0" width="4.0" height="4.0" class="symbolOutline" />
@@ -61,10 +61,10 @@
       <path d="M4.0 2.0 L1.3 2.0" transform="matrix(1 0 0 1 4.0 12.0)" class="symbolPoly" />
       <path d="M1.7 1.8 L1.3 2.0 L1.7 2.2" transform="matrix(1 0 0 1 4.0 12.0)" class="symbolPoly" />
       <path d="M1.6 1.05 L2.0 1.25 L1.6 1.45" transform="matrix(1 0 0 1 4.0 12.0)" class="symbolPoly" />
-      <text transform="matrix(0.045 0 0 -0.045 4.125 14.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel detail">g</text>
-      <text transform="matrix(0.045 0 0 -0.045 5.875 12.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel detail">s</text>
-      <text transform="matrix(0.045 0 0 -0.045 5.875 15.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel detail">d</text>
-      <text transform="matrix(0.045 0 0 -0.045 7.875 14.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel detail">b</text>
+      <text transform="matrix(0.045 0 0 -0.045 4.125 14.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel detailOnly">g</text>
+      <text transform="matrix(0.045 0 0 -0.045 5.875 12.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel detailOnly">s</text>
+      <text transform="matrix(0.045 0 0 -0.045 5.875 15.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel detailOnly">d</text>
+      <text transform="matrix(0.045 0 0 -0.045 7.875 14.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel detailOnly">b</text>
     </g>
     <g>
       <rect x="4.0" y="4.0" width="4.0" height="4.0" class="symbolOutline" />
@@ -75,10 +75,10 @@
       <path d="M4.0 2.0 L1.3 2.0" transform="matrix(1 0 0 1 4.0 4.0)" class="symbolPoly" />
       <path d="M1.7 1.8 L1.3 2.0 L1.7 2.2" transform="matrix(1 0 0 1 4.0 4.0)" class="symbolPoly" />
       <path d="M1.6 1.05 L2.0 1.25 L1.6 1.45" transform="matrix(1 0 0 1 4.0 4.0)" class="symbolPoly" />
-      <text transform="matrix(0.045 0 0 -0.045 4.125 6.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel detail">g</text>
-      <text transform="matrix(0.045 0 0 -0.045 5.875 4.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel detail">s</text>
-      <text transform="matrix(0.045 0 0 -0.045 5.875 7.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel detail">d</text>
-      <text transform="matrix(0.045 0 0 -0.045 7.875 6.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel detail">b</text>
+      <text transform="matrix(0.045 0 0 -0.045 4.125 6.125)" dominant-baseline="ideographic" text-anchor="start" class="pinLabel detailOnly">g</text>
+      <text transform="matrix(0.045 0 0 -0.045 5.875 4.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel detailOnly">s</text>
+      <text transform="matrix(0.045 0 0 -0.045 5.875 7.875)" dominant-baseline="hanging" text-anchor="end" class="pinLabel detailOnly">d</text>
+      <text transform="matrix(0.045 0 0 -0.045 7.875 6.125)" dominant-baseline="ideographic" text-anchor="end" class="pinLabel detailOnly">b</text>
     </g>
     <g>
       <path d="M0 0 L0.25 -0.25 L0.25 -0.5 L0 -0.5 L-0.25 -0.5 L-0.25 -0.25 Z" transform="matrix(0 -1 1 0 -1.75 22.0)" class="portArrow" />

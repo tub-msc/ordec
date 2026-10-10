@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="398.125px" height="325.0px" viewBox="-1.0 -1.0 15.925 13.0">
-  <g transform="matrix(1 0 0 -1 0 11.0)">
+  <g class="schematic" transform="matrix(1 0 0 -1 0 11.0)">
     <rect x="0.0" y="0.0" width="6.0" height="11.0" class="symbolOutline" />
     <text transform="matrix(0.045 0 0 -0.045 6.125 11.0)" dominant-baseline="hanging" text-anchor="start"><tspan x="0" y="0em" class="cellName">MultibitReg_StructOfArrays</tspan><tspan x="0" y="1em" class="params">bits=5</tspan></text>
     <path d="M0.0 0.0 L6.0 0.0 L6.0 11.0 L0.0 11.0 Z" transform="matrix(1 0 0 1 0.0 0.0)" class="symbolPoly" />

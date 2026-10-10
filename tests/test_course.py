@@ -846,6 +846,8 @@ def test_lesson_solution(course_name, lesson_index, testdata):
         # audit trail (see checks.py / course.js pushScore).
         svgs = [e for e in elements if e['element_type'] == 'svg']
         assert len(svgs) == 1 and 'mn' in svgs[0]['inner']
+        # The web UI gets the CSS via api/schematic.css.
+        assert '<style' not in svgs[0]['inner']
         # The score is the nominal corner's current (~31 uA for the
         # reference: ~30 uA supply plus the 1 uA bias reference), and the
         # report tabulates every corner.

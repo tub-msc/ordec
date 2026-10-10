@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="600.0px" height="525.0px" viewBox="-2.0 0.0 24.0 21.0">
-  <g transform="matrix(1 0 0 -1 0 21.0)">
+  <g class="schematic" transform="matrix(1 0 0 -1 0 21.0)">
     <path d="M1.0 7.0 L2.0 7.0 L2.0 15.0 L3.0 15.0" class="schemWire" />
     <path d="M2.0 7.0 L10.0 7.0" class="schemWire" />
     <path d="M18.0 7.0 L15.0 7.0" class="schemWire" />

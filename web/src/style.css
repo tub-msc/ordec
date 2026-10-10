@@ -1519,11 +1519,11 @@ body.theme-dark .spotlight-buttons .spotlight-skip {
     background-position: left center;
     background-repeat: no-repeat;
 }
-/* Details toggle of schematics and symbols. Elements of class "detail"
-   (grid, pin labels hidden by the symbol) are hidden by the SVG's own
+/* Details toggle of schematics and symbols. Elements of class "detailOnly"
+   (grid, pin labels hidden by the symbol) are hidden by the schematic
    stylesheet (see render.py); the toggle shows them. Its circle is filled
    while on, like the dot of the auto-refresh toggle. */
-.schem-svg.schem-detail .detail {
+.schem-svg.schem-detail .detailOnly {
     display: inline;
 }
 .schem-detail-toggle {
@@ -1661,17 +1661,18 @@ body.theme-dark .schem-detail-toggle:hover {
 }
 
 /* -- Symbol stroke (theme-aware) --------------------------------- */
-.symbolPoly {
-    stroke: var(--color-symbol-stroke) !important;
+.schematic .symbolPoly {
+    stroke: var(--color-symbol-stroke);
 }
 /* Symbol text and pin arrows share the color of the symbol drawing. */
-.pinLabel, .pinArrow, .params, .cellName {
-    fill: var(--color-symbol-stroke) !important;
+.schematic .pinLabel, .schematic .pinArrow, .schematic .params,
+.schematic .cellName {
+    fill: var(--color-symbol-stroke);
 }
 /* Net names have the wiring color; their semi-transparent outline in the
    background color (see render.py) fades out wires crossing them. */
-.portLabel, .tapPointLabel {
-    stroke: var(--color-bg) !important;
+.schematic .portLabel, .schematic .tapPointLabel {
+    stroke: var(--color-bg);
 }
 
 /* -- Scrollbar --------------------------------------------------- */

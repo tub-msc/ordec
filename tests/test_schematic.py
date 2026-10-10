@@ -284,7 +284,7 @@ def test_pin_show_flags():
     # still output, for the detail view of the web UI:
     svg = Nmos().symbol.render().svg().decode()
     assert 'class="pinArrow"' not in svg and 'class="pinLabel"' not in svg
-    assert svg.count('class="pinLabel detail"') == 4
+    assert svg.count('class="pinLabel detailOnly"') == 4
     svg = Inv().symbol.render().svg().decode()
     assert svg.count('class="pinArrow"') == 4 and svg.count('class="pinLabel"') == 4
     # Without rotate_label, labels of vertical stubs are not rotated:

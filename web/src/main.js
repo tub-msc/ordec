@@ -29,6 +29,7 @@ import { initTheme, registerAceEditor, unregisterAceEditor } from './theme.js';
 import { OrdecApp } from './app.js';
 import { initCourseMode, getCourseController, suppressCloseControls } from './course.js';
 import { ScoreboardPanel } from './scoreboard.js';
+import { schematicCss } from './schematic-css.js';
 
 initTheme();
 
@@ -667,13 +668,10 @@ fetch('api/version').then(response => response.json()).then(data => {
     document.querySelector('#docs').href = data['docs_url'];
 });
 
-// Schematic CSS is served from the backend (SchematicRenderer.css in render.py)
-// rather than bundled as a frontend asset. This keeps a single source of truth
-// for the styles used by both standalone SVG export and the web UI, avoids
-// duplicating the CSS into every inline SVG in the DOM, and reduces data
-// transferred when multiple schematics are open.
-fetch('api/schematic.css').then(response => response.text()).then(css => {
+schematicCss.then(css => {
     const style = document.createElement('style');
     style.textContent = css;
-    document.head.appendChild(style);
+    // Before the bundled stylesheets, so that the theme overrides in
+    // style.css win over the equally specific rules of the schematic CSS.
+    document.head.prepend(style);
 });

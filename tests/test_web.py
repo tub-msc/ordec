@@ -789,9 +789,11 @@ def test_course_competition_scoreboard(web):
         assert push['count'] == 2
         assert 0 < push['score'] < 1000
         assert push['source'] == sol
-        # The schematic travels along as a standalone SVG document.
+        # The schematic travels along as a standalone SVG document, with
+        # the schematic CSS embedded.
         assert push['svg'].startswith('<svg xmlns="http://www.w3.org/2000/svg"')
         assert 'viewBox="' in push['svg'] and push['svg'].endswith('</svg>')
+        assert '.schematic .detailOnly' in push['svg']
         assert 'r1' in push['svg'] and 'r2' in push['svg']
 
         # A build that fails a check pushes null: the board shows "no score"

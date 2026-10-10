@@ -154,7 +154,10 @@ class Renderer:
         if enable_css:
             style = ET.SubElement(self.root, 'style', type='text/css')
             style.text = self.css
-        self.group_stack = [ET.SubElement(self.root, 'g')]
+        # All rules of css are scoped to this group's class, so that they do
+        # not apply to the surroundings of inline SVG in HTML documents (web
+        # UI, Jupyter, Sphinx).
+        self.group_stack = [ET.SubElement(self.root, 'g', {'class': 'schematic'})]
 
     @property
     def cur_group(self):
@@ -356,8 +359,11 @@ class Renderer:
         self.indent_xml_recursive(self.root, 0)
 
     def inner_svg(self) -> bytes:
-        """Like svg(), but without the top <svg> tag."""
-        return b''.join(ET.tostring(e) for e in self.root)
+        """
+        Like svg(), but without the top <svg> tag and without the <style>
+        element: the web UI loads the CSS once via api/schematic.css.
+        """
+        return b''.join(ET.tostring(e) for e in self.root if e.tag != 'style')
 
     def svg(self) -> bytes:
         """
@@ -369,10 +375,6 @@ class Renderer:
     def webdata(self):
         return 'svg', {
             'inner': self.inner_svg().decode('ascii'),
-            # The complete standalone document, so that consumers needing a
-            # file (the scoreboard audit trail, see web/src/course.js) do not
-            # have to re-assemble the root tag from the fragments above.
-            'document': self.svg().decode('ascii'),
             'viewbox': self.viewbox,
             'width': self.root.attrib.get('width'),
             'height': self.root.attrib.get('height'),
@@ -387,53 +389,53 @@ class SchematicRenderer(Renderer):
     wire_color = '#1a80e6'
 
     css = clean_css(Template("""
-        svg {
+        .schematic {
             stroke-linecap: butt;
             stroke-linejoin: bevel;
         }
-        text {
+        .schematic text {
             font-size: 11pt;
             font-family: "Inconsolata", monospace;
             font-stretch: 75%;
         }
-        .instanceName, .cellName {
+        .schematic .instanceName, .schematic .cellName {
             font-weight: bold;
         }
-        .instanceName {
+        .schematic .instanceName {
             fill: #f00;
         }
-        .pinLabel, .pinArrow, .params, .cellName {
+        .schematic .pinLabel, .schematic .pinArrow, .schematic .params, .schematic .cellName {
             fill: #000;
         }
-        .symbolOutline {
+        .schematic .symbolOutline {
             stroke: none;
         }
-        .symbolPoly {
+        .schematic .symbolPoly {
             stroke: #000;
         }
-        .symbolOutline, .symbolPoly, .schemWire, .tapPoint {
+        .schematic .symbolOutline, .schematic .symbolPoly, .schematic .schemWire, .schematic .tapPoint {
             fill: none;
             stroke-width: 0.1;
         }
-        g[data-srcline] .symbolOutline {
+        .schematic g[data-srcline] .symbolOutline {
             pointer-events: all;
         }
-        .grid {
+        .schematic .grid {
             fill: #ccc;
         }
-        .detail {
+        .schematic .detailOnly {
             display: none;
         }
-        .schemWire, .tapPoint {
+        .schematic .schemWire, .schematic .tapPoint {
             stroke: $wire_color;
         }
-        .schemWire {
+        .schematic .schemWire {
             stroke-linecap: square;
         }
-        .connPoint, .portArrow {
+        .schematic .connPoint, .schematic .portArrow {
             fill: $wire_color;
         }
-        .portLabel, .tapPointLabel {
+        .schematic .portLabel, .schematic .tapPointLabel {
             fill: $wire_color;
             paint-order: stroke;
             stroke: #fff;
@@ -441,7 +443,7 @@ class SchematicRenderer(Renderer):
             stroke-width: 4px;
             stroke-linejoin: round;
         }
-        .errorMarker {
+        .schematic .errorMarker {
             fill: rgba(255, 0, 0, 0.25);
             stroke: none;
         }
@@ -454,7 +456,7 @@ class SchematicRenderer(Renderer):
     def draw_grid(self, rect: Rect4R, dot_size: float = 0.1):
         lx, ly, ux, uy = rect.tofloat()
         with self.subgroup():
-            self.cur_group.attrib['class']='grid detail'
+            self.cur_group.attrib['class']='grid detailOnly'
 
             for x in range(math.floor(lx), math.ceil(ux)+1):
                 for y in range(math.floor(ly), math.ceil(uy)+1):
@@ -568,7 +570,7 @@ class SchematicRenderer(Renderer):
 
         label_trans, halign, valign, space = self.pin_label_frame(pin, trans_local)
         # Hidden labels stay in the SVG for the detail view (see css).
-        svg_class = 'pinLabel' if pin.show_label else 'pinLabel detail'
+        svg_class = 'pinLabel' if pin.show_label else 'pinLabel detailOnly'
         self.draw_label(pin.full_path_label(), label_trans, halign=halign, valign=valign, space=space, svg_class=svg_class)
 
     @classmethod

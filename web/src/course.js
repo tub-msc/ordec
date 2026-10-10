@@ -11,6 +11,7 @@ import { zipSync, unzipSync, strToU8, strFromU8 } from 'fflate';
 import { session } from './auth.js';
 import { startCourseTour } from './tour.js';
 import { Scoreboard } from './scoreboard.js';
+import { schematicCss } from './schematic-css.js';
 
 let courseController = null;
 
@@ -54,6 +55,28 @@ const PROGRESS_FORMAT = 'ordec-course-progress';
 
 function lessonStem(file) {
     return file.replace(/\.[^.]+$/, '');
+}
+
+// Standalone SVG document of a report svg element, for the scoreboard. The
+// schematic CSS is embedded, as the scoreboard shows the SVG as an <img>,
+// which cannot load stylesheets. DOMParser documents load and run nothing;
+// XMLSerializer takes care of escaping.
+function standaloneSvg(svg, css) {
+    const doc = new DOMParser().parseFromString(
+        '<svg xmlns="http://www.w3.org/2000/svg">' + svg.inner + '</svg>',
+        'image/svg+xml');
+    const root = doc.documentElement;
+    root.setAttribute('viewBox', svg.viewbox.join(' '));
+    if (svg.width) {
+        root.setAttribute('width', svg.width);
+    }
+    if (svg.height) {
+        root.setAttribute('height', svg.height);
+    }
+    const style = doc.createElementNS(root.namespaceURI, 'style');
+    style.textContent = css;
+    root.prepend(style);
+    return new XMLSerializer().serializeToString(root);
 }
 
 export class CourseController {
@@ -389,7 +412,7 @@ export class CourseController {
     // runs: the score when all checks pass, else null (the board then shows
     // "no score" again), plus the source and the report's schematic as
     // audit trail.
-    pushScore(elements) {
+    async pushScore(elements) {
         // The source of this build, not the current editor content: the two
         // differ when the user keeps typing while the simulations run, and
         // pushing the wrong one would make the final rescoring flag a claim
@@ -398,12 +421,13 @@ export class CourseController {
         if (!this.scoreboard || !this.editor || source === null) {
             return;
         }
+        // Awaited by every push, also those without a schematic, so that
+        // pushes keep their order.
+        const css = await schematicCss;
         const score = elements.find(e => e.element_type === 'score');
         const svg = elements.find(e => e.element_type === 'svg');
-        // The server renders the standalone document (see render.py
-        // webdata); it is passed through verbatim rather than re-assembled.
         this.scoreboard.push((score && score.eligible) ? score.value : null,
-            source, (svg && svg.document) ? svg.document : null);
+            source, svg ? standaloneSvg(svg, css) : null);
     }
 
     // -- Zip import/export ----------------------------------------------

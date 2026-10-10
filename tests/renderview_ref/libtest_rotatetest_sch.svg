@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="675.0px" height="375.0px" viewBox="-1.0 -1.0 27.0 15.0">
-  <g transform="matrix(1 0 0 -1 0 13.0)">
+  <g class="schematic" transform="matrix(1 0 0 -1 0 13.0)">
     <g>
       <rect x="1.0" y="1.0" width="5.0" height="5.0" class="symbolOutline" />
       <text transform="matrix(0.045 0 0 -0.045 4.0 6.195)" dominant-baseline="hanging" text-anchor="start"><tspan x="0" y="0em" class="instanceName">R0</tspan><tspan x="0" y="1em" class="cellName">Or2</tspan></text>

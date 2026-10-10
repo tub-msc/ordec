@@ -19,7 +19,7 @@ export class SvgView extends View {
         this.baseTransform = null;
         this.resizeObserver = null;
         // Details toggle, kept across updates: off hides the grid and the pin
-        // labels that symbols mark as hidden (class "detail" in render.py),
+        // labels that symbols mark as hidden (class "detailOnly" in render.py),
         // on shows them.
         this.detail = false;
 

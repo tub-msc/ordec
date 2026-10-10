@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="175.625px" height="150.0px" viewBox="-1.0 -1.0 7.0249999999999995 6.0">
-  <g transform="matrix(1 0 0 -1 0 4.0)">
+  <g class="schematic" transform="matrix(1 0 0 -1 0 4.0)">
     <rect x="0.0" y="0.0" width="4.0" height="4.0" class="symbolOutline" />
     <text transform="matrix(0.045 0 0 -0.045 4.125 4.0)" dominant-baseline="hanging" text-anchor="start" class="cellName">Inv</text>
     <path d="M0.0 2.0 L1.0 2.0" transform="matrix(1 0 0 1 0.0 0.0)" class="symbolPoly" />
