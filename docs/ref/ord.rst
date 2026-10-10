@@ -67,8 +67,8 @@ A **node statement** is the ``A B`` construct that creates and names an element 
 
 The pin and port keywords come with direction-based orient defaults:
 ``input`` pins face ``West``, ``output`` pins ``East``, and ``inout`` pins
-``South``. A ``port`` defaults to the flipped orient of its symbol pin, so e.g. a
-West-facing input pin yields an East-facing port. An ``.orient=`` assignment
+``South``. A ``port`` defaults to the opposite orient of its symbol pin, so e.g.
+a West-facing input pin yields an East-facing port. An ``.orient=`` assignment
 in the statement body overrides these defaults.
 
 The ``net`` and ``path`` keywords create a ``Net`` or ``PathNode``, e.g.

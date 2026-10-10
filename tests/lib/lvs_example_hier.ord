@@ -55,7 +55,7 @@ cell A_Default:
 
         Rsil r1: .$l=L_RX; .pos=(3,12); .n -- c; .p -- x; .bn -- sub
         Rsil r2: .$l=L_RY; .pos=(8,12); .orient=East; .n -- c; .p -- y; .bn -- sub
-        Rsil r3: .$l=L_RZ; .pos=(3,9); .orient=FlippedNorth; .n -- c; .p -- z; .bn -- sub
+        Rsil r3: .$l=L_RZ; .pos=(3,9); .orient=FlippedSouth; .n -- c; .p -- z; .bn -- sub
 
     viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
@@ -66,7 +66,7 @@ cell A_Default:
         Rsil(l=L_RX) r1:
             ! .pos == (0, 3000)
         Rsil(l=L_RZ) r3:
-            .orient = FlippedNorth  # term_p faces south
+            .orient = FlippedSouth  # term_p faces south
             ! .term_n.cx == r1.term_n.cx
             ! r1.term_n.cy == .term_n.cy + 2500
         Rsil(l=L_RY) r2:
@@ -116,9 +116,9 @@ cell B_Hier:
         port sub: .pos=(1,13)
 
         A_Default a1: .pos=(4,4); .x -- i1; .y -- y1; .z -- z; .sub -- sub
-        Rppd rp1: .$l=L_RP1; .pos=(8,11); .orient=FlippedSouth; .n -- i1; .p -- i2; .bn -- sub
+        Rppd rp1: .$l=L_RP1; .pos=(8,11); .orient=FlippedNorth; .n -- i1; .p -- i2; .bn -- sub
         A_Default a2: .pos=(4,18); .x -- x; .y -- y2; .z -- i2; .sub -- sub
-        Rppd rp2: .$l=L_RP2; .pos=(15,11); .orient=FlippedSouth; .n -- y1; .p -- y2; .bn -- sub
+        Rppd rp2: .$l=L_RP2; .pos=(15,11); .orient=FlippedNorth; .n -- y1; .p -- y2; .bn -- sub
 
     viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
@@ -177,7 +177,7 @@ cell C_Hier:
 
         B_Hier b1: .pos=(4,4); .z -- z; .x -- x; .sub -- sub
         B_Hier b2: .pos=(10,4); .z -- z; .x -- x; .sub -- sub
-        Rsil rs: .$l=L_RS; .pos=(20,4); .orient=FlippedSouth; .n -- z; .p -- x; .bn -- sub
+        Rsil rs: .$l=L_RS; .pos=(20,4); .orient=FlippedNorth; .n -- z; .p -- x; .bn -- sub
 
     viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
@@ -252,7 +252,7 @@ cell C_FlatLayout:
 
         B_Hier b1: .pos=(4,4); .z -- z; .x -- x; .sub -- sub
         B_Hier b2: .pos=(10,4); .z -- z; .x -- x; .sub -- sub
-        Rsil rs: .$l=L_RS; .pos=(20,4); .orient=FlippedSouth; .n -- z; .p -- x; .bn -- sub
+        Rsil rs: .$l=L_RS; .pos=(20,4); .orient=FlippedNorth; .n -- z; .p -- x; .bn -- sub
 
     viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
@@ -267,7 +267,7 @@ cell C_FlatLayout:
                     if j == 0:
                         ! .pos == (9000*k, 3000)
                 Rsil(l=L_RZ) r3[i]:
-                    .orient = FlippedNorth
+                    .orient = FlippedSouth
                     ! .term_n.cx == r1[i].term_n.cx
                     ! r1[i].term_n.cy == .term_n.cy + 2500
                 Rsil(l=L_RY) r2[i]:
@@ -372,17 +372,17 @@ cell C_FlatSchematic:
             # lower star (was b<k+1>.a1)
             Rsil a1r1[k]: .$l=L_RX; .pos=(3+xo,12); .n -- c1[k]; .p -- i1[k]; .bn -- sub
             Rsil a1r2[k]: .$l=L_RY; .pos=(8+xo,12); .orient=East; .n -- c1[k]; .p -- y1[k]; .bn -- sub
-            Rsil a1r3[k]: .$l=L_RZ; .pos=(3+xo,9); .orient=FlippedNorth; .n -- c1[k]; .p -- z; .bn -- sub
+            Rsil a1r3[k]: .$l=L_RZ; .pos=(3+xo,9); .orient=FlippedSouth; .n -- c1[k]; .p -- z; .bn -- sub
             # z-chain resistor (was b<k+1>.rp1)
             Rppd rp1[k]: .$l=L_RP1; .pos=(3+xo,18); .n -- i1[k]; .p -- i2[k]; .bn -- sub
             # upper star (was b<k+1>.a2)
-            Rsil a2r3[k]: .$l=L_RZ; .pos=(3+xo,27); .orient=FlippedNorth; .n -- c2[k]; .p -- i2[k]; .bn -- sub
+            Rsil a2r3[k]: .$l=L_RZ; .pos=(3+xo,27); .orient=FlippedSouth; .n -- c2[k]; .p -- i2[k]; .bn -- sub
             Rsil a2r1[k]: .$l=L_RX; .pos=(3+xo,30); .n -- c2[k]; .p -- x; .bn -- sub
             Rsil a2r2[k]: .$l=L_RY; .pos=(8+xo,30); .orient=East; .n -- c2[k]; .p -- y2[k]; .bn -- sub
             # y-loop resistor (was b<k+1>.rp2)
-            Rppd rp2[k]: .$l=L_RP2; .pos=(17+xo,17); .orient=FlippedSouth; .n -- y1[k]; .p -- y2[k]; .bn -- sub
+            Rppd rp2[k]: .$l=L_RP2; .pos=(17+xo,17); .orient=FlippedNorth; .n -- y1[k]; .p -- y2[k]; .bn -- sub
 
-        Rsil rs: .$l=L_RS; .pos=(42,12); .orient=FlippedSouth; .n -- z; .p -- x; .bn -- sub
+        Rsil rs: .$l=L_RS; .pos=(42,12); .orient=FlippedNorth; .n -- z; .p -- x; .bn -- sub
 
     viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
@@ -451,7 +451,7 @@ cell A_Moved:
         Rsil(l=L_RX) r1:
             ! .pos == (0, 3000)
         Rsil(l=L_RZ) r3:
-            .orient = FlippedNorth
+            .orient = FlippedSouth
             ! .term_n.cx == r1.term_n.cx
             ! r1.term_n.cy == .term_n.cy + 2500
 
@@ -560,7 +560,7 @@ cell C_Moved:
 
         B_Hier b1: .pos=(4,4); .z -- z; .x -- x; .sub -- sub
         B_Hier b2: .pos=(10,4); .z -- z; .x -- x; .sub -- sub
-        Rsil rs: .$l=L_RS; .pos=(20,4); .orient=FlippedSouth; .n -- z; .p -- x; .bn -- sub
+        Rsil rs: .$l=L_RS; .pos=(20,4); .orient=FlippedNorth; .n -- z; .p -- x; .bn -- sub
 
     viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
