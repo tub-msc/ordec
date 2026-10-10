@@ -12,8 +12,8 @@ export const session = {
 export async function initSession() {
     // A fragment-delivered token (standalone servers) is stashed in localStorage
     // and stripped from the URL so it does not linger in browser history. This
-    // is the sole place session state is populated; the module import has no
-    // side effects.
+    // is the sole place session state is populated (apart from the token
+    // refresh in reloadAuthKey); the module import has no side effects.
     const urlParams = new URLSearchParams(window.location.hash.substring(1));
     const authParam = urlParams.get('auth');
     if(authParam) {
@@ -44,6 +44,16 @@ export async function initSession() {
     } catch (e) {
         // Network error: not hub-hosted or server gone; fall back to the
         // fragment/localStorage token.
+    }
+}
+
+// Re-reads the token from localStorage. A restarted standalone server has a
+// new token, which the window opened from its URL stores there (initSession);
+// already open windows pick it up here to reconnect. Hub-hosted instances get
+// their token from api/token instead.
+export function reloadAuthKey() {
+    if (!session.hubMode) {
+        session.authKey = window.localStorage.getItem('ordecAuth');
     }
 }
 

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Encoder } from 'cbor-x';
-import { session } from './auth.js';
+import { session, reloadAuthKey } from './auth.js';
 
 // All WebSocket messages are CBOR binary frames, in both directions (see
 // server.py). Maps decode to plain objects and 64-bit integers to numbers,
@@ -185,6 +185,7 @@ export class OrdecClient {
         }
         this.sockOpened = true;
         let msg;
+        reloadAuthKey();
         if(this.localModule) {
             // Local mode:
             this.srcBuilt = null;
