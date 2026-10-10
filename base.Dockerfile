@@ -38,11 +38,13 @@ RUN wget -q https://github.com/YosysHQ/yosys/releases/download/v0.69/yosys.tar.g
     tar xf yosys.tar.gz -C yosys-src && \
     rm yosys.tar.gz
 
+# OpenVAF-Reloaded: the binary is openvaf-r, which links against the distro's
+# LLVM 18 (libllvm18 in the final stage).
 WORKDIR /home/app/openvaf
-RUN wget -q https://openva.fra1.cdn.digitaloceanspaces.com/openvaf_23_5_0_linux_amd64.tar.gz && \
-    echo "79c0e08ad948a7a9f460dc87be88b261bbd99b63a4038db3c64680189f44e4f0 openvaf_23_5_0_linux_amd64.tar.gz" | sha256sum -c && \
-    tar xf openvaf_23_5_0_linux_amd64.tar.gz && \
-    rm openvaf_23_5_0_linux_amd64.tar.gz
+RUN wget -q https://github.com/OpenVAF/OpenVAF-Reloaded/releases/download/v24.0.2mob/openvaf-r-v24.0.2mob-linux-x86_64.tar.gz && \
+    echo "b12b7b1726d103e18c2588c3a1f91f8475cf03df8a3bde14d919797d221e3110 openvaf-r-v24.0.2mob-linux-x86_64.tar.gz" | sha256sum -c && \
+    tar xf openvaf-r-v24.0.2mob-linux-x86_64.tar.gz --strip-components=2 && \
+    rm openvaf-r-v24.0.2mob-linux-x86_64.tar.gz
 
 # The IHP PDK version is pinned to a specific tag below.
 # To pin to a commit hash instead, replace "tag v0.3.0" with the full sha hash.
@@ -191,7 +193,7 @@ RUN cmake -B build \
 FROM debian:trixie AS ordec-base
 
 # - libgomp1: needed for Ngspice
-# - binutils: needed for OpenVAF
+# - binutils, libllvm18: needed for OpenVAF
 # - libtcl8.6, libreadline8t64, libffi8 (and zlib1g): needed for Yosys
 # - build-essential, python3-dev: needed to build ORDeC's C extensions
 #   (wheel build in Dockerfile, pip install in tests.yaml). Without them, the
@@ -208,6 +210,7 @@ RUN useradd -ms /bin/bash app && \
         npm \
         git \
         binutils \
+        libllvm18 \
         zlib1g \
         libqt6widgets6 \
         libqt6svg6 \
@@ -237,14 +240,12 @@ ENV ORDEC_PDK_SKY130A="/home/app/skywater/sky130A"
 ENV ORDEC_PDK_SKY130B="/home/app/skywater/sky130B"
 ENV ORDEC_PDK_IHP_SG13G2="/home/app/IHP-Open-PDK/ihp-sg13g2"
 
-# OpenVAF compiles for the CPU of the build machine: ngspice dies with
-# "illegal instruction" when the models run on a CPU lacking some of its
-# instruction set extensions. OpenVAF 23.5.0 crashes on --target_cpu (the
-# script's --compile-model-generic), so tests.yaml recompiles the models on
-# the test machine instead. The script does not fail when OpenVAF does,
-# hence the check for its output.
+# --compile-model-generic: by default, OpenVAF compiles for the CPU of the
+# build machine, and ngspice dies with "illegal instruction" when the models
+# run on a CPU lacking some of its instruction set extensions (e.g. AVX-512).
+# The script does not fail when OpenVAF does, hence the check for its output.
 WORKDIR /home/app/IHP-Open-PDK/ihp-sg13g2/libs.tech/verilog-a/
-RUN ./openvaf-compile-va.sh && \
+RUN ./openvaf-compile-va.sh --compile-model-generic && \
     for m in psp103 psp103_nqs r3_cmc mosvar; do test -f ../ngspice/osdi/$m.osdi || exit 1; done
 
 # Create Python venv + install Python dependencies
