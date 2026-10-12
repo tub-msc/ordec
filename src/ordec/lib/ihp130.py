@@ -3435,22 +3435,23 @@ class Isolbox(SimLeafCell):
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
-        s.isosub = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
-        s.nwell = Pin(pos=Vec2R(0, 2), pintype=PinType.Inout, align=West)
-        s.sub = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
+        s.isosub = Pin(pos=Vec2R(2, 8), pintype=PinType.Inout, align=North, rotate_label=False)
+        s.nwell = Pin(pos=Vec2R(0, 4), pintype=PinType.Inout, align=West)
+        s.sub = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South, rotate_label=False)
 
-        s % SymbolPoly(vertices=[Vec2R(2, 4), Vec2R(2, 3.5)])
-        s % SymbolPoly(vertices=[Vec2R(2, 3.5), Vec2R(1.4, 3.5), Vec2R(2, 2.5), Vec2R(2.6, 3.5),
-            Vec2R(2, 3.5)])
-        s % SymbolPoly(vertices=[Vec2R(1.4, 2.5), Vec2R(2.6, 2.5)])
-        s % SymbolPoly(vertices=[Vec2R(2, 0), Vec2R(2, 0.5)])
-        s % SymbolPoly(vertices=[Vec2R(2, 0.5), Vec2R(1.4, 0.5), Vec2R(2, 1.5), Vec2R(2.6, 0.5),
-            Vec2R(2, 0.5)])
-        s % SymbolPoly(vertices=[Vec2R(1.4, 1.5), Vec2R(2.6, 1.5)])
-        s % SymbolPoly(vertices=[Vec2R(2, 1.5), Vec2R(2, 2.5)])
-        s % SymbolPoly(vertices=[Vec2R(0, 2), Vec2R(2, 2)])
+        # Two diodes as in Diode.symbol, from isosub and sub to nwell
+        s % SymbolPoly(vertices=[Vec2R(2, 8), Vec2R(2, 6.65)])
+        s % SymbolPoly(vertices=[Vec2R(2, 5.35), Vec2R(1.25, 6.65), Vec2R(2.75, 6.65),
+            Vec2R(2, 5.35)])
+        s % SymbolPoly(vertices=[Vec2R(1.25, 5.35), Vec2R(2.75, 5.35)])
+        s % SymbolPoly(vertices=[Vec2R(2, 0), Vec2R(2, 1.35)])
+        s % SymbolPoly(vertices=[Vec2R(2, 2.65), Vec2R(1.25, 1.35), Vec2R(2.75, 1.35),
+            Vec2R(2, 2.65)])
+        s % SymbolPoly(vertices=[Vec2R(1.25, 2.65), Vec2R(2.75, 2.65)])
+        s % SymbolPoly(vertices=[Vec2R(2, 2.65), Vec2R(2, 5.35)])
+        s % SymbolPoly(vertices=[Vec2R(0, 4), Vec2R(2, 4)])
 
-        s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
+        s.outline = Rect4R(lx=0, ly=0, ux=4, uy=8)
         return s
 
     def ngspice_netlist(self, netlister, inst):
@@ -3478,27 +3479,29 @@ class Diode(SimLeafCell):
     Shared base class of the SG13G2 diodes, drawn from ``anode`` to
     ``cathode``, with the models of cornerDIO.
     """
-    side = None
-    side_east = False  # side pin on the right, as in the PDK's schottky symbol
+    side = None  # substrate pin, if any
+    schottky = False  # cathode bar with hooks
 
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
 
-        s[self.cathode] = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
-        s[self.anode] = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
+        s[self.cathode] = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North, rotate_label=False)
+        s[self.anode] = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South, rotate_label=False)
         s % SymbolPoly(vertices=[Vec2R(2, 4), Vec2R(2, 2.65)])
         s % SymbolPoly(vertices=[Vec2R(2, 1.35), Vec2R(2, 0)])
-        s % SymbolPoly(vertices=[Vec2R(1.25, 2.65), Vec2R(2.75, 2.65)])
+        if self.schottky:
+            s % SymbolPoly(vertices=[Vec2R(1.45, 3), Vec2R(1.25, 3), Vec2R(1.25, 2.65),
+                Vec2R(2.75, 2.65), Vec2R(2.75, 2.3), Vec2R(2.55, 2.3)])
+        else:
+            s % SymbolPoly(vertices=[Vec2R(1.25, 2.65), Vec2R(2.75, 2.65)])
         s % SymbolPoly(vertices=[Vec2R(2, 2.65), Vec2R(1.25, 1.35), Vec2R(2.75, 1.35),
             Vec2R(2, 2.65)])
         if self.side:
-            x, stub = (4, 3.25) if self.side_east else (0, 0.75)
-            s[self.side] = Pin(pos=Vec2R(x, 2), pintype=PinType.Inout,
-                align=East if self.side_east else West)
-            s % SymbolPoly(vertices=[Vec2R(x, 2), Vec2R(stub, 2)])
-            s % SymbolPoly(vertices=[Vec2R(0.75, 0.75), Vec2R(3.25, 0.75), Vec2R(3.25, 3.25),
-                Vec2R(0.75, 3.25), Vec2R(0.75, 0.75)])
+            # A stub pointing at the body without touching it, as the
+            # substrate pins of the resistors.
+            s[self.side] = Pin(pos=Vec2R(0, 2), pintype=PinType.Inout, align=West)
+            s % SymbolPoly(vertices=[Vec2R(0, 2), Vec2R(1, 2)])
 
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
@@ -3656,7 +3659,7 @@ class SchottkyNbl1(Diode):
     """
     model_name = "schottky_nbl1"
     anode, cathode, side = "plus", "minus", "tie"
-    side_east = True
+    schottky = True
     netlist_pins = ("plus", "minus", "tie")
     nx = Parameter(int, default=1)  #: Number of columns (Nx)
     ny = Parameter(int, default=1)  #: Number of rows (Ny)
