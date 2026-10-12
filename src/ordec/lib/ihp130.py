@@ -243,6 +243,9 @@ class SG13G2(Cell):
             gdslayer_shapes=GdsLayer(layer=1, data_type=0),
             style_fill=rgb_color("#00ff00"),
             pin=s % Layer(
+                # Pin names on the label purpose: the PDK has no text purpose
+                # here (LVS reads neither).
+                gdslayer_text=GdsLayer(layer=1, data_type=1),
                 gdslayer_shapes=GdsLayer(layer=1, data_type=2),
                 style_fill=rgb_color("#00ff00"),
                 is_pinlayer=True,
@@ -265,6 +268,9 @@ class SG13G2(Cell):
             gdslayer_shapes=GdsLayer(layer=5, data_type=0),
             style_fill=rgb_color("#bf4026"),
             pin=s % Layer(
+                # Pin names on the label purpose: the PDK has no text purpose
+                # here (LVS reads neither).
+                gdslayer_text=GdsLayer(layer=5, data_type=1),
                 gdslayer_shapes=GdsLayer(layer=5, data_type=2),
                 style_fill=rgb_color("#bf4026"),
                 is_pinlayer=True,
@@ -574,8 +580,8 @@ class SG13G2(Cell):
                 gdslayer_shapes=GdsLayer(layer=l.gdslayer_shapes.layer, data_type=22),
                 style_fill=l.style_fill,
                 )
-        for l in (s.Activ, s.GatPoly, s.PolyRes, s.NWell, s.nBuLay, s.PWell, s.Passiv, s.RES, s.SRAM,
-            s.prBoundary) + metals:
+        # Activ and GatPoly carry their labels on the pin layers (see above).
+        for l in (s.PolyRes, s.NWell, s.nBuLay, s.PWell, s.Passiv, s.RES, s.SRAM, s.prBoundary) + metals:
             l.label = Layer(gdslayer_text=GdsLayer(layer=l.gdslayer_shapes.layer, data_type=1))
         for l in metals:
             l.text = Layer(
@@ -713,11 +719,14 @@ def metal_cont(layout: Layout, metal: Layer, via: Layer, x1: int, y1: int, x2: i
     return layout % LayoutRect(layer=metal, rect=Rect4I(rect.lx, rect.ly + dy, rect.ux, rect.uy + dy))
 
 def ring(layout: Layout, layer: Layer, outer: Rect4I, inner: Rect4I):
-    """Insert the area between the rects outer and inner as four rects."""
-    layout % LayoutRect(layer=layer, rect=Rect4I(outer.lx, outer.ly, outer.ux, inner.ly))
-    layout % LayoutRect(layer=layer, rect=Rect4I(outer.lx, inner.uy, outer.ux, outer.uy))
-    layout % LayoutRect(layer=layer, rect=Rect4I(outer.lx, inner.ly, inner.lx, inner.uy))
-    layout % LayoutRect(layer=layer, rect=Rect4I(inner.ux, inner.ly, outer.ux, inner.uy))
+    """Insert the area between the rects outer and inner as four rects;
+    returns them as bottom, top, left, right."""
+    return (
+        layout % LayoutRect(layer=layer, rect=Rect4I(outer.lx, outer.ly, outer.ux, inner.ly)),
+        layout % LayoutRect(layer=layer, rect=Rect4I(outer.lx, inner.uy, outer.ux, outer.uy)),
+        layout % LayoutRect(layer=layer, rect=Rect4I(outer.lx, inner.ly, inner.lx, inner.uy)),
+        layout % LayoutRect(layer=layer, rect=Rect4I(inner.ux, inner.ly, outer.ux, inner.uy)),
+    )
 
 def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool,
     contact_sd_odd: bool=True, contact_sd_even: bool=True, hv: bool=False) -> Layout:
@@ -737,7 +746,7 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool,
     layers = SG13G2().layers
     cont = VIA_RULES["SG13G2_CONT_ACTIV_M1"]
     patch = cont.size + 2*cont.enc_bottom  # Activ around a single Cont
-    l = Layout(ref_layers=layers, cell=cell)
+    l = Layout(ref_layers=layers, cell=cell, symbol=cell.symbol)
     s = Solver(l)
 
     # Down to the 5 nm grid like the PCell's GridFix, whose epsilon absorbs
@@ -864,6 +873,19 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool,
         # The PCell's bulk pin shape
         l % LayoutRect(layer=layers.Substrate, rect=Rect4I(
             l.activ.rect.ux - 300, max_activ.rect.ly, l.activ.rect.ux, max_activ.rect.ly + 300))
+
+    # Pins on the first contacted region of each terminal: s on the even
+    # regions, d on the odd ones. In a series chain (odd regions bare), d is
+    # the far end. The NMOS bulk is the common substrate and has no pin.
+    if contact_sd_even:
+        l.sd[0].create_pin(cell.symbol.s)
+    if contact_sd_odd:
+        l.sd[1].create_pin(cell.symbol.d)
+    elif contact_sd_even and num_gates % 2 == 0:
+        l.sd[num_gates].create_pin(cell.symbol.d)
+    l.poly[0].create_pin(cell.symbol.g)
+    if nwell:
+        l.nwell.create_pin(cell.symbol.b)
 
     return l
 
@@ -3304,10 +3326,11 @@ def layoutgen_isolbox(cell: Cell) -> Layout:
     inner = Rect4I(0, 0, L - 2*nw_a, W - 2*nw_a)
     ring(l, layers.NWell, outer, inner)
     ring(l, layers.Recog.diode, outer, inner)
-    ring(l, layers.Activ,
+    _, _, activ_left, _ = ring(l, layers.Activ,
         Rect4I(nw_o_act - nw_a, nw_o_act - nw_a, L - nw_a - nw_o_act, W - nw_a - nw_o_act),
         Rect4I(-nw_o_act, -nw_o_act, L - 2*nw_a + nw_o_act, W - 2*nw_a + nw_o_act))
     l % LayoutLabel(layer=layers.TEXT, pos=Vec2I(0, -nw_a // 2), text="isolbox")
+    nwell_pin = activ_left  # The PCell's pin I
     if cell.cont_ring:
         cont_w, cont_s, off = 160, 180, 60
         wm = cont_w + 2*60  # Metal1 over the contacts
@@ -3318,10 +3341,13 @@ def layoutgen_isolbox(cell: Cell) -> Layout:
                 wm, cont_w, cont_s - off, cont_s)
         metal_cont(l, layers.Metal1, layers.Cont, -xm + wm // 2, -xm, right - wm // 2, -xm,
             wm, cont_w, cont_s - off, cont_s)
-        metal_cont(l, layers.Metal1, layers.Cont, -xm, -xm - wm // 2, -xm, top + wm // 2,
+        # On Metal1, the pin carries a label LVS reads (Activ has no text purpose).
+        nwell_pin = metal_cont(l, layers.Metal1, layers.Cont, -xm, -xm - wm // 2, -xm, top + wm // 2,
             wm, cont_w, off, cont_s)
         metal_cont(l, layers.Metal1, layers.Cont, right, -xm - wm // 2, right, top + wm // 2,
             wm, cont_w, off, cont_s)
+    # isosub and sub have no shapes of their own, so they get no pins.
+    nwell_pin.create_pin(cell.symbol.nwell)
     return l
 
 @public
@@ -3795,6 +3821,15 @@ def run_lvs(layout: Layout, symbol: Symbol, use_tempdir: bool=True) -> LvsReport
         symbol: The Symbol containing the reference schematic.
         use_tempdir: If True, use a temporary directory for intermediate files.
     """
+    # The deck names nets only from labels on the text purpose (datatype 25)
+    # of the metals and NWell, so a top-level pin elsewhere (GatPoly, Activ)
+    # would leave its port unnamed.
+    for pin in layout.all(LayoutPin):
+        layer = pin.ref.layer
+        if layer.pinlayer().gdslayer_text.data_type != 25:
+            raise ValueError(f"Pin {pin.pin.npath.name} is on {layer.npath.name}, "
+                "whose labels LVS does not read. Route it to metal.")
+
     directory = klayout.LvsDirectory()
     nl = Netlister(directory, lvs=True)
     nl.netlist_hier_symbol(symbol)

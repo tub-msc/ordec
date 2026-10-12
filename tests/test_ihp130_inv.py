@@ -5,6 +5,8 @@
 Tests basic DRC + LVS in IHP130.
 """
 
+import pytest
+
 import ordec.importer
 
 from ordec.core.schema import LvsItem, LvsItemType
@@ -51,3 +53,9 @@ def test_series_nmos_lvs_clean():
     """The abutted pair matches its two-transistor series schematic, with the
     shared bare diffusion as the internal source/drain node."""
     assert SeriesNmos().lvs.clean()
+
+def test_lvs_pin_without_label():
+    """A top-level pin on GatPoly cannot name its net in LVS."""
+    nmos = ihp130.Nmos(w="1u", l="130n")
+    with pytest.raises(ValueError, match="Route it to metal"):
+        ihp130.run_lvs(nmos.layout, nmos.symbol)
