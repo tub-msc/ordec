@@ -20,7 +20,7 @@ pytestmark = pytest.mark.ihp130
 # (NBL.c, NBL.d), the bondpad has no Activ next to it (Pad.d1R). Svaricap
 # with w=3.74u fails NW.e, as the foundry PCell does.
 GALLERY = [
-    ihp130.Bondpad(size="80u"), ihp130.Bondpad(size="80u", shape=1, bottom_metal=1, add_filler_ex=True),
+    ihp130.Bondpad(size="80u", fill=True), ihp130.Bondpad(size="80u", shape=1, bottom_metal=1, add_filler_ex=True),
     ihp130.Rsil(l="0.5u", w="0.5u"), ihp130.Rppd(l="0.5u", w="0.5u"), ihp130.Rhigh(l="0.96u", w="0.5u"),
     ihp130.Cmim(l="6.99u", w="6.99u"),
     ihp130.Rsil(l="2.0u", w="0.5u", b=1, ps="180n"),
@@ -108,6 +108,19 @@ def test_device_op(cell, volts, conns, expected):
 def test_device_ac(cell, conns, expected):
     freq = 1e6
     assert supply_current(cell, "1", freq, **conns) / (2 * math.pi * freq) == pytest.approx(expected, rel=0.02)
+
+
+@pytest.mark.parametrize("cell", [
+    ihp130.Rfcmim(w="7.002u", l="7u", wfeed="3u"),
+    ihp130.Bondpad(size="80.005u"),
+    ihp130.Inductor2(w="2.005u", s="2.1u", d="15.48u", nr_r=1),
+    ihp130.Inductor2(w="2u", s="2.1u", d="10u", nr_r=1),  # d below the minimum
+    ihp130.Npn13G2l(el="1.0025"),
+    ihp130.PnpMPA(w="1.005u", l="2u"),
+])
+def test_layout_rejects_rounding(cell):
+    with pytest.raises(ParameterError):
+        cell.layout
 
 
 def test_layout_cells():

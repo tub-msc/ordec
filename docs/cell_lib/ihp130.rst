@@ -32,6 +32,7 @@ The layouts reproduce the PDK's PCells (``sg13g2_pycell_lib``) geometrically; ``
 * **Bent resistors** (``b`` > 0): the LVS deck measures a bent body as its shortest port-adjacent edge plus ``w``, the PCell draws stripes ``l`` long. A PCell resistor thus fails LVS against its own ``l``. ORDeC draws the stripes ``l - w`` long, so that LVS extracts ``l``. The simulation model, which takes ``l`` as the stripe length, then sees ``b + 1`` squares more than drawn. For ``b`` >= 2, Rppd and Rhigh need ``ps`` >= 400 nm, where the PCell moves the contacts outward instead.
 * **Cmim** below 2.4 µm: the PCell's TopMetal1 plate fails TM1.a, so these sizes are rejected.
 * **Dantenna, Dpantenna**: Metal1 end caps over the contacts, which the PCells miss (M1.c1).
+* **Bondpad** (octagon with ``fill``): the PCell leaves the Activ mask of its via field in the layout (LU.b); ORDeC draws neither.
 * **Pins**: every symbol pin with a shape of its own has a LayoutPin; the common substrate (``bn`` and the like) and the HBT's thermal node ``t`` have none. The PCells draw pin shapes inconsistently (``nmos`` has them, ``pmos`` not). Pin names go on the text purpose of the metals and NWell, which LVS reads, and on the label purpose of GatPoly and Activ, which it does not; ``run_lvs`` therefore rejects top-level pins on GatPoly or Activ.
 * **m** > 1: layouts are rejected. The PCells draw a single device regardless of ``m``.
 

@@ -72,6 +72,8 @@ def test_netlist_corner_and_temp():
     (ihp130.Nmos, dict(w="100n", l="130n")),
     (ihp130.Nmos, dict(w="1u", l="20u")),
     (ihp130.Nmos, dict(w="1u", l="130n", ng=8)),
+    (ihp130.Nmos, dict(w="1u", l="132n")),        # off the 5 nm grid
+    (ihp130.Nmos, dict(w="1u", l="130n", ng=3)),  # w/ng off the grid
     (ihp130.NmosHv, dict(w="1u", l="400n")),
 ])
 def test_mos_dimension_limits(cell, kwargs):

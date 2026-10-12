@@ -728,6 +728,13 @@ def ring(layout: Layout, layer: Layer, outer: Rect4I, inner: Rect4I):
         layout % LayoutRect(layer=layer, rect=Rect4I(inner.ux, inner.ly, outer.ux, inner.uy)),
     )
 
+def check_grid(cell: Cell, grid: R, *names: str):
+    """Reject parameters off the grid, which the PCells would round down instead."""
+    for name in names:
+        v = getattr(cell, name)
+        if v / grid != int(v / grid):
+            raise ParameterError(f"{name} = {v} must be a multiple of {grid}.")
+
 def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool,
     contact_sd_odd: bool=True, contact_sd_even: bool=True, hv: bool=False) -> Layout:
     """
@@ -749,10 +756,9 @@ def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool,
     l = Layout(ref_layers=layers, cell=cell, symbol=cell.symbol)
     s = Solver(l)
 
-    # Down to the 5 nm grid like the PCell's GridFix, whose epsilon absorbs
-    # float noise in the parameters.
-    L = 5 * math.floor(length / R("5n") + R("0.001"))
-    W = 5 * math.floor(width / num_gates / R("5n") + R("0.001"))
+    # On the 5 nm grid, see Mos.params_check.
+    L = int(length / R("1n"))
+    W = int(width / num_gates / R("1n"))
 
     l.poly = PathNode()
     l.sd = PathNode()
@@ -928,6 +934,11 @@ class Mos(SimLeafCell):
         if not cls.min_w <= w/ng <= cls.max_w:
             raise ParameterError(f"w/ng = {w/ng} outside the allowed range"
                 f" [{cls.min_w}, {cls.max_w}] per finger.")
+        # The layouts draw l and w/ng as given, so they must be on the
+        # manufacturing grid. (The PCells round them down instead.)
+        grid = R("5n")
+        if l / grid != int(l / grid) or w / ng / grid != int(w / ng / grid):
+            raise ParameterError(f"l = {l} and w/ng = {w/ng} must be multiples of {grid}.")
 
     def ngspice_save_params(self):
         # PSP103 (OSDI) operating-point outputs:
@@ -1062,7 +1073,7 @@ def layoutgen_rfmos(cell: Cell, nwell: bool, hv: bool) -> Layout:
     l = Layout(ref_layers=layers, cell=cell, symbol=cell.symbol)
 
     ng, rows = cell.ng, cell.cnt_rows
-    W = 5 * math.floor(cell.w / ng / R("5n") + R("0.001"))  # GridFix as in the PCell
+    W = int(cell.w / ng / R("1n"))  # on the 5 nm grid, see Mos.params_check
     L = int(cell.l / R("1n"))
     # Space between the gates and at both ends, growing with the contact rows
     dc, ec = 410*rows - 30, 410*rows - 65
@@ -1553,11 +1564,12 @@ def layoutgen_sealring(cell: Cell) -> Layout:
         box(name, L - off, corner_end, L - off - width, W - corner_end)
         box(name, corner_end, W - off, L - corner_end, W - off - width)
     l % LayoutRect(layer=layers.EdgeSealBoundary, rect=Rect4I(0, 0, L, W))
-    # The PCell's second label, the PDK's git commit, is left out.
+    # The PCell's second label, the PDK's git commit, is left out. The PCell
+    # divides the area in um² by 1e12 instead of 1e6.
     lx, ly = L / 1000, W / 1000
     l % LayoutLabel(layer=layers.TEXT, pos=Vec2I(5000, 5000),
         text=f"Device registration size: x={lx:.1f} um ; y={ly:.1f} um\n"
-            f"Calculated area: {lx * ly / 1e12:.1e} sq mm")
+            f"Calculated area: {lx * ly / 1e6:.1e} sq mm")
     return l
 
 @public
@@ -2196,12 +2208,13 @@ def layoutgen_rfcmim(cell: Cell) -> Layout:
     """Generate the SG13G2 RF MiM capacitor layout, as the PCell rfcmim_code.py."""
     if not (R("7u") <= cell.w <= R("1m") and R("7u") <= cell.l <= R("1m")):
         raise ParameterError("w and l must be within rfcmim_minLW and rfcmim_maxLW.")
+    check_grid(cell, R("5n"), "w", "l", "wfeed")
     layers = SG13G2().layers
     l = Layout(ref_layers=layers, cell=cell, symbol=cell.symbol)
 
-    lu = 5 * (int(cell.l / R("1n")) // 5)
-    wu = 5 * (int(cell.w / R("1n")) // 5)
-    wf = 5 * (int(cell.wfeed / R("1n")) // 5)
+    lu = int(cell.l / R("1n"))
+    wu = int(cell.w / R("1n"))
+    wf = int(cell.wfeed / R("1n"))
     feed = 5 * ((wu - wf) // 10)       # lower edge of the centered feeds
     mim_c = 600                        # Mim.c: Metal5 enclosure of MIM
     mim_d = 360                        # Mim.d: MIM enclosure of Vmim
@@ -2537,6 +2550,7 @@ def layoutgen_bondpad(cell: Cell) -> Layout:
         raise ParameterError("Layout supports the octagon and square bondpad (shape=0 or 1, padtype=0) only.")
     if not 1 <= cell.bottom_metal <= 6:
         raise ParameterError("bottom_metal must be 1 to 6 (TopMetal1).")
+    check_grid(cell, R("10n"), "size")  # centered, so the radius is on the 5 nm grid
     layers = SG13G2().layers
     l = Layout(ref_layers=layers, cell=cell, symbol=cell.symbol)
 
@@ -2553,7 +2567,7 @@ def layoutgen_bondpad(cell: Cell) -> Layout:
 
     met_over = 1400       # Pad.gR
     met_over_pass = 2100  # Pas.c
-    rad = to_grid(int(cell.size / R("1n")) / 2)
+    rad = int(cell.size / R("1n")) // 2
     stripe_width = 2 * to_grid(met_over + math.sqrt(2) * VIA_RULES["SG13G2_VIA_TM1_TM2"].size * 0.5)
     # The via rules from Metal1 up, the stack has those from bottom_metal.
     rules = [VIA_RULES[k] for k in ("SG13G2_VIA_M1_M2", "SG13G2_VIA_M2_M3", "SG13G2_VIA_M3_M4",
@@ -2612,10 +2626,8 @@ def layoutgen_bondpad(cell: Cell) -> Layout:
     inner = octagon(inner_rad, inner_rad, corner(inner_rad))
     ring_vertices = [Vec2I(-rad, 0), *outer[1:], outer[0], Vec2I(-rad, 0),
         Vec2I(-inner_rad, 0), inner[0], *inner[:0:-1], Vec2I(-inner_rad, 0)]
-    if stack and cell.fill:
-        # The PCell's via field inside the plates does not come out, its
-        # mask stays on Activ (with the field's squares inside it).
-        l % LayoutPoly(layer=layers.Activ, vertices=inner)
+    # With fill, the octagon gets no via field inside the plates: the PCell's
+    # does not come out and leaves its Activ mask behind (see the docs).
     for rule in stack:
         via, vs, vd = getattr(layers, rule.cut), rule.size, rule.space
         l % LayoutPoly(layer=getattr(layers, rule.bottom), vertices=outer if cell.fill else ring_vertices)
@@ -2702,6 +2714,9 @@ def layoutgen_inductor(cell: Cell, three: bool) -> Layout:
         raise ParameterError("w and s must be at least Wmin and Smin.")
     if cell.nr_r < (2 if three else 1):
         raise ParameterError("nr_r must be at least minNr_t.")
+    # w and d are centered, so their halves must be on the 5 nm grid.
+    check_grid(cell, R("10n"), "w", "d")
+    check_grid(cell, R("5n"), "s")
     layers = SG13G2().layers
     l = Layout(ref_layers=layers, cell=cell, symbol=cell.symbol)
 
@@ -2732,9 +2747,9 @@ def layoutgen_inductor(cell: Cell, three: bool) -> Layout:
     sqrt2 = math.sqrt(2)
     var = 1 + sqrt2
     grid = 0.01
-    w = gridfix(float(cell.w / R("1u")) * 0.5) * 2
-    s = gridfix(float(cell.s / R("1u")))
-    d = d1 = gridfix(float(cell.d / R("1u")) * 0.5) * 2
+    w = float(cell.w / R("1u"))
+    s = float(cell.s / R("1u"))
+    d = d1 = float(cell.d / R("1u"))
     nr_r = cell.nr_r
     nr_vias = round((w + 0.06) / pitch - 0.5)
     via_margin = (w - nr_vias*cut - (nr_vias - 1)*cut_space - 1) / 2
@@ -2747,7 +2762,9 @@ def layoutgen_inductor(cell: Cell, three: bool) -> Layout:
     else:
         d_min = gridfix(((gridfix(w / sqrt2 + s / 2) + gridfix(s * 0.4143)) * 2 + 2 * s + 4 * w)
             * (1 + sqrt2))
-    d = max(d, d_min)
+    # The PCell enlarges d silently instead.
+    if d < d_min - grid / 2:
+        raise ParameterError(f"d must be at least {d_min:.2f}u for these w, s and nr_r.")
     # A turn is an octagon of inner diameter d: lat_sm is the length of its
     # sides, cateta_sm how far its 45 degree corners cut in.
     lat_sm = gridfix(d / (2 * var)) * 2
@@ -3054,6 +3071,7 @@ def layoutgen_npn13g2l(cell: Cell, hv: bool) -> Layout:
     nx_max, el_max = (8, R(5)) if hv else (4, R("2.5"))
     if not 1 <= cell.nx <= nx_max or not 1 <= cell.el <= el_max:
         raise ParameterError(f"nx must be 1 to {nx_max}, el 1 to {el_max}.")
+    check_grid(cell, R("0.005"), "el")  # in um
     layers = SG13G2().layers
     l = Layout(ref_layers=layers, cell=cell, symbol=cell.symbol)
 
@@ -3192,6 +3210,7 @@ def layoutgen_pnpmpa(cell: Cell) -> Layout:
         raise ParameterError("m != 1 not supported for layout.")
     if not (R("0.3u") <= cell.w <= R("2u") and R("0.68u") <= cell.l <= R("1m")):
         raise ParameterError("w must be 0.3u to 2u, l 0.68u to 1m.")
+    check_grid(cell, R("10n"), "w", "l")  # centered, so the halves are on the 5 nm grid
     layers = SG13G2().layers
     l = Layout(ref_layers=layers, cell=cell, symbol=cell.symbol)
 
@@ -3199,8 +3218,8 @@ def layoutgen_pnpmpa(cell: Cell) -> Layout:
         return Rect4I(-x, -y, x, y)
 
     # Half sizes, named as in the PCell
-    wact = 5 * (int(cell.w / R("1n")) // 10)
-    hact = 5 * (int(cell.l / R("1n")) // 10)
+    wact = int(cell.w / R("1n")) // 2
+    hact = int(cell.l / R("1n")) // 2
     wpsd, hpsd = wact + 210, hact + 180
     w2act, h2act = wpsd + 180, hpsd + 180  # pSD.c
     dw2act, dh2act = max(wact, 300), 290
