@@ -63,7 +63,8 @@ pytest tests/test_schematic.py
 # Run tests matching pattern
 pytest -k "test_ordb"
 
-# Markers: web (web interface), yosys (needs the yosys executable)
+# Markers: web (web interface), yosys (needs the yosys executable), ihp130
+# (needs the IHP PDK, ORDEC_PDK_IHP_SG13G2)
 pytest -m web
 
 # Fast testing: skip web tests (saves significant time)

@@ -8,8 +8,12 @@ cell, with coordinates in the cell's local space — not once per instance
 at the top cell. Cross-hierarchy violations attach to the top cell.
 """
 
+import pytest
+
 from ordec.core.schema import DrcCell, DrcItem, DrcEdgePair
 from .lib.drc_example_hier import Sub, Top
+
+pytestmark = pytest.mark.ihp130
 
 
 def test_drc_hier():

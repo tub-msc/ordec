@@ -7,10 +7,12 @@ from ordec.core import *
 from ordec.lib import ihp130, Gnd, Vdc
 from ordec.sim import Simulator
 
+pytestmark = pytest.mark.ihp130
+
 
 class CornerTb(Cell):
-    """One device of each corner library (MOS, resistor, capacitor)
-    across 1 V, so every .lib section is loaded by ngspice."""
+    """One device of each corner library (LV and HV MOS, resistor,
+    capacitor, HBT, diode) across 1 V, so every .lib section is loaded by ngspice."""
     @viewgen_noctx
     def schematic(self):
         s = Schematic(cell=self)
@@ -23,12 +25,22 @@ class CornerTb(Cell):
             ihp130.Nmos(l="130n", w="1u").symbol.portmap(
                 d=s.vdd, g=s.vdd, s=s.vss, b=s.vss),
             pos=Vec2R(12, 5))
+        s.mhv = SchemInstance(
+            ihp130.NmosHv(l="450n", w="1u").symbol.portmap(
+                d=s.vdd, g=s.vdd, s=s.vss, b=s.vss),
+            pos=Vec2R(30, 5))
         s.r = SchemInstance(
-            ihp130.Rsil().symbol.portmap(p=s.vdd, n=s.vss, bn=s.vss),
+            ihp130.Rsil(l="0.5u", w="0.5u").symbol.portmap(p=s.vdd, n=s.vss, sub=s.vss),
             pos=Vec2R(18, 5))
         s.c = SchemInstance(
-            ihp130.Cmim().symbol.portmap(p=s.vdd, n=s.vss),
+            ihp130.Cmim(l="6.99u", w="6.99u").symbol.portmap(p=s.vdd, n=s.vss),
             pos=Vec2R(24, 5))
+        s.q = SchemInstance(
+            ihp130.Npn13G2().symbol.portmap(c=s.vdd, b=s.vss, e=s.vss, sub=s.vss),
+            pos=Vec2R(36, 5))
+        s.d = SchemInstance(
+            ihp130.Diodevdd2kv().symbol.portmap(vdd=s.vdd, pad=s.vss, vss=s.vss),
+            pos=Vec2R(42, 5))
         s.auto_wire()
         s.check(add_conn_points=True, add_terminal_taps=True)
         return s
@@ -39,12 +51,15 @@ def test_netlist_corner_and_temp():
     h = SimHierarchy.from_schematic(CornerTb().schematic)
     nl = Simulator(h).netlister.out()
     assert " mos_tt\n" in nl and " res_typ\n" in nl and " cap_typ\n" in nl
+    assert "cornerHBT.lib\" hbt_typ\n" in nl and "cornerDIO.lib\" dio_tt\n" in nl
     assert ".option temp=" not in nl
 
     h = SimHierarchy.from_schematic(CornerTb().schematic)
-    corner = ihp130.Corner(mos="ss", res="typ", cap=ihp130.CapCorner.WCS)
+    corner = ihp130.Corner(mos="ss", res="typ", cap=ihp130.CapCorner.WCS, hbt="bcs", dio="ff")
     nl = Simulator(h, corner=corner, temp=125).netlister.out()
     assert " mos_ss\n" in nl and " res_typ\n" in nl and " cap_wcs\n" in nl
+    assert "cornerHBT.lib\" hbt_bcs\n" in nl and "cornerDIO.lib\" dio_ff\n" in nl
+    assert "cornerMOShv.lib\" mos_ss\n" in nl
     assert f".option temp={R(125).compat_str()}\n" in nl
 
     h = SimHierarchy.from_schematic(CornerTb().schematic)
@@ -52,15 +67,18 @@ def test_netlist_corner_and_temp():
         Simulator(h, corner="ss")
 
 
-@pytest.mark.parametrize("kwargs", [
-    dict(w="1u", l="100n"),
-    dict(w="100n", l="130n"),
-    dict(w="1u", l="20u"),
-    dict(w="1u", l="130n", ng=8),
+@pytest.mark.parametrize("cell,kwargs", [
+    (ihp130.Nmos, dict(w="1u", l="100n")),
+    (ihp130.Nmos, dict(w="100n", l="130n")),
+    (ihp130.Nmos, dict(w="1u", l="20u")),
+    (ihp130.Nmos, dict(w="1u", l="130n", ng=8)),
+    (ihp130.Nmos, dict(w="1u", l="132n")),        # off the 5 nm grid
+    (ihp130.Nmos, dict(w="1u", l="130n", ng=3)),  # w/ng off the grid
+    (ihp130.NmosHv, dict(w="1u", l="400n")),
 ])
-def test_mos_dimension_limits(kwargs):
+def test_mos_dimension_limits(cell, kwargs):
     with pytest.raises(ParameterError):
-        ihp130.Nmos(**kwargs)
+        cell(**kwargs)
 
 
 def test_corner_class():
@@ -71,7 +89,7 @@ def test_corner_simulation():
     """Non-tt sections of all three corner libraries exist and
     simulate at a non-default temperature."""
     h = SimHierarchy.from_schematic(CornerTb().schematic)
-    corner = ihp130.Corner(mos="ss", res="wcs", cap="wcs")
+    corner = ihp130.Corner(mos="ss", res="wcs", cap="wcs", hbt="wcs", dio="ss")
     h.simulate(corner=corner, temp=125).op()
     assert h.vdd.voltage[0] == pytest.approx(1.0)
     assert 0 < abs(float(h.i_vdc.p.current[0])) < 1

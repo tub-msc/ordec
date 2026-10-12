@@ -3,19 +3,21 @@
 
 from subprocess import CalledProcessError
 
+import pytest
+
 from ordec.core import Directory
 from ordec.core.schema import LvsCircuitPair
 from ordec.extlibrary import ExtLibrary
 from ordec.lib import ihp130
 
-stdcell_root = ihp130.pdk().root / "libs.ref/sg13g2_stdcell"
+pytestmark = pytest.mark.ihp130
 
 
 def build_lib():
     lib = ExtLibrary()
-    lib.read_lef(stdcell_root / "lef/sg13g2_stdcell.lef")
-    lib.read_gds(stdcell_root / "gds/sg13g2_stdcell.gds", ihp130.SG13G2().layers)
-    lib.read_spice(stdcell_root / "spice/sg13g2_stdcell.spice", device_map=ihp130.device_map)
+    lib.read_lef(ihp130.pdk().stdcell_lef)
+    lib.read_gds(ihp130.pdk().stdcell_gds, ihp130.SG13G2().layers)
+    lib.read_spice(ihp130.pdk().stdcell_spice, device_map=ihp130.device_map)
     return lib
 
 

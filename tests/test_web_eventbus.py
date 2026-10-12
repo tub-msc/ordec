@@ -219,6 +219,7 @@ def get_layout_states_by_view(web):
     """)
 
 
+@pytest.mark.ihp130
 @pytest.mark.web
 def test_drc_subcell_item_select(web):
     """Selecting a DRC item opens the layout view of the violation's cell
@@ -555,6 +556,7 @@ def load_lvs_report_view(web):
     web.wait_until("return !!document.querySelector('.lvs-circuit-link');")
 
 
+@pytest.mark.ihp130
 @pytest.mark.web
 def test_lvs_circuit_links_open_views(web):
     """Clicking the Layout/Reference cells of a circuit row opens the
@@ -608,6 +610,7 @@ def test_lvs_circuit_links_open_views(web):
     assert svg_count > 0, "Schematic viewer should have opened and rendered"
 
 
+@pytest.mark.ihp130
 @pytest.mark.web
 def test_lvs_layout_link_dedup(web):
     """A circuit-row layout link must focus an already-open panel showing the
@@ -661,6 +664,7 @@ def test_lvs_layout_link_dedup(web):
         "Item highlight should land in the hash-matched layout panel"
 
 
+@pytest.mark.ihp130
 @pytest.mark.web
 def test_lvs_subcircuit_item_select(web):
     """Selecting an LvsItem of a subcircuit pair opens the pair's own
@@ -754,6 +758,7 @@ def test_lvs_subcircuit_item_select(web):
         "Top-level selection must not leave a highlight in the subcircuit's view"
 
 
+@pytest.mark.ihp130
 @pytest.mark.web
 def test_lvs_stale_report_links_inert(web):
     """Links and item rows of an outdated report view must not open views

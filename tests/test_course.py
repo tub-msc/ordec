@@ -67,6 +67,7 @@ class LessonTestdata:
     # checks fail).
     skeleton_passed: list = None
     has_svg: bool = False
+    ihp130: bool = False  # needs the IHP PDK (pytest marker ihp130)
 
     def __post_init__(self):
         if self.skeleton_passed is None:
@@ -83,6 +84,7 @@ class LessonTestdata:
 class CourseTestdata:
     title: str
     lessons: list
+    ihp130: bool = False  # all lessons need the IHP PDK
 
 
 courses_testdata = {
@@ -386,7 +388,7 @@ courses_testdata = {
         ]),
         # Lesson 8: input contact and DRC (skeleton runs KLayout on the
         # planted rail-width violation).
-        LessonTestdata(passfails=5, solution=[
+        LessonTestdata(ihp130=True, passfails=5, solution=[
             InsertSolution("""
             # EDIT HERE (input)
             """, """
@@ -411,7 +413,7 @@ courses_testdata = {
             """),
         ]),
         # Lesson 9: pins and LVS.
-        LessonTestdata(passfails=3, solution=[
+        LessonTestdata(ihp130=True, passfails=3, solution=[
             InsertSolution("""
             # EDIT HERE (a pin)
             """, """
@@ -486,7 +488,7 @@ courses_testdata = {
         ]),
         # Lesson 11: routing, pins, DRC and LVS signoff (solution runs
         # KLayout twice).
-        LessonTestdata(passfails=5, solution=[
+        LessonTestdata(ihp130=True, passfails=5, solution=[
             InsertSolution("""
             # EDIT HERE (route)
             """, """
@@ -519,7 +521,7 @@ courses_testdata = {
         # Epilogue: task-free what's-next report closing the course.
         LessonTestdata(),
     ]),
-    'cmos_circuits': CourseTestdata('CMOS Integrated Circuits', [
+    'cmos_circuits': CourseTestdata('CMOS Integrated Circuits', ihp130=True, lessons=[
         # Lesson 1: MOS transistor curves. The import and each complete
         # device have their own check, then two sweep checks verify the
         # curves.
@@ -671,7 +673,7 @@ courses_testdata = {
             """),
         ]),
     ]),
-    'amp_competition': CourseTestdata('Amplifier Competition', [
+    'amp_competition': CourseTestdata('Amplifier Competition', ihp130=True, lessons=[
         # Competition lesson: meet the spec gates at every corner, minimize
         # the current. The skeleton (whose only device is the shipped ibias
         # sink) passes the device whitelist and fails the two measured
@@ -696,7 +698,7 @@ courses_testdata = {
             """, """
             net g
             Cmim cc: .$w=30u; .$l=30u; .p -- vin; .n -- g; .pos=(3,7)
-            Rhigh rf: .$w=0.5u; .$l=2000u; .p -- vout; .n -- g; .bn -- vss; .pos=(13,13)
+            Rhigh rf: .$w=0.5u; .$l=2000u; .p -- vout; .n -- g; .sub -- vss; .pos=(13,13)
             Nmos mn: .$w=1u; .$l=500n; .g -- g; .d -- vout; .s -- vss; .b -- vss; .pos=(8,4)
             Pmos mp: .$w=6.25u; .$l=500n; .$ng=2; .g -- g; .d -- vout; .s -- vdd; .b -- vdd; .pos=(8,10)
             Nmos mbias: .$w=1u; .$l=1u; .g -- ibias; .d -- ibias; .s -- vss; .b -- vss; .pos=(3,13)
@@ -725,8 +727,9 @@ def lesson_params(with_solution=False):
         for i, testdata in enumerate(course.lessons):
             if with_solution and not testdata.solution:
                 continue
+            marks = [pytest.mark.ihp130] if course.ihp130 or testdata.ihp130 else []
             yield pytest.param(course_name, i, testdata,
-                id=f'{course_name}-{i}')
+                id=f'{course_name}-{i}', marks=marks)
 
 
 def course_data(name='getting_started'):
@@ -861,6 +864,7 @@ def test_lesson_solution(course_name, lesson_index, testdata):
         assert all(label in table[0]['html'] for label, _, _ in CORNERS)
 
 
+@pytest.mark.ihp130
 def test_amp_input_biased_fails_corners():
     """An inverter biased directly from the 0.6 V input passes at tt but
     runs into a rail at the skewed corners: gain and large-signal gate
@@ -880,6 +884,7 @@ def test_amp_input_biased_fails_corners():
     assert len(score) == 1 and not score[0]['eligible']
 
 
+@pytest.mark.ihp130
 def test_amp_input_current_counts():
     """The score counts the current from the input source as well: a
     resistor from vin to vss adds its ~18 uA to the reference's ~31 uA,
@@ -887,7 +892,7 @@ def test_amp_input_current_counts():
     lesson = course_data('amp_competition')['lessons'][0]
     edit = courses_testdata['amp_competition'].lessons[0].solution[0]
     src = InsertSolution(edit.skeleton, edit.solution + "Rhigh rx: .$w=0.5u; "
-        ".$l=10u; .p -- vin; .n -- vss; .bn -- vss; .pos=(3,13)\n"
+        ".$l=10u; .p -- vin; .n -- vss; .sub -- vss; .pos=(3,13)\n"
         ).apply(lesson['src'])
     elements = [e.element_webdata()
         for e in run_lesson(lesson, src)['lesson']().elements()]
@@ -924,6 +929,7 @@ AMP_CASCADE = """
 """
 
 
+@pytest.mark.ihp130
 def test_amp_cascade_fails_large_signal():
     """A starved multi-stage cascade passes the device and gain gates at
     every corner but fails the large-signal gate (distortion), so its
@@ -953,6 +959,7 @@ def cmos_variant_states(lesson_index, replace_from, replace_to):
         if e['element_type'] == 'passfail']
 
 
+@pytest.mark.ihp130
 def test_cmos_mirror_wide_transistor():
     """
     A single 10x-wide transistor must fail both the unit-device check and
@@ -964,6 +971,7 @@ def test_cmos_mirror_wide_transistor():
         == [True, False, False]
 
 
+@pytest.mark.ihp130
 def test_cmos_mirror_trimmed_width():
     """
     Trimming the width until the current happens to land in the tolerance
@@ -975,6 +983,7 @@ def test_cmos_mirror_trimmed_width():
         == [True, False, True]
 
 
+@pytest.mark.ihp130
 def test_cmos_mirror_fingers():
     """
     The second correct technique, one device split into ten unit-width
@@ -1022,6 +1031,7 @@ def test_cmos_half_wired_no_traceback(lesson_index, device):
         assert check['hint']
 
 
+@pytest.mark.ihp130
 def test_cmos_inverter_symmetric_sizing():
     """
     Equal NMOS/PMOS widths must pass all structural checks and levels but

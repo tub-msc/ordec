@@ -285,6 +285,8 @@ def spice_subckt_discover(path, extlib, device_map: dict):
     """
     with open(path) as f:
         deck = parse_deck(f.read())
+    # Model names are case-insensitive in ngspice.
+    device_map = {model.lower(): mapping for model, mapping in device_map.items()}
     symbol_funcs = {}
     schematic_funcs = {}
     for name, subckt in deck.subckts.items():
@@ -359,8 +361,8 @@ def create_schematic_from_subckt(extlib, deck, name, device_map) -> Schematic:
 def resolve_instance(extlib, deck, device_map, subckt_name, inst, node_to_net):
     """Resolve an instance to (child_symbol, {pin_name: net}) connections."""
     model = inst.model
-    if model in device_map:
-        mapping = device_map[model]
+    if model.lower() in device_map:
+        mapping = device_map[model.lower()]
         if len(inst.nodes) != len(mapping.pin_order):
             raise SpiceImportError(
                 f"Instance {inst.name!r} in {subckt_name!r}: device {model!r} expects "

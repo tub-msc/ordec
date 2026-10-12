@@ -28,7 +28,6 @@ from ordec.layout.pnr.flow import (LeafCell, NetInfo,
 from ordec.layout.pnr.route import M2, M3, VERT
 from ordec.lib import ihp130
 from ordec.lib.ihp130 import SG13G2
-from .lib import pnr_cells as fx
 
 # A grid with the sg13g2 dimensions but no PDK behind it, so the placement and
 # routing tests below run without the LEF, the GDS or KLayout.
@@ -44,9 +43,18 @@ GRID = GridConfig(
 CELL_W = 1920   # four x-tracks wide
 
 
+@pytest.fixture
+def fx():
+    """The cells of tests/lib/pnr_cells.ord, which reads the sg13g2 standard
+    cells on import."""
+    from .lib import pnr_cells
+    return pnr_cells
+
+
 def pnr(cell, layout=None, port_edges=None):
     """Run the engine over ``cell`` with the sg13g2 inputs, the way a design
     does. Returns the frozen layout and the :class:`PnrResult`."""
+    from .lib import pnr_cells as fx
     if layout is None:
         layout = Layout(cell=cell, symbol=cell.symbol)
     result = place_and_route(cell.schematic, layout, grid=ihp130.grid,
@@ -206,7 +214,8 @@ def test_route_nets_avoids_mesh_blockages():
 
 # --- the whole flow --------------------------------------------------------
 
-def test_deterministic():
+@pytest.mark.ihp130
+def test_deterministic(fx):
     """Two runs of the same cell emit identical geometry.
 
     The engine uses sets, dicts and an RNG throughout, so this guards against
@@ -217,14 +226,16 @@ def test_deterministic():
     assert compare(a, b) is None
 
 
-@pytest.mark.parametrize("cell", [
-    fx.RippleAdder(n=2),    # off-track pin access
-    fx.Crossbar(n=4),       # max-fan-out nets
-    fx.TiedReset(n=4),      # signal pins tied to a rail
-    fx.PairChain(n=3),      # flattened composite sub-cells
+@pytest.mark.ihp130
+@pytest.mark.parametrize("name,n", [
+    ("RippleAdder", 2),     # off-track pin access
+    ("Crossbar", 4),        # max-fan-out nets
+    ("TiedReset", 4),       # signal pins tied to a rail
+    ("PairChain", 3),       # flattened composite sub-cells
 ], ids=["ripple_adder", "crossbar", "tied_reset", "pair_chain"])
-def test_every_terminal_lands_on_its_pin(cell):
+def test_every_terminal_lands_on_its_pin(fx, name, n):
     """Each access node reaches the pin rect it serves, on or off track."""
+    cell = getattr(fx, name)(n=n)
     _layout, result = pnr(cell)
     cfg = result.cfg
     pin_rects = [r for cell_pins in result.pins.values()
@@ -239,7 +250,8 @@ def test_every_terminal_lands_on_its_pin(cell):
                 f"net {name} access at ({x}, {y}) is on no pin"
 
 
-def test_every_port_gets_a_pin():
+@pytest.mark.ihp130
+def test_every_port_gets_a_pin(fx):
     layout, _result = pnr(fx.InvChain(n=4))
     symbol = fx.InvChain(n=4).symbol
     pinned = {p.pin.nid for p in layout.all(LayoutPin)}
@@ -247,7 +259,8 @@ def test_every_port_gets_a_pin():
         <= pinned
 
 
-def test_floorplan_grows_rows():
+@pytest.mark.ihp130
+def test_floorplan_grows_rows(fx):
     """A cell too wide for one row lands on several and still routes."""
     _layout, small = pnr(fx.InvChain(n=4))
     _layout, large = pnr(fx.InvChain(n=32))
@@ -257,7 +270,8 @@ def test_floorplan_grows_rows():
     assert large.taps, "a multi-row block carries a power mesh"
 
 
-def test_flatten_expands_composites():
+@pytest.mark.ihp130
+def test_flatten_expands_composites(fx):
     """A composite sub-cell is replaced by its own leaves, with its internal
     nets uniquified by the instance prefix and its ports rewired."""
     leaves, nets = flatten_schematic(fx.PairChain(n=3).schematic,
@@ -274,13 +288,15 @@ def test_flatten_expands_composites():
     assert len(nets["vdd"]) == len(leaves)
 
 
-def test_hierarchical_cell_routes():
+@pytest.mark.ihp130
+def test_hierarchical_cell_routes(fx):
     _layout, result = pnr(fx.PairChain(n=3))
     assert len(result.pins) == 6
     assert all(edges for edges, _term_m2 in result.routing.nets.values())
 
 
-def test_supply_tied_pin_gets_its_own_net():
+@pytest.mark.ihp130
+def test_supply_tied_pin_gets_its_own_net(fx):
     """A signal pin held at a supply is routed to its cell's rail.
 
     The rails carry power by abutment rather than by routing, so without the
@@ -293,7 +309,8 @@ def test_supply_tied_pin_gets_its_own_net():
     assert all(edges for edges in ties.values())
 
 
-def test_shared_buses_route_under_congestion():
+@pytest.mark.ihp130
+def test_shared_buses_route_under_congestion(fx):
     """Two buses spanning every cell are the max-fan-out case the rip-up
     negotiation has to resolve."""
     _layout, result = pnr(fx.Crossbar(n=4))
@@ -310,7 +327,8 @@ def test_shared_buses_route_under_congestion():
         assert len(reached) == 4, f"{bus} reaches {reached}"
 
 
-def test_ports_escape_to_the_nearer_edge():
+@pytest.mark.ihp130
+def test_ports_escape_to_the_nearer_edge(fx):
     """A port leaves by the edge its terminals sit nearer.
 
     Escaping everything to the top would make a net driven from the bottom row
@@ -329,7 +347,8 @@ def test_ports_escape_to_the_nearer_edge():
     assert {edge for _x, edge in escapes.values()} == {"top", "bottom"}
 
 
-def test_port_edges_pin_the_escape():
+@pytest.mark.ihp130
+def test_port_edges_pin_the_escape(fx):
     """A parent that knows its floorplan can override the choice."""
     cell = fx.DffArray(n=4)
     pins = {"clk": "top", "rst": "top"}
@@ -340,7 +359,8 @@ def test_port_edges_pin_the_escape():
     assert edges == {"top"}
 
 
-def test_port_edges_move_the_emitted_pads():
+@pytest.mark.ihp130
+def test_port_edges_move_the_emitted_pads(fx):
     """The escape decision reaches the geometry, not just the bookkeeping."""
     cell = fx.DffArray(n=4)
     pins = {"clk": "top", "rst": "top"}
@@ -359,18 +379,21 @@ def test_port_edges_move_the_emitted_pads():
     assert lowest_signal_pin(pinned) >= 0
 
 
-def test_port_edges_rejects_an_unknown_port():
+@pytest.mark.ihp130
+def test_port_edges_rejects_an_unknown_port(fx):
     """A key that names nothing would otherwise fall back in silence."""
     with pytest.raises(ValueError, match="no escaped ports"):
         pnr(fx.DffArray(n=4), port_edges={"clock": "top"})   # it is called clk
 
 
-def test_port_edges_rejects_a_bad_edge():
+@pytest.mark.ihp130
+def test_port_edges_rejects_a_bad_edge(fx):
     with pytest.raises(ValueError, match="must be 'top' or 'bottom'"):
         pnr(fx.DffArray(n=4), port_edges={"clk": "left"})
 
 
-def test_port_edges_accepts_supply_names():
+@pytest.mark.ihp130
+def test_port_edges_accepts_supply_names(fx):
     """Passing every pin of the symbol is the natural thing to write, and the
     supplies leave on the side straps rather than by escape."""
     _layout, result = pnr(fx.DffArray(n=4),
@@ -390,7 +413,8 @@ def test_escape_row_is_just_inside_the_rail():
 
 # --- what the engine refuses ----------------------------------------------
 
-def test_hand_geometry_in_the_viewgen_rejected():
+@pytest.mark.ihp130
+def test_hand_geometry_in_the_viewgen_rejected(fx):
     """Emitting over shapes the router cannot see would short them.
 
     DRC would stay clean, since overlapping same-layer shapes need no spacing,
@@ -400,7 +424,8 @@ def test_hand_geometry_in_the_viewgen_rejected():
         fx.HandGeometry().layout
 
 
-def test_place_and_route_twice_rejected():
+@pytest.mark.ihp130
+def test_place_and_route_twice_rejected(fx):
     """The second call sees the first call's geometry, so the same guard
     catches it."""
     layout, _result = pnr(fx.InvChain(n=2))
@@ -408,7 +433,8 @@ def test_place_and_route_twice_rejected():
         pnr(fx.InvChain(n=2), layout=layout.mutable_copy())
 
 
-def test_device_level_instance_rejected():
+@pytest.mark.ihp130
+def test_device_level_instance_rejected(fx):
     """A bare transistor is neither a routing leaf nor a composite, and the
     error names the instance rather than failing on a missing attribute."""
     with pytest.raises(ValueError, match=r"instance 'm0' is a Nmos"):
@@ -431,7 +457,8 @@ def test_short_routing_spec_rejected():
         stack_from_spec(spec)
 
 
-def test_foreign_layer_set_rejected():
+@pytest.mark.ihp130
+def test_foreign_layer_set_rejected(fx):
     """A layout already bound to another PDK's layers would take this
     engine's geometry on the wrong ones."""
     other = LayerStack()
@@ -442,7 +469,8 @@ def test_foreign_layer_set_rejected():
         pnr(fx.InvChain(n=2), layout=foreign)
 
 
-def test_result_reports_the_decisions():
+@pytest.mark.ihp130
+def test_result_reports_the_decisions(fx):
     layout, result = pnr(fx.InvChain(n=4))
     assert len(result.pins) == 4
     # The placement itself lives on the layout's LayoutInstances, one per leaf.

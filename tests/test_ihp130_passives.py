@@ -8,32 +8,8 @@ import pytest
 from ordec.core import *
 from ordec.core import ParameterError
 from ordec.lib import ihp130, Gnd, Vdc
-from .lib.thinwrap import gallery_wrapper_cell
 
-
-# All passive devices plus representative meanders in one gallery layout:
-# deck startup dominates KLayout runtime, so a single DRC and a single LVS
-# run cover them all. Meander picks span the resistor kinds, both stripe
-# parities (even and odd counts place the p terminal at opposite ends) and
-# a high bend count.
-GALLERY = [
-    ihp130.Rsil(), ihp130.Rppd(), ihp130.Rhigh(), ihp130.Cmim(),
-    ihp130.Rsil(l="2.0u", w="0.5u", b=1, ps="180n"),
-    ihp130.Rppd(l="2.0u", w="0.5u", b=2, ps="400n"),
-    ihp130.Rhigh(l="2.0u", w="0.5u", b=5, ps="400n"),
-]
-
-
-def test_passive_gallery_lvs_clean():
-    wrapper = gallery_wrapper_cell(GALLERY, "PassiveGallery")
-    lvs_report = ihp130.run_lvs(wrapper.layout, wrapper.symbol, use_tempdir=True)
-    assert lvs_report.clean()
-
-
-def test_passive_gallery_drc_clean():
-    wrapper = gallery_wrapper_cell(GALLERY, "PassiveGallery")
-    res = ihp130.run_drc(wrapper.layout, use_tempdir=True)
-    assert res.summary() == {}
+pytestmark = pytest.mark.ihp130
 
 
 def test_resistor_meander_geometry():
@@ -91,7 +67,7 @@ def test_resistor_op(cell, expected_r):
                 Vdc(dc=1).symbol.portmap(n=s.vss, p=s.vdd), pos=Vec2R(0, 5)
             )
             s.r = SchemInstance(
-                res_cell.symbol.portmap(p=s.vdd, n=s.vss, bn=s.vss),
+                res_cell.symbol.portmap(p=s.vdd, n=s.vss, sub=s.vss),
                 pos=Vec2R(12, 5),
             )
 

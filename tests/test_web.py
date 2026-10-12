@@ -174,8 +174,13 @@ def request_integrated_example(web, testcase):
         #driver.save_screenshot('test.png')
     return {k:WebResViewer(**v) for k, v in res_viewers.items()}
 
+# Examples that need the IHP PDK
+ihp130_examples = {'adder_pnr', 'stdcells'}
+
 @pytest.mark.web
-@pytest.mark.parametrize('testcase', testcases_integrated.keys())
+@pytest.mark.parametrize('testcase', [
+    pytest.param(name, marks=pytest.mark.ihp130 if name in ihp130_examples else ())
+    for name in testcases_integrated])
 def test_integrated(web, testcase):
     """Web tests using integrated mode (&example=..)"""
     res_viewers = request_integrated_example(web, testcase)

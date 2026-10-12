@@ -27,6 +27,8 @@ from collections import Counter
 from ordec.core.schema import LvsCircuitPair, LvsItem, LvsItemType, LvsStatus
 from .lib import lvs_example_hier as fx
 
+pytestmark = pytest.mark.ihp130
+
 
 def pairs_of(report):
     return {(p.layout_cell, p.schem_cell): p for p in report.all(LvsCircuitPair)}
