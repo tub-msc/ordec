@@ -36,6 +36,8 @@ The **IHP Open PDK** can be downloaded using the following shell command::
 
     git clone https://github.com/IHP-GmbH/IHP-Open-PDK.git
 
+ORDeC is tested against the release that *base.Dockerfile* pins (the tag in its ``git fetch`` line). Check out that tag with ``git checkout <tag>`` in the clone, so that your PDK matches the container image.
+
 The IHP Open PDK includes Verilog-A models, which must be compiled before use using OpenVAF::
 
     cd IHP-Open-PDK/ihp-sg13g2/libs.tech/verilog-a/
