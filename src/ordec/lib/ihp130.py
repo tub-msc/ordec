@@ -1050,8 +1050,9 @@ class PmosHv(Mos):
 def layoutgen_rfmos(cell: Cell, nwell: bool, hv: bool) -> Layout:
     """
     Layout generation function shared for the RF Nmos and Pmos cells, as the
-    PCell rfmosfet_base_code.py with its default options: one contact row,
-    Metal2 on the source/drain rows, gate ring and guard ring.
+    PCell rfmosfet_base_code.py: cnt_rows contact rows per source/drain
+    region, optionally Metal2 over them, a Metal1 gate ring and a guard ring
+    with contacts on the sides that guard_ring selects.
     """
     if cell.m != 1:
         raise ParameterError("m != 1 not supported for layout.")
@@ -1060,65 +1061,87 @@ def layoutgen_rfmos(cell: Cell, nwell: bool, hv: bool) -> Layout:
     layers = SG13G2().layers
     l = Layout(ref_layers=layers, cell=cell, symbol=cell.symbol)
 
-    ng = cell.ng
+    ng, rows = cell.ng, cell.cnt_rows
     W = 5 * math.floor(cell.w / ng / R("5n") + R("0.001"))  # GridFix as in the PCell
     L = int(cell.l / R("1n"))
-    # Space between the gates and at both ends
-    dc, ec = (390, 350) if L < 140 and W >= 1000 else (380, 345)
+    # Space between the gates and at both ends, growing with the contact rows
+    dc, ec = 410*rows - 30, 410*rows - 65
+    dce = 5 if L < 140 and W >= 1000 else 0
+    dc, ec = dc + 2*dce, ec + dce
     hact = 2*ec + (ng - 1)*dc + ng*L
     cont, via1 = VIA_RULES["SG13G2_CONT_ACTIV_M1"], VIA_RULES["SG13G2_VIA_M1_M2"]
     via_space = via1.space if W < 1520 else via1.space_dense
-    row = 155                    # y of the first source/drain contact line
-    dgatx, dgaty = 130, 235      # Activ to gate ring
-    wgat = 300                   # gate ring width
-    dguard, wguard = 360, 320    # gate ring to guard ring, guard ring width
+    dgatx = 170 if rows > 2 else 130  # Activ to gate ring, horizontal
+    dgaty = 235                       # Activ to gate ring, vertical
+    wgat = 300                        # gate ring width
+    dguard, wguard = 360, 320         # gate ring to guard ring, guard ring width
 
     l % LayoutRect(layer=layers.Activ, rect=Rect4I(0, 0, W, hact))
     l.poly = PathNode()
     for i in range(ng):
         y = ec + i*(dc + L)
         l.poly[i] = LayoutRect(layer=layers.GatPoly, rect=Rect4I(-dgatx, y, W + dgatx, y + L))
-    # Poly bars left and right of the Activ join the fingers, ending 75 inside
-    # the Activ's ends (the PCell's u for one contact row).
+    # Poly bars left and right of the Activ join the fingers, ending u inside
+    # the Activ's ends.
+    u = 75 if rows == 1 else 360
     for x in (-dgatx - wgat, W + dgatx):
-        l % LayoutRect(layer=layers.GatPoly, rect=Rect4I(x, 75, x + wgat, hact - 75))
+        l % LayoutRect(layer=layers.GatPoly, rect=Rect4I(x, u, x + wgat, hact - u))
 
-    # Source/drain rows: metal 280 wide (the PCell's metWidth - 0.02), 50 in from the Activ ends
+    # Source/drain regions: contact rows of metal 280 wide (the PCell's
+    # metWidth - 0.02), 410 apart, 50 in from the Activ ends. With several
+    # rows, a plate covers them all.
     l.sd = PathNode()
+    plate = Rect4I(50, 15, W - 50, ec - 50 - dce)
+    metals = [(layers.Metal1, layers.Cont, 280, cont.size, cont.space)]
+    if cell.met2_cont:
+        metals.append((layers.Metal2, layers.Via1, 200, via1.size, via_space))
     for k in range(ng + 1):
         dy = k*(dc + L)
-        l.sd[k] = metal_cont(l, layers.Metal1, layers.Cont, 50, row, W - 50, row,
-            280, cont.size, 50, cont.space, dy)
-        metal_cont(l, layers.Metal2, layers.Via1, 50, row, W - 50, row, 200, via1.size, 50, via_space, dy)
+        for metal, via, width, size, space in metals:
+            if rows > 1:
+                sd = l % LayoutRect(layer=metal, rect=Rect4I(plate.lx, plate.ly + dy, plate.ux, plate.uy + dy))
+            for r in range(rows):
+                y = 155 + 410*r
+                row = metal_cont(l, metal, via, 50, y, W - 50, y, width, size, 50, space, dy)
+                if rows == 1:
+                    sd = row
+            if metal == layers.Metal1:
+                l.sd[k] = sd
     l % LayoutLabel(layer=layers.TEXT, pos=Vec2I(W // 2, ec // 2), text="S")
     l % LayoutLabel(layer=layers.TEXT, pos=Vec2I(W // 2, ec // 2 + dc + L), text="D")
 
     gate_ring = Rect4I(-dgatx - wgat, -dgaty - wgat, W + dgatx + wgat, hact + dgaty + wgat)
-    ring(l, layers.Metal1, gate_ring, Rect4I(-dgatx, -dgaty, W + dgatx, hact + dgaty))
+    if cell.gat_ring:
+        ring(l, layers.Metal1, gate_ring, Rect4I(-dgatx, -dgaty, W + dgatx, hact + dgaty))
     x_gate = dgatx + wgat // 2
-    # Contacts join the poly bars to the gate ring's Metal1, starting 95 in
-    # from the bars' ends (the PCell's u + 20), Metal1 200 wide (viaW + 10).
-    l.term_g = metal_cont(l, layers.Metal1, layers.Cont, -x_gate, 95, -x_gate, hact - 95,
+    # Contacts on the poly bars, starting u + 20 in from the bars' ends,
+    # Metal1 200 wide (viaW + 10).
+    l.term_g = metal_cont(l, layers.Metal1, layers.Cont, -x_gate, u + 20, -x_gate, hact - u - 20,
         200, cont.size, 50, via_space)
-    metal_cont(l, layers.Metal1, layers.Cont, W + x_gate, 95, W + x_gate, hact - 95,
+    metal_cont(l, layers.Metal1, layers.Cont, W + x_gate, u + 20, W + x_gate, hact - u - 20,
         200, cont.size, 50, via_space)
     l % LayoutLabel(layer=layers.TEXT, pos=Vec2I(-x_gate, hact // 2), text="G")
 
     xl, yb = gate_ring.lx - dguard - wguard, gate_ring.ly - dguard - wguard
     xr, yt = gate_ring.ux + dguard + wguard, gate_ring.uy + dguard + wguard
     guard_half = wguard // 2
-    # The guard ring's contacts start 80 in from the ends of the lower and
-    # upper bars, 110 on the side bars.
-    l.term_b = metal_cont(l, layers.Metal1, layers.Cont, xl, yb + guard_half, xr, yb + guard_half,
-        wguard, cont.size, 80, cont.space)
-    metal_cont(l, layers.Metal1, layers.Cont, xl, yt - guard_half, xr, yt - guard_half,
-        wguard, cont.size, 80, cont.space)
-    for x in (xl + guard_half, xr - guard_half):
+    activ_bottom, _, _, _ = ring(l, layers.Activ, Rect4I(xl, yb, xr, yt),
+        Rect4I(xl + wguard, yb + wguard, xr - wguard, yt - wguard))
+    # Guard ring contacts: the lower and upper bars unless guard_ring is
+    # None ("TB" stops there), the right bar for "U" and "O", the left bar
+    # for "O". They start 80 in from the ends of the lower and upper bars,
+    # 110 on the side bars. Without contacts, the Activ ring stays.
+    term_b = activ_bottom
+    if cell.guard_ring is not None:
+        term_b = metal_cont(l, layers.Metal1, layers.Cont, xl, yb + guard_half, xr, yb + guard_half,
+            wguard, cont.size, 80, cont.space)
+        metal_cont(l, layers.Metal1, layers.Cont, xl, yt - guard_half, xr, yt - guard_half,
+            wguard, cont.size, 80, cont.space)
+        l % LayoutLabel(layer=layers.TEXT, pos=Vec2I(W // 2, yb + guard_half), text="TIE")
+    sides = {"O": (xl + guard_half, xr - guard_half), "U": (xr - guard_half,)}.get(cell.guard_ring, ())
+    for x in sides:
         metal_cont(l, layers.Metal1, layers.Cont, x, yb + wguard, x, yt - wguard,
             wguard, cont.size, 110, cont.space)
-    ring(l, layers.Activ, Rect4I(xl, yb, xr, yt),
-        Rect4I(xl + wguard, yb + wguard, xr - wguard, yt - wguard))
-    l % LayoutLabel(layer=layers.TEXT, pos=Vec2I(W // 2, yb + guard_half), text="TIE")
     name = ("rfpmos" if nwell else "rfnmos") + ("HV" if hv else "")
     l % LayoutLabel(layer=layers.TEXT, pos=Vec2I(W // 2, yt - guard_half), text=name)
 
@@ -1143,11 +1166,27 @@ def layoutgen_rfmos(cell: Cell, nwell: bool, hv: bool) -> Layout:
     l.sd[0].create_pin(cell.symbol.s)
     l.sd[1].create_pin(cell.symbol.d)
     l.term_g.create_pin(cell.symbol.g)
-    l.term_b.create_pin(cell.symbol.b)
+    term_b.create_pin(cell.symbol.b)
     return l
 
+class RfMos(Mos):
+    """Layout options of the RF MOS devices (rfmosfet_base_code.py)."""
+    cnt_rows = Parameter(int, default=1)  #: Contact rows per source/drain region
+    met2_cont = Parameter(bool, default=True)  #: Metal2 over the source/drain contacts
+    gat_ring = Parameter(bool, default=True)  #: Metal1 ring joining the gate contacts
+    #: Guard ring contacts: "O" all around, "U" open on the left, "TB" top and bottom only, None
+    guard_ring = Parameter(str, optional=True, default="O")
+
+    @classmethod
+    def params_check(cls, params):
+        super().params_check(params)
+        if params['cnt_rows'] < 1:
+            raise ParameterError("cnt_rows must be at least 1.")
+        if params['guard_ring'] not in ("O", "U", "TB", None):
+            raise ParameterError('guard_ring must be "O", "U", "TB" or None.')
+
 @public
-class RfNmos(Nmos):
+class RfNmos(RfMos, Nmos):
     """RF NMOS with gate ring and guard ring."""
     rf_model = "rfnmos"
     max_ng = 40  # tech_params rfnmos_maxNG
@@ -1161,7 +1200,7 @@ class RfNmos(Nmos):
         return [cls(w=R("1u"), l=R("0.72u"))]
 
 @public
-class RfPmos(Pmos):
+class RfPmos(RfMos, Pmos):
     """RF PMOS with gate ring and guard ring."""
     rf_model = "rfpmos"
     max_ng = 40  # tech_params rfpmos_maxNG
@@ -1175,7 +1214,7 @@ class RfPmos(Pmos):
         return [cls(w=R("1u"), l=R("0.72u"))]
 
 @public
-class RfNmosHv(NmosHv):
+class RfNmosHv(RfMos, NmosHv):
     """High-voltage RF NMOS with gate ring and guard ring."""
     rf_model = "rfnmoshv"
     # tech_params rfnmosHV_minW/maxNG
@@ -1191,7 +1230,7 @@ class RfNmosHv(NmosHv):
         return [cls(w=R("1u"), l=R("0.72u"))]
 
 @public
-class RfPmosHv(PmosHv):
+class RfPmosHv(RfMos, PmosHv):
     """High-voltage RF PMOS with gate ring and guard ring."""
     rf_model = "rfpmoshv"
     # tech_params rfpmosHV_minW/maxNG
@@ -1643,9 +1682,9 @@ def layoutgen_resistor(
         add_salblock: bool = False) -> Layout:
     """
     Generate an SG13G2 poly resistor: straight (b=0) or meandered (b bends,
-    b+1 stripes of length l, ps apart, joined at alternating ends). Bent
-    Rppd and Rhigh require a larger ps instead of the foundry PCell's
-    contact pushing.
+    b+1 stripes ps apart, joined at alternating ends). Bent stripes are drawn
+    l - w long, see :ref:`ihp130_pcell_differences`. Bent Rppd and Rhigh
+    require a larger ps instead of the foundry PCell's contact pushing.
     """
     if cell.m != 1:
         raise ParameterError("m != 1 not supported for layout.")
@@ -1957,10 +1996,11 @@ class Res(SimLeafCell):
     of the LVS comparison and requires care in hierarchical designs; see
     :ref:`ihp130_substrate_lvs`.
 
-    ``b`` bends fold the body into ``b + 1`` stripes of length ``l`` each,
-    ``ps`` apart, joined at alternating ends, so a large resistance becomes
-    a compact meander. With three or more stripes, Rppd and Rhigh need
-    ``ps`` >= 400 nm on SG13G2.
+    ``b`` bends fold the body into ``b + 1`` stripes, ``ps`` apart, joined
+    at alternating ends, so a large resistance becomes a compact meander.
+    Each stripe is drawn ``l - w`` long, so that LVS extracts ``l``; see
+    :ref:`ihp130_pcell_differences`. With three or more stripes, Rppd and
+    Rhigh need ``ps`` >= 400 nm on SG13G2.
 
     The annotation block of the symbol shows the nominal resistance derived
     from the geometry (``r=...``, see :meth:`nominal_resistance`).
@@ -3306,20 +3346,27 @@ def layoutgen_antenna(cell: Cell, pdiode: bool) -> Layout:
 
 def layoutgen_isolbox(cell: Cell) -> Layout:
     """
-    Generate the SG13G2 isolation box layout, as the PCell isolbox_code.py with
-    well width 1.05u and the diode layer, contacts on the NWell ring with
-    cont_ring ("O" all around, "U" open at the top).
+    Generate the SG13G2 isolation box layout, as the PCell isolbox_code.py
+    with the diode layer: an NWell ring wellwidth wide over nBuLay, contacts
+    on it with cont_ring ("O" all around, "U" open at the top) and a
+    PWell block ring pwell_w wide around it.
     """
     if cell.l < R("3u") or cell.w < R("3u"):
         raise ParameterError("l and w must be at least 3u.")
     if cell.cont_ring not in (None, "O", "U"):
         raise ParameterError('cont_ring must be "O", "U" or None.')
+    if cell.wellwidth not in (R("1.05u"), R("1.5u")):
+        raise ParameterError("wellwidth must be 1.05u or 1.5u.")
+    if cell.pwell_w < 0:
+        raise ParameterError("pwell_w must be non-negative.")
     layers = SG13G2().layers
     l = Layout(ref_layers=layers, cell=cell, symbol=cell.symbol)
 
     L = int(cell.l / R("1n"))
     W = int(cell.w / R("1n"))
-    nw_a, dd, nw_o_act = 1050, 400, 240  # wellwidth, nBuLay inset, nwOact
+    nw_a = int(cell.wellwidth / R("1n"))
+    nw_o_act = 240  # nwOact
+    dd = 400 if nw_a == 1050 else nw_a - 620  # nBuLay inset (nbl_nw)
     l % LayoutRect(layer=layers.nBuLay,
         rect=Rect4I(dd - nw_a, dd - nw_a, L - nw_a - dd, W - nw_a - dd))
     outer = Rect4I(-nw_a, -nw_a, L - nw_a, W - nw_a)
@@ -3329,6 +3376,9 @@ def layoutgen_isolbox(cell: Cell) -> Layout:
     _, _, activ_left, _ = ring(l, layers.Activ,
         Rect4I(nw_o_act - nw_a, nw_o_act - nw_a, L - nw_a - nw_o_act, W - nw_a - nw_o_act),
         Rect4I(-nw_o_act, -nw_o_act, L - 2*nw_a + nw_o_act, W - 2*nw_a + nw_o_act))
+    pw = int(cell.pwell_w / R("1n"))
+    if pw > 0:
+        ring(l, layers.PWell.block, Rect4I(outer.lx - pw, outer.ly - pw, outer.ux + pw, outer.uy + pw), outer)
     l % LayoutLabel(layer=layers.TEXT, pos=Vec2I(0, -nw_a // 2), text="isolbox")
     nwell_pin = activ_left  # The PCell's pin I
     if cell.cont_ring:
@@ -3362,6 +3412,8 @@ class Isolbox(SimLeafCell):
     l = Parameter(R)
     w = Parameter(R)
     cont_ring = Parameter(str, optional=True, default=None)  #: Contacts on the NWell ring: "O", "U" (open at the top) or None
+    wellwidth = Parameter(R, default=R("1.05u"))  #: Width of the NWell ring, 1.05u or 1.5u
+    pwell_w = Parameter(R, default=R("0"))  #: Width of the PWell block ring around the box (0: none)
 
     @viewgen_noctx
     def symbol(self) -> Symbol:
