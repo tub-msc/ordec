@@ -14,6 +14,8 @@ from ordec.lib import ihp130
 from .lib.ihp130_inv import Inv
 from .lib.ihp130_nmos_series import SeriesNmos
 
+pytestmark = pytest.mark.ihp130
+
 def test_lvs_clean():
     c = Inv()
     lvs_report = ihp130.run_lvs(c.layout, c.symbol)

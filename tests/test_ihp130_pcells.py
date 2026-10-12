@@ -15,6 +15,8 @@ from ordec.layout import klayout
 from ordec.layout.gds_out import write_gds
 from ordec.lib import ihp130
 
+pytestmark = pytest.mark.ihp130
+
 # (ORDeC cell, PCell name, PCell parameters). Not covered on purpose: bent
 # resistors (stripes drawn l - w long, so that LVS measures l) and Cmim
 # below 2.4u (the PCell fails TM1.a there), see the ihp130 docs.

@@ -104,6 +104,7 @@ def synthesize(source_files: list[Path], top: str, liberty: Path, out: Path):
         yosys.write_verilog(out)
 
 
+@pytest.mark.ihp130
 @pytest.mark.yosys
 def test_counter_synth(tmp_path):
     """Yosys integration: RTL -> synthesized netlist -> ExtLibrary schematic."""

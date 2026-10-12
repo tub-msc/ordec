@@ -7,6 +7,8 @@ from ordec.core import *
 from ordec.lib import ihp130, Gnd, Vdc
 from ordec.sim import Simulator
 
+pytestmark = pytest.mark.ihp130
+
 
 class CornerTb(Cell):
     """One device of each corner library (LV and HV MOS, resistor,

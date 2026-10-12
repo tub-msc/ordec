@@ -10,6 +10,8 @@ from ordec.lib import ihp130, Gnd, Vdc
 from .lib.thinwrap import gallery_wrapper_cell
 from .lib.ihp130_inv import Inv
 
+pytestmark = pytest.mark.ihp130
+
 
 # One gallery for a single DRC and a single LVS run (deck startup dominates).
 # MOS devices come in the inverter fixture, whose body tap ties the

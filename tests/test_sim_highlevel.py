@@ -372,6 +372,7 @@ def test_sky130_nmos_out_of_range():
 # IHP130 tests
 # ------------
 
+@pytest.mark.ihp130
 def test_ihp130_inv_op_save_params():
     """Device parameters of mosfets wrapped in a PSP103 model subcircuit.
 
@@ -387,6 +388,7 @@ def test_ihp130_inv_op_save_params():
     # PSP103 reports the pmos threshold as a magnitude, hence positive:
     assert h.i_inv.pu.params['vth'].value[0] == pytest.approx(0.4599, abs=1e-3)
 
+@pytest.mark.ihp130
 def test_ihp130_inv_dc_sweep():
     tb = lib_test.InvIhpTb()
     h = tb.sim_dc

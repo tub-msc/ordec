@@ -9,6 +9,8 @@ from ordec.core import *
 from ordec.core import ParameterError
 from ordec.lib import ihp130, Gnd, Vdc
 
+pytestmark = pytest.mark.ihp130
+
 
 def test_resistor_meander_geometry():
     """b+1 stripes of l - w, joined at alternating ends, terminals at

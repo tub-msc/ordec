@@ -45,6 +45,8 @@ The IHP Open PDK includes Verilog-A models, which must be compiled before use us
 
 Then, configure the environment variable ORDEC_PDK_IHP_SG13G2 to point to the IHP-Open-PDK/ihp-sg13g2 directory, for example in your .bashrc or .profile.
 
+Tests requiring the IHP PDK carry the pytest marker ``ihp130``; ``pytest -m "not ihp130"`` runs the rest without it.
+
 
 Launch webinterface
 -------------------

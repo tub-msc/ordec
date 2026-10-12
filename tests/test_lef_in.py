@@ -8,6 +8,7 @@ import pytest
 from ordec.core import *
 from ordec.extlibrary import ExtLibrary
 
+@pytest.mark.ihp130
 def test_read_lef_symbol():
     lef = Path(os.getenv("ORDEC_PDK_IHP_SG13G2")) / "libs.ref/sg13g2_stdcell/lef/sg13g2_stdcell.lef"
 

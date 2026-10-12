@@ -11,18 +11,28 @@ import ordec.importer
 from ordec.core import Layout
 from ordec.layout.pnr import place_and_route
 from ordec.lib import ihp130
-from .lib import pnr_cells as fx
+
+pytestmark = pytest.mark.ihp130
+
+
+@pytest.fixture
+def fx():
+    """The cells of tests/lib/pnr_cells.ord, which reads the sg13g2 standard
+    cells on import."""
+    from .lib import pnr_cells
+    return pnr_cells
 
 
 def pnr(cell):
     """Run the engine over ``cell`` with the sg13g2 inputs."""
+    from .lib import pnr_cells as fx
     return place_and_route(cell.schematic,
         Layout(cell=cell, symbol=cell.symbol), grid=ihp130.grid,
         routing_spec=ihp130.SG13G2().default_routing_spec,
         pin_rects=fx.pin_rects())
 
 
-def test_lef_pin_rects_inverter():
+def test_lef_pin_rects_inverter(fx):
     rects = fx.pin_rects()["sg13g2_inv_1"]
     assert set(rects) == {"A", "Y", "VDD", "VSS"}
     assert rects["A"] == [(310, 1520, 625, 1850)]
@@ -31,7 +41,7 @@ def test_lef_pin_rects_inverter():
     assert (0, 3560, 1440, 4000) in rects["VDD"]
 
 
-def test_lef_pin_rects_are_per_pin():
+def test_lef_pin_rects_are_per_pin(fx):
     """Nor2's Y and B overlap by bounding box but not as LEF rectangles.
 
     A bbox-driven via would short the two nets, so the router needs the clean
@@ -51,27 +61,28 @@ def test_lef_pin_rects_are_per_pin():
                 or ry[3] <= rb[1] or rb[3] <= ry[1]
 
 
-def test_upper_metal_leaf_rejected():
+def test_upper_metal_leaf_rejected(fx):
     """The engine routes the metals above the leaf cells, so a leaf with its
     own geometry up there is rejected instead of being silently shorted."""
     with pytest.raises(ValueError, match="Metal1-only leaf cells"):
         fx.pin_rects()["sg13g2_sdfbbp_1"]
 
 
-def test_split_supply_rejected():
+def test_split_supply_rejected(fx):
     with pytest.raises(ValueError, match="Rail abutment"):
         pnr(fx.SplitSupply())
 
 
-def test_misnamed_supply_rejected():
+def test_misnamed_supply_rejected(fx):
     with pytest.raises(ValueError, match="requires 'vdd'"):
         pnr(fx.MisnamedSupply())
 
 
-@pytest.mark.parametrize("cell", [
-    fx.RippleAdder(n=2),    # single row, off-track pin access from xor2's Y
-    fx.DffArray(n=4),       # multi-row, so straps, mesh and shared rails
+@pytest.mark.parametrize("name,n", [
+    ("RippleAdder", 2),     # single row, off-track pin access from xor2's Y
+    ("DffArray", 4),        # multi-row, so straps, mesh and shared rails
 ], ids=["ripple_adder", "dff_array"])
-def test_drc_lvs_clean(cell):
+def test_drc_lvs_clean(fx, name, n):
+    cell = getattr(fx, name)(n=n)
     assert ihp130.run_drc(cell.layout).summary() == {}
     assert ihp130.run_lvs(cell.layout, cell.symbol).clean()
