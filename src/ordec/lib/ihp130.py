@@ -14,7 +14,7 @@ from ..schematic.spice_in import DeviceMapping
 from ..core import *
 from ..schematic import spice_params, Netlister
 from ..sim.ngspice import NgspiceSetup
-from . import generic_mos
+from . import base, generic_mos
 from .pdk_common import PdkDict, check_dir, check_file, rundir
 from ..layout import makevias, write_gds, flatten
 from ..extlibrary import ExtLibrary
@@ -1652,17 +1652,16 @@ class Ptap1(Tap1):
 
 @dataclass(frozen=True)
 class ResistorRules:
-    """Per-kind SG13G2 poly resistor limits in nm, as in the foundry PCells."""
-    name: str
+    """Per-kind SG13G2 poly resistor limits in nm and layers, as in the foundry PCells."""
     minW: int
     minL: int
     minPS: int          #: minimum stripe spacing of bent resistors
     cont_to_body: int   #: terminal contact to body distance
     met_over_cont: int  #: Metal1 enclosure of the terminal contact along the stripe
-    # For the resistance label, as the PCell computes it
-    rspec: float        #: body sheet resistance in Ohm
-    rzspec: float       #: body to contact transition resistance in Ohm um
-    lwd: float          #: width delta in um
+    add_res: bool = False       #: RES marker over the body
+    add_psd: bool = False       #: pSD implant
+    add_nsd: bool = False       #: nSD implant
+    add_salblock: bool = False  #: SalBlock over the body
 
 def eng_string(x: float) -> str:
     """Format x > 0 with three digits and an SI prefix, as eng_string in the PDK PCells."""
@@ -1672,14 +1671,7 @@ def eng_string(x: float) -> str:
     prefix = "yzafpnum kMGTPEZY"[exp3 // 3 + 8] if exp3 else ""
     return f"{int(mant) if mant == int(mant) else mant}{prefix}"
 
-def layoutgen_resistor(
-        cell: Cell,
-        rules: ResistorRules,
-        *,
-        add_res: bool = False,
-        add_psd: bool = False,
-        add_nsd: bool = False,
-        add_salblock: bool = False) -> Layout:
+def layoutgen_resistor(cell: Cell, rules: ResistorRules) -> Layout:
     """
     Generate an SG13G2 poly resistor: straight (b=0) or meandered (b bends,
     b+1 stripes ps apart, joined at alternating ends). Bent stripes are drawn
@@ -1699,7 +1691,7 @@ def layoutgen_resistor(
     ps = int(cell.ps / R("1n"))
     bends = cell.b
 
-    kind = rules.name
+    kind = cell.model_name
     max_lw = 1_000_000  # maxW / maxL of the foundry PCells (1 mm)
     if width < rules.minW:
         raise ParameterError(f"w below {kind} minimum width.")
@@ -1713,7 +1705,7 @@ def layoutgen_resistor(
     if bends != 0 and ps < rules.minPS:
         raise ParameterError(f"ps below {kind} minimum spacing.")
     sal_enc = 200  # Sal.c: SalBlock enclosure
-    if bends >= 2 and add_salblock:
+    if bends >= 2 and rules.add_salblock:
         # Keep the SalBlock covers legal next to the salicided terminal
         # heads (the foundry PCell would push the contacts out instead).
         ps_floor = sal_enc + 200  # plus Sal.d: SalBlock to Cont spacing
@@ -1788,7 +1780,7 @@ def layoutgen_resistor(
 
     if bends == 0:
         l.poly_body = LayoutRect(layer=layers.PolyRes, rect=body_rects[0])
-        if add_res:
+        if rules.add_res:
             l.res = LayoutRect(layer=layers.RES, rect=body_rects[0])
     else:
         l.poly_body = PathNode()
@@ -1797,7 +1789,7 @@ def layoutgen_resistor(
         l.poly_bend = PathNode()
         for j, rect in enumerate(bend_rects):
             l.poly_bend[j] = LayoutRect(layer=layers.PolyRes, rect=rect)
-        if add_res:
+        if rules.add_res:
             # RES must match the body exactly (rsil core = PolyRes AND
             # RES). Covering the heads would grow the extracted body.
             l.res = PathNode()
@@ -1820,16 +1812,16 @@ def layoutgen_resistor(
     total_y_lo = min(body_y_lo, l.poly_head_n.ly, l.poly_head_p.ly)
     total_y_hi = max(body_y_hi, l.poly_head_n.uy, l.poly_head_p.uy)
 
-    if add_psd or add_nsd:
+    if rules.add_psd or rules.add_nsd:
         sd_enc = 180  # Rppd.b / Rhi.c: pSD / nSD enclosure of the resistor
 
-        if add_psd:
+        if rules.add_psd:
             l.psd = LayoutRect(
                 layer=layers.pSD,
                 rect=(total_x_lo - sd_enc, total_y_lo - sd_enc, total_x_hi + sd_enc, total_y_hi + sd_enc),
             )
 
-        if add_nsd:
+        if rules.add_nsd:
             l.nsd = LayoutRect(
                 layer=layers.nSD,
                 rect=(total_x_lo - sd_enc, total_y_lo - sd_enc, total_x_hi + sd_enc, total_y_hi + sd_enc),
@@ -1856,7 +1848,7 @@ def layoutgen_resistor(
             for i, rect in enumerate(sal_rects):
                 l.salblock[i] = LayoutRect(layer=layers.SalBlock, rect=rect)
         l.extblock = PathNode()
-        for i, rect in enumerate([(l.psd if add_psd else l.nsd).rect] + sal_rects):
+        for i, rect in enumerate([(l.psd if rules.add_psd else l.nsd).rect] + sal_rects):
             l.extblock[i] = LayoutRect(layer=layers.EXTBlock, rect=rect)
     else:
         ext_enc = 180  # Rsil.e: EXTBlock enclosure
@@ -1868,13 +1860,8 @@ def layoutgen_resistor(
     for rect in body_rects + bend_rects:
         l % LayoutRect(layer=layers.HeatRes, rect=rect)
         l % LayoutLabel(layer=layers.HeatRes, pos=rect.center, text=kind)
-    # Resistance label, computed as in the PCell
-    kappa = 1.85  # the same for all resistors
-    w_um = width / 1000
-    weff = w_um + rules.lwd
-    r = (length / 1000 / weff * (bends + 1) * rules.rspec
-        + (2 / kappa * weff + ps / 1000) * bends / weff * rules.rspec
-        + 2 / w_um * rules.rzspec)
+    # Resistance label, the model's nominal resistance as in the PCell
+    r = cell.nominal_resistance()
     r_text = eng_string(r) if kind == "rsil" else f"{r:.3f}"
     l % LayoutLabel(layer=layers.TEXT, pos=body_rects[0].center, text=f"{kind} r={r_text}")
 
@@ -2031,6 +2018,10 @@ class Res(SimLeafCell):
         return {"i": "p"}
 
     @viewgen_noctx
+    def layout(self) -> Layout:
+        return layoutgen_resistor(self, self.rules)
+
+    @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
         s % SymbolAnnotation(key='r', value=str(R(f'{self.nominal_resistance():.3g}')))
@@ -2084,20 +2075,14 @@ class Rsil(Res):
     model_dw = 0.01e-6
     model_rz = 4.5e-6
 
-    @viewgen_noctx
-    def layout(self) -> Layout:
-        rules = ResistorRules(
-            name="rsil",
-            minW=500,
-            minL=500,
-            minPS=180,
-            cont_to_body=120,
-            met_over_cont=30,
-            rspec=7.0,
-            rzspec=4.5,
-            lwd=0.01,
-        )
-        return layoutgen_resistor(self, rules, add_res=True)
+    rules = ResistorRules(
+        minW=500,
+        minL=500,
+        minPS=180,
+        cont_to_body=120,
+        met_over_cont=30,
+        add_res=True,
+    )
 
     @classmethod
     def discoverable_instances(cls):
@@ -2117,20 +2102,15 @@ class Rppd(Res):
     model_dw = 0.006e-6
     model_rz = 35e-6
 
-    @viewgen_noctx
-    def layout(self) -> Layout:
-        rules = ResistorRules(
-            name="rppd",
-            minW=500,
-            minL=500,
-            minPS=180,
-            cont_to_body=200,
-            met_over_cont=70,
-            rspec=260.0,
-            rzspec=35.0,
-            lwd=0.006,
-        )
-        return layoutgen_resistor(self, rules, add_psd=True, add_salblock=True)
+    rules = ResistorRules(
+        minW=500,
+        minL=500,
+        minPS=180,
+        cont_to_body=200,
+        met_over_cont=70,
+        add_psd=True,
+        add_salblock=True,
+    )
 
     @classmethod
     def discoverable_instances(cls):
@@ -2150,20 +2130,16 @@ class Rhigh(Res):
     model_dw = -0.04e-6
     model_rz = 80e-6
 
-    @viewgen_noctx
-    def layout(self) -> Layout:
-        rules = ResistorRules(
-            name="rhigh",
-            minW=500,
-            minL=960,
-            minPS=180,
-            cont_to_body=200,
-            met_over_cont=30,
-            rspec=1360.0,
-            rzspec=80.0,
-            lwd=-0.04,
-        )
-        return layoutgen_resistor(self, rules, add_psd=True, add_nsd=True, add_salblock=True)
+    rules = ResistorRules(
+        minW=500,
+        minL=960,
+        minPS=180,
+        cont_to_body=200,
+        met_over_cont=30,
+        add_psd=True,
+        add_nsd=True,
+        add_salblock=True,
+    )
 
     @classmethod
     def discoverable_instances(cls):
@@ -2181,20 +2157,8 @@ class Cmim(SimLeafCell):
     def ngspice_current_pins(self):
         return {"i": "p"}
 
-    @viewgen_noctx
-    def symbol(self) -> Symbol:
-        s = Symbol(cell=self)
-
-        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, orient=South, show_arrow=False, show_label=False, rotate_label=False)
-        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, orient=North, show_arrow=False, show_label=False, rotate_label=False)
-
-        s % SymbolPoly(vertices=[Vec2R(1.25, 1.8), Vec2R(2.75, 1.8)])
-        s % SymbolPoly(vertices=[Vec2R(1.25, 2.2), Vec2R(2.75, 2.2)])
-        s % SymbolPoly(vertices=[Vec2R(2, 2.2), Vec2R(2, 4)])
-        s % SymbolPoly(vertices=[Vec2R(2, 1.8), Vec2R(2, 0)])
-
-        s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
-        return s
+    # The ideal capacitor's symbol viewgen (not the class, see Nmos.symbol).
+    symbol = base.Cap.symbol
 
     def ngspice_netlist(self, netlister, inst):
         netlister.require_netlist_setup(netlister_setup)
