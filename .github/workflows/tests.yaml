@@ -11,7 +11,7 @@ jobs:
     name: pytest
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/tub-msc/ordec-base:sha-778b195
+      image: ghcr.io/tub-msc/ordec-base:sha-f1b38fd
       options: --user root
     steps:
       - name: check out repository
@@ -30,13 +30,6 @@ jobs:
       # (The ORDB core _ordb is required; without it, the build fails.)
       - name: check that C extensions were built
         run: python3 -c "import ordec.layout._gdsrecords"
-      # The models in ordec-base were compiled for the CPU of the machine that
-      # built the image (see base.Dockerfile); this runner may have another.
-      - name: compile IHP Verilog-A models for this machine
-        run: |
-          cd "$ORDEC_PDK_IHP_SG13G2/libs.tech/verilog-a"
-          ./openvaf-compile-va.sh
-          test -f ../ngspice/osdi/psp103.osdi
       - name: run tests
         run: pytest -v -o cache_dir=/tmp/pytestcache --junit-xml=/tmp/test-results.xml
       - name: display test results

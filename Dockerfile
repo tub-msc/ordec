@@ -9,7 +9,7 @@
 # Stage 1
 # -------
 
-FROM ghcr.io/tub-msc/ordec-base:sha-778b195 AS ordec-base
+FROM ghcr.io/tub-msc/ordec-base:sha-f1b38fd AS ordec-base
 
 # Build ORDeC wheel:
 # Copy .git first, then checkout to ensure that setuptools_scm figures out the
@@ -27,6 +27,7 @@ FROM debian:trixie AS ordec
 # - libgomp1: needed for Ngspice
 # - zlib1g, libqt6*, libruby, libpython3.13: needed for KLayout
 # - libtcl8.6, libreadline8t64, libffi8 (and zlib1g): needed for Yosys
+# - binutils, libllvm18: needed for OpenVAF
 RUN useradd -ms /bin/bash app && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -45,6 +46,8 @@ RUN useradd -ms /bin/bash app && \
         libtcl8.6 \
         libreadline8t64 \
         libffi8 \
+        binutils \
+        libllvm18 \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 USER app
 WORKDIR /home/app
