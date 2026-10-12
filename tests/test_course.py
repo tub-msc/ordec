@@ -698,7 +698,7 @@ courses_testdata = {
             """, """
             net g
             Cmim cc: .$w=30u; .$l=30u; .p -- vin; .n -- g; .pos=(3,7)
-            Rhigh rf: .$w=0.5u; .$l=2000u; .p -- vout; .n -- g; .bn -- vss; .pos=(13,13)
+            Rhigh rf: .$w=0.5u; .$l=2000u; .p -- vout; .n -- g; .sub -- vss; .pos=(13,13)
             Nmos mn: .$w=1u; .$l=500n; .g -- g; .d -- vout; .s -- vss; .b -- vss; .pos=(8,4)
             Pmos mp: .$w=6.25u; .$l=500n; .$ng=2; .g -- g; .d -- vout; .s -- vdd; .b -- vdd; .pos=(8,10)
             Nmos mbias: .$w=1u; .$l=1u; .g -- ibias; .d -- ibias; .s -- vss; .b -- vss; .pos=(3,13)
@@ -892,7 +892,7 @@ def test_amp_input_current_counts():
     lesson = course_data('amp_competition')['lessons'][0]
     edit = courses_testdata['amp_competition'].lessons[0].solution[0]
     src = InsertSolution(edit.skeleton, edit.solution + "Rhigh rx: .$w=0.5u; "
-        ".$l=10u; .p -- vin; .n -- vss; .bn -- vss; .pos=(3,13)\n"
+        ".$l=10u; .p -- vin; .n -- vss; .sub -- vss; .pos=(3,13)\n"
         ).apply(lesson['src'])
     elements = [e.element_webdata()
         for e in run_lesson(lesson, src)['lesson']().elements()]

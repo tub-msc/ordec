@@ -1295,7 +1295,7 @@ def layoutgen_tap(cell: Cell, length: R, width: R, nwell: bool, label: str = Non
 
     if label:
         if nwell:
-            l.nwell.create_pin(cell.symbol.well)
+            l.nwell.create_pin(cell.symbol.nw)
         else:
             l.substrate = LayoutRect(layer=layers.Substrate, rect=l.activ.rect)
         for layer in (layers.TEXT, layers.NWell if nwell else layers.Substrate):
@@ -1641,9 +1641,9 @@ class Tap1(SimLeafCell):
 
 @public
 class Ntap1(Tap1):
-    """Tap device from Metal1 into an NWell, pins ``tie`` and ``well``."""
+    """Tap device from Metal1 into an NWell, pins ``tie`` and ``nw``."""
     model_name = "ntap1"
-    bulk = "well"
+    bulk = "nw"
 
     @viewgen_noctx
     def layout(self) -> Layout:
@@ -1991,7 +1991,7 @@ class Res(SimLeafCell):
     Shared base class for SG13G2 resistors.
 
     Besides the resistor terminals ``p`` and ``n``, the symbol has a third
-    pin ``bn`` connecting the device's bulk/substrate node. ``bn`` is part
+    pin ``sub`` connecting the device's bulk/substrate node. ``sub`` is part
     of the LVS comparison and requires care in hierarchical designs; see
     :ref:`ihp130_substrate_lvs`.
 
@@ -2040,7 +2040,7 @@ class Res(SimLeafCell):
 
         s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, orient=South, show_arrow=False, show_label=False, rotate_label=False)
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, orient=North, show_arrow=False, show_label=False, rotate_label=False)
-        s.bn = Pin(pos=Vec2R(4, 2), pintype=PinType.In, orient=East, show_arrow=False, rotate_label=False)
+        s.sub = Pin(pos=Vec2R(4, 2), pintype=PinType.Inout, orient=East, show_arrow=False, rotate_label=False)
 
         s % SymbolPoly(vertices=resistor_zigzag())
         s % SymbolPoly(vertices=[Vec2R(2.6, 2), Vec2R(4, 2)])
@@ -2061,10 +2061,10 @@ class Res(SimLeafCell):
         if (not netlister.lvs) or (self.b != 0):
             params["ps"] = self.ps
         if netlister.lvs:
-            pins = [inst.symbol.p, inst.symbol.n, inst.symbol.bn]
+            pins = [inst.symbol.p, inst.symbol.n, inst.symbol.sub]
             prefix = "R"
         else:
-            pins = [inst.symbol.p, inst.symbol.n, inst.symbol.bn]
+            pins = [inst.symbol.p, inst.symbol.n, inst.symbol.sub]
             prefix = "x"
         netlister.add(
             netlister.name_obj(inst, prefix=prefix),
@@ -2078,7 +2078,7 @@ class Res(SimLeafCell):
 class Rsil(Res):
     """
     Salicided polysilicon resistor (low sheet resistance). For the
-    substrate pin ``bn`` and its LVS handling, see
+    substrate pin ``sub`` and its LVS handling, see
     :ref:`ihp130_substrate_lvs`.
     """
     model_name = "rsil"
@@ -2105,7 +2105,7 @@ class Rsil(Res):
 class Rppd(Res):
     """
     Unsalicided p+ polysilicon resistor (medium sheet resistance). For the
-    substrate pin ``bn`` and its LVS handling, see
+    substrate pin ``sub`` and its LVS handling, see
     :ref:`ihp130_substrate_lvs`.
     """
     model_name = "rppd"
@@ -2133,7 +2133,7 @@ class Rppd(Res):
 class Rhigh(Res):
     """
     High-resistive polysilicon resistor (high sheet resistance). For the
-    substrate pin ``bn`` and its LVS handling, see
+    substrate pin ``sub`` and its LVS handling, see
     :ref:`ihp130_substrate_lvs`.
     """
     model_name = "rhigh"
@@ -2242,7 +2242,7 @@ def layoutgen_rfcmim(cell: Cell) -> Layout:
     ring(l, layers.pSD,
         Rect4I(-ring_out - 30, -ring_out - 30, lu + ring_out + 30, wu + ring_out + 30),
         Rect4I(-ring_in + 30, -ring_in + 30, lu + ring_in - 30, wu + ring_in - 30))
-    l.term_bn = PathNode()
+    l.term_sub = PathNode()
     for i, rect in enumerate((
         Rect4I(-ring_out, -ring_out, lu + ring_out, -ring_in),
         Rect4I(-ring_out, wu + ring_in, lu + ring_out, wu + ring_out),
@@ -2250,7 +2250,7 @@ def layoutgen_rfcmim(cell: Cell) -> Layout:
         Rect4I(lu + ring_in, -ring_in, lu + ring_out, feed),
         Rect4I(lu + ring_in, feed + wf, lu + ring_out, wu + ring_in))):
         l % LayoutRect(layer=layers.Activ, rect=rect)
-        l.term_bn[i] = LayoutRect(layer=layers.Metal1, rect=rect)
+        l.term_sub[i] = LayoutRect(layer=layers.Metal1, rect=rect)
         contact_array(l, rect, layers.Cont, cont.size, cont.space, Vec2I(360, 360))
 
     l_um, w_um = float(cell.l / R("1u")) + 0.01, float(cell.w / R("1u")) + 0.01
@@ -2263,14 +2263,14 @@ def layoutgen_rfcmim(cell: Cell) -> Layout:
 
     l.term_p.create_pin(cell.symbol.p)
     l.term_n.create_pin(cell.symbol.n)
-    l.term_bn[0].create_pin(cell.symbol.bn)
+    l.term_sub[0].create_pin(cell.symbol.sub)
     return l
 
 @public
 class Rfcmim(SimLeafCell):
     """
     RF MiM capacitor: plate ``p`` fed by TopMetal1, plate ``n`` fed by
-    Metal5, in a guard ring on the substrate ``bn``.
+    Metal5, in a guard ring on the substrate ``sub``.
     """
     w = Parameter(R)
     l = Parameter(R)
@@ -2282,7 +2282,7 @@ class Rfcmim(SimLeafCell):
 
         s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
         s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
-        s.bn = Pin(pos=Vec2R(0, 2), pintype=PinType.Inout, align=West)
+        s.sub = Pin(pos=Vec2R(0, 2), pintype=PinType.Inout, align=West)
 
         s % SymbolPoly(vertices=[Vec2R(1.25, 1.8), Vec2R(2.75, 1.8)])
         s % SymbolPoly(vertices=[Vec2R(1.25, 2.2), Vec2R(2.75, 2.2)])
@@ -2299,7 +2299,7 @@ class Rfcmim(SimLeafCell):
 
         netlister.add(
             netlister.name_obj(inst, prefix="C" if netlister.lvs else "x"),
-            netlister.portmap(inst, [inst.symbol.p, inst.symbol.n, inst.symbol.bn]),
+            netlister.portmap(inst, [inst.symbol.p, inst.symbol.n, inst.symbol.sub]),
             "rfcmim" if netlister.lvs else "cap_rfcmim",
             *spice_params({"w": self.w, "l": self.l, "wfeed": self.wfeed}),
         )
@@ -2420,7 +2420,7 @@ def layoutgen_svaricap(cell: Cell) -> Layout:
 class Svaricap(SimLeafCell):
     """
     HV MOS varicap: gates ``g1`` and ``g2`` against their common NWell
-    ``nw``, ``bn`` the substrate.
+    ``nw``, ``sub`` the substrate.
     """
     w = Parameter(R)  #: Width, 3.74u or 9.74u
     l = Parameter(R)  #: Length, 0.3u or 0.8u
@@ -2435,7 +2435,7 @@ class Svaricap(SimLeafCell):
         s.g1 = Pin(pos=Vec2R(0, 2), pintype=PinType.Inout, align=West)
         s.g2 = Pin(pos=Vec2R(4, 2), pintype=PinType.Inout, align=East)
         s.nw = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
-        s.bn = Pin(pos=Vec2R(2, 0), pintype=PinType.In, align=South)
+        s.sub = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
 
         s % SymbolPoly(vertices=[Vec2R(0, 2), Vec2R(1.2, 2)])
         s % SymbolPoly(vertices=[Vec2R(4, 2), Vec2R(2.8, 2)])
@@ -2456,7 +2456,7 @@ class Svaricap(SimLeafCell):
         netlister.add(
             netlister.name_obj(inst, prefix="C" if netlister.lvs else "x"),
             netlister.portmap(inst,
-                [inst.symbol.g1, inst.symbol.nw, inst.symbol.g2, inst.symbol.bn]),
+                [inst.symbol.g1, inst.symbol.nw, inst.symbol.g2, inst.symbol.sub]),
             "sg13_hv_svaricap",
             *spice_params({"w": self.w, "l": self.l, "Nx": self.nx}),
         )
@@ -2852,7 +2852,7 @@ def layoutgen_inductor(cell: Cell, three: bool) -> Layout:
         l.term_lc.create_pin(cell.symbol.lc)
     else:
         l.term_la.create_pin(cell.symbol.p)
-        l.term_lb.create_pin(cell.symbol.m)
+        l.term_lb.create_pin(cell.symbol.n)
 
     # The marker and blocking layers reach 30 um beyond the outer turn.
     d = d - 2 * s + 2 * 30
@@ -2872,7 +2872,7 @@ def layoutgen_inductor(cell: Cell, three: bool) -> Layout:
     return l
 
 class Inductor(SimLeafCell):
-    """Shared base class of the octagonal inductors on TopMetal2, ``b`` the substrate."""
+    """Shared base class of the octagonal inductors on TopMetal2, ``sub`` the substrate."""
     center_tap = False
     w = Parameter(R)  #: Width
     s = Parameter(R)  #: Space
@@ -2887,7 +2887,7 @@ class Inductor(SimLeafCell):
         top, bottom = self.ends
         s[top] = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
         s[bottom] = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
-        s.b = Pin(pos=Vec2R(4, 2), pintype=PinType.In, align=East)
+        s.sub = Pin(pos=Vec2R(4, 2), pintype=PinType.Inout, align=East)
         if self.center_tap:
             s.lc = Pin(pos=Vec2R(0, 2), pintype=PinType.Inout, align=West)
             s % SymbolPoly(vertices=[Vec2R(0, 2), Vec2R(2, 2)])
@@ -2915,10 +2915,10 @@ class Inductor(SimLeafCell):
 
 @public
 class Inductor2(Inductor):
-    """Inductor from ``p`` to ``m``. The PDK has no simulation model for it."""
+    """Inductor from ``p`` to ``n``. The PDK has no simulation model for it."""
     model_name = "inductor"
-    ends = ("p", "m")
-    netlist_pins = ("p", "m", "b")
+    ends = ("p", "n")
+    netlist_pins = ("p", "n", "sub")
 
     @viewgen_noctx
     def layout(self) -> Layout:
@@ -2933,7 +2933,7 @@ class Inductor3(Inductor):
     model_name = "inductor3"
     ends = ("la", "lb")
     center_tap = True
-    netlist_pins = ("la", "lc", "lb", "b")
+    netlist_pins = ("la", "lc", "lb", "sub")
 
     @viewgen_noctx
     def layout(self) -> Layout:
@@ -2942,7 +2942,7 @@ class Inductor3(Inductor):
 class Npn(SimLeafCell):
     """
     Base class of the SG13G2 npn HBTs: collector ``c``, base ``b``, emitter
-    ``e``, substrate ``bn``. With ``thermal``, simulation uses the ``_5t``
+    ``e``, substrate ``sub``. With ``thermal``, simulation uses the ``_5t``
     model, its extra pin ``t`` gives the temperature rise (not used in LVS).
     """
     nx = Parameter(int, default=1)  #: Number of emitters (Nx)
@@ -2955,7 +2955,7 @@ class Npn(SimLeafCell):
         s.c = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
         s.b = Pin(pos=Vec2R(0, 2), pintype=PinType.In, align=West)
         s.e = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
-        s.bn = Pin(pos=Vec2R(4, 2), pintype=PinType.In, align=East)
+        s.sub = Pin(pos=Vec2R(4, 2), pintype=PinType.Inout, align=East)
         if self.thermal:
             s.t = Pin(pos=Vec2R(4, 3), pintype=PinType.Out, align=East)
             s % SymbolPoly(vertices=[Vec2R(3.2, 3), Vec2R(4, 3)])
@@ -2975,7 +2975,7 @@ class Npn(SimLeafCell):
         netlister.require_netlist_setup(netlister_setup_hbt)
         netlister.require_ngspice_setup(ngspice_setup)
 
-        pins = [inst.symbol.c, inst.symbol.b, inst.symbol.e, inst.symbol.bn]
+        pins = [inst.symbol.c, inst.symbol.b, inst.symbol.e, inst.symbol.sub]
         model = self.model_name
         if netlister.lvs:
             prefix = "Q"
@@ -3354,10 +3354,10 @@ def layoutgen_antenna(cell: Cell, pdiode: bool) -> Layout:
     if pdiode:
         l % LayoutRect(layer=layers.pSD, rect=Rect4I(-psd_c, -psd_c, W + psd_c, L + psd_c))
         l.nwell = LayoutRect(layer=layers.NWell, rect=Rect4I(-nw_c, -nw_c, W + nw_c, L + nw_c))
-        l.m1.create_pin(cell.symbol.d0)
-        l.nwell.create_pin(cell.symbol.d1)
+        l.m1.create_pin(cell.symbol.p)
+        l.nwell.create_pin(cell.symbol.n)
     else:
-        l.m1.create_pin(cell.symbol.d1)
+        l.m1.create_pin(cell.symbol.n)
     return l
 
 def layoutgen_isolbox(cell: Cell) -> Layout:
@@ -3413,16 +3413,16 @@ def layoutgen_isolbox(cell: Cell) -> Layout:
         metal_cont(l, layers.Metal1, layers.Cont, right, -xm - wm // 2, right, top + wm // 2,
             wm, cont_w, off, cont_s)
     # isosub and sub have no shapes of their own, so they get no pins.
-    nwell_pin.create_pin(cell.symbol.nwell)
+    nwell_pin.create_pin(cell.symbol.nw)
     return l
 
 @public
 class Isolbox(SimLeafCell):
     """
-    Isolation box: an NWell ring ``nwell`` over nBuLay separates the
+    Isolation box: an NWell ring ``nw`` over nBuLay separates the
     p-region ``isosub`` from the substrate ``sub``. Without ``cont_ring``
     (PCell default) the layout has no contacts, taps and devices inside
-    connect it. The PDK's LVS takes ``nwell`` from nBuLay, which connects to
+    connect it. The PDK's LVS takes ``nw`` from nBuLay, which connects to
     nothing.
     """
     l = Parameter(R)
@@ -3436,7 +3436,7 @@ class Isolbox(SimLeafCell):
         s = Symbol(cell=self)
 
         s.isosub = Pin(pos=Vec2R(2, 8), pintype=PinType.Inout, align=North, rotate_label=False)
-        s.nwell = Pin(pos=Vec2R(0, 4), pintype=PinType.Inout, align=West)
+        s.nw = Pin(pos=Vec2R(0, 4), pintype=PinType.Inout, align=West)
         s.sub = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South, rotate_label=False)
 
         # Two diodes as in Diode.symbol, from isosub and sub to nwell
@@ -3461,7 +3461,7 @@ class Isolbox(SimLeafCell):
 
         netlister.add(
             netlister.name_obj(inst, prefix="D" if netlister.lvs else "x"),
-            netlister.portmap(inst, [inst.symbol.isosub, inst.symbol.nwell, inst.symbol.sub]),
+            netlister.portmap(inst, [inst.symbol.isosub, inst.symbol.nw, inst.symbol.sub]),
             "isolbox",
             *spice_params({"l": self.l, "w": self.w}),
         )
@@ -3523,9 +3523,9 @@ class Diode(SimLeafCell):
         return [cls()]
 
 class Antenna(Diode):
-    """Shared base class of the antenna diodes, from ``d0`` to ``d1``."""
-    anode, cathode = "d0", "d1"
-    netlist_pins = ("d0", "d1")
+    """Shared base class of the antenna diodes, from ``p`` to ``n``."""
+    anode, cathode = "p", "n"
+    netlist_pins = ("p", "n")
     l = Parameter(R)
     w = Parameter(R)
 
@@ -3538,7 +3538,7 @@ class Antenna(Diode):
 
 @public
 class Dantenna(Antenna):
-    """Antenna diode from the substrate ``d0`` to N+Activ ``d1``."""
+    """Antenna diode from the substrate ``p`` to N+Activ ``n``."""
     model_name = "dantenna"
 
     @viewgen_noctx
@@ -3547,7 +3547,7 @@ class Dantenna(Antenna):
 
 @public
 class Dpantenna(Antenna):
-    """Antenna diode from P+Activ ``d0`` to its NWell ``d1``."""
+    """Antenna diode from P+Activ ``p`` to its NWell ``n``."""
     model_name = "dpantenna"
 
     @viewgen_noctx
@@ -3624,9 +3624,9 @@ def layoutgen_schottky(cell: Cell) -> Layout:
     l % LayoutRect(layer=layers.Recog.diode, rect=nwell)
     # The minus bar above the array joins the contact lines, the plus bar
     # below it the buses.
-    l.term_minus = LayoutRect(layer=layers.Metal1,
+    l.term_n = LayoutRect(layer=layers.Metal1,
         rect=Rect4I(act.lx, act.uy, act.ux, act.uy + 1055))
-    l.term_plus = LayoutRect(layer=layers.Metal2, rect=Rect4I(nsdb_o_cont - 1030,
+    l.term_p = LayoutRect(layer=layers.Metal2, rect=Rect4I(nsdb_o_cont - 1030,
         bus_lo - 1120, x_last + nsdb_o_cont + L + 1030, bus_lo))
     l % LayoutRect(layer=layers.nBuLay, rect=Rect4I(act.lx, act.ly - 20, act.ux, act.uy + 20))
     ring(l, layers.PWell.block, Rect4I(nsdb_o_cont - 2080, nsdb_o_cont - 2290,
@@ -3638,7 +3638,7 @@ def layoutgen_schottky(cell: Cell) -> Layout:
     ring(l, layers.pSD, Rect4I(g.lx - p, g.ly - p, g.ux + p, g.uy + p), g)
     ring(l, layers.Activ, Rect4I(g.lx - t, g.ly - t, g.ux + t, g.uy + t),
         Rect4I(g.lx - a, g.ly - a, g.ux + a, g.uy + a))
-    l.term_tie = metal_cont(l, layers.Metal1, layers.Cont, g.lx - p // 2, g.ly - a,
+    l.term_sub = metal_cont(l, layers.Metal1, layers.Cont, g.lx - p // 2, g.ly - a,
         g.lx - p // 2, g.uy + a, met_width, cont_w, 90, cont_s)
     metal_cont(l, layers.Metal1, layers.Cont, g.ux + p // 2, g.ly - a, g.ux + p // 2, g.uy + a,
         met_width, cont_w, 90, cont_s)
@@ -3646,21 +3646,21 @@ def layoutgen_schottky(cell: Cell) -> Layout:
     l % LayoutRect(layer=layers.ThickGateOx, rect=Rect4I(g.lx - t, g.ly - t, g.ux + t, g.uy + t))
     l % LayoutLabel(layer=layers.TEXT, pos=Vec2I(18, -590), text="schottky")
 
-    l.term_plus.create_pin(cell.symbol.plus)
-    l.term_minus.create_pin(cell.symbol.minus)
-    l.term_tie.create_pin(cell.symbol.tie)
+    l.term_p.create_pin(cell.symbol.p)
+    l.term_n.create_pin(cell.symbol.n)
+    l.term_sub.create_pin(cell.symbol.sub)
     return l
 
 @public
 class SchottkyNbl1(Diode):
     """
-    Schottky diode array of nx x ny contacts of 0.3 x 1 um, from ``plus`` to
-    ``minus``, ``tie`` on the substrate.
+    Schottky diode array of nx x ny contacts of 0.3 x 1 um, from ``p`` to
+    ``n``, ``sub`` on the substrate.
     """
     model_name = "schottky_nbl1"
-    anode, cathode, side = "plus", "minus", "tie"
+    anode, cathode, side = "p", "n", "sub"
     schottky = True
-    netlist_pins = ("plus", "minus", "tie")
+    netlist_pins = ("p", "n", "sub")
     nx = Parameter(int, default=1)  #: Number of columns (Nx)
     ny = Parameter(int, default=1)  #: Number of rows (Ny)
 
@@ -3760,29 +3760,29 @@ device_map = {
     "rfpmos": DeviceMapping(RfPmos, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("ng", "m")),
     "rfnmoshv": DeviceMapping(RfNmosHv, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("ng", "m")),
     "rfpmoshv": DeviceMapping(RfPmosHv, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("ng", "m")),
-    "ntap1": DeviceMapping(Ntap1, ("tie", "well"), real_params=("l", "w")),
+    "ntap1": DeviceMapping(Ntap1, ("tie", "nw"), real_params=("l", "w")),
     "ptap1": DeviceMapping(Ptap1, ("tie", "sub"), real_params=("l", "w")),
-    "rsil": DeviceMapping(Rsil, ("p", "n", "bn"), real_params=("l", "w", "ps"), int_params=("b", "m")),
-    "rppd": DeviceMapping(Rppd, ("p", "n", "bn"), real_params=("l", "w", "ps"), int_params=("b", "m")),
-    "rhigh": DeviceMapping(Rhigh, ("p", "n", "bn"), real_params=("l", "w", "ps"), int_params=("b", "m")),
+    "rsil": DeviceMapping(Rsil, ("p", "n", "sub"), real_params=("l", "w", "ps"), int_params=("b", "m")),
+    "rppd": DeviceMapping(Rppd, ("p", "n", "sub"), real_params=("l", "w", "ps"), int_params=("b", "m")),
+    "rhigh": DeviceMapping(Rhigh, ("p", "n", "sub"), real_params=("l", "w", "ps"), int_params=("b", "m")),
     "cap_cmim": DeviceMapping(Cmim, ("p", "n"), real_params=("l", "w"), int_params=("m",)),
-    "npn13G2": DeviceMapping(Npn13G2, ("c", "b", "e", "bn"), int_params=("nx",)),
-    "npn13G2l": DeviceMapping(Npn13G2l, ("c", "b", "e", "bn"), real_params=("el",), int_params=("nx",)),
-    "npn13G2v": DeviceMapping(Npn13G2v, ("c", "b", "e", "bn"), real_params=("el",), int_params=("nx",)),
+    "npn13G2": DeviceMapping(Npn13G2, ("c", "b", "e", "sub"), int_params=("nx",)),
+    "npn13G2l": DeviceMapping(Npn13G2l, ("c", "b", "e", "sub"), real_params=("el",), int_params=("nx",)),
+    "npn13G2v": DeviceMapping(Npn13G2v, ("c", "b", "e", "sub"), real_params=("el",), int_params=("nx",)),
     "pnpMPA": DeviceMapping(PnpMPA, ("c", "b", "e"), int_params=("m",)),
-    "cap_rfcmim": DeviceMapping(Rfcmim, ("p", "n", "bn"), real_params=("w", "l", "wfeed")),
-    "rfcmim": DeviceMapping(Rfcmim, ("p", "n", "bn"), real_params=("w", "l", "wfeed")),
-    "sg13_hv_svaricap": DeviceMapping(Svaricap, ("g1", "nw", "g2", "bn"), real_params=("w", "l"), int_params=("nx",)),
+    "cap_rfcmim": DeviceMapping(Rfcmim, ("p", "n", "sub"), real_params=("w", "l", "wfeed")),
+    "rfcmim": DeviceMapping(Rfcmim, ("p", "n", "sub"), real_params=("w", "l", "wfeed")),
+    "sg13_hv_svaricap": DeviceMapping(Svaricap, ("g1", "nw", "g2", "sub"), real_params=("w", "l"), int_params=("nx",)),
     "cparasitic": DeviceMapping(Cpara, ("p", "n"), real_params=("c",)),
     "rparasitic": DeviceMapping(Rpara, ("p", "n"), real_params=("r", "tc1", "tc2")),
-    "schottky_nbl1": DeviceMapping(SchottkyNbl1, ("plus", "minus", "tie"), int_params=("nx", "ny")),
+    "schottky_nbl1": DeviceMapping(SchottkyNbl1, ("p", "n", "sub"), int_params=("nx", "ny")),
     "bondpad": DeviceMapping(Bondpad, ("pad",), real_params=("size",), int_params=("shape", "padtype")),
-    "inductor": DeviceMapping(Inductor2, ("p", "m", "b"), real_params=("w", "s", "d"), int_params=("nr_r", "m")),
-    "inductor3": DeviceMapping(Inductor3, ("la", "lc", "lb", "b"), real_params=("w", "s", "d"),
+    "inductor": DeviceMapping(Inductor2, ("p", "n", "sub"), real_params=("w", "s", "d"), int_params=("nr_r", "m")),
+    "inductor3": DeviceMapping(Inductor3, ("la", "lc", "lb", "sub"), real_params=("w", "s", "d"),
         int_params=("nr_r", "m")),
-    "isolbox": DeviceMapping(Isolbox, ("isosub", "nwell", "sub"), real_params=("l", "w")),
-    "dantenna": DeviceMapping(Dantenna, ("d0", "d1"), real_params=("l", "w")),
-    "dpantenna": DeviceMapping(Dpantenna, ("d0", "d1"), real_params=("l", "w")),
+    "isolbox": DeviceMapping(Isolbox, ("isosub", "nw", "sub"), real_params=("l", "w")),
+    "dantenna": DeviceMapping(Dantenna, ("p", "n"), real_params=("l", "w")),
+    "dpantenna": DeviceMapping(Dpantenna, ("p", "n"), real_params=("l", "w")),
     "diodevdd_2kv": DeviceMapping(Diodevdd2kv, ("vdd", "pad", "vss"), int_params=("m",)),
     "diodevdd_4kv": DeviceMapping(Diodevdd4kv, ("vdd", "pad", "vss"), int_params=("m",)),
     "diodevss_2kv": DeviceMapping(Diodevss2kv, ("vdd", "pad", "vss"), int_params=("m",)),

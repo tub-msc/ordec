@@ -108,12 +108,12 @@ def test_pcell_geometry(tmp_path):
 SHAPELESS_PINS = {
     ihp130.Nmos: {"b"}, ihp130.NmosHv: {"b"},
     ihp130.Ptap1: {"sub"},
-    ihp130.Rsil: {"bn"}, ihp130.Rppd: {"bn"}, ihp130.Rhigh: {"bn"},
-    ihp130.Svaricap: {"bn"},
-    ihp130.Inductor2: {"b"}, ihp130.Inductor3: {"b"},
-    ihp130.Npn13G2: {"bn"}, ihp130.Npn13G2l: {"bn", "t"}, ihp130.Npn13G2v: {"bn", "t"},
+    ihp130.Rsil: {"sub"}, ihp130.Rppd: {"sub"}, ihp130.Rhigh: {"sub"},
+    ihp130.Svaricap: {"sub"},
+    ihp130.Inductor2: {"sub"}, ihp130.Inductor3: {"sub"},
+    ihp130.Npn13G2: {"sub"}, ihp130.Npn13G2l: {"sub", "t"}, ihp130.Npn13G2v: {"sub", "t"},
     ihp130.Isolbox: {"isosub", "sub"},
-    ihp130.Dantenna: {"d0"},
+    ihp130.Dantenna: {"p"},
 }
 
 

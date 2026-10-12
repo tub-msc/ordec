@@ -245,10 +245,10 @@ def gen_challenge(g):
             Only physical IHP SG13G2 devices inside `Amp`: `Nmos`,
             `Pmos`, `Rsil`/`Rppd`/`Rhigh`, `Cmim` (all from
             `ordec.lib.ihp130`), no ideal elements. The physical
-            resistors have a substrate pin `bn` (usually tied to
+            resistors have a substrate pin `sub` (usually tied to
             `vss`):
 
-                Rppd r1: .$w=1u; .$l=10u; .p -- vdd; .n -- vout; .bn -- vss; .pos=(6,9)
+                Rppd r1: .$w=1u; .$l=10u; .p -- vdd; .n -- vout; .sub -- vss; .pos=(6,9)
 
             Your score appears on the scoreboard once all checks pass.
         """)

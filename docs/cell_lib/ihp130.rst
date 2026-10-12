@@ -8,19 +8,19 @@ This cell library provides part of the `IHP Open PDK <https://github.com/IHP-Gmb
 Substrate handling in LVS
 -------------------------
 
-All SG13G2 resistors (``Rsil``, ``Rppd``, ``Rhigh``) have a third pin ``bn`` connecting the device's bulk/substrate node. In LVS netlists, the resistors are emitted as three-terminal SPICE elements, so substrate connectivity is part of the layout vs. schematic comparison. The same holds for the other devices on the substrate: ``bn`` of the npn HBTs, ``Rfcmim`` and ``Svaricap``, ``b`` of the inductors, and the substrate-tie pins of ``PnpMPA`` (``c``), the ESD diodes (``vss``), ``SchottkyNbl1`` (``tie``) and ``Isolbox`` (``sub``).
+All SG13G2 resistors (``Rsil``, ``Rppd``, ``Rhigh``) have a third pin ``sub`` connecting the device's bulk/substrate node. In LVS netlists, the resistors are emitted as three-terminal SPICE elements, so substrate connectivity is part of the layout vs. schematic comparison. The same holds for the other devices on the substrate: ``sub`` of the npn HBTs, ``Rfcmim``, ``Svaricap``, the inductors, ``SchottkyNbl1`` and ``Isolbox``, and the substrate-tie pins of ``PnpMPA`` (``c``) and the ESD diodes (``vss``). The MOS bulk ``b`` is the body terminal of the transistor instead (the NWell for PMOS).
 
 On the layout side, the SG13G2 LVS deck merges the resistors' bulk into a single chip-wide substrate (pwell) net. For hierarchical designs, this has the following consequences:
 
-* The net a resistor's ``bn`` is wired to in the schematic must be the net the layout's substrate is tied to, in every cell of the hierarchy.
-* In the normal case no extra port is needed: wire ``bn`` to the net of the substrate tap (usually ``vss``) and place a ``Ptap`` on that net inside the cell that owns the resistor.
-* If the substrate net is not one of the cell's ports, the cell needs a substrate port. Every cell whose layout contains a resistor (directly or in a subcell) is extracted with an *additional, implicit pin* for the propagated substrate net (even though the cell's layout draws no substrate pin shape), and its schematic then needs a matching substrate port (named ``sub`` by convention) wired to the ``bn`` pins of all resistors and propagated down the hierarchy. Within the hierarchy, KLayout matches the extracted substrate pin against this port *topologically*. Subcell layouts need neither a pin shape nor a label for it.
+* The net a resistor's ``sub`` is wired to in the schematic must be the net the layout's substrate is tied to, in every cell of the hierarchy.
+* In the normal case no extra port is needed: wire ``sub`` to the net of the substrate tap (usually ``vss``) and place a ``Ptap`` on that net inside the cell that owns the resistor.
+* If the substrate net is not one of the cell's ports, the cell needs a substrate port. Every cell whose layout contains a resistor (directly or in a subcell) is extracted with an *additional, implicit pin* for the propagated substrate net (even though the cell's layout draws no substrate pin shape), and its schematic then needs a matching substrate port (named ``sub`` by convention) wired to the ``sub`` pins of all resistors and propagated down the hierarchy. Within the hierarchy, KLayout matches the extracted substrate pin against this port *topologically*. Subcell layouts need neither a pin shape nor a label for it.
 * The *top* cell is the exception: top-level pins are compared by name, so the top layout must materialize the substrate connection explicitly. Place a substrate tap (``Ptap``) and attach a labeled Metal1 pin to it (see cell ``C_Hier`` in ``tests/lib/lvs_example_hier.ord`` for a working example).
 
 Approaches that do **not** work:
 
 * A pin label directly on the substrate region: the deck's connectivity setup attaches no text/pin layer to the substrate, so such labels are ignored and the top-level substrate pin remains unnamed.
-* Netlisting ``bn`` as a global net (``.global sub!``) instead of explicit ``sub`` ports: the subcells then match, but the top-level pin comparison fails because the layout's implicit substrate pin has no name to match against ``SUB!``.
+* Netlisting ``sub`` as a global net (``.global sub!``) instead of explicit ``sub`` ports: the subcells then match, but the top-level pin comparison fails because the layout's implicit substrate pin has no name to match against ``SUB!``.
 
 .. _ihp130_pcell_differences:
 
@@ -33,7 +33,7 @@ The layouts reproduce the PDK's PCells (``sg13g2_pycell_lib``) geometrically; ``
 * **Cmim** below 2.4 µm: the PCell's TopMetal1 plate fails TM1.a, so these sizes are rejected.
 * **Dantenna, Dpantenna**: Metal1 end caps over the contacts, which the PCells miss (M1.c1).
 * **Bondpad** (octagon with ``fill``): the PCell leaves the Activ mask of its via field in the layout (LU.b); ORDeC draws neither.
-* **Pins**: every symbol pin with a shape of its own has a LayoutPin; the common substrate (``bn`` and the like) and the HBT's thermal node ``t`` have none. The PCells draw pin shapes inconsistently (``nmos`` has them, ``pmos`` not). Pin names go on the text purpose of the metals and NWell, which LVS reads, and on the label purpose of GatPoly and Activ, which it does not; ``run_lvs`` therefore rejects top-level pins on GatPoly or Activ.
+* **Pins**: every symbol pin with a shape of its own has a LayoutPin; the common substrate (``sub``) and the HBT's thermal node ``t`` have none. The PCells draw pin shapes inconsistently (``nmos`` has them, ``pmos`` not). Pin names go on the text purpose of the metals and NWell, which LVS reads, and on the label purpose of GatPoly and Activ, which it does not; ``run_lvs`` therefore rejects top-level pins on GatPoly or Activ.
 * **m** > 1: layouts are rejected. The PCells draw a single device regardless of ``m``.
 
 Cells

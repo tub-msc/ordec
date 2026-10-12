@@ -67,7 +67,7 @@ def test_resistor_op(cell, expected_r):
                 Vdc(dc=1).symbol.portmap(n=s.vss, p=s.vdd), pos=Vec2R(0, 5)
             )
             s.r = SchemInstance(
-                res_cell.symbol.portmap(p=s.vdd, n=s.vss, bn=s.vss),
+                res_cell.symbol.portmap(p=s.vdd, n=s.vss, sub=s.vss),
                 pos=Vec2R(12, 5),
             )
 

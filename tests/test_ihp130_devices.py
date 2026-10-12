@@ -37,7 +37,7 @@ GALLERY = [
     Inv(variant="hv"),
 ]
 SUBSTRATE = f"inv{len(GALLERY) - 1}_vss"
-TIES = ("pnpmpa14_c", "diodevdd2kv18_vss", "diodevss2kv20_vss", "rfnmos22_b", "rfcmim23_bn")
+TIES = ("pnpmpa14_c", "diodevdd2kv18_vss", "diodevss2kv20_vss", "rfnmos22_b", "rfcmim23_sub")
 
 
 def test_device_gallery_drc_clean():
@@ -84,15 +84,15 @@ def supply_current(cell, volts, freq=None, **conns):
 @pytest.mark.parametrize("cell,volts,conns,expected", [
     (ihp130.NmosHv(w="1u", l="450n"), "3.3", dict(d="vdd", g="vdd", s="vss", b="vss"), 532.68e-6),
     (ihp130.PmosHv(w="1u", l="450n"), "3.3", dict(d="vss", g="vss", s="vdd", b="vdd"), 219.31e-6),
-    (ihp130.Ntap1(w="0.78u", l="0.78u"), "1", dict(tie="vdd", well="vss"), 3.8045e-3),
+    (ihp130.Ntap1(w="0.78u", l="0.78u"), "1", dict(tie="vdd", nw="vss"), 3.8045e-3),
     (ihp130.Ptap1(w="3u", l="0.8u"), "1", dict(tie="vdd", sub="vss"), 10.204e-3),
-    (ihp130.Npn13G2(), "0.8", dict(c="vdd", b="vdd", e="vss", bn="vss"), 138.62e-6),
+    (ihp130.Npn13G2(), "0.8", dict(c="vdd", b="vdd", e="vss", sub="vss"), 138.62e-6),
     (ihp130.PnpMPA(w="1u", l="2u"), "0.8", dict(e="vdd", b="vss", c="vss"), 10.142e-6),
     (ihp130.Diodevdd2kv(), "0.8", dict(pad="vdd", vdd="vss", vss="vss"), 133.90e-6),
     (ihp130.Nmoscl2(), "1.2", dict(vdd="vdd", vss="vss"), 430.12e-9),
     (ihp130.RfNmos(w="1u", l="0.72u"), "1.2", dict(d="vdd", g="vdd", s="vss", b="vss"), 179.91e-6),
-    (ihp130.Dantenna(w="0.78u", l="0.78u"), "0.8", dict(d0="vdd", d1="vss"), 389.91e-9),
-    (ihp130.SchottkyNbl1(), "0.3", dict(plus="vdd", minus="vss", tie="vss"), 6.1977e-6),
+    (ihp130.Dantenna(w="0.78u", l="0.78u"), "0.8", dict(p="vdd", n="vss"), 389.91e-9),
+    (ihp130.SchottkyNbl1(), "0.3", dict(p="vdd", n="vss", sub="vss"), 6.1977e-6),
     (ihp130.Rpara(r="1k"), "1", dict(p="vdd", n="vss"), 1e-3),
 ])
 def test_device_op(cell, volts, conns, expected):
@@ -101,9 +101,9 @@ def test_device_op(cell, volts, conns, expected):
 
 # Capacitance from the AC current at 1 MHz, C = |I| / (2 pi f) for 1 V.
 @pytest.mark.parametrize("cell,conns,expected", [
-    (ihp130.Svaricap(w="9.74u", l="0.3u"), dict(g1="vdd", nw="vss", g2="vss", bn="vss"), 12.883e-15),
+    (ihp130.Svaricap(w="9.74u", l="0.3u"), dict(g1="vdd", nw="vss", g2="vss", sub="vss"), 12.883e-15),
     (ihp130.Cpara(c="20f"), dict(p="vdd", n="vss"), 20e-15),
-    (ihp130.Rfcmim(w="7u", l="7u", wfeed="3u"), dict(p="vdd", n="vss", bn="vss"), 74.621e-15),
+    (ihp130.Rfcmim(w="7u", l="7u", wfeed="3u"), dict(p="vdd", n="vss", sub="vss"), 74.621e-15),
 ])
 def test_device_ac(cell, conns, expected):
     freq = 1e6

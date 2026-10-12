@@ -54,9 +54,9 @@ cell A_Default:
         port z: .pos=(5,2)
         port sub: .pos=(1,8)
 
-        Rsil r1: .$l=L_RX; .$w=W_R; .pos=(3,12); .n -- c; .p -- x; .bn -- sub
-        Rsil r2: .$l=L_RY; .$w=W_R; .pos=(8,12); .orient=East; .n -- c; .p -- y; .bn -- sub
-        Rsil r3: .$l=L_RZ; .$w=W_R; .pos=(3,9); .orient=FlippedSouth; .n -- c; .p -- z; .bn -- sub
+        Rsil r1: .$l=L_RX; .$w=W_R; .pos=(3,12); .n -- c; .p -- x; .sub -- sub
+        Rsil r2: .$l=L_RY; .$w=W_R; .pos=(8,12); .orient=East; .n -- c; .p -- y; .sub -- sub
+        Rsil r3: .$l=L_RZ; .$w=W_R; .pos=(3,9); .orient=FlippedSouth; .n -- c; .p -- z; .sub -- sub
 
     viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
@@ -94,7 +94,7 @@ cell A_Default:
             .layer=layers.Metal1
             ! .rect == r3.term_p.rect
             .create_pin(self.symbol.z)
-        # No layout pin for sub: like the bn pin of the resistor leaf cells,
+        # No layout pin for sub: like the sub pin of the resistor leaf cells,
         # the bulk has no shape inside A_Default; the extracted subcircuit still gets
         # a substrate pin (propagated pwell), which LVS matches topologically
         # against the schematic's sub port. Only the top cell (C_Hier) materializes
@@ -117,9 +117,9 @@ cell B_Hier:
         port sub: .pos=(1,13)
 
         A_Default a1: .pos=(4,4); .x -- i1; .y -- y1; .z -- z; .sub -- sub
-        Rppd rp1: .$l=L_RP1; .$w=W_R; .pos=(8,11); .orient=FlippedNorth; .n -- i1; .p -- i2; .bn -- sub
+        Rppd rp1: .$l=L_RP1; .$w=W_R; .pos=(8,11); .orient=FlippedNorth; .n -- i1; .p -- i2; .sub -- sub
         A_Default a2: .pos=(4,18); .x -- x; .y -- y2; .z -- i2; .sub -- sub
-        Rppd rp2: .$l=L_RP2; .$w=W_R; .pos=(15,11); .orient=FlippedNorth; .n -- y1; .p -- y2; .bn -- sub
+        Rppd rp2: .$l=L_RP2; .$w=W_R; .pos=(15,11); .orient=FlippedNorth; .n -- y1; .p -- y2; .sub -- sub
 
     viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
@@ -178,7 +178,7 @@ cell C_Hier:
 
         B_Hier b1: .pos=(4,4); .z -- z; .x -- x; .sub -- sub
         B_Hier b2: .pos=(10,4); .z -- z; .x -- x; .sub -- sub
-        Rsil rs: .$l=L_RS; .$w=W_R; .pos=(20,4); .orient=FlippedNorth; .n -- z; .p -- x; .bn -- sub
+        Rsil rs: .$l=L_RS; .$w=W_R; .pos=(20,4); .orient=FlippedNorth; .n -- z; .p -- x; .sub -- sub
 
     viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
@@ -253,7 +253,7 @@ cell C_FlatLayout:
 
         B_Hier b1: .pos=(4,4); .z -- z; .x -- x; .sub -- sub
         B_Hier b2: .pos=(10,4); .z -- z; .x -- x; .sub -- sub
-        Rsil rs: .$l=L_RS; .$w=W_R; .pos=(20,4); .orient=FlippedNorth; .n -- z; .p -- x; .bn -- sub
+        Rsil rs: .$l=L_RS; .$w=W_R; .pos=(20,4); .orient=FlippedNorth; .n -- z; .p -- x; .sub -- sub
 
     viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
@@ -371,19 +371,19 @@ cell C_FlatSchematic:
             net y2[k]
 
             # lower star (was b<k+1>.a1)
-            Rsil a1r1[k]: .$l=L_RX; .$w=W_R; .pos=(3+xo,12); .n -- c1[k]; .p -- i1[k]; .bn -- sub
-            Rsil a1r2[k]: .$l=L_RY; .$w=W_R; .pos=(8+xo,12); .orient=East; .n -- c1[k]; .p -- y1[k]; .bn -- sub
-            Rsil a1r3[k]: .$l=L_RZ; .$w=W_R; .pos=(3+xo,9); .orient=FlippedSouth; .n -- c1[k]; .p -- z; .bn -- sub
+            Rsil a1r1[k]: .$l=L_RX; .$w=W_R; .pos=(3+xo,12); .n -- c1[k]; .p -- i1[k]; .sub -- sub
+            Rsil a1r2[k]: .$l=L_RY; .$w=W_R; .pos=(8+xo,12); .orient=East; .n -- c1[k]; .p -- y1[k]; .sub -- sub
+            Rsil a1r3[k]: .$l=L_RZ; .$w=W_R; .pos=(3+xo,9); .orient=FlippedSouth; .n -- c1[k]; .p -- z; .sub -- sub
             # z-chain resistor (was b<k+1>.rp1)
-            Rppd rp1[k]: .$l=L_RP1; .$w=W_R; .pos=(3+xo,18); .n -- i1[k]; .p -- i2[k]; .bn -- sub
+            Rppd rp1[k]: .$l=L_RP1; .$w=W_R; .pos=(3+xo,18); .n -- i1[k]; .p -- i2[k]; .sub -- sub
             # upper star (was b<k+1>.a2)
-            Rsil a2r3[k]: .$l=L_RZ; .$w=W_R; .pos=(3+xo,27); .orient=FlippedSouth; .n -- c2[k]; .p -- i2[k]; .bn -- sub
-            Rsil a2r1[k]: .$l=L_RX; .$w=W_R; .pos=(3+xo,30); .n -- c2[k]; .p -- x; .bn -- sub
-            Rsil a2r2[k]: .$l=L_RY; .$w=W_R; .pos=(8+xo,30); .orient=East; .n -- c2[k]; .p -- y2[k]; .bn -- sub
+            Rsil a2r3[k]: .$l=L_RZ; .$w=W_R; .pos=(3+xo,27); .orient=FlippedSouth; .n -- c2[k]; .p -- i2[k]; .sub -- sub
+            Rsil a2r1[k]: .$l=L_RX; .$w=W_R; .pos=(3+xo,30); .n -- c2[k]; .p -- x; .sub -- sub
+            Rsil a2r2[k]: .$l=L_RY; .$w=W_R; .pos=(8+xo,30); .orient=East; .n -- c2[k]; .p -- y2[k]; .sub -- sub
             # y-loop resistor (was b<k+1>.rp2)
-            Rppd rp2[k]: .$l=L_RP2; .$w=W_R; .pos=(17+xo,17); .orient=FlippedNorth; .n -- y1[k]; .p -- y2[k]; .bn -- sub
+            Rppd rp2[k]: .$l=L_RP2; .$w=W_R; .pos=(17+xo,17); .orient=FlippedNorth; .n -- y1[k]; .p -- y2[k]; .sub -- sub
 
-        Rsil rs: .$l=L_RS; .$w=W_R; .pos=(42,12); .orient=FlippedNorth; .n -- z; .p -- x; .bn -- sub
+        Rsil rs: .$l=L_RS; .$w=W_R; .pos=(42,12); .orient=FlippedNorth; .n -- z; .p -- x; .sub -- sub
 
     viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers
@@ -561,7 +561,7 @@ cell C_Moved:
 
         B_Hier b1: .pos=(4,4); .z -- z; .x -- x; .sub -- sub
         B_Hier b2: .pos=(10,4); .z -- z; .x -- x; .sub -- sub
-        Rsil rs: .$l=L_RS; .$w=W_R; .pos=(20,4); .orient=FlippedNorth; .n -- z; .p -- x; .bn -- sub
+        Rsil rs: .$l=L_RS; .$w=W_R; .pos=(20,4); .orient=FlippedNorth; .n -- z; .p -- x; .sub -- sub
 
     viewgen layout(self) -> Layout:
         .ref_layers = SG13G2().layers

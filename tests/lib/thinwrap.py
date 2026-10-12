@@ -25,7 +25,7 @@ def gallery_wrapper_cell(inners: list[Cell], name: str, substrate: str = None, t
 
     Ports come from each inner *layout* pins, not symbol pins: an LVS port
     needs both, so the valid set is their intersection (= the layout pins). A
-    resistor's bulk pin ``bn`` has a symbol pin but no layout pin, so it is
+    resistor's bulk pin ``sub`` has a symbol pin but no layout pin, so it is
     wired internally rather than exposed; exposing it would fail LVS.
 
     ``substrate`` names the gallery port a body tap ties the substrate to
