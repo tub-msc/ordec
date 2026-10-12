@@ -6,7 +6,7 @@ cell CurrentMirror:
     viewgen schematic(self) -> Schematic:
         net vss, vdd, l, r
 
-        Nmos n0: .pos=(10,6); .d--l; .$w=500n; .orient=FlippedSouth
+        Nmos n0: .pos=(10,6); .d--l; .$w=500n; .orient=FlippedNorth
         Nmos n1: .pos=(14,6); .d--r; .$w=1500n
 
         for n in n0, n1:

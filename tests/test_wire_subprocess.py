@@ -95,7 +95,7 @@ def build_unwired_mirror():
     s.r = Net()
     s.n0 = SchemInstance(
         Nmos(w=R('500n')).symbol.portmap(d=s.l, g=s.l, s=s.vss, b=s.vss),
-        pos=Vec2R(10, 6), orient=D4.FlippedSouth)
+        pos=Vec2R(10, 6), orient=D4.FlippedNorth)
     s.n1 = SchemInstance(
         Nmos(w=R('1500n')).symbol.portmap(d=s.r, g=s.l, s=s.vss, b=s.vss),
         pos=Vec2R(14, 6))

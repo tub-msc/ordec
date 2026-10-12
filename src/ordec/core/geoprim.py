@@ -472,7 +472,8 @@ class D4(Enum):
         the vertex (x=0, y=1).
         """
         if self.det() < 0:
-            return D4(self.flip())
+            # MY is applied first and does not move (0, 1).
+            return self * D4.MY
         else:
             return self
 
@@ -493,39 +494,29 @@ class D4(Enum):
             D4.MY90: D4.MY90,
         }[self]
 
-    def flip(self) -> "Self":
-        """Returns TD4 with flipped handedness, preserving the vertex (0, 1)."""
-        if self.value.flipxy:
-            return type(self)(D4Tuple(
-                flipxy=self.value.flipxy,
-                negx=self.value.negx,
-                negy=not self.value.negy,
-                ))
-        else:
-            return type(self)(D4Tuple(
-                flipxy=self.value.flipxy,
-                negx=not self.value.negx,
-                negy=self.value.negy,
-                ))
-
     def lefdef(self) -> str:
+        """Returns the LEF/DEF orientation name."""
         return {
             D4.R0: "N", # North
             D4.R90: "W", # West
             D4.R180: "S", # South
             D4.R270: "E", # East
-            D4.MX: "FN", # Flipped North
-            D4.MY: "FS", # Flipped South
+            D4.MY: "FN", # Flipped North
+            D4.MX: "FS", # Flipped South
             D4.MX90: "FW", # Flipped West
             D4.MY90: "FE", # Flipped East
         }[self]
 
+    # Compass aliases following LEF/DEF. Flipped<Dir> is <Dir> followed by
+    # mirroring along the Y axis (MY * <Dir>). The top edge thus faces north
+    # for FlippedNorth and south for FlippedSouth, but east for FlippedWest
+    # and west for FlippedEast.
     North = R0
     East = R270
     South = R180
     West = R90
-    FlippedNorth = MX
-    FlippedSouth = MY
+    FlippedNorth = MY
+    FlippedSouth = MX
     FlippedWest = MX90
     FlippedEast = MY90
 
