@@ -151,13 +151,15 @@ def test_ihp130_passives(tmp_path):
         .subckt rc a b sub
         XR1 a mid sub rppd w=0.5u l=2u b=1 ps=0.4u m=1
         XC1 mid b cap_cmim w=7u l=7u m=1
+        XP1 b sub Rparasitic R=10 TC1=1m
         .ends
         """))
     lib = ExtLibrary()
     lib.read_spice(netlist, device_map=ihp130.device_map)
-    r, c = sorted((i.symbol.cell for i in lib["rc"].schematic.all(SchemInstance)),
+    r, p, c = sorted((i.symbol.cell for i in lib["rc"].schematic.all(SchemInstance)),
         key=lambda cell: type(cell).__name__, reverse=True)
     assert (type(r), r.l, r.w, r.b, r.ps) == (ihp130.Rppd, R("2u"), R("0.5u"), 1, R("0.4u"))
+    assert (type(p), p.r, p.tc1) == (ihp130.Rpara, R("10"), R("1m"))
     assert (type(c), c.l, c.w) == (ihp130.Cmim, R("7u"), R("7u"))
 
 

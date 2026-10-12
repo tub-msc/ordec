@@ -93,6 +93,7 @@ def supply_current(cell, volts, freq=None, **conns):
     (ihp130.RfNmos(w="1u", l="0.72u"), "1.2", dict(d="vdd", g="vdd", s="vss", b="vss"), 179.91e-6),
     (ihp130.Dantenna(w="0.78u", l="0.78u"), "0.8", dict(d0="vdd", d1="vss"), 389.91e-9),
     (ihp130.SchottkyNbl1(), "0.3", dict(plus="vdd", minus="vss", tie="vss"), 6.1977e-6),
+    (ihp130.Rpara(r="1k"), "1", dict(p="vdd", n="vss"), 1e-3),
 ])
 def test_device_op(cell, volts, conns, expected):
     assert supply_current(cell, volts, **conns) == pytest.approx(expected, rel=0.02)

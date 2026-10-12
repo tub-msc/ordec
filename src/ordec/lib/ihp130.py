@@ -2493,6 +2493,39 @@ class Cpara(SimLeafCell):
     def discoverable_instances(cls):
         return [cls(c=R("10f"))]
 
+
+@public
+class Rpara(SimLeafCell):
+    """Parasitic resistance for simulation only: no LVS device, no layout."""
+    r = Parameter(R)  #: Resistance (R)
+    tc1 = Parameter(R, optional=True)  #: Linear temperature coefficient (TC1, PDK default 0.00353)
+    tc2 = Parameter(R, optional=True)  #: Quadratic temperature coefficient (TC2, PDK default 0)
+
+    # The ideal resistor's symbol viewgen (not the class, see Nmos.symbol).
+    symbol = base.Res.symbol
+
+    def ngspice_netlist(self, netlister, inst):
+        if netlister.lvs:
+            return
+        netlister.require_netlist_setup(netlister_setup)
+        netlister.require_ngspice_setup(ngspice_setup)
+
+        params = {"R": self.r}
+        if self.tc1 is not None:
+            params["TC1"] = self.tc1
+        if self.tc2 is not None:
+            params["TC2"] = self.tc2
+        netlister.add(
+            netlister.name_obj(inst, prefix="x"),
+            netlister.portmap(inst, [inst.symbol.p, inst.symbol.n]),
+            "Rparasitic",
+            *spice_params(params),
+        )
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls(r=R("10"))]
+
 def layoutgen_bondpad(cell: Cell) -> Layout:
     """
     Generate the SG13G2 bond pad layout, as the PCell bondpad_code.py with
@@ -3719,6 +3752,7 @@ device_map = {
     "rfcmim": DeviceMapping(Rfcmim, ("p", "n", "bn"), real_params=("w", "l", "wfeed")),
     "sg13_hv_svaricap": DeviceMapping(Svaricap, ("g1", "nw", "g2", "bn"), real_params=("w", "l"), int_params=("nx",)),
     "cparasitic": DeviceMapping(Cpara, ("p", "n"), real_params=("c",)),
+    "rparasitic": DeviceMapping(Rpara, ("p", "n"), real_params=("r", "tc1", "tc2")),
     "schottky_nbl1": DeviceMapping(SchottkyNbl1, ("plus", "minus", "tie"), int_params=("nx", "ny")),
     "bondpad": DeviceMapping(Bondpad, ("pad",), real_params=("size",), int_params=("shape", "padtype")),
     "inductor": DeviceMapping(Inductor2, ("p", "m", "b"), real_params=("w", "s", "d"), int_params=("nr_r", "m")),
