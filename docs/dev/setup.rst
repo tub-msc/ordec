@@ -34,7 +34,9 @@ Then, configure the environment variable ORDEC_PDK_SKY130A to point to the skywa
 
 The **IHP Open PDK** can be downloaded using the following shell command::
 
-    git clone https://github.com/IHP-GmbH/IHP-Open-PDK.git
+    git clone --recurse-submodules https://github.com/IHP-GmbH/IHP-Open-PDK.git
+
+The submodules include the PDK's PCell support (pycell4klayout-api, pypreprocessor), which ``tests/test_ihp130_pcells.py`` needs to compare ORDeC's layouts with the PCells. In an existing checkout, fetch them with ``git submodule update --init``.
 
 The IHP Open PDK includes Verilog-A models, which must be compiled before use using OpenVAF::
 
