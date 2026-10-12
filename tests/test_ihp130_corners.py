@@ -52,6 +52,17 @@ def test_netlist_corner_and_temp():
         Simulator(h, corner="ss")
 
 
+@pytest.mark.parametrize("kwargs", [
+    dict(w="1u", l="100n"),
+    dict(w="100n", l="130n"),
+    dict(w="1u", l="20u"),
+    dict(w="1u", l="130n", ng=8),
+])
+def test_mos_dimension_limits(kwargs):
+    with pytest.raises(ParameterError):
+        ihp130.Nmos(**kwargs)
+
+
 def test_corner_class():
     assert ihp130.Corner.SS == ihp130.Corner(mos="ss")
 
