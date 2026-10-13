@@ -12,6 +12,7 @@ from ordec.lsp.analysis import (
     analyze_ord,
     file_uri_to_path,
 )
+from ordec.lsp.analysis.import_resolver import ImportResolver
 from ordec.lsp.analysis.python_index import PythonModuleIndex
 from ordec.lsp.server import OrdLanguageServer
 import ordec
@@ -163,15 +164,15 @@ def test_error_snapshots_not_aliased():
 
 
 def test_find_spec_failure_unresolved(monkeypatch):
-    index = PythonModuleIndex()
+    resolver = ImportResolver()
 
     def broken_find_spec(module_name):
         raise SystemExit("bad package")
 
     monkeypatch.setattr("importlib.util.find_spec", broken_find_spec)
 
-    assert index.resolve_module_path("bad.package") is None
-    assert not index.module_exists("bad.package")
+    assert resolver.python_module_path("bad.package") is None
+    assert not resolver.python_module_exists("bad.package")
 
 
 def test_semantic_diagnostics(tmp_path):
@@ -768,6 +769,43 @@ def test_symlinked_workspace_uris(tmp_path):
     assert session.workspace_uris() == [uri]
 
 
+def test_imports_follow_runtime_rules(tmp_path):
+    # foo.py shadows foo.ord like in ordec.importer. Without a workspace
+    # root, Python modules beside the document resolve, and relative
+    # imports resolve file-relative for .py targets as for .ord targets.
+    (tmp_path / "foo.py").write_text("class Shadow:\n    pass\n")
+    (tmp_path / "foo.ord").write_text("cell Hidden:\n    pass\n")
+    (tmp_path / "helper.py").write_text("class Helper:\n    pass\n")
+    (tmp_path / "lib.py").write_text("class Lib:\n    pass\n")
+    source = "from foo import Shadow\nfrom helper import Helper\nfrom .lib import Lib\n"
+    top_path = tmp_path / "top.ord"
+    top_path.write_text(source)
+
+    session = AnalysisSession()
+    uri = session.open_path(str(top_path))
+    assert diagnostic_codes(session, uri) == []
+    for name, module in [("Shadow", "foo.py"), ("Helper", "helper.py"), ("Lib", "lib.py")]:
+        definition = session.definition(uri, position_at(source, name))
+        assert definition["uri"] == (tmp_path / module).resolve().as_uri()
+
+    # In a src layout, the import root of the package is src/, not the
+    # workspace root, also for imports inside Python modules. Relative
+    # imports cannot leave the topmost package.
+    package_path = tmp_path / "repo" / "src" / "pkg"
+    package_path.mkdir(parents=True)
+    (package_path / "__init__.py").write_text("")
+    (package_path / "a.py").write_text("class A:\n    pass\n")
+    (package_path / "b.py").write_text("from pkg.a import A\n")
+    source = "from pkg.b import A\nfrom ...outside import X\n"
+    (package_path / "top.ord").write_text(source)
+
+    session = AnalysisSession(workspace_root=str(tmp_path / "repo"))
+    uri = session.open_path(str(package_path / "top.ord"))
+    assert diagnostic_codes(session, uri) == ["unresolved-import"]
+    definition = session.definition(uri, position_at(source, "A"))
+    assert definition["uri"] == (package_path / "a.py").resolve().as_uri()
+
+
 def test_init_ord_packages(tmp_path, monkeypatch):
     package_path = tmp_path / "pkg"
     package_path.mkdir()
@@ -783,23 +821,23 @@ def test_init_ord_packages(tmp_path, monkeypatch):
     source = "from .pkg import sub\n"
     top_path.write_text(source)
 
-    index = PythonModuleIndex(workspace_root=str(tmp_path))
-    assert index.resolve_module_path("pkg") == init_path.resolve()
-    assert index.resolve_module_path("pkg.sub") == sub_path.resolve()
-    assert index.module_exists("pkg.sub")
+    resolver = ImportResolver(str(tmp_path))
+    assert resolver.python_module_path("pkg") == init_path.resolve()
+    assert resolver.python_module_path("pkg.sub") == sub_path.resolve()
+    assert resolver.python_module_exists("pkg.sub")
 
     # Installed packages rooted by __init__.ord resolve their .ord
     # modules through the parent package, like __init__.py ones do.
     class InitOrdSpec:
         origin = str(init_path)
 
-    installed_index = PythonModuleIndex()
+    installed_resolver = ImportResolver()
     monkeypatch.setattr(
-        installed_index,
+        installed_resolver,
         "find_spec",
         lambda name: InitOrdSpec() if name == "pkg" else None,
     )
-    assert installed_index.resolve_module_path("pkg.sub") == sub_path.resolve()
+    assert installed_resolver.python_module_path("pkg.sub") == sub_path.resolve()
 
     # The session navigates import members through the same resolution.
     session = AnalysisSession(workspace_root=str(tmp_path))
@@ -855,7 +893,7 @@ def test_export_ranges_avoid_keywords(tmp_path):
             def d(self):
                 pass
         """))
-    index = PythonModuleIndex(workspace_root=str(tmp_path))
+    index = PythonModuleIndex(ImportResolver(str(tmp_path)))
 
     # A short name must not match inside the def or class keyword.
     assert index.definition("shortnames", export_name="f")[
@@ -1279,7 +1317,7 @@ def test_lambda_and_with_bindings():
 
 def test_python_index_edge_cases(tmp_path, monkeypatch):
     (tmp_path / "broken.py").write_text("VALUE = 1\n")
-    index = PythonModuleIndex(workspace_root=str(tmp_path))
+    index = PythonModuleIndex(ImportResolver(str(tmp_path)))
 
     def invalid_tree(*args, **kwargs):
         raise ValueError("source contains null bytes")
@@ -1302,7 +1340,7 @@ def test_python_index_edge_cases(tmp_path, monkeypatch):
         from first import Choice as Selected
         from second import Choice as Selected
         """))
-    index = PythonModuleIndex(workspace_root=str(tmp_path))
+    index = PythonModuleIndex(ImportResolver(str(tmp_path)))
     assert index.definition("bridge", export_name="Selected")["uri"] == second_path.as_uri()
 
     ord_path = tmp_path / "celllib.ord"
@@ -1441,7 +1479,7 @@ def test_python_index_unicode_attribute_ranges(tmp_path, suffix):
                 root.élé = Pin()
         """)
     (tmp_path / ("device" + suffix)).write_text(source)
-    member = PythonModuleIndex(workspace_root=str(tmp_path)).class_members(
+    member = PythonModuleIndex(ImportResolver(str(tmp_path))).class_members(
         "device",
         "Device",
     )["élé"]

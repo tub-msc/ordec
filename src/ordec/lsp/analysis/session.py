@@ -8,16 +8,14 @@ from pathlib import Path
 from typing import Optional
 
 # ordec imports
-from .completions import CompletionsMixin
-from .diagnostics import DiagnosticsMixin
-from .hierarchy import CallHierarchyMixin
+from . import completions, diagnostics, hierarchy, rename, signatures
+from .import_resolver import ImportResolver, from_import_module_name
 from .model import (
     AnalysisPosition,
     AnalysisRange,
     DocumentAnalysis,
     context_type_names_for_kind,
     file_uri_to_path,
-    find_module_source,
     position_before_or_equal,
     range_contains,
     split_source_lines,
@@ -25,8 +23,6 @@ from .model import (
 from .model import normalize_type_names as normalize_type_name_list
 from .parser_pass import analyze_ord
 from .python_index import PythonModuleIndex
-from .rename import RenameMixin
-from .signatures import SignatureHelpMixin
 
 # Dependency and build-output directories that never hold workspace design
 # sources (build outputs would surface stale duplicates). Hidden directories
@@ -43,13 +39,7 @@ CORE_TYPE_ALIASES = {
 }
 
 
-class AnalysisSession(
-    CompletionsMixin,
-    DiagnosticsMixin,
-    RenameMixin,
-    SignatureHelpMixin,
-    CallHierarchyMixin,
-):
+class AnalysisSession:
     """Stateful ORD analysis facade for open documents and workspace files.
 
     The LSP server should treat this class as its public boundary. Its
@@ -66,9 +56,9 @@ class AnalysisSession(
       ``inlay_hints()``, ``prepare_rename()``, ``rename()``,
       ``folding_ranges()``, ``selection_ranges()``, ``semantic_tokens()``
 
-    The mixins keep feature-specific implementation code separated, but those
-    methods remain part of this facade rather than independent public entry
-    points.
+    Completions, diagnostics, rename, signature help and call hierarchy are
+    implemented as functions taking the session as first argument in their
+    own modules; the corresponding methods here delegate to them.
     """
     def __init__(
         self,
@@ -84,7 +74,8 @@ class AnalysisSession(
         self.documents = dict()
         self.document_access_counter = 0
         self.canonical_uri_cache = dict()
-        self.python_index = PythonModuleIndex(workspace_root=self.workspace_root)
+        self.resolver = ImportResolver(self.workspace_root)
+        self.python_index = PythonModuleIndex(self.resolver)
         self.workspace_uri_cache = None
         self.workspace_index = None
         self.workspace_dirty_uris = set()
@@ -356,73 +347,7 @@ class AnalysisSession(
 
     def resolve_module_uri(self, uri: str, module_name: str):
         """Resolve an ORD import name relative to a document URI."""
-        uri = self.canonical_uri(uri)
-        doc_path = self.file_uri_path(uri)
-        if doc_path is None:
-            return None
-
-        if module_name.startswith("."):
-            dot_count = 0
-            while dot_count < len(module_name) and module_name[dot_count] == ".":
-                dot_count += 1
-
-            import_path = doc_path.parent
-            for _ in range(dot_count - 1):
-                import_path = import_path.parent
-
-            module_tail = module_name[dot_count:]
-            if module_tail:
-                import_path = import_path.joinpath(*module_tail.split("."))
-
-            resolved = find_module_source(
-                import_path,
-                (".ord",),
-                package_only=not module_tail,
-            )
-            return resolved.as_uri() if resolved is not None else None
-
-        # Absolute names resolve against the workspace root first, then
-        # against the importing document's own directory, matching the
-        # runtime importer which searches the script's directory.
-        base_dirs = []
-        if self.workspace_root:
-            base_dirs.append(Path(self.workspace_root))
-        if doc_path.parent not in base_dirs:
-            base_dirs.append(doc_path.parent)
-
-        module_parts = module_name.split(".")
-        for base_dir in base_dirs:
-            resolved = find_module_source(
-                base_dir.joinpath(*module_parts),
-                (".ord",),
-            )
-            if resolved is not None:
-                return resolved.as_uri()
-
-        return None
-
-    def from_import_module_name(self, module_name: str, export_name: str):
-        """Return the submodule candidate named by a from-import."""
-        if not export_name or export_name == "*":
-            return None
-
-        separator = "" if module_name.endswith(".") else "."
-        return module_name + separator + export_name
-
-    def ord_from_import_uris(self, uri: str, module_name: str, export_name: str):
-        """Return ORD module and submodule candidates for a from-import."""
-        module_names = [module_name]
-        submodule_name = self.from_import_module_name(module_name, export_name)
-        if submodule_name is not None:
-            module_names.append(submodule_name)
-
-        uris = []
-        for candidate_name in module_names:
-            import_uri = self.resolve_module_uri(uri, candidate_name)
-            if import_uri is None or import_uri in uris:
-                continue
-            uris.append(import_uri)
-        return uris
+        return self.resolver.import_target(uri, module_name).ord_uri
 
     def resolve_from_import(self, uri: str, module_name: str, export_name: str):
         """Resolve a from-import export or submodule definition."""
@@ -432,10 +357,7 @@ class AnalysisSession(
             if match is not None:
                 return match
 
-        submodule_name = self.from_import_module_name(
-            module_name,
-            export_name,
-        )
+        submodule_name = from_import_module_name(module_name, export_name)
         if submodule_name is not None:
             submodule_uri = self.resolve_module_uri(uri, submodule_name)
             if submodule_uri is not None:
@@ -452,11 +374,11 @@ class AnalysisSession(
 
     def resolve_python_import_name(self, uri: str, module_name: str):
         """Resolve a possibly relative Python import name for a document."""
-        return self.python_index.resolve_import_name(uri, module_name)
+        return self.resolver.import_target(uri, module_name).python_name
 
     def python_module_exists(self, module_name: str):
         """Return whether a Python module can be imported or found locally."""
-        return self.python_index.module_exists(module_name)
+        return self.resolver.python_module_exists(module_name)
 
     def invalidate_python_module_path(self, path: Path):
         """Invalidate cached Python analysis for modules backed by a path."""
@@ -525,7 +447,7 @@ class AnalysisSession(
         if analysis.has_errors():
             return analysis.diagnostics
 
-        return analysis.diagnostics + self.semantic_diagnostics(uri)
+        return analysis.diagnostics + diagnostics.semantic_diagnostics(self, uri)
 
     def open_path(self, path: str, version: Optional[int] = None):
         """Open a filesystem ORD file as a closed session document."""
@@ -709,26 +631,7 @@ class AnalysisSession(
         if not self.ensure_document(uri) or not uri.startswith("file:"):
             return []
 
-        imports = []
-        seen = set()
-
-        for import_entry in self.analyze(uri).import_entries:
-            if import_entry.kind == "from":
-                import_uris = self.ord_from_import_uris(
-                    uri,
-                    import_entry.module,
-                    import_entry.export_name,
-                )
-            else:
-                import_uris = [self.resolve_module_uri(uri, import_entry.module)]
-
-            for import_uri in import_uris:
-                if import_uri is None or import_uri in seen:
-                    continue
-                seen.add(import_uri)
-                imports.append(import_uri)
-
-        return imports
+        return self.resolver.ord_import_uris(uri, self.analyze(uri).import_entries)
 
     def analyze_related(self, uri: str):
         """Analyze a document and its reachable ORD imports."""
@@ -1157,7 +1060,7 @@ class AnalysisSession(
         name = definition["name"]
 
         if kind == "class":
-            signature = self.callable_signature(uri, definition)
+            signature = signatures.callable_signature(self, uri, definition)
             parameters = signature["parameters"] if signature is not None else []
             # Classes that declare cell parameters, and everything defined in
             # ORD source, read as cells to ORD users.
@@ -1173,7 +1076,7 @@ class AnalysisSession(
             return "{} {}".format(keyword, name)
 
         if kind == "function":
-            signature = self.callable_signature(uri, definition)
+            signature = signatures.callable_signature(self, uri, definition)
             if signature is not None:
                 return "def {}".format(signature["label"])
             return "function {}".format(name)
@@ -1912,3 +1815,29 @@ class AnalysisSession(
             self.resolve_completion_type(uri, name_info["name"]),
             name_info["range"],
         )
+
+    # Delegators to the feature modules, which hold the docstrings.
+
+    def completion_replace_range(self, uri: str, position: AnalysisPosition):
+        return completions.completion_replace_range(self, uri, position)
+
+    def completions(self, uri: str, position: AnalysisPosition):
+        return completions.completions(self, uri, position)
+
+    def signature_help(self, uri: str, position: AnalysisPosition):
+        return signatures.signature_help(self, uri, position)
+
+    def prepare_rename(self, uri: str, position: AnalysisPosition):
+        return rename.prepare_rename(self, uri, position)
+
+    def rename(self, uri: str, position: AnalysisPosition, new_name: str):
+        return rename.rename(self, uri, position, new_name)
+
+    def call_hierarchy_item(self, uri: str, position: AnalysisPosition):
+        return hierarchy.call_hierarchy_item(self, uri, position)
+
+    def incoming_calls(self, uri: str, position: AnalysisPosition):
+        return hierarchy.incoming_calls(self, uri, position)
+
+    def outgoing_calls(self, uri: str, position: AnalysisPosition):
+        return hierarchy.outgoing_calls(self, uri, position)
