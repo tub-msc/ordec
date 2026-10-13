@@ -1,7 +1,10 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+import inspect
 import math
+import re
+from abc import abstractmethod
 
 from public import public
 
@@ -732,3 +735,203 @@ class Isin(AcStimulusMixin, SimLeafCell):
     @classmethod
     def discoverable_instances(cls):
         return [cls(amplitude="1m", freq="1k")]
+
+# Dependent & behavioral sources
+# ==============================
+
+def diamond_source_symbol(cell, voltage_out: bool) -> Symbol:
+    """
+    Symbol of a dependent source: a diamond with output pins p (north) and
+    n (south), marked with +/- (voltage output) or an arrow (current output).
+    """
+    s = Symbol(cell=cell)
+    s.one(SymbolAnnotation.key_idx.query(AnnotationKind.CellName)).shown = False
+
+    s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, orient=South, show_arrow=False, show_label=False, rotate_label=False)
+    s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, orient=North, show_arrow=False, show_label=False, rotate_label=False)
+
+    s % SymbolPoly(vertices=[Vec2R(2, 1), Vec2R(3, 2), Vec2R(2, 3), Vec2R(1, 2), Vec2R(2, 1)])
+    s % SymbolPoly(vertices=[Vec2R(2, 3), Vec2R(2, 4)])
+    s % SymbolPoly(vertices=[Vec2R(2, 1), Vec2R(2, 0)])
+
+    if voltage_out:
+        s % SymbolPoly(vertices=[Vec2R(2, 2.3), Vec2R(2, 2.7)])
+        s % SymbolPoly(vertices=[Vec2R(1.8, 2.5), Vec2R(2.2, 2.5)])
+        s % SymbolPoly(vertices=[Vec2R(1.8, 1.5), Vec2R(2.2, 1.5)])
+    else:
+        b = Vec2R(2, 1.4)
+        s % SymbolPoly(vertices=[b, Vec2R(2, 2.6)])
+        s % SymbolPoly(vertices=[b + Vec2R(-0.3, 0.3), b, b + Vec2R(0.3, 0.3)])
+
+    s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
+    return s
+
+class DependentSource(SimLeafCell):
+    """
+    Common base of the linear dependent sources, with output pins p, n and
+    control pins cp, cn.
+    """
+    gain = Parameter(R) #: Gain; unit depends on the subclass (V/V, A/V, V/A or A/A).
+
+    @property
+    @abstractmethod
+    def spice_letter(self) -> str:
+        """SPICE element letter: e, g, h or f."""
+
+    @property
+    @abstractmethod
+    def voltage_out(self) -> bool:
+        """True for voltage output (E, H), False for current output (G, F)."""
+
+    @property
+    @abstractmethod
+    def current_ctrl(self) -> bool:
+        """True if controlled by the current through cp/cn (H, F)."""
+
+    def ngspice_current_pins(self):
+        return {"branch": "p"}
+
+    @viewgen_noctx
+    def symbol(self) -> Symbol:
+        s = diamond_source_symbol(self, self.voltage_out)
+
+        s.cp = Pin(pos=Vec2R(0, 3), pintype=PinType.Inout, orient=West, show_arrow=False, show_label=False, rotate_label=False)
+        s.cn = Pin(pos=Vec2R(0, 1), pintype=PinType.Inout, orient=West, show_arrow=False, show_label=False, rotate_label=False)
+
+        if self.current_ctrl:
+            # Series branch from cp to cn with arrow:
+            s % SymbolPoly(vertices=[Vec2R(0, 3), Vec2R(0.5, 3), Vec2R(0.5, 1), Vec2R(0, 1)])
+            b = Vec2R(0.5, 1.7)
+            s % SymbolPoly(vertices=[b + Vec2R(-0.25, 0.25), b, b + Vec2R(0.25, 0.25)])
+        else:
+            # Stubs with +/- of the control voltage:
+            s % SymbolPoly(vertices=[Vec2R(0, 3), Vec2R(0.5, 3)])
+            s % SymbolPoly(vertices=[Vec2R(0, 1), Vec2R(0.5, 1)])
+            s % SymbolPoly(vertices=[Vec2R(0.5, 2.3), Vec2R(0.5, 2.7)])
+            s % SymbolPoly(vertices=[Vec2R(0.3, 2.5), Vec2R(0.7, 2.5)])
+            s % SymbolPoly(vertices=[Vec2R(0.3, 1.5), Vec2R(0.7, 1.5)])
+
+        return s
+
+    def ngspice_netlist(self, netlister, inst):
+        out = netlister.portmap(inst, [inst.symbol.p, inst.symbol.n])
+        ctrl = netlister.portmap(inst, [inst.symbol.cp, inst.symbol.cn])
+        if self.current_ctrl:
+            # SPICE H/F sources refer to the current through a voltage
+            # source: a 0 V sense source between cp and cn.
+            sense = netlister.name_sense(inst, inst.symbol.cp)
+            netlister.add(sense, ctrl, '0')
+            ctrl = [sense]
+        netlister.add(
+            netlister.name_obj(inst, prefix=self.spice_letter),
+            out, ctrl, self.gain.compat_str(),
+        )
+
+    @classmethod
+    def discoverable_instances(cls):
+        if inspect.isabstract(cls):
+            return []
+        return [cls(1)]
+
+@public
+class Vcvs(DependentSource):
+    """
+    Voltage-controlled voltage source (SPICE E):
+    V(p)-V(n) = gain * (V(cp)-V(cn)), gain in V/V.
+    """
+    spice_letter = "e"
+    voltage_out = True
+    current_ctrl = False
+
+@public
+class Vccs(DependentSource):
+    """
+    Voltage-controlled current source (SPICE G): the current
+    gain * (V(cp)-V(cn)) flows into p, through the source and out of n;
+    gain in A/V.
+    """
+    spice_letter = "g"
+    voltage_out = False
+    current_ctrl = False
+
+@public
+class Ccvs(DependentSource):
+    """
+    Current-controlled voltage source (SPICE H): V(p)-V(n) = gain * I,
+    gain in V/A. I flows into cp and out of cn, so cp/cn must be in series
+    with the controlling branch. I is stored as current of pin cp.
+    """
+    spice_letter = "h"
+    voltage_out = True
+    current_ctrl = True
+
+@public
+class Cccs(DependentSource):
+    """
+    Current-controlled current source (SPICE F): the current gain * I flows
+    into p, through the source and out of n; gain in A/A. I flows into cp
+    and out of cn, so cp/cn must be in series with the controlling branch.
+    I is stored as current of pin cp.
+    """
+    spice_letter = "f"
+    voltage_out = False
+    current_ctrl = True
+
+class ExprSource(SimLeafCell):
+    """
+    Common base of the behavioral sources Iexpr and Vexpr (ngspice B
+    source). The expression refers to the cell's own pins by name, e.g.
+    V(p) or V(p,n). Everything else (time, temper, functions such as max,
+    exp, ln) is passed to ngspice unchanged.
+    """
+    expr = Parameter(str) #: ngspice expression, e.g. "1m*max(V(p,n)-3.3,0)".
+
+    @property
+    @abstractmethod
+    def quantity(self) -> str:
+        """Output quantity: "I" for current, "V" for voltage."""
+
+    def ngspice_current_pins(self):
+        return {"branch": "p"}
+
+    @viewgen_noctx
+    def symbol(self) -> Symbol:
+        return diamond_source_symbol(self, self.quantity == "V")
+
+    def ngspice_expr(self, nets: dict[str, str]) -> str:
+        """Returns expr with pin names inside V(...) replaced by nets[pin]."""
+        def replace(m):
+            names = [name.strip() for name in m.group(1).split(",")]
+            for name in names:
+                if name not in nets:
+                    raise ValueError(f"{self}: unknown pin {name!r} in V(...) of expr.")
+            return "V(" + ",".join(nets[name] for name in names) + ")"
+        return re.sub(r"\b[vV]\s*\(([^()]*)\)", replace, self.expr)
+
+    def ngspice_netlist(self, netlister, inst):
+        pins = [inst.symbol.p, inst.symbol.n]
+        nets = netlister.portmap(inst, pins)
+        netlister.add(
+            netlister.name_obj(inst, prefix="b"),
+            nets,
+            f"{self.quantity}={self.ngspice_expr(dict(zip(['p', 'n'], nets)))}",
+        )
+
+    @classmethod
+    def discoverable_instances(cls):
+        if inspect.isabstract(cls):
+            return []
+        return [cls("1m")]
+
+@public
+class Iexpr(ExprSource):
+    """
+    Behavioral current source (ngspice B source with I=expr). The current
+    flows into p, through the source and out of n (as for Idc).
+    """
+    quantity = "I"
+
+@public
+class Vexpr(ExprSource):
+    """Behavioral voltage source (ngspice B source with V=expr): V(p)-V(n)"""
+    quantity = "V"

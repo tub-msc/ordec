@@ -134,6 +134,16 @@ class Netlister:
     def name_net(self, net: Net) -> str:
         return self.name_obj(net)
 
+    def name_sense(self, inst: SchemInstance, pin: Pin) -> str:
+        """
+        Names a 0 V voltage source that a leaf cell adds to sense the
+        current into pin of inst. The simulator stores the branch current
+        of this source as current of the pin (see sense_of_name).
+        """
+        conn = inst.subgraph.one(SchemInstanceConn.ref_pin_idx.query((inst, pin)))
+        basename = f"v{Directory.basename_of_node(inst)}_sense"
+        return self.directory.unique_name(basename, conn, conn.root)
+
     def require_netlist_setup(self, func):
         if func not in self.netlist_setup_funcs:
             self.netlist_setup_funcs.append(func)
@@ -197,6 +207,23 @@ class Netlister:
                 assert False, f"Unexpected node returned from lookup: {node!r}"
 
         return simnode
+
+    def sense_of_name(self, simhier: SimHierarchy, name: str) -> tuple[SimInstance, Pin]|None:
+        """
+        Returns the SimInstance and Pin whose current the source of the
+        given hierarchical name senses (see name_sense), or None if name
+        does not refer to a sense source.
+        """
+        parent, _, last = name.rpartition(".")
+        try:
+            parent_inst = self.hier_simobj_of_name(simhier, parent) if parent else None
+            conn = self.directory.node_of_name(simhier.schematic_or_symbol_at(parent_inst), last)
+        except KeyError:
+            return None
+        if not isinstance(conn, SchemInstanceConn):
+            return None
+        inst = simhier.one(SimInstance.parent_eref_idx.query((parent_inst, conn.ref)))
+        return inst, conn.there
 
     def pinlist(self, sym: Symbol):
         return list(sym.all(Pin))

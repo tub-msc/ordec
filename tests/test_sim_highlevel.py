@@ -282,6 +282,26 @@ def test_sim_pulsedrc_tran():
         assert got == pytest.approx(exp, abs=0.07)
 
 
+def test_sim_dependent_sources():
+    h = lib_test.DependentSourceTb().sim_op
+    v_ctrl = h.a.voltage[0]
+    i_ctrl = h.ccvs.cp.current[0]
+    assert i_ctrl == pytest.approx(1e-3)
+    assert h.cccs.cp.current[0] == pytest.approx(i_ctrl)
+    assert h.o1.voltage[0] == pytest.approx(2 * v_ctrl)
+    assert h.vccs.p.current[0] == pytest.approx(1e-3 * v_ctrl)
+    assert h.o3.voltage[0] == pytest.approx(1e3 * i_ctrl)
+    assert h.cccs.p.current[0] == pytest.approx(3 * i_ctrl)
+
+
+def test_sim_iexpr_shunt():
+    h = lib_test.ShuntTb().sim_dc
+    for v, i in zip(h.a.voltage, h.shunt.p.current):
+        assert i == pytest.approx(1e-3 * max(v - 3.3, 0), abs=1e-12)
+    with pytest.raises(ValueError, match="unknown pin 'x'"):
+        Netlister(Directory()).netlist_hier(lib_test.ShuntTb(expr="V(p,x)").schematic)
+
+
 def test_netlist_options():
     options = NgspiceOptions(temp=80, reltol="1e-4", itl4=50, method="gear", solver="klu", noopac=True)
     h = SimHierarchy.from_schematic(lib_test.ResdivFlatTb().schematic)

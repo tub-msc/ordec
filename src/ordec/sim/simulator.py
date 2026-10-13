@@ -161,7 +161,14 @@ class Simulator:
             column = sim_array.column(i)
             node_name, subname = parse_signal_name(fid)
             try:
-                if subname is None:
+                sense = None
+                if subname == "branch":
+                    sense = self.netlister.sense_of_name(self.simhier, node_name)
+                if sense is not None:
+                    siminstance, pin = sense
+                    simpin = self.simhier % SimPin(instance=siminstance, eref=pin)
+                    simpin.current = column
+                elif subname is None:
                     simnet = self.hier_simobj_of_name(node_name)
                     simnet.voltage = column
                 else:

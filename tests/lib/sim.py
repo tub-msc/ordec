@@ -6,6 +6,7 @@ from ordec.sim import Simulator
 
 from ordec.lib.generic_mos import Nmos, Inv
 from ordec.lib import Gnd, NoConn, Res, Vdc, Idc, Cap, Ind, Vsin, Ipwl, Ipulse, Isin, Vpulse, Vpwl
+from ordec.lib import Vcvs, Vccs, Ccvs, Cccs, Iexpr
 from ordec.lib import sky130, ihp130
 
 class ResdivFlatTb(Cell):
@@ -590,3 +591,61 @@ class IsinTb(SourceTb):
         ).symbol
         # Source oriented so positive Isin values produce positive resistor current.
         s.isrc = SchemInstance(isrc.portmap(p=s.vss, n=s.out), pos=Vec2R(0, 5))
+
+
+class DependentSourceTb(Cell):
+    """
+    All four dependent sources, each driving a 1k load. The voltage-controlled
+    ones see V(a) = 1 V, the current-controlled ones sit in series in the
+    1 mA branch a -> r_ctrl -> c -> ccvs -> d -> cccs -> vss.
+    """
+    @viewgen_noctx
+    def schematic(self):
+        s = Schematic(cell=self)
+        for name in ["vss", "a", "c", "d", "o1", "o2", "o3", "o4"]:
+            s[name] = Net()
+
+        load = Res(r="1k").symbol
+        s.gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(0, -5))
+        s.vin = SchemInstance(Vdc(dc=1).symbol.portmap(p=s.a, n=s.vss), pos=Vec2R(0, 0))
+        s.r_ctrl = SchemInstance(load.portmap(p=s.a, n=s.c), pos=Vec2R(0, 5))
+        s.vcvs = SchemInstance(Vcvs(gain=2).symbol.portmap(p=s.o1, n=s.vss, cp=s.a, cn=s.vss), pos=Vec2R(5, 0))
+        s.vccs = SchemInstance(Vccs(gain="1m").symbol.portmap(p=s.o2, n=s.vss, cp=s.a, cn=s.vss), pos=Vec2R(10, 0))
+        s.ccvs = SchemInstance(Ccvs(gain="1k").symbol.portmap(p=s.o3, n=s.vss, cp=s.c, cn=s.d), pos=Vec2R(15, 0))
+        s.cccs = SchemInstance(Cccs(gain=3).symbol.portmap(p=s.o4, n=s.vss, cp=s.d, cn=s.vss), pos=Vec2R(20, 0))
+        for i, o in enumerate([s.o1, s.o2, s.o3, s.o4]):
+            s[f"r{i+1}"] = SchemInstance(load.portmap(p=o, n=s.vss), pos=Vec2R(5*i + 5, 5))
+        s.outline = Rect4R(lx=0, ly=-5, ux=25, uy=10)
+        return s
+
+    @viewgen_noctx
+    def sim_op(self):
+        s = SimHierarchy.from_schematic(self.schematic)
+        s.simulate(reltol="1e-4", method="gear", solver="klu").op()
+        return s
+
+
+def ideal_shunt(vclamp=R("3.3"), g=R("1m")):
+    return Iexpr(expr=f"{g.compat_str()}*max(V(p,n)-{vclamp.compat_str()},0)")
+
+
+class ShuntTb(Cell):
+    """An Iexpr (by default ideal_shunt()) across a swept voltage source."""
+    expr = Parameter(str, default=ideal_shunt().expr)
+
+    @viewgen_noctx
+    def schematic(self):
+        s = Schematic(cell=self)
+        s.vss = Net()
+        s.a = Net()
+        s.gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(0, -5))
+        s.vin = SchemInstance(Vdc(dc=0).symbol.portmap(p=s.a, n=s.vss), pos=Vec2R(0, 0))
+        s.shunt = SchemInstance(Iexpr(expr=self.expr).symbol.portmap(p=s.a, n=s.vss), pos=Vec2R(5, 0))
+        s.outline = Rect4R(lx=0, ly=-5, ux=10, uy=5)
+        return s
+
+    @viewgen_noctx
+    def sim_dc(self):
+        s = SimHierarchy.from_schematic(self.schematic)
+        s.simulate().dc_sweep(self.schematic.vin, 0, 5, 11)
+        return s
