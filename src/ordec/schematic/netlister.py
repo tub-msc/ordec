@@ -1,18 +1,122 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+from dataclasses import dataclass, fields
+from typing import Literal
+
 from ..core import *
+
+@dataclass(frozen=True, kw_only=True)
+class NgspiceOptions:
+    """
+    ngspice simulator options, each set field is written as ".option" line
+    into the netlist. Unset fields (None, False) keep ngspice's defaults
+    (given in parentheses where well-known, see the ngspice manual for the
+    rest). Real-valued fields accept anything R accepts, e.g. "1e-12",
+    1e-4 or R("1n").
+    """
+    temp: R|None = None #: Simulation temperature in degrees C (27).
+
+    # Tolerances
+    reltol: R|None = None #: Relative error tolerance (1e-3).
+    abstol: R|None = None #: Absolute current error tolerance in A (1e-12).
+    vntol: R|None = None #: Absolute voltage error tolerance in V (1e-6).
+    chgtol: R|None = None #: Charge tolerance in C (1e-14).
+    trtol: R|None = None #: Transient truncation error overestimation factor (7).
+
+    # Convergence aids
+    gmin: R|None = None #: Minimum conductance across device junctions in S (1e-12).
+    gshunt: R|None = None #: Conductance from every node to ground in S.
+    rshunt: R|None = None #: Resistance from every node to ground in ohm.
+    cshunt: R|None = None #: Capacitance from every node to ground in F.
+    itl1: int|None = None #: Operating point iteration limit (100).
+    itl2: int|None = None #: DC sweep iteration limit per point (50).
+    itl4: int|None = None #: Transient iteration limit per timepoint (10).
+    gminsteps: int|None = None #: Number of gmin steps, 0 disables gmin stepping.
+    gminfactor: R|None = None #: Factor per gmin step.
+    srcsteps: int|None = None #: Number of source steps, 0 disables source stepping.
+    noopiter: bool = False #: Go directly to gmin stepping for the operating point.
+    nodedamping: bool = False #: Limit node voltage changes between iterations.
+    absdv: R|None = None #: Maximum absolute node voltage change between iterations in V.
+    reldv: R|None = None #: Maximum relative node voltage change between iterations.
+    pivtol: R|None = None #: Minimum acceptable matrix pivot (1e-13).
+    pivrel: R|None = None #: Minimum acceptable ratio of pivot to largest column entry (1e-3).
+
+    # Transient analysis
+    method: Literal["trap", "gear"]|None = None #: Integration method ("trap").
+    maxord: int|None = None #: Maximum order of the integration method (2).
+    xmu: R|None = None #: Damping coefficient of the trapezoidal method (0.5).
+    newtrunc: bool = False #: Timestep control based on node voltages, see ltereltol etc.
+    ltereltol: R|None = None #: Relative tolerance of newtrunc.
+    lteabstol: R|None = None #: Absolute tolerance of newtrunc.
+    ltetrtol: R|None = None #: Truncation error overestimation factor of newtrunc.
+    minbreak: R|None = None #: Minimum time between breakpoints in s.
+    ramptime: R|None = None #: Ramp all sources up from 0 during this time in s.
+
+    # Miscellaneous
+    solver: Literal["klu", "sparse"]|None = None #: Matrix solver.
+    noopac: bool = False #: Skip the operating point in AC analysis of linear circuits.
+    keepopinfo: bool = False #: Keep operating point information during small-signal analyses.
+    seed: int|None = None #: Seed of the random number generator.
+
+    def __post_init__(self):
+        for f in fields(self):
+            value = getattr(self, f.name)
+            if value is None:
+                continue
+            if f.type == R|None:
+                # frozen dataclass: bypass the frozen __setattr__.
+                object.__setattr__(self, f.name, R(value))
+            elif f.type == int|None:
+                if isinstance(value, bool) or not isinstance(value, int):
+                    raise TypeError(f"NgspiceOptions.{f.name} must be int, got {value!r}.")
+            elif f.type == bool:
+                if not isinstance(value, bool):
+                    raise TypeError(f"NgspiceOptions.{f.name} must be bool, got {value!r}.")
+        # ngspice accepts the following out-of-range values without any
+        # message, so they cannot be detected in its output:
+        for name in ("reltol", "abstol", "itl4"):
+            value = getattr(self, name)
+            if value is not None and value <= 0:
+                raise ValueError(f"NgspiceOptions.{name} must be positive, got {value!r}.")
+        for name in ("gmin", "pivtol", "gminsteps", "ramptime"):
+            value = getattr(self, name)
+            if value is not None and value < 0:
+                raise ValueError(f"NgspiceOptions.{name} must be non-negative, got {value!r}.")
+        if self.xmu is not None and not 0 <= self.xmu <= R("0.5"):
+            raise ValueError(f"NgspiceOptions.xmu must be between 0 and 0.5, got {self.xmu!r}.")
+        if self.temp is not None and self.temp < R("-273.15"):
+            raise ValueError(f"NgspiceOptions.temp must be at least -273.15, got {self.temp!r}.")
+        if self.method not in (None, "trap", "gear"):
+            raise ValueError(f"Invalid NgspiceOptions.method {self.method!r}.")
+        if self.solver not in (None, "klu", "sparse"):
+            raise ValueError(f"Invalid NgspiceOptions.solver {self.solver!r}.")
+
+    def cards(self) -> list[str]:
+        """Returns the arguments of the ".option" lines, in field order."""
+        ret = []
+        for f in fields(self):
+            value = getattr(self, f.name)
+            if value is None or value is False:
+                continue
+            if f.name == "solver":
+                ret.append(value)
+            elif value is True:
+                ret.append(f.name)
+            elif isinstance(value, R):
+                ret.append(f"{f.name}={value.compat_str()}")
+            else:
+                ret.append(f"{f.name}={value}")
+        return ret
 
 class Netlister:
     def __init__(self, directory: Directory, enable_savecurrents: bool = True,
-                 lvs: bool = False, corner=None, temp=None):
+                 lvs: bool = False, corner=None, options: NgspiceOptions|None = None):
         self.directory = directory
         # Process corner, interpreted by the PDK's netlist setup function
         # (e.g. ihp130.Corner selects .lib sections); None = PDK's typical.
         self.corner = corner
-        # Simulation temperature in degrees C; None keeps ngspice's
-        # default (27 degrees C).
-        self.temp = None if temp is None else R(temp)
+        self.options = NgspiceOptions() if options is None else options
         self.spice_cards = []
         self.cur_line = 0
         self.indent = 0
@@ -134,8 +238,8 @@ class Netlister:
         if self.enable_savecurrents:
             self.add('.probe', 'alli') 
             self.add(".option", "savecurrents")
-        if self.temp is not None:
-            self.add(".option", f"temp={self.temp.compat_str()}")
+        for card in self.options.cards():
+            self.add(".option", card)
         subckt_dep = self.netlist_schematic(top)
         self.netlist_hier_deps(subckt_dep)
         self.add_setup()

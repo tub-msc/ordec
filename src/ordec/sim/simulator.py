@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 from ..core import *
 from ..core.context import NodeContext
 from .ngspice import NgspiceSetup, ngspice_batch
-from ..schematic import Netlister
+from ..schematic import Netlister, NgspiceOptions
 
 
 def parse_signal_name(name):
@@ -70,12 +70,12 @@ class Simulator:
         corner: Process corner, interpreted by the PDK in use (e.g.
             :class:`ordec.lib.ihp130.Corner` for ihp130 or a string auch as
             ``'ss'`` for sky130). None selects the PDK's typical corner.
-        temp: Simulation temperature in degrees C. None keeps ngspice's
-            default of 27 degrees C.
+        options: ngspice options such as temperature, tolerances and
+            integration method. None keeps ngspice's defaults.
     """
 
     def __init__(self, simhier: SimHierarchy, enable_savecurrents: bool = True,
-                 corner=None, temp=None):
+                 corner=None, options: NgspiceOptions|None = None):
         self.simhier = simhier
         self.top = self.simhier.schematic
 
@@ -84,7 +84,7 @@ class Simulator:
         progress("Netlisting")
         self.netlister = Netlister(
             self.directory, enable_savecurrents=enable_savecurrents,
-            corner=corner, temp=temp)
+            corner=corner, options=options)
         self.netlister.netlist_hier(self.top)
 
     def hier_simobj_of_name(self, name: str) -> SimInstance|SimNet:
@@ -318,8 +318,9 @@ class Simulator:
     def temp_sweep(self, start, stop, step_count: int, save_params=False):
         """
         DC sweep over temperate variable (ngspice ``.dc temp``) from ``start``
-        to ``stop`` degrees C in ``step_count`` points. The optional ``temp``
-        given to :class:`Simulator` is overridden by this sweep.
+        to ``stop`` degrees C in ``step_count`` points. The optional
+        ``options.temp`` given to :class:`Simulator` is overridden by this
+        sweep.
         """
         if step_count < 2:
             raise ValueError("step_count must be >= 2")

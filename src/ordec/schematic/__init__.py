@@ -7,5 +7,5 @@ from .helpers import (
     SchematicError, spice_params,
 )
 from .annotate import place_annotations
-from .netlister import Netlister
+from .netlister import Netlister, NgspiceOptions
 from .auto_wire import auto_wire, adjust_outline_initial

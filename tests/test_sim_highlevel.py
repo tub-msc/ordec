@@ -4,7 +4,7 @@
 import pytest
 import cmath
 import math
-from ordec.schematic import Netlister
+from ordec.schematic import Netlister, NgspiceOptions
 from ordec.core import R
 from .lib import sim as lib_test
 from ordec.core import *
@@ -280,6 +280,27 @@ def test_sim_pulsedrc_tran():
 
     for got, exp in zip(h.out.voltage, expected_out):
         assert got == pytest.approx(exp, abs=0.07)
+
+
+def test_netlist_options():
+    options = NgspiceOptions(temp=80, reltol="1e-4", itl4=50, method="gear", solver="klu", noopac=True)
+    h = SimHierarchy.from_schematic(lib_test.ResdivFlatTb().schematic)
+    assert (".option temp=8.0e1\n.option reltol=1.0e-4\n.option itl4=50\n"
+        ".option method=gear\n.option klu\n.option noopac\n") in h.simulate(options=options).netlister.out()
+    with pytest.raises(TypeError):
+        h.simulate(options=options, reltol="1e-4")
+    with pytest.raises(TypeError):
+        NgspiceOptions(reltl=1e-4)
+    with pytest.raises(TypeError):
+        NgspiceOptions(itl4="50")
+    for kwargs in [dict(method="foo"), dict(reltol=0), dict(gmin=-1), dict(xmu=2), dict(temp=-500)]:
+        with pytest.raises(ValueError):
+            NgspiceOptions(**kwargs)
+    # Out-of-range value, which ngspice reports only as warning:
+    from ordec.sim.ngspice import NgspiceError
+    h = SimHierarchy.from_schematic(lib_test.ResdivFlatTb().schematic)
+    with pytest.raises(NgspiceError, match="maxord"):
+        h.simulate(maxord=10).op()
 
 
 # generic_mos tests

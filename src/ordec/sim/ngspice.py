@@ -54,6 +54,13 @@ def check_errors(ngspice_out):
         m = re.match(r"(?:stderr )?Error:\s*(.*)", line)
         if m and first_error_msg is None:
             first_error_msg = "Error: " + m.group(1)
+        # ngspice reports invalid .option values only as warnings (e.g.
+        # "Warning -- Option maxord > 6 not allowed") or without prefix
+        # ("ci_curOpt: unsupported integration method") and continues
+        # with the default value. Other warnings are left alone, as PDK
+        # models emit them in regular runs.
+        if first_error_msg is None and re.search(r"(?i)warning\b.*\boption\b|ci_curOpt", line):
+            first_error_msg = line.strip()
 
     if first_error_msg:
         raise NgspiceError(first_error_msg)

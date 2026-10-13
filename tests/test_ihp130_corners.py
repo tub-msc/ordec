@@ -56,7 +56,7 @@ def test_netlist_corner_and_temp():
 
     h = SimHierarchy.from_schematic(CornerTb().schematic)
     corner = ihp130.Corner(mos="ss", res="typ", cap=ihp130.CapCorner.WCS, hbt="bcs", dio="ff")
-    nl = Simulator(h, corner=corner, temp=125).netlister.out()
+    nl = h.simulate(corner=corner, temp=125).netlister.out()
     assert " mos_ss\n" in nl and " res_typ\n" in nl and " cap_wcs\n" in nl
     assert "cornerHBT.lib\" hbt_bcs\n" in nl and "cornerDIO.lib\" dio_ff\n" in nl
     assert "cornerMOShv.lib\" mos_ss\n" in nl

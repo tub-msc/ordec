@@ -158,10 +158,23 @@ class SimHierarchy(SubgraphRoot):
         return SimHierarchySubcursor((self, None, self.schematic))
 
     def simulate(self, enable_savecurrents: bool = True, corner=None,
-                 temp=None):
-        from ...sim import Simulator
+            options: 'NgspiceOptions|None' = None, **kwargs) -> 'Simulator':
+        """
+        Args:
+            enable_savecurrents: Enable .option savecurrents in the netlist.
+            corner: Process corner, interpreted by the PDK in use.
+            options: :class:`ordec.sim.NgspiceOptions`, e.g. a set shared
+                by several testbenches.
+            kwargs: Fields of :class:`ordec.sim.NgspiceOptions`, as an
+                alternative to options.
+        """
+        from ...sim import Simulator, NgspiceOptions
+        if options is None:
+            options = NgspiceOptions(**kwargs)
+        elif kwargs:
+            raise TypeError("Pass either options or NgspiceOptions fields as keyword arguments, not both.")
         return Simulator(self, enable_savecurrents=enable_savecurrents,
-                         corner=corner, temp=temp)
+            corner=corner, options=options)
 
     def schematic_or_symbol_at(self, inst: Optional['SimInstance']):
         """Helper function for of_subgraph of SimNet.eref and SimInstance.eref."""
