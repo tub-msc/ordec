@@ -115,6 +115,30 @@ def annotation_extent(s: Symbol, trans: TD4R, inst: SchemInstance|None) -> Rect4
     rows = annotation_rows(lines, wrap)
     return Renderer.label_rect(anchor, max(annotation_row_chars(row) for row in rows), len(rows), halign=halign, space=0)
 
+def wire_crossings(s: Schematic) -> set[Vec2R]:
+    """
+    Points where a horizontal and a vertical SchemWire segment cross each
+    other (each passing through, not ending at the point) without a
+    SchemConnPoint. See SchematicRenderer.wire_svg_path for how they are
+    drawn.
+    """
+    horizontal, vertical = [], []
+    for wire in s.all(SchemWire):
+        vertices = wire.vertices()
+        for a, b in zip(vertices, vertices[1:]):
+            if a.y == b.y and a.x != b.x:
+                horizontal.append((a, b))
+            elif a.x == b.x and a.y != b.y:
+                vertical.append((a, b))
+    crossings = set()
+    for ha, hb in horizontal:
+        for va, vb in vertical:
+            if min(ha.x, hb.x) < va.x < max(ha.x, hb.x) \
+                    and min(va.y, vb.y) < ha.y < max(va.y, vb.y):
+                crossings.add(Vec2R(va.x, ha.y))
+    conn_points = {p.pos for p in s.all(SchemConnPoint)}
+    return crossings - conn_points
+
 class Renderer:
     """
     Instantiate the Renderer class and then call one of its render_ methods,
@@ -129,6 +153,7 @@ class Renderer:
     label_char_width = 0.3
     pixel_per_unit = 25
     conn_point_radius = 0.1625
+    crossing_radius = 0.25
     # font_size_internal_pt must match the font-size in the css class
     # attribute. It has no effect on the rendered text size: draw_label()
     # divides it back out via its scale transform. Its value is a more-or-less
@@ -387,6 +412,11 @@ class SchematicRenderer(Renderer):
     #: browsers, and e.g. Inkscape and librsvg do not support custom
     #: properties, so that the wiring would lose its color there.
     wire_color = '#1a80e6'
+    #: Styles of drawing wire crossings without SchemConnPoint: 'plain',
+    #: bridges on horizontal or vertical wires ('bridge-h', 'bridge-v') or
+    #: gaps in them ('gap-h', 'gap-v'). Only 'plain' is shown unless the
+    #: web UI selects another one.
+    crossing_styles = ('plain', 'bridge-h', 'bridge-v', 'gap-h', 'gap-v')
 
     css = clean_css(Template("""
         .schematic {
@@ -426,6 +456,10 @@ class SchematicRenderer(Renderer):
         .schematic .detailOnly {
             display: none;
         }
+        .schematic .crossing-bridge-h, .schematic .crossing-bridge-v,
+        .schematic .crossing-gap-h, .schematic .crossing-gap-v {
+            display: none;
+        }
         .schematic .schemWire, .schematic .tapPoint {
             stroke: $wire_color;
         }
@@ -451,7 +485,15 @@ class SchematicRenderer(Renderer):
 
     def __init__(self, include_nids: bool=True, enable_css: bool=True, enable_grid: bool=True):
         self.enable_grid = enable_grid
+        # Set by render_schematic: the web UI offers the crossing styles only
+        # for schematics, not for symbols.
+        self.crossing_select = False
         return super().__init__(include_nids=include_nids, enable_css=enable_css)
+
+    def webdata(self):
+        view_type, data = super().webdata()
+        data['crossing_select'] = self.crossing_select
+        return view_type, data
 
     def draw_grid(self, rect: Rect4R, dot_size: float = 0.1):
         lx, ly, ux, uy = rect.tofloat()
@@ -477,6 +519,7 @@ class SchematicRenderer(Renderer):
         self.draw_symbol(s, TD4R())
 
     def render_schematic(self, s: Schematic):
+        self.crossing_select = True
         # Annotation blocks may lie outside the outline (e.g. of instances
         # that were never placed, see annotation_anchor).
         canvas = s.outline
@@ -488,11 +531,19 @@ class SchematicRenderer(Renderer):
         if self.enable_grid:
             self.draw_grid(s.outline)
 
+        # Wires passing through crossings get one path per crossing style,
+        # of which the web UI shows the selected one (see crossing_styles).
+        crossings = wire_crossings(s)
         for poly in s.all(SchemWire):
-            p = ET.SubElement(self.cur_group, 'path', d=poly.svg_path())
-            p.attrib['class'] = 'schemWire'
-            if self.include_nids:
-                p.attrib['data-nid'] = str(poly.ref.nid)
+            variants = {style: self.wire_svg_path(poly, crossings, style)
+                for style in self.crossing_styles}
+            if len(set(variants.values())) == 1:
+                variants = {None: variants['plain']}
+            for style, d in variants.items():
+                p = ET.SubElement(self.cur_group, 'path', d=d)
+                p.attrib['class'] = 'schemWire' if style is None else f'schemWire crossing-{style}'
+                if self.include_nids:
+                    p.attrib['data-nid'] = str(poly.ref.nid)
 
         for p in s.all(SchemConnPoint):
             cx, cy = p.pos.tofloat()
@@ -519,6 +570,50 @@ class SchematicRenderer(Renderer):
 
         for err in s.all(SchemErrorMarker):
             self.draw_error_marker(err)
+
+    def wire_svg_path(self, wire: SchemWire, crossings: set[Vec2R], style: str) -> str:
+        """
+        SVG path of wire in the given crossing style (see crossing_styles).
+        Except for 'plain', the wire is drawn with a bridge (half circle
+        bulging up or right) or a gap at each of the given crossings on its
+        horizontal (-h) or vertical (-v) segments.
+        """
+        if style == 'plain':
+            return wire.svg_path()
+        kind, orient = style.split('-')
+        vertical = orient == 'v'
+        # (u, w): coordinate along and across the decorated segments.
+        uw = lambda p: (p.y, p.x) if vertical else (p.x, p.y)
+        xy = lambda u, w: (w, u) if vertical else (u, w)
+        r = self.crossing_radius
+        vertices = wire.vertices()
+        x, y = vertices[0].tofloat()
+        d = [f"M{x} {y}"]
+        for a, b in zip(vertices, vertices[1:]):
+            (ua, w), (ub, wb) = uw(a), uw(b)
+            if w == wb:
+                step = 1 if ub > ua else -1
+                # Crossings in the order the segment passes them.
+                us = sorted((float(uw(c)[0]) for c in crossings
+                    if uw(c)[1] == w and min(ua, ub) < uw(c)[0] < max(ua, ub)),
+                    key=lambda u: step * u)
+                w = float(w)
+                for u in us:
+                    x0, y0 = xy(u - step*r, w)
+                    x1, y1 = xy(u + step*r, w)
+                    d.append(f"L{x0} {y0}")
+                    if kind == 'gap':
+                        d.append(f"M{x1} {y1}")
+                    else:
+                        # Sweep flag 1 is counterclockwise in schematic
+                        # coordinates (y up, see setup_canvas): bulging up
+                        # when going right is clockwise, bulging right when
+                        # going up is counterclockwise.
+                        sweep = int((step > 0) == vertical)
+                        d.append(f"A{r} {r} 0 0 {sweep} {x1} {y1}")
+            x, y = b.tofloat()
+            d.append(f"L{x} {y}")
+        return ' '.join(d)
 
     def draw_error_marker(self, err: SchemErrorMarker):
         cx, cy = err.pos.tofloat()

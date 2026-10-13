@@ -1,11 +1,23 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="600.0px" height="525.0px" viewBox="-2.0 0.0 24.0 21.0">
   <g class="schematic" transform="matrix(1 0 0 -1 0 21.0)">
-    <path d="M1.0 7.0 L2.0 7.0 L2.0 15.0 L3.0 15.0" class="schemWire" />
+    <path d="M1.0 7.0 L2.0 7.0 L2.0 15.0 L3.0 15.0" class="schemWire crossing-plain" />
+    <path d="M1.0 7.0 L2.0 7.0 L2.0 15.0 L3.0 15.0" class="schemWire crossing-bridge-h" />
+    <path d="M1.0 7.0 L2.0 7.0 L2.0 8.75 A0.25 0.25 0 0 1 2.0 9.25 L2.0 15.0 L3.0 15.0" class="schemWire crossing-bridge-v" />
+    <path d="M1.0 7.0 L2.0 7.0 L2.0 15.0 L3.0 15.0" class="schemWire crossing-gap-h" />
+    <path d="M1.0 7.0 L2.0 7.0 L2.0 8.75 M2.0 9.25 L2.0 15.0 L3.0 15.0" class="schemWire crossing-gap-v" />
     <path d="M2.0 7.0 L10.0 7.0" class="schemWire" />
     <path d="M18.0 7.0 L15.0 7.0" class="schemWire" />
     <path d="M18.0 8.0 L15.0 8.0" class="schemWire" />
-    <path d="M10.0 8.0 L8.0 8.0 L8.0 15.0 L7.0 15.0" class="schemWire" />
-    <path d="M1.0 9.0 L9.0 9.0 L9.0 11.0 L12.0 11.0 L12.0 10.0" class="schemWire" />
+    <path d="M10.0 8.0 L8.0 8.0 L8.0 15.0 L7.0 15.0" class="schemWire crossing-plain" />
+    <path d="M10.0 8.0 L8.0 8.0 L8.0 15.0 L7.0 15.0" class="schemWire crossing-bridge-h" />
+    <path d="M10.0 8.0 L8.0 8.0 L8.0 8.75 A0.25 0.25 0 0 1 8.0 9.25 L8.0 15.0 L7.0 15.0" class="schemWire crossing-bridge-v" />
+    <path d="M10.0 8.0 L8.0 8.0 L8.0 15.0 L7.0 15.0" class="schemWire crossing-gap-h" />
+    <path d="M10.0 8.0 L8.0 8.0 L8.0 8.75 M8.0 9.25 L8.0 15.0 L7.0 15.0" class="schemWire crossing-gap-v" />
+    <path d="M1.0 9.0 L9.0 9.0 L9.0 11.0 L12.0 11.0 L12.0 10.0" class="schemWire crossing-plain" />
+    <path d="M1.0 9.0 L1.75 9.0 A0.25 0.25 0 0 0 2.25 9.0 L7.75 9.0 A0.25 0.25 0 0 0 8.25 9.0 L9.0 9.0 L9.0 11.0 L12.0 11.0 L12.0 10.0" class="schemWire crossing-bridge-h" />
+    <path d="M1.0 9.0 L9.0 9.0 L9.0 11.0 L12.0 11.0 L12.0 10.0" class="schemWire crossing-bridge-v" />
+    <path d="M1.0 9.0 L1.75 9.0 M2.25 9.0 L7.75 9.0 M8.25 9.0 L9.0 9.0 L9.0 11.0 L12.0 11.0 L12.0 10.0" class="schemWire crossing-gap-h" />
+    <path d="M1.0 9.0 L9.0 9.0 L9.0 11.0 L12.0 11.0 L12.0 10.0" class="schemWire crossing-gap-v" />
     <circle cx="2.0" cy="7.0" r="0.1625" class="connPoint" />
     <path d="M0 0 L0 0.5" transform="matrix(0 -1 1 0 1.0 20.0)" class="tapPoint" />
     <text transform="matrix(0.045 0 0 -0.045 1.65 20.0)" dominant-baseline="middle" text-anchor="start" class="tapPointLabel">vdd</text>

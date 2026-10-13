@@ -1561,6 +1561,25 @@ body.theme-dark .spotlight-buttons .spotlight-skip {
 body.theme-dark .schem-detail-toggle:hover {
     background-color: rgba(255, 255, 255, 0.08);
 }
+/* Crossing style select of schematics: render.py emits a path per style
+   for crossing wires and hides all but the plain one. */
+.schem-svg:not([data-crossings="plain"]) .crossing-plain {
+    display: none;
+}
+.schem-svg[data-crossings="bridge-h"] .crossing-bridge-h,
+.schem-svg[data-crossings="bridge-v"] .crossing-bridge-v,
+.schem-svg[data-crossings="gap-h"] .crossing-gap-h,
+.schem-svg[data-crossings="gap-v"] .crossing-gap-v {
+    display: inline;
+}
+.schem-crossing-select {
+    font-family: var(--font-sans);
+    font-size: var(--font-size-sm);
+    color: var(--color-text);
+    background-color: transparent;
+    border: none;
+    cursor: pointer;
+}
 .viewer-coordinates {
     font-family: var(--font-mono);
     font-size: var(--font-size-md);

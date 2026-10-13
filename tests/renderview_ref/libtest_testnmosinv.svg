@@ -1,13 +1,21 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="300.0px" height="350.0px" viewBox="-1.0 0.0 12.0 14.0">
   <g class="schematic" transform="matrix(1 0 0 -1 0 14.0)">
     <path d="M1.0 1.0 L5.0 1.0 L5.0 2.0" class="schemWire" />
-    <path d="M7.0 4.0 L8.0 4.0 L8.0 10.0 L7.0 10.0" class="schemWire" />
+    <path d="M7.0 4.0 L8.0 4.0 L8.0 10.0 L7.0 10.0" class="schemWire crossing-plain" />
+    <path d="M7.0 4.0 L8.0 4.0 L8.0 10.0 L7.0 10.0" class="schemWire crossing-bridge-h" />
+    <path d="M7.0 4.0 L8.0 4.0 L8.0 6.75 A0.25 0.25 0 0 1 8.0 7.25 L8.0 10.0 L7.0 10.0" class="schemWire crossing-bridge-v" />
+    <path d="M7.0 4.0 L8.0 4.0 L8.0 10.0 L7.0 10.0" class="schemWire crossing-gap-h" />
+    <path d="M7.0 4.0 L8.0 4.0 L8.0 6.75 M8.0 7.25 L8.0 10.0 L7.0 10.0" class="schemWire crossing-gap-v" />
     <path d="M8.0 4.0 L8.0 1.0 L5.0 1.0" class="schemWire" />
     <path d="M1.0 13.0 L2.0 13.0 L5.0 13.0 L5.0 12.0" class="schemWire" />
     <path d="M2.0 13.0 L2.0 10.0 L3.0 10.0" class="schemWire" />
     <path d="M1.0 4.0 L2.0 4.0 L3.0 4.0" class="schemWire" />
     <path d="M5.0 6.0 L5.0 7.0 L5.0 8.0" class="schemWire" />
-    <path d="M5.0 7.0 L9.0 7.0" class="schemWire" />
+    <path d="M5.0 7.0 L9.0 7.0" class="schemWire crossing-plain" />
+    <path d="M5.0 7.0 L7.75 7.0 A0.25 0.25 0 0 0 8.25 7.0 L9.0 7.0" class="schemWire crossing-bridge-h" />
+    <path d="M5.0 7.0 L9.0 7.0" class="schemWire crossing-bridge-v" />
+    <path d="M5.0 7.0 L7.75 7.0 M8.25 7.0 L9.0 7.0" class="schemWire crossing-gap-h" />
+    <path d="M5.0 7.0 L9.0 7.0" class="schemWire crossing-gap-v" />
     <circle cx="5.0" cy="7.0" r="0.1625" class="connPoint" />
     <circle cx="2.0" cy="13.0" r="0.1625" class="connPoint" />
     <circle cx="5.0" cy="1.0" r="0.1625" class="connPoint" />
