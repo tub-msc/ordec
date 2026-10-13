@@ -22,6 +22,9 @@ export class SvgView extends View {
         // labels that symbols mark as hidden (class "detailOnly" in render.py),
         // on shows them.
         this.detail = false;
+        // Crossing style select, kept across updates: one of crossing_styles
+        // in render.py, which emits a path per style for crossing wires.
+        this.crossings = 'plain';
 
         this.onLvsSelect = (data) => {
             if (data && !this.selectionApplies(data.schemView, data.schemWireHash)) {
@@ -126,6 +129,10 @@ export class SvgView extends View {
         } else if (itemType === 'net') {
             // Net highlighting: highlight wires and tap points only (not ports)
             elements.each(function() {
+                // Skip the wire paths of unselected crossing styles.
+                if (getComputedStyle(this).display === 'none') {
+                    return;
+                }
                 const el = d3.select(this);
                 const tagName = this.tagName.toLowerCase();
                 if (tagName === 'path') {
@@ -256,7 +263,32 @@ export class SvgView extends View {
             applyDetail();
         };
         applyDetail();
-        statusBar.append(detailToggle, this.coordsDisplay.element);
+        statusBar.append(detailToggle);
+        if (msgData.crossing_select) {
+            const crossingSelect = document.createElement('select');
+            crossingSelect.className = 'schem-crossing-select';
+            crossingSelect.title = 'How wires crossing without connection are drawn';
+            for (const [value, label] of [
+                ['plain', 'Crossings: plain'],
+                ['bridge-h', 'Crossings: bridge horizontal'],
+                ['bridge-v', 'Crossings: bridge vertical'],
+                ['gap-h', 'Crossings: gap horizontal'],
+                ['gap-v', 'Crossings: gap vertical'],
+            ]) {
+                crossingSelect.add(new Option(label, value));
+            }
+            const applyCrossings = () => {
+                crossingSelect.value = this.crossings;
+                this.svgNode.dataset.crossings = this.crossings;
+            };
+            crossingSelect.onchange = () => {
+                this.crossings = crossingSelect.value;
+                applyCrossings();
+            };
+            applyCrossings();
+            statusBar.append(crossingSelect);
+        }
+        statusBar.append(this.coordsDisplay.element);
         schemRoot.append(svgHost, statusBar);
 
         svg.on('mousemove', (event) => {
