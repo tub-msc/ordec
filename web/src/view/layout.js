@@ -581,15 +581,6 @@ export class LayoutView extends View {
     loadLabels(isFontSwap) {
         const gl = this.gl; 
         let labelVertices = [];
-        let textureCursorX = 0;
-        let textureCursorY = 0;
-        // Set on the first label that no longer fits the atlas, so that the
-        // remaining labels are skipped without alerting once per label.
-        let textureFull = false;
-     
-        this.labelsTextureWidth = 512;
-        this.labelsTextureHeight = 512;
-        this.labelsTextureMap = new Map();
         this.labelsNumVertices = 0;
 
         const fontSpec = '20px Inconsolata';
@@ -606,53 +597,89 @@ export class LayoutView extends View {
         }
 
         const ctx = document.createElement("canvas").getContext("2d");
+        // Resizing the canvas resets the context state, so this is applied
+        // again once the atlas size is known.
+        const setupCtx = () => {
+            ctx.font = fontSpec;
+            ctx.fontStretch = "semi-condensed";
+            ctx.textAlign = "left";
+            ctx.textBaseline = "top";
+        };
+        setupCtx();
+        // All lines share one height, so that multi-line labels stack evenly
+        // and the atlas rows are uniform.
+        const lineHeight = Math.ceil(ctx.measureText("").fontBoundingBoxDescent);
+
+        // Collect labels and measure each distinct line (canvas fillText does
+        // not break lines at "\n", so every line gets its own atlas slot).
+        const lineWidths = new Map();
+        const labels = this.data.layers.map(layer => {
+            const layerLabels = [];
+            this.drawItems.forEach(item => {
+                const entry = this.cellLayers[item.cell].get(layer.nid);
+                entry?.labels.forEach(label => {
+                    const [x, y] = transformPoint(item.m, label.pos);
+                    const lines = label.text.split("\n");
+                    lines.forEach(line => {
+                        if(!lineWidths.has(line)) {
+                            lineWidths.set(line, Math.ceil(ctx.measureText(line).width));
+                        }
+                    });
+                    layerLabels.push({x, y, lines});
+                });
+            });
+            return layerLabels;
+        });
+
+        // Size the atlas to fit the widest line. A line wider than
+        // MAX_TEXTURE_SIZE is cut at the atlas width, with its quad narrowed
+        // accordingly: texture coordinates must never leave the line's slot.
+        const maxSize = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+        let widest = 512;
+        lineWidths.forEach(W => { widest = Math.max(widest, W); });
+        this.labelsTextureWidth = Math.min(maxSize, widest);
+        let cursorX = 0;
+        let cursorY = 0;
+        // Set on the first line that no longer fits the atlas, so that the
+        // remaining lines are skipped without alerting once per line.
+        let textureFull = false;
+        this.labelsTextureMap = new Map();
+        lineWidths.forEach((W, line) => {
+            W = Math.min(W, this.labelsTextureWidth);
+            if(W == 0) {
+                return;
+            }
+            if(cursorX + W > this.labelsTextureWidth) {
+                cursorX = 0;
+                cursorY += lineHeight;
+            }
+            if(cursorY + lineHeight > maxSize) {
+                if(!textureFull) {
+                    textureFull = true;
+                    alert(`Labels texture is full! Some labels are not displayed.`);
+                }
+                return;
+            }
+            this.labelsTextureMap.set(line, {x: cursorX, y: cursorY, width: W});
+            cursorX += W;
+        });
+        this.labelsTextureHeight = cursorY + lineHeight;
+
         ctx.canvas.width  = this.labelsTextureWidth;
         ctx.canvas.height = this.labelsTextureHeight;
+        setupCtx();
         ctx.fillStyle = "#000000";
         ctx.fillRect(0, 0, this.labelsTextureWidth, this.labelsTextureHeight);
-        ctx.font = fontSpec;
-        ctx.fontStretch = "semi-condensed";
-        ctx.textAlign = "left";
-        ctx.textBaseline = "top";
         ctx.fillStyle = "#ffffff";
+        this.labelsTextureMap.forEach((tex, line) => {
+            ctx.fillText(line, tex.x, tex.y);
+        });
 
-        const textOnTexture = (text) => {
-            if(!this.labelsTextureMap.get(text)) {
-                // measure text + break line if needed, before rendering text:
-                const m = ctx.measureText(text);
-                let W = Math.ceil(m.width);
-                let H = Math.ceil(m.actualBoundingBoxDescent);
-                if(textureCursorX + W > this.labelsTextureWidth) {
-                    textureCursorX = 0;
-                    textureCursorY += H;
-                }
-                if(textureCursorY + H > this.labelsTextureHeight) {
-                    if(!textureFull) {
-                        textureFull = true;
-                        alert(`Labels texture is full! Some labels are not displayed.`);
-                    }
-                    return undefined;
-                }
-
-                // render text:
-                ctx.fillText(text, textureCursorX, textureCursorY);
-
-                this.labelsTextureMap.set(text, {
-                    x: textureCursorX,
-                    y: textureCursorY,
-                    width: W,
-                    height: H,
-                })
-                textureCursorX += W;
-            }
-            return this.labelsTextureMap.get(text);
-        };
-
-        const addLabel = (x, y, text, halign='left', valign='top') => {
-            // halign must be one of: 'left', 'center', 'right'
-            // valign must be one of: 'top', 'middle', 'bottom'
-            const tex = textOnTexture(text);
-            // Atlas full: drop this label instead of dereferencing undefined.
+        // Adds one line of a label. The label is centered on (x, y), and
+        // each of its lines is centered horizontally.
+        const addLine = (x, y, line, p_yl) => {
+            const tex = this.labelsTextureMap.get(line);
+            // Empty line or atlas full: nothing to draw.
             if(tex === undefined) {
                 return;
             }
@@ -660,37 +687,11 @@ export class LayoutView extends View {
             const lu = (tex.x) / this.labelsTextureWidth;
             const uu = (tex.x + tex.width) / this.labelsTextureWidth;
             const lv = (tex.y) / this.labelsTextureHeight;
-            const uv = (tex.y + tex.height) / this.labelsTextureHeight;
-            
-            const W = tex.width;
-            const H = tex.height;
+            const uv = (tex.y + lineHeight) / this.labelsTextureHeight;
 
-            // set pixelCoord values depending on halign and valign:
-            let p_xl;
-            let p_xu;
-            let p_yl;
-            let p_yu;
-            if(halign == 'left') {
-                p_xl = 0;
-                p_xu = W;
-            } else if(halign == 'right') {
-                p_xl = -W;
-                p_xu = 0;
-            } else if(halign == 'center') {
-                p_xl = -Math.ceil(W/2);
-                p_xu = p_xl + W;
-            }
-
-            if(valign == 'top') {
-                p_yl = 0;
-                p_yu = H;
-            } else if(valign == 'bottom') {
-                p_yl = -H;
-                p_yu = 0;
-            } else if(valign == 'middle') {
-                p_yl = -Math.ceil(H/2);
-                p_yu = p_yl + H;
-            }
+            const p_xl = -Math.ceil(tex.width/2);
+            const p_xu = p_xl + tex.width;
+            const p_yu = p_yl + lineHeight;
 
             labelVertices.push(
                 // x y    textureCoord   pixelCoord
@@ -704,14 +705,11 @@ export class LayoutView extends View {
             this.labelsNumVertices += 6;
         };
 
-        this.data.layers.forEach(layer => {
+        this.data.layers.forEach((layer, i) => {
             layer.labelVerticesOffset = this.labelsNumVertices;
-            this.drawItems.forEach(item => {
-                const entry = this.cellLayers[item.cell].get(layer.nid);
-                entry?.labels.forEach(label => {
-                    const [x, y] = transformPoint(item.m, label.pos);
-                    addLabel(x, y, label.text, 'center', 'middle');
-                });
+            labels[i].forEach(({x, y, lines}) => {
+                const top = -Math.ceil(lines.length * lineHeight / 2);
+                lines.forEach((line, j) => addLine(x, y, line, top + j * lineHeight));
             });
             layer.labelVerticesCount = this.labelsNumVertices - layer.labelVerticesOffset;
         });
