@@ -46,13 +46,7 @@ def semantic_diagnostics(session, uri: str):
         ))
 
     def module_exists(module_name):
-        if module_name is None:
-            return False
-        python_module_name = session.resolve_python_import_name(uri, module_name)
-        return (
-            session.module_definition(uri, module_name) is not None
-            or session.python_module_exists(python_module_name)
-        )
+        return module_name is not None and session.module_exists(uri, module_name)
 
     def name_resolves(name):
         if hasattr(builtins, name):
@@ -95,8 +89,8 @@ def semantic_diagnostics(session, uri: str):
             )
             continue
 
-        python_module_name = session.resolve_python_import_name(uri, module_name)
-        if module_uri is None and session.python_module_info(python_module_name) is None:
+        module_path = session.resolve_python_module_path(uri, module_name)
+        if module_uri is None and session.python_module_info(module_path) is None:
             continue
 
         add_diagnostic(

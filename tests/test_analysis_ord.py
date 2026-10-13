@@ -171,8 +171,8 @@ def test_find_spec_failure_unresolved(monkeypatch):
 
     monkeypatch.setattr("importlib.util.find_spec", broken_find_spec)
 
-    assert resolver.python_module_path("bad.package") is None
-    assert not resolver.python_module_exists("bad.package")
+    assert resolver.installed_module_path("bad.package") is None
+    assert not resolver.installed_module_exists("bad.package")
 
 
 def test_semantic_diagnostics(tmp_path):
@@ -768,6 +768,86 @@ def test_symlinked_workspace_uris(tmp_path):
     assert session.canonical_uri(uri) == uri
     assert session.workspace_uris() == [uri]
 
+    # A symlinked module belongs to the package it is found in, as at
+    # runtime, not to the directory of the symlink target.
+    (real_root / "pkg").mkdir()
+    (real_root / "pkg" / "__init__.py").write_text("")
+    (real_root / "pkg" / "a.py").write_text("class A:\n    pass\n")
+    (tmp_path / "lib.py").write_text("from .a import A\n")
+    (real_root / "pkg" / "lib.py").symlink_to(tmp_path / "lib.py")
+    (real_root / "user.ord").write_text("from pkg.lib import A\n")
+    user_uri = session.open_path(str(linked_root / "user.ord"))
+    assert diagnostic_codes(session, user_uri) == []
+
+
+def test_imports_follow_runtime_rules(tmp_path):
+    # foo.py shadows foo.ord like in ordec.importer. Without a workspace
+    # root, Python modules beside the document resolve, and relative
+    # imports resolve file-relative for .py targets as for .ord targets,
+    # also when naming a module of the directory itself.
+    (tmp_path / "foo.py").write_text("class Shadow:\n    pass\n")
+    (tmp_path / "foo.ord").write_text("cell Hidden:\n    pass\n")
+    (tmp_path / "helper.py").write_text("class Helper:\n    pass\n")
+    (tmp_path / "lib.py").write_text("class Lib:\n    pass\n")
+    source = (
+        "from foo import Shadow\nfrom helper import Helper\nfrom .lib import Lib\n"
+        "from . import lib\n"
+    )
+    top_path = tmp_path / "top.ord"
+    top_path.write_text(source)
+
+    session = AnalysisSession()
+    uri = session.open_path(str(top_path))
+    assert diagnostic_codes(session, uri) == []
+    for name, module in [("Shadow", "foo.py"), ("Helper", "helper.py"), ("Lib", "lib.py")]:
+        definition = session.definition(uri, position_at(source, name))
+        assert definition["uri"] == (tmp_path / module).resolve().as_uri()
+
+    # Deleting the shadowing foo.py makes foo.ord the imported document.
+    foo_uri = (tmp_path / "foo.ord").as_uri()
+    assert uri not in session.workspace_dependents(foo_uri)
+    (tmp_path / "foo.py").unlink()
+    session.invalidate_path(str(tmp_path / "foo.py"))
+    assert uri in session.workspace_dependents(foo_uri)
+
+    # In a src layout, the import root of the package is src/, not the
+    # workspace root, also for imports inside Python modules. Those do not
+    # search their own directory (pkg/types.py is not the stdlib types).
+    # Relative imports cannot leave the topmost package.
+    package_path = tmp_path / "repo" / "src" / "pkg"
+    package_path.mkdir(parents=True)
+    (package_path / "__init__.py").write_text("")
+    (package_path / "a.py").write_text("class A:\n    pass\n")
+    (package_path / "types.py").write_text("")
+    (package_path / "b.py").write_text("from pkg.a import A\nfrom types import SimpleNamespace\n")
+    source = "from pkg.b import A\nfrom pkg.b import SimpleNamespace\nfrom ...outside import X\n"
+    (package_path / "top.ord").write_text(source)
+
+    session = AnalysisSession(workspace_root=str(tmp_path / "repo"))
+    uri = session.open_path(str(package_path / "top.ord"))
+    assert diagnostic_codes(session, uri) == ["unresolved-import"]
+    definition = session.definition(uri, position_at(source, "A"))
+    assert definition["uri"] == (package_path / "a.py").resolve().as_uri()
+
+    # One module name names a different file for each directory, also
+    # next to a same-named module in the workspace root.
+    (tmp_path / "repo" / "helper.py").write_text("class Root:\n    pass\n")
+    for name in ["A", "B"]:
+        doc_path = tmp_path / "repo" / name.lower()
+        doc_path.mkdir()
+        (doc_path / "helper.py").write_text(f"class {name}:\n    pass\n")
+        source = f"from helper import {name}\n"
+        (doc_path / "top.ord").write_text(source)
+        uri = session.open_path(str(doc_path / "top.ord"))
+        assert diagnostic_codes(session, uri) == []
+        definition = session.definition(uri, position_at(source, name))
+        assert definition["uri"] == (doc_path / "helper.py").resolve().as_uri()
+
+    # Untitled documents have no directory of their own, only the
+    # workspace root to import from.
+    session.open_document("untitled:Untitled-1", "from helper import Root\n")
+    assert diagnostic_codes(session, "untitled:Untitled-1") == []
+
 
 def test_init_ord_packages(tmp_path, monkeypatch):
     package_path = tmp_path / "pkg"
@@ -785,9 +865,9 @@ def test_init_ord_packages(tmp_path, monkeypatch):
     top_path.write_text(source)
 
     resolver = ImportResolver(str(tmp_path))
-    assert resolver.python_module_path("pkg") == init_path.resolve()
-    assert resolver.python_module_path("pkg.sub") == sub_path.resolve()
-    assert resolver.python_module_exists("pkg.sub")
+    assert resolver.module_path(top_path.as_uri(), "pkg") == init_path.resolve()
+    assert resolver.module_path(top_path.as_uri(), "pkg.sub") == sub_path.resolve()
+    assert resolver.module_exists(top_path.as_uri(), "pkg.sub")
 
     # Installed packages rooted by __init__.ord resolve their .ord
     # modules through the parent package, like __init__.py ones do.
@@ -800,7 +880,7 @@ def test_init_ord_packages(tmp_path, monkeypatch):
         "find_spec",
         lambda name: InitOrdSpec() if name == "pkg" else None,
     )
-    assert installed_resolver.python_module_path("pkg.sub") == sub_path.resolve()
+    assert installed_resolver.installed_module_path("pkg.sub") == sub_path.resolve()
 
     # The session navigates import members through the same resolution.
     session = AnalysisSession(workspace_root=str(tmp_path))
@@ -848,7 +928,8 @@ def test_imports_match_runtime_importer(tmp_path):
 
 
 def test_export_ranges_avoid_keywords(tmp_path):
-    (tmp_path / "shortnames.py").write_text(dedent("""\
+    path = tmp_path / "shortnames.py"
+    path.write_text(dedent("""\
         def f(x):
             return x
 
@@ -859,13 +940,13 @@ def test_export_ranges_avoid_keywords(tmp_path):
     index = PythonModuleIndex(ImportResolver(str(tmp_path)))
 
     # A short name must not match inside the def or class keyword.
-    assert index.definition("shortnames", export_name="f")[
+    assert index.definition(path, export_name="f")[
         "selection_range"
     ].start == AnalysisPosition(line=1, character=5)
-    assert index.definition("shortnames", export_name="C")[
+    assert index.definition(path, export_name="C")[
         "selection_range"
     ].start == AnalysisPosition(line=4, character=7)
-    assert index.class_members("shortnames", "C")["d"][
+    assert index.class_members(path, "C")["d"][
         "selection_range"
     ].start == AnalysisPosition(line=5, character=9)
 
@@ -1279,7 +1360,8 @@ def test_lambda_and_with_bindings():
 
 
 def test_python_index_edge_cases(tmp_path, monkeypatch):
-    (tmp_path / "broken.py").write_text("VALUE = 1\n")
+    broken_path = tmp_path / "broken.py"
+    broken_path.write_text("VALUE = 1\n")
     index = PythonModuleIndex(ImportResolver(str(tmp_path)))
 
     def invalid_tree(*args, **kwargs):
@@ -1287,7 +1369,7 @@ def test_python_index_edge_cases(tmp_path, monkeypatch):
 
     with monkeypatch.context() as context:
         context.setattr("ast.parse", invalid_tree)
-        assert index.module_info("broken") is None
+        assert index.module_info(broken_path) is None
 
     first_path = tmp_path / "first.py"
     first_path.write_text(dedent("""\
@@ -1299,12 +1381,13 @@ def test_python_index_edge_cases(tmp_path, monkeypatch):
         class Choice:
             pass
         """))
-    (tmp_path / "bridge.py").write_text(dedent("""\
+    bridge_path = tmp_path / "bridge.py"
+    bridge_path.write_text(dedent("""\
         from first import Choice as Selected
         from second import Choice as Selected
         """))
     index = PythonModuleIndex(ImportResolver(str(tmp_path)))
-    assert index.definition("bridge", export_name="Selected")["uri"] == second_path.as_uri()
+    assert index.definition(bridge_path, export_name="Selected")["uri"] == second_path.as_uri()
 
     ord_path = tmp_path / "celllib.ord"
     ord_path.write_text(dedent("""\
@@ -1312,13 +1395,13 @@ def test_python_index_edge_cases(tmp_path, monkeypatch):
             pass
         """))
     session = AnalysisSession(workspace_root=str(tmp_path))
-    assert "Old" in session.python_module_info("celllib")["exports"]
+    assert "Old" in session.python_module_info(ord_path)["exports"]
     ord_path.write_text(dedent("""\
         cell New:
             pass
         """))
     session.invalidate_path(str(ord_path))
-    assert set(session.python_module_info("celllib")["exports"]) == {"New"}
+    assert set(session.python_module_info(ord_path)["exports"]) == {"New"}
 
 
 def test_new_file_rebuilds_dependents(tmp_path):
@@ -1441,11 +1524,9 @@ def test_python_index_unicode_attribute_ranges(tmp_path, suffix):
                 root = Symbol()
                 root.élé = Pin()
         """)
-    (tmp_path / ("device" + suffix)).write_text(source)
-    member = PythonModuleIndex(ImportResolver(str(tmp_path))).class_members(
-        "device",
-        "Device",
-    )["élé"]
+    path = tmp_path / ("device" + suffix)
+    path.write_text(source)
+    member = PythonModuleIndex(ImportResolver()).class_members(path, "Device")["élé"]
 
     assert member["selection_range"].start == AnalysisPosition(4, 14)
     assert member["selection_range"].end == AnalysisPosition(4, 17)

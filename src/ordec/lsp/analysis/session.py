@@ -302,12 +302,22 @@ class AnalysisSession:
         """Return whether a URI points to an ORD source file."""
         return self.file_uri_suffix(uri) == ".ord"
 
-    def invalidate_path(self, path: str):
-        """Invalidate cached state for a filesystem path."""
+    def invalidate_path(self, path: str, created_or_deleted: bool = True):
+        """Invalidate cached state for a filesystem path.
+
+        ``created_or_deleted`` is false for content changes, which cannot
+        change the file an import names.
+        """
         path = Path(os.path.abspath(path))
+        if created_or_deleted:
+            # foo.py shadows foo.ord and __init__ files set the package
+            # context, so a file that comes or goes can change any import.
+            self.resolver.clear()
+            self.invalidate_workspace_index()
+
         if path.suffix == ".py":
-            # The Python index tracks symlink-resolved module paths.
-            self.invalidate_python_module_path(path.resolve())
+            # The Python index matches modules by symlink-resolved path.
+            self.invalidate_python_module_path(path.resolve(), created_or_deleted)
             return None
 
         if path.suffix != ".ord":
@@ -315,7 +325,7 @@ class AnalysisSession:
 
         # The Python index also caches installed `.ord` modules resolved
         # through their parent Python package.
-        self.invalidate_python_module_path(path.resolve())
+        self.invalidate_python_module_path(path.resolve(), created_or_deleted)
         uri = path.as_uri()
         if self.workspace_uri_cache is not None and self.uri_in_workspace(uri):
             if path.is_file():
@@ -336,14 +346,14 @@ class AnalysisSession:
         self.mark_workspace_uri_dirty(uri)
         return uri
 
-    def invalidate_uri(self, uri: str):
+    def invalidate_uri(self, uri: str, created_or_deleted: bool = True):
         """Invalidate cached state for a file URI."""
         uri = self.canonical_uri(uri)
         path = self.file_uri_path(uri)
         if path is None:
             return None
 
-        return self.invalidate_path(str(path))
+        return self.invalidate_path(str(path), created_or_deleted)
 
     def resolve_module_uri(self, uri: str, module_name: str):
         """Resolve an ORD import name relative to a document URI."""
@@ -366,40 +376,46 @@ class AnalysisSession:
         if module_uri is not None:
             return None
 
-        python_module_name = self.resolve_python_import_name(uri, module_name)
-        return self.python_definition(
-            python_module_name,
-            export_name=export_name,
-        )
+        module_path = self.resolve_python_module_path(uri, module_name)
+        if module_path is None and submodule_name is not None:
+            # A directory without __init__ has no module to look the
+            # submodule up in, as in ``from . import helper``.
+            return self.python_definition(self.resolve_python_module_path(uri, submodule_name))
+        return self.python_definition(module_path, export_name=export_name)
 
-    def resolve_python_import_name(self, uri: str, module_name: str):
-        """Resolve a possibly relative Python import name for a document."""
-        return self.resolver.python_module_name(uri, module_name)
+    def resolve_python_module_path(self, uri: str, module_name: str):
+        """Resolve a possibly relative import name to a module source path."""
+        return self.resolver.module_path(uri, module_name)
 
-    def python_module_exists(self, module_name: str):
-        """Return whether a Python module can be imported or found locally."""
-        return self.resolver.python_module_exists(module_name)
+    def module_exists(self, uri: str, module_name: str):
+        """Return whether an import name resolves to an ORD or Python module."""
+        return self.resolver.module_exists(uri, module_name)
 
-    def invalidate_python_module_path(self, path: Path):
+    def invalidate_python_module_path(self, path: Path, created_or_deleted: bool = True):
         """Invalidate cached Python analysis for modules backed by a path."""
-        self.python_index.invalidate_module_path(path)
+        self.python_index.invalidate_module_path(path, created_or_deleted)
 
-    def python_module_info(self, module_name: str):
+    def python_module_info(self, module_path: Optional[Path]):
         """Analyze a Python module enough for ORD import and member lookup."""
-        return self.python_index.module_info(module_name)
+        return self.python_index.module_info(module_path)
 
-    def python_definition(self, module_name: str, export_name: Optional[str] = None, seen=None):
+    def python_definition(
+        self,
+        module_path: Optional[Path],
+        export_name: Optional[str] = None,
+        seen=None,
+    ):
         """Resolve a Python module or exported member definition."""
         return self.python_index.definition(
-            module_name,
+            module_path,
             export_name=export_name,
             seen=seen,
         )
 
 
-    def python_class_members(self, module_name: str, class_name: str, seen=None):
+    def python_class_members(self, module_path: Optional[Path], class_name: str, seen=None):
         """Collect Python class members, including inherited members."""
-        return self.python_index.class_members(module_name, class_name, seen=seen)
+        return self.python_index.class_members(module_path, class_name, seen=seen)
 
     def analyze(self, uri: str):
         """Return cached document analysis, parsing the document when needed."""
@@ -871,9 +887,8 @@ class AnalysisSession:
         """Resolve an ORD or Python module definition from an import name."""
         uri = self.canonical_uri(uri)
         module_uri = self.resolve_module_uri(uri, module_name)
-        python_module_name = self.resolve_python_import_name(uri, module_name)
         if module_uri is None:
-            return self.python_definition(python_module_name)
+            return self.python_definition(self.resolve_python_module_path(uri, module_name))
 
         module_base = module_name.split(".")[-1]
         return {
@@ -992,8 +1007,8 @@ class AnalysisSession:
             module_name = import_entry.module
             import_uri = self.resolve_module_uri(uri, module_name)
             if import_uri is None:
-                python_module_name = self.resolve_python_import_name(uri, module_name)
-                match = self.python_definition(python_module_name, export_name=name)
+                module_path = self.resolve_python_module_path(uri, module_name)
+                match = self.python_definition(module_path, export_name=name)
             else:
                 match = self.find_export(import_uri, name)
             if match is not None:
@@ -1218,7 +1233,10 @@ class AnalysisSession:
     def resolve_core_type(self, type_name: str):
         """Resolve an ORDeC core type exported by ``ordec.core``."""
         core_type_name = CORE_TYPE_ALIASES.get(type_name, type_name)
-        type_definition = self.python_definition("ordec.core", export_name=core_type_name)
+        type_definition = self.python_definition(
+            self.resolver.installed_module_path("ordec.core"),
+            export_name=core_type_name,
+        )
         if type_definition is None or type_definition.get("kind") != "class":
             return None
         return type_definition
@@ -1261,8 +1279,9 @@ class AnalysisSession:
         the static analysis cannot always tell which, so the union keeps
         member checks and completions valid for both.
         """
-        members = dict(self.python_class_members("ordec.core.schema", "SchemInstance"))
-        members.update(self.python_class_members("ordec.core.schema", "LayoutInstance"))
+        schema_path = self.resolver.installed_module_path("ordec.core.schema")
+        members = dict(self.python_class_members(schema_path, "SchemInstance"))
+        members.update(self.python_class_members(schema_path, "LayoutInstance"))
         return members
 
     def type_members(self, type_definition):
