@@ -769,6 +769,43 @@ def test_symlinked_workspace_uris(tmp_path):
     assert session.workspace_uris() == [uri]
 
 
+def test_imports_follow_runtime_rules(tmp_path):
+    # foo.py shadows foo.ord like in ordec.importer. Without a workspace
+    # root, Python modules beside the document resolve, and relative
+    # imports resolve file-relative for .py targets as for .ord targets.
+    (tmp_path / "foo.py").write_text("class Shadow:\n    pass\n")
+    (tmp_path / "foo.ord").write_text("cell Hidden:\n    pass\n")
+    (tmp_path / "helper.py").write_text("class Helper:\n    pass\n")
+    (tmp_path / "lib.py").write_text("class Lib:\n    pass\n")
+    source = "from foo import Shadow\nfrom helper import Helper\nfrom .lib import Lib\n"
+    top_path = tmp_path / "top.ord"
+    top_path.write_text(source)
+
+    session = AnalysisSession()
+    uri = session.open_path(str(top_path))
+    assert diagnostic_codes(session, uri) == []
+    for name, module in [("Shadow", "foo.py"), ("Helper", "helper.py"), ("Lib", "lib.py")]:
+        definition = session.definition(uri, position_at(source, name))
+        assert definition["uri"] == (tmp_path / module).resolve().as_uri()
+
+    # In a src layout, the import root of the package is src/, not the
+    # workspace root, also for imports inside Python modules. Relative
+    # imports cannot leave the topmost package.
+    package_path = tmp_path / "repo" / "src" / "pkg"
+    package_path.mkdir(parents=True)
+    (package_path / "__init__.py").write_text("")
+    (package_path / "a.py").write_text("class A:\n    pass\n")
+    (package_path / "b.py").write_text("from pkg.a import A\n")
+    source = "from pkg.b import A\nfrom ...outside import X\n"
+    (package_path / "top.ord").write_text(source)
+
+    session = AnalysisSession(workspace_root=str(tmp_path / "repo"))
+    uri = session.open_path(str(package_path / "top.ord"))
+    assert diagnostic_codes(session, uri) == ["unresolved-import"]
+    definition = session.definition(uri, position_at(source, "A"))
+    assert definition["uri"] == (package_path / "a.py").resolve().as_uri()
+
+
 def test_init_ord_packages(tmp_path, monkeypatch):
     package_path = tmp_path / "pkg"
     package_path.mkdir()

@@ -454,11 +454,18 @@ Most language intelligence lives in ``ordec.lsp.analysis``:
   node statement records, view generator return records, constraint records, and
   inferred-type records for assignment targets.
 * ``session.py`` is the public analysis facade. It owns open document snapshots,
-  last-good analysis caching, file invalidation, ORD import resolution,
-  workspace dependency indexing, lightweight type resolution, and
-  navigation/reference features.
-* ``import_resolver.py`` maps ORD and Python import names to ``.ord``
-  documents and Python module files.
+  last-good analysis caching, file invalidation, workspace dependency
+  indexing, lightweight type resolution, and navigation/reference features.
+* ``import_resolver.py`` resolves imports to ``.ord`` documents or Python
+  module names. It follows the runtime rules of ``ordec.importer``, where
+  ``.ord`` files are ordinary Python modules: ``foo.py`` shadows ``foo.ord``,
+  and package context comes from ``__init__.py`` / ``__init__.ord`` files.
+  Walking up from a document through its package directories gives its
+  package and its import root (the ``sys.path`` entry above the topmost
+  package). Absolute names search the import root, the document's directory,
+  the workspace root and the installed packages. Relative names resolve
+  within the document's package, or against its directory if that is not a
+  regular package.
 * ``python_index.py`` owns shallow Python module indexing. It parses Python
   source with ``ast``, caches module information, and exposes exported
   symbols, class members, docstrings, function signatures, and cell

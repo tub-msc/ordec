@@ -3,23 +3,48 @@
 
 """Import name resolution for ORD analysis.
 
-ORD imports resolve to ``.ord`` files relative to the importing document
-and the workspace root. Python imports resolve to dotted module names and
-source files, which ``PythonModuleIndex`` then parses. Both live here so
-that the rules for which file an import names can be compared side by side.
+At runtime, ordec's import hook (``ordec.importer``) makes ``.ord`` files
+importable as ordinary Python modules, so ORD and Python imports follow one
+set of rules. The resolver mirrors them for a document's imports: in each
+directory, packages win over modules and ``.py`` files over ``.ord`` files.
+
+Which directories are on ``sys.path`` depends on how a design is run, so
+they are derived from the files: walking up from a document while each
+directory holds an ``__init__.py`` or ``__init__.ord`` yields the
+document's package and its import root, the directory above the topmost
+package, as in pytest's default "prepend" import mode. Absolute names
+search the import root, the document's directory (``ordec FILE`` puts it
+first on ``sys.path``), the workspace root (a guess at the current
+directory for ``ordec -m``) and then the installed packages. Relative names
+resolve within the document's package. Documents in a directory without
+``__init__`` may still belong to a namespace package, so their relative
+imports resolve against their own directory.
+
+A ``.ord`` file found this way is analyzed as an ORD document. Everything
+else, including ``.ord`` modules of installed packages, is handed to
+``PythonModuleIndex`` by module name.
 """
 
 # standard imports
 import importlib.util
 from pathlib import Path
-from typing import Optional
+from typing import NamedTuple, Optional
 
 # ordec imports
 from .model import file_uri_to_path, find_module_source
 
-# Suffix precedence for Python module resolution, which covers both plain
-# Python modules and ORD modules importable through ordec's hook.
+# Suffix precedence within one directory, as registered by ordec.importer.
 MODULE_SOURCE_SUFFIXES = (".py", ".ord")
+
+
+class ImportTarget(NamedTuple):
+    """What an import resolves to: an ORD document or a Python module name.
+
+    At most one field is set; neither is set for relative imports that
+    leave their package or find no module file.
+    """
+    ord_uri: Optional[str] = None
+    python_name: Optional[str] = None
 
 
 def from_import_module_name(module_name: str, export_name: str):
@@ -31,62 +56,114 @@ def from_import_module_name(module_name: str, export_name: str):
     return module_name + separator + export_name
 
 
+def module_name_in(path: Path, search_dir: Path):
+    """Return the dotted name of a module source file in search_dir, or None."""
+    try:
+        relative_path = path.relative_to(search_dir)
+    except ValueError:
+        return None
+
+    if relative_path.stem == "__init__":
+        module_parts = relative_path.parent.parts
+    else:
+        module_parts = relative_path.with_suffix("").parts
+
+    if not module_parts:
+        return None
+    return ".".join(module_parts)
+
+
+def package_context(directory: Path):
+    """Return the import root and package name for modules in a directory.
+
+    The package name is empty for a directory that is not a regular package,
+    whose modules are then top-level modules of the directory itself.
+    """
+    package_parts = []
+    while directory.name and any(
+        (directory / ("__init__" + suffix)).is_file()
+        for suffix in MODULE_SOURCE_SUFFIXES
+    ):
+        package_parts.insert(0, directory.name)
+        directory = directory.parent
+    return directory, ".".join(package_parts)
+
+
 class ImportResolver:
     """Resolves ORD and Python import names for documents of one workspace.
 
-    Resolving installed Python modules uses ``importlib`` and may execute
-    parent package initialization code. Failures are treated as unresolved
-    modules.
+    ``search_dirs`` models the ``sys.path`` entries before the installed
+    packages: the workspace root, followed by the directories that document
+    imports were found in (see ``import_target()``). Resolving installed
+    Python modules uses ``importlib`` and may execute parent package
+    initialization code. Failures are treated as unresolved modules.
     """
     def __init__(self, workspace_root: Optional[str] = None):
         """Initialize the resolver for the optional workspace root."""
         self.workspace_root = workspace_root
+        self.search_dirs = [Path(workspace_root)] if workspace_root else []
 
-    def ord_module_uri(self, uri: str, module_name: str):
-        """Resolve an ORD import name relative to a document URI."""
+    def import_candidates(self, doc_path: Path, module_name: str):
+        """Return the (directory, module name, package only) triples to probe.
+
+        Package only marks a dots-only relative import such as
+        ``from . import x``, which names a package, never a module file.
+        """
+        import_root, package_name = package_context(doc_path.parent)
+
+        if not module_name.startswith("."):
+            directories = [import_root, doc_path.parent]
+            if self.workspace_root:
+                directories.append(Path(self.workspace_root))
+            unique_directories = list(dict.fromkeys(directories))
+            return [(directory, module_name, False) for directory in unique_directories]
+
+        tail = module_name.lstrip(".")
+        if package_name:
+            try:
+                absolute_name = importlib.util.resolve_name(module_name, package_name)
+            except (ImportError, ValueError):
+                # The import climbs above the topmost package.
+                return []
+            return [(import_root, absolute_name, not tail)]
+
+        base_dir = doc_path.parent
+        for _ in range(len(module_name) - len(tail) - 1):
+            base_dir = base_dir.parent
+        if tail:
+            return [(base_dir, tail, False)]
+        return [(base_dir.parent, base_dir.name, True)]
+
+    def import_target(self, uri: str, module_name: str):
+        """Resolve an import in the document at ``uri`` to an ImportTarget."""
+        if not module_name:
+            return ImportTarget()
+
+        relative = module_name.startswith(".")
         doc_path = file_uri_to_path(uri)
         if doc_path is None:
-            return None
+            # Documents without a file have no directory to search.
+            return ImportTarget() if relative else ImportTarget(python_name=module_name)
 
-        if module_name.startswith("."):
-            dot_count = 0
-            while dot_count < len(module_name) and module_name[dot_count] == ".":
-                dot_count += 1
-
-            import_path = doc_path.parent
-            for _ in range(dot_count - 1):
-                import_path = import_path.parent
-
-            module_tail = module_name[dot_count:]
-            if module_tail:
-                import_path = import_path.joinpath(*module_tail.split("."))
-
-            resolved = find_module_source(
-                import_path,
-                (".ord",),
-                package_only=not module_tail,
+        for directory, name, package_only in self.import_candidates(doc_path, module_name):
+            path = find_module_source(
+                directory.joinpath(*name.split(".")),
+                MODULE_SOURCE_SUFFIXES,
+                package_only=package_only,
             )
-            return resolved.as_uri() if resolved is not None else None
+            if path is None:
+                continue
 
-        # Absolute names resolve against the workspace root first, then
-        # against the importing document's own directory, matching the
-        # runtime importer which searches the script's directory.
-        base_dirs = []
-        if self.workspace_root:
-            base_dirs.append(Path(self.workspace_root))
-        if doc_path.parent not in base_dirs:
-            base_dirs.append(doc_path.parent)
+            if path.suffix == ".ord":
+                return ImportTarget(ord_uri=path.as_uri())
 
-        module_parts = module_name.split(".")
-        for base_dir in base_dirs:
-            resolved = find_module_source(
-                base_dir.joinpath(*module_parts),
-                (".ord",),
-            )
-            if resolved is not None:
-                return resolved.as_uri()
+            # The Python index finds modules by name, so the directory the
+            # name is relative to becomes one of its search directories.
+            if directory not in self.search_dirs:
+                self.search_dirs.append(directory)
+            return ImportTarget(python_name=name)
 
-        return None
+        return ImportTarget() if relative else ImportTarget(python_name=module_name)
 
     def ord_from_import_uris(self, uri: str, module_name: str, export_name: str):
         """Return ORD module and submodule candidates for a from-import."""
@@ -97,7 +174,7 @@ class ImportResolver:
 
         uris = []
         for candidate_name in module_names:
-            import_uri = self.ord_module_uri(uri, candidate_name)
+            import_uri = self.import_target(uri, candidate_name).ord_uri
             if import_uri is None or import_uri in uris:
                 continue
             uris.append(import_uri)
@@ -116,7 +193,7 @@ class ImportResolver:
                     import_entry.export_name,
                 )
             else:
-                import_uris = [self.ord_module_uri(uri, import_entry.module)]
+                import_uris = [self.import_target(uri, import_entry.module).ord_uri]
 
             for import_uri in import_uris:
                 if import_uri is None or import_uri in seen:
@@ -135,31 +212,13 @@ class ImportResolver:
         except BaseException:
             return None
 
-    def workspace_module_name(self, path: Path):
-        """Return the dotted module name of a resolved workspace path, or None."""
-        if not self.workspace_root:
-            return None
-
-        try:
-            relative_path = path.relative_to(Path(self.workspace_root).resolve())
-        except ValueError:
-            return None
-
-        if relative_path.stem == "__init__":
-            module_parts = relative_path.parent.parts
-        else:
-            module_parts = relative_path.with_suffix("").parts
-
-        if not module_parts:
-            return None
-        return ".".join(module_parts)
-
     def python_module_path(self, module_name: str):
-        """Resolve a Python module name to a source file path."""
-        if self.workspace_root:
-            workspace_root = Path(self.workspace_root).resolve()
-            workspace_path = workspace_root.joinpath(*module_name.split("."))
-            candidate = find_module_source(workspace_path, MODULE_SOURCE_SUFFIXES)
+        """Resolve an absolute Python module name to a source file path."""
+        for search_dir in self.search_dirs:
+            candidate = find_module_source(
+                search_dir.resolve().joinpath(*module_name.split(".")),
+                MODULE_SOURCE_SUFFIXES,
+            )
             if candidate is not None:
                 return candidate.resolve()
 
@@ -182,42 +241,6 @@ class ImportResolver:
             return None
 
         return path.resolve()
-
-    def python_module_name(self, uri: str, module_name: str):
-        """Resolve a possibly relative Python import name for a document."""
-        if not module_name:
-            return module_name
-
-        if not module_name.startswith("."):
-            doc_path = file_uri_to_path(uri)
-            if doc_path is not None and self.workspace_root:
-                import_path = doc_path.parent.joinpath(*module_name.split("."))
-                candidate = find_module_source(import_path, MODULE_SOURCE_SUFFIXES)
-                if candidate is not None:
-                    local_name = self.workspace_module_name(candidate.resolve())
-                    if local_name is not None:
-                        return local_name
-
-            return module_name
-
-        doc_path = file_uri_to_path(uri)
-        if doc_path is None or not self.workspace_root:
-            return None
-
-        workspace_root = Path(self.workspace_root).resolve()
-        try:
-            relative_path = doc_path.relative_to(workspace_root)
-        except ValueError:
-            return None
-
-        package_name = ".".join(relative_path.parent.parts)
-        if not package_name:
-            return None
-
-        try:
-            return importlib.util.resolve_name(module_name, package_name)
-        except (ImportError, ValueError):
-            return None
 
     def python_module_exists(self, module_name: str):
         """Return whether a Python module can be imported or found locally."""

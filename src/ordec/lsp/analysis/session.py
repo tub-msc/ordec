@@ -347,7 +347,7 @@ class AnalysisSession:
 
     def resolve_module_uri(self, uri: str, module_name: str):
         """Resolve an ORD import name relative to a document URI."""
-        return self.resolver.ord_module_uri(uri, module_name)
+        return self.resolver.import_target(uri, module_name).ord_uri
 
     def resolve_from_import(self, uri: str, module_name: str, export_name: str):
         """Resolve a from-import export or submodule definition."""
@@ -374,7 +374,7 @@ class AnalysisSession:
 
     def resolve_python_import_name(self, uri: str, module_name: str):
         """Resolve a possibly relative Python import name for a document."""
-        return self.resolver.python_module_name(uri, module_name)
+        return self.resolver.import_target(uri, module_name).python_name
 
     def python_module_exists(self, module_name: str):
         """Return whether a Python module can be imported or found locally."""

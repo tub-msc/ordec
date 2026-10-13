@@ -13,7 +13,7 @@ from lark.exceptions import LarkError
 
 # ordec imports
 from ...ord.parser import ord_to_py
-from .import_resolver import ImportResolver
+from .import_resolver import ImportResolver, module_name_in
 from .model import AnalysisPosition
 from .model import AnalysisRange
 from .model import split_source_lines
@@ -80,6 +80,7 @@ class PythonModuleIndex:
         """Initialize the Python source index."""
         self.resolver = resolver
         self.python_modules = dict()
+        self.search_dir_count = len(resolver.search_dirs)
 
     def clear(self):
         """Clear cached Python module analysis and importlib state."""
@@ -96,9 +97,10 @@ class PythonModuleIndex:
             if module_info.get("path") == path:
                 names.append(module_name)
 
-        workspace_name = self.resolver.workspace_module_name(path)
-        if workspace_name is not None:
-            names.append(workspace_name)
+        for search_dir in self.resolver.search_dirs:
+            search_dir_name = module_name_in(path, search_dir.resolve())
+            if search_dir_name is not None:
+                names.append(search_dir_name)
 
         return sorted(set(names))
 
@@ -110,6 +112,12 @@ class PythonModuleIndex:
 
     def module_info(self, module_name: str):
         """Analyze a Python module enough for ORD import and member lookup."""
+        # The resolver appends search directories while resolving document
+        # imports. Cached results may differ under the extended search path.
+        if len(self.resolver.search_dirs) != self.search_dir_count:
+            self.search_dir_count = len(self.resolver.search_dirs)
+            self.clear()
+
         if module_name in self.python_modules:
             return self.python_modules[module_name]
 
