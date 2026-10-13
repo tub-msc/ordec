@@ -12,6 +12,7 @@ from ordec.lsp.analysis import (
     analyze_ord,
     file_uri_to_path,
 )
+from ordec.lsp.analysis.import_resolver import ImportResolver
 from ordec.lsp.analysis.python_index import PythonModuleIndex
 from ordec.lsp.server import OrdLanguageServer
 import ordec
@@ -163,15 +164,15 @@ def test_error_snapshots_not_aliased():
 
 
 def test_find_spec_failure_unresolved(monkeypatch):
-    index = PythonModuleIndex()
+    resolver = ImportResolver()
 
     def broken_find_spec(module_name):
         raise SystemExit("bad package")
 
     monkeypatch.setattr("importlib.util.find_spec", broken_find_spec)
 
-    assert index.resolve_module_path("bad.package") is None
-    assert not index.module_exists("bad.package")
+    assert resolver.python_module_path("bad.package") is None
+    assert not resolver.python_module_exists("bad.package")
 
 
 def test_semantic_diagnostics(tmp_path):
@@ -783,23 +784,23 @@ def test_init_ord_packages(tmp_path, monkeypatch):
     source = "from .pkg import sub\n"
     top_path.write_text(source)
 
-    index = PythonModuleIndex(workspace_root=str(tmp_path))
-    assert index.resolve_module_path("pkg") == init_path.resolve()
-    assert index.resolve_module_path("pkg.sub") == sub_path.resolve()
-    assert index.module_exists("pkg.sub")
+    resolver = ImportResolver(str(tmp_path))
+    assert resolver.python_module_path("pkg") == init_path.resolve()
+    assert resolver.python_module_path("pkg.sub") == sub_path.resolve()
+    assert resolver.python_module_exists("pkg.sub")
 
     # Installed packages rooted by __init__.ord resolve their .ord
     # modules through the parent package, like __init__.py ones do.
     class InitOrdSpec:
         origin = str(init_path)
 
-    installed_index = PythonModuleIndex()
+    installed_resolver = ImportResolver()
     monkeypatch.setattr(
-        installed_index,
+        installed_resolver,
         "find_spec",
         lambda name: InitOrdSpec() if name == "pkg" else None,
     )
-    assert installed_index.resolve_module_path("pkg.sub") == sub_path.resolve()
+    assert installed_resolver.python_module_path("pkg.sub") == sub_path.resolve()
 
     # The session navigates import members through the same resolution.
     session = AnalysisSession(workspace_root=str(tmp_path))
@@ -855,7 +856,7 @@ def test_export_ranges_avoid_keywords(tmp_path):
             def d(self):
                 pass
         """))
-    index = PythonModuleIndex(workspace_root=str(tmp_path))
+    index = PythonModuleIndex(ImportResolver(str(tmp_path)))
 
     # A short name must not match inside the def or class keyword.
     assert index.definition("shortnames", export_name="f")[
@@ -1279,7 +1280,7 @@ def test_lambda_and_with_bindings():
 
 def test_python_index_edge_cases(tmp_path, monkeypatch):
     (tmp_path / "broken.py").write_text("VALUE = 1\n")
-    index = PythonModuleIndex(workspace_root=str(tmp_path))
+    index = PythonModuleIndex(ImportResolver(str(tmp_path)))
 
     def invalid_tree(*args, **kwargs):
         raise ValueError("source contains null bytes")
@@ -1302,7 +1303,7 @@ def test_python_index_edge_cases(tmp_path, monkeypatch):
         from first import Choice as Selected
         from second import Choice as Selected
         """))
-    index = PythonModuleIndex(workspace_root=str(tmp_path))
+    index = PythonModuleIndex(ImportResolver(str(tmp_path)))
     assert index.definition("bridge", export_name="Selected")["uri"] == second_path.as_uri()
 
     ord_path = tmp_path / "celllib.ord"
@@ -1441,7 +1442,7 @@ def test_python_index_unicode_attribute_ranges(tmp_path, suffix):
                 root.élé = Pin()
         """)
     (tmp_path / ("device" + suffix)).write_text(source)
-    member = PythonModuleIndex(workspace_root=str(tmp_path)).class_members(
+    member = PythonModuleIndex(ImportResolver(str(tmp_path))).class_members(
         "device",
         "Device",
     )["élé"]

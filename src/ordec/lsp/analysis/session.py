@@ -9,13 +9,13 @@ from typing import Optional
 
 # ordec imports
 from . import completions, diagnostics, hierarchy, rename, signatures
+from .import_resolver import ImportResolver, from_import_module_name
 from .model import (
     AnalysisPosition,
     AnalysisRange,
     DocumentAnalysis,
     context_type_names_for_kind,
     file_uri_to_path,
-    find_module_source,
     position_before_or_equal,
     range_contains,
     split_source_lines,
@@ -74,7 +74,8 @@ class AnalysisSession:
         self.documents = dict()
         self.document_access_counter = 0
         self.canonical_uri_cache = dict()
-        self.python_index = PythonModuleIndex(workspace_root=self.workspace_root)
+        self.resolver = ImportResolver(self.workspace_root)
+        self.python_index = PythonModuleIndex(self.resolver)
         self.workspace_uri_cache = None
         self.workspace_index = None
         self.workspace_dirty_uris = set()
@@ -346,73 +347,7 @@ class AnalysisSession:
 
     def resolve_module_uri(self, uri: str, module_name: str):
         """Resolve an ORD import name relative to a document URI."""
-        uri = self.canonical_uri(uri)
-        doc_path = self.file_uri_path(uri)
-        if doc_path is None:
-            return None
-
-        if module_name.startswith("."):
-            dot_count = 0
-            while dot_count < len(module_name) and module_name[dot_count] == ".":
-                dot_count += 1
-
-            import_path = doc_path.parent
-            for _ in range(dot_count - 1):
-                import_path = import_path.parent
-
-            module_tail = module_name[dot_count:]
-            if module_tail:
-                import_path = import_path.joinpath(*module_tail.split("."))
-
-            resolved = find_module_source(
-                import_path,
-                (".ord",),
-                package_only=not module_tail,
-            )
-            return resolved.as_uri() if resolved is not None else None
-
-        # Absolute names resolve against the workspace root first, then
-        # against the importing document's own directory, matching the
-        # runtime importer which searches the script's directory.
-        base_dirs = []
-        if self.workspace_root:
-            base_dirs.append(Path(self.workspace_root))
-        if doc_path.parent not in base_dirs:
-            base_dirs.append(doc_path.parent)
-
-        module_parts = module_name.split(".")
-        for base_dir in base_dirs:
-            resolved = find_module_source(
-                base_dir.joinpath(*module_parts),
-                (".ord",),
-            )
-            if resolved is not None:
-                return resolved.as_uri()
-
-        return None
-
-    def from_import_module_name(self, module_name: str, export_name: str):
-        """Return the submodule candidate named by a from-import."""
-        if not export_name or export_name == "*":
-            return None
-
-        separator = "" if module_name.endswith(".") else "."
-        return module_name + separator + export_name
-
-    def ord_from_import_uris(self, uri: str, module_name: str, export_name: str):
-        """Return ORD module and submodule candidates for a from-import."""
-        module_names = [module_name]
-        submodule_name = self.from_import_module_name(module_name, export_name)
-        if submodule_name is not None:
-            module_names.append(submodule_name)
-
-        uris = []
-        for candidate_name in module_names:
-            import_uri = self.resolve_module_uri(uri, candidate_name)
-            if import_uri is None or import_uri in uris:
-                continue
-            uris.append(import_uri)
-        return uris
+        return self.resolver.ord_module_uri(uri, module_name)
 
     def resolve_from_import(self, uri: str, module_name: str, export_name: str):
         """Resolve a from-import export or submodule definition."""
@@ -422,10 +357,7 @@ class AnalysisSession:
             if match is not None:
                 return match
 
-        submodule_name = self.from_import_module_name(
-            module_name,
-            export_name,
-        )
+        submodule_name = from_import_module_name(module_name, export_name)
         if submodule_name is not None:
             submodule_uri = self.resolve_module_uri(uri, submodule_name)
             if submodule_uri is not None:
@@ -442,11 +374,11 @@ class AnalysisSession:
 
     def resolve_python_import_name(self, uri: str, module_name: str):
         """Resolve a possibly relative Python import name for a document."""
-        return self.python_index.resolve_import_name(uri, module_name)
+        return self.resolver.python_module_name(uri, module_name)
 
     def python_module_exists(self, module_name: str):
         """Return whether a Python module can be imported or found locally."""
-        return self.python_index.module_exists(module_name)
+        return self.resolver.python_module_exists(module_name)
 
     def invalidate_python_module_path(self, path: Path):
         """Invalidate cached Python analysis for modules backed by a path."""
@@ -699,26 +631,7 @@ class AnalysisSession:
         if not self.ensure_document(uri) or not uri.startswith("file:"):
             return []
 
-        imports = []
-        seen = set()
-
-        for import_entry in self.analyze(uri).import_entries:
-            if import_entry.kind == "from":
-                import_uris = self.ord_from_import_uris(
-                    uri,
-                    import_entry.module,
-                    import_entry.export_name,
-                )
-            else:
-                import_uris = [self.resolve_module_uri(uri, import_entry.module)]
-
-            for import_uri in import_uris:
-                if import_uri is None or import_uri in seen:
-                    continue
-                seen.add(import_uri)
-                imports.append(import_uri)
-
-        return imports
+        return self.resolver.ord_import_uris(uri, self.analyze(uri).import_entries)
 
     def analyze_related(self, uri: str):
         """Analyze a document and its reachable ORD imports."""

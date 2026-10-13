@@ -457,11 +457,12 @@ Most language intelligence lives in ``ordec.lsp.analysis``:
   last-good analysis caching, file invalidation, ORD import resolution,
   workspace dependency indexing, lightweight type resolution, and
   navigation/reference features.
-* ``python_index.py`` owns shallow Python module indexing. It resolves Python
-  imports, parses Python source with ``ast``, caches module information, and
-  exposes exported symbols, class members, docstrings, function signatures,
-  and cell parameter defaults without importing or executing workspace
-  modules.
+* ``import_resolver.py`` maps ORD and Python import names to ``.ord``
+  documents and Python module files.
+* ``python_index.py`` owns shallow Python module indexing. It parses Python
+  source with ``ast``, caches module information, and exposes exported
+  symbols, class members, docstrings, function signatures, and cell
+  parameter defaults without importing or executing workspace modules.
 * ``completions.py``, ``diagnostics.py``, ``rename.py``, ``signatures.py``,
   and ``hierarchy.py`` implement one feature each as functions taking the
   session as first argument; ``AnalysisSession`` exposes them through
