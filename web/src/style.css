@@ -220,10 +220,17 @@ body {
     color: var(--color-text);
 }
 
+/* The gap above the workspace is a margin, not padding: Golden Layout sizes
+   its root to the offsetHeight of #workspace (which includes padding) and
+   would extend below the window by the padding. The body behind the gap
+   takes the workspace color. */
 #workspace {
     flex: 1;
     min-height: 0;
-    padding-top: 4px;
+    margin-top: 4px;
+    background-color: var(--color-bg-workspace);
+}
+body:has(> #workspace) {
     background-color: var(--color-bg-workspace);
 }
 
@@ -443,7 +450,9 @@ body.theme-dark .toolbar-btn option {
     height: 100%;
     z-index: 1;
     padding: 0px;
-    overflow-y: scroll;
+    /* auto, not scroll: a reserved scrollbar would leave a gap beside
+       views that fill the panel (e.g. the schematic status bar). */
+    overflow-y: auto;
     overflow-x: clip;
 }
 .resexception {
