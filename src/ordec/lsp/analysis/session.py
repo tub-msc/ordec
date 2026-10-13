@@ -8,9 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 # ordec imports
-from .completions import CompletionsMixin
-from .diagnostics import DiagnosticsMixin
-from .hierarchy import CallHierarchyMixin
+from . import completions, diagnostics, hierarchy, rename, signatures
 from .model import (
     AnalysisPosition,
     AnalysisRange,
@@ -25,8 +23,6 @@ from .model import (
 from .model import normalize_type_names as normalize_type_name_list
 from .parser_pass import analyze_ord
 from .python_index import PythonModuleIndex
-from .rename import RenameMixin
-from .signatures import SignatureHelpMixin
 
 # Dependency and build-output directories that never hold workspace design
 # sources (build outputs would surface stale duplicates). Hidden directories
@@ -43,13 +39,7 @@ CORE_TYPE_ALIASES = {
 }
 
 
-class AnalysisSession(
-    CompletionsMixin,
-    DiagnosticsMixin,
-    RenameMixin,
-    SignatureHelpMixin,
-    CallHierarchyMixin,
-):
+class AnalysisSession:
     """Stateful ORD analysis facade for open documents and workspace files.
 
     The LSP server should treat this class as its public boundary. Its
@@ -66,9 +56,9 @@ class AnalysisSession(
       ``inlay_hints()``, ``prepare_rename()``, ``rename()``,
       ``folding_ranges()``, ``selection_ranges()``, ``semantic_tokens()``
 
-    The mixins keep feature-specific implementation code separated, but those
-    methods remain part of this facade rather than independent public entry
-    points.
+    Completions, diagnostics, rename, signature help and call hierarchy are
+    implemented as functions taking the session as first argument in their
+    own modules; the corresponding methods here delegate to them.
     """
     def __init__(
         self,
@@ -525,7 +515,7 @@ class AnalysisSession(
         if analysis.has_errors():
             return analysis.diagnostics
 
-        return analysis.diagnostics + self.semantic_diagnostics(uri)
+        return analysis.diagnostics + diagnostics.semantic_diagnostics(self, uri)
 
     def open_path(self, path: str, version: Optional[int] = None):
         """Open a filesystem ORD file as a closed session document."""
@@ -1157,7 +1147,7 @@ class AnalysisSession(
         name = definition["name"]
 
         if kind == "class":
-            signature = self.callable_signature(uri, definition)
+            signature = signatures.callable_signature(self, uri, definition)
             parameters = signature["parameters"] if signature is not None else []
             # Classes that declare cell parameters, and everything defined in
             # ORD source, read as cells to ORD users.
@@ -1173,7 +1163,7 @@ class AnalysisSession(
             return "{} {}".format(keyword, name)
 
         if kind == "function":
-            signature = self.callable_signature(uri, definition)
+            signature = signatures.callable_signature(self, uri, definition)
             if signature is not None:
                 return "def {}".format(signature["label"])
             return "function {}".format(name)
@@ -1912,3 +1902,29 @@ class AnalysisSession(
             self.resolve_completion_type(uri, name_info["name"]),
             name_info["range"],
         )
+
+    # Delegators to the feature modules, which hold the docstrings.
+
+    def completion_replace_range(self, uri: str, position: AnalysisPosition):
+        return completions.completion_replace_range(self, uri, position)
+
+    def completions(self, uri: str, position: AnalysisPosition):
+        return completions.completions(self, uri, position)
+
+    def signature_help(self, uri: str, position: AnalysisPosition):
+        return signatures.signature_help(self, uri, position)
+
+    def prepare_rename(self, uri: str, position: AnalysisPosition):
+        return rename.prepare_rename(self, uri, position)
+
+    def rename(self, uri: str, position: AnalysisPosition, new_name: str):
+        return rename.rename(self, uri, position, new_name)
+
+    def call_hierarchy_item(self, uri: str, position: AnalysisPosition):
+        return hierarchy.call_hierarchy_item(self, uri, position)
+
+    def incoming_calls(self, uri: str, position: AnalysisPosition):
+        return hierarchy.incoming_calls(self, uri, position)
+
+    def outgoing_calls(self, uri: str, position: AnalysisPosition):
+        return hierarchy.outgoing_calls(self, uri, position)

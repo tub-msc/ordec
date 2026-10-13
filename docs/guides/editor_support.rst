@@ -463,8 +463,9 @@ Most language intelligence lives in ``ordec.lsp.analysis``:
   and cell parameter defaults without importing or executing workspace
   modules.
 * ``completions.py``, ``diagnostics.py``, ``rename.py``, ``signatures.py``,
-  and ``hierarchy.py`` add feature-specific methods to ``AnalysisSession``
-  through mixin classes.
+  and ``hierarchy.py`` implement one feature each as functions taking the
+  session as first argument; ``AnalysisSession`` exposes them through
+  delegating methods.
 
 ``AnalysisSession`` intentionally remains the API boundary used by the LSP
 server and tests. The smaller analysis modules keep implementation details
