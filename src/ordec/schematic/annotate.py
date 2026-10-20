@@ -25,6 +25,7 @@ import math
 from collections import defaultdict
 
 from ..core import *
+from . import _annotate
 from .render import Renderer, SchematicRenderer, annotation_lines, annotation_rows, annotation_row_chars, stack_label_frame, annotation_extent
 
 logger = logging.getLogger(__name__)
@@ -341,7 +342,6 @@ def empty_regions(x0: int, y0: int, nx: int, ny: int, obstacles: list[FloatRect]
     """
     step, cx, cy = float(STEP), float(CLEARANCE_X), float(CLEARANCE_Y)
     spans = [] # blocked cell ranges (i0, i1, j0, j1)
-    xs, ys = {0, nx}, {0, ny}
     for olx, oly, oux, ouy in obstacles:
         i0 = max(math.floor((olx - cx)/step) - x0, 0)
         i1 = min(math.ceil((oux + cx)/step) - x0, nx)
@@ -349,43 +349,9 @@ def empty_regions(x0: int, y0: int, nx: int, ny: int, obstacles: list[FloatRect]
         j1 = min(math.ceil((ouy + cy)/step) - y0, ny)
         if i0 < i1 and j0 < j1:
             spans.append((i0, i1, j0, j1))
-            xs.update((i0, i1))
-            ys.update((j0, j1))
-
-    # The scan runs on a compressed grid: blocked cells only start and end
-    # at obstacle edges, so between consecutive edges, all columns (rows)
-    # are equal. Column I of the compressed grid spans the cell columns
-    # xs[I] to xs[I + 1], row J likewise. This finds the same rectangles,
-    # in the same order, as a scan of the cell grid, on far fewer cells.
-    xs, ys = sorted(xs), sorted(ys)
-    x_index = {x: i for i, x in enumerate(xs)}
-    y_index = {y: j for j, y in enumerate(ys)}
-    nxc, nyc = len(xs) - 1, len(ys) - 1
-    blocked = [[False]*nxc for j in range(nyc)]
-    for i0, i1, j0, j1 in spans:
-        i0, i1 = x_index[i0], x_index[i1]
-        for j in range(y_index[j0], y_index[j1]):
-            blocked[j][i0:i1] = [True]*(i1 - i0)
-
-    # Largest-rectangle-in-histogram scan, one histogram per row j
-    # (heights[i]: number of free rows ending in row j of column i). Each
-    # popped stack entry is a rectangle that cannot grow to the left, right
-    # or downwards; it is maximal if it cannot grow upwards either.
-    regions = []
-    heights = [0]*nxc
-    for j in range(nyc):
-        heights = [0 if b else h + 1 for b, h in zip(blocked[j], heights)]
-        stack = [] # (start column, height), heights strictly increasing
-        for i, h in enumerate(heights + [0]):
-            start = i
-            while stack and stack[-1][1] > h:
-                start, sh = stack.pop()
-                if j == nyc - 1 or any(blocked[j + 1][start:i]):
-                    regions.append((x0 + xs[start], y0 + ys[j + 1 - sh],
-                        x0 + xs[i], y0 + ys[j + 1]))
-            if h > 0 and (not stack or stack[-1][1] < h):
-                stack.append((start, h))
-    return regions
+    # Maximal empty rectangles of the grid with blocked spans, see
+    # _annotate.c.
+    return _annotate.scan(x0, y0, nx, ny, spans)
 
 def clamp(v, lo, hi):
     return max(lo, min(v, hi))

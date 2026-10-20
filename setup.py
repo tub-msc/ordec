@@ -41,9 +41,11 @@ setup(
         Extension('ordec.layout._gdsrecords',
             sources=['src/ordec/layout/_gdsrecords.c'], optional=True,
             py_limited_api=True),
-        # Required: inner loops of schematic routing.
+        # Required: inner loops of schematic routing and annotation placement.
         Extension('ordec.schematic._auto_wire',
             sources=['src/ordec/schematic/_auto_wire.c'], py_limited_api=True),
+        Extension('ordec.schematic._annotate',
+            sources=['src/ordec/schematic/_annotate.c'], py_limited_api=True),
     ],
     # All extensions use the limited API of Python 3.11 (Py_LIMITED_API in
     # the sources): one abi3 wheel serves all Python versions from 3.11.
