@@ -22,6 +22,7 @@ always read horizontally.
 
 import logging
 import math
+from collections import defaultdict
 
 from ..core import *
 from .render import Renderer, SchematicRenderer, annotation_lines, annotation_rows, annotation_row_chars, stack_label_frame, annotation_extent
@@ -59,6 +60,42 @@ FALLBACK_STEP = R(1)/2 #: Grid of the candidates of least_covered_spot.
 # Obstacles are float (lx, ly, ux, uy) tuples: cheaper to compare than
 # Rect4R in the candidate search.
 FloatRect = tuple[float, float, float, float]
+
+class ObstacleIndex:
+    """
+    Obstacles (FloatRect) bucketed on a coarse grid, so that a block's
+    placement only looks at the obstacles near it. Scanning all obstacles of
+    the schematic for every block made placement quadratic in its size.
+    """
+    BUCKET = 4.0 #: Bucket size in units.
+
+    def __init__(self, rects: list[FloatRect]):
+        self.rects = []
+        self.buckets = defaultdict(list)
+        for rect in rects:
+            self.append(rect)
+
+    def _bucket_range(self, lx, ly, ux, uy):
+        b = self.BUCKET
+        return (range(math.floor(lx/b), math.floor(ux/b) + 1),
+            range(math.floor(ly/b), math.floor(uy/b) + 1))
+
+    def append(self, rect: FloatRect):
+        index = len(self.rects)
+        self.rects.append(rect)
+        bxs, bys = self._bucket_range(*rect)
+        for bx in bxs:
+            for by in bys:
+                self.buckets[bx, by].append(index)
+
+    def near(self, lx, ly, ux, uy) -> list[FloatRect]:
+        """Obstacles that may intersect the window, in insertion order."""
+        indices = set()
+        bxs, bys = self._bucket_range(lx, ly, ux, uy)
+        for bx in bxs:
+            for by in bys:
+                indices.update(self.buckets.get((bx, by), ()))
+        return [self.rects[i] for i in sorted(indices)]
 
 def _bbox(points) -> Rect4R:
     xs = [p.x for p in points]
@@ -99,6 +136,11 @@ def symbol_obstacles(s: Symbol, trans: TD4R, inst: SchemInstance|None = None) ->
     arcs, shown pin arrows and pin labels, and fixed annotation stacks. The
     outline itself is not an obstacle, so blocks may use empty outline space.
     """
+    return shape_obstacles(s, trans) + stack_obstacles(s, trans, inst)
+
+def shape_obstacles(s: Symbol, trans: TD4R) -> list[Rect4R]:
+    """symbol_obstacles without the annotation stacks, which depend on the
+    instance."""
     rects = []
     for poly in s.all(SymbolPoly):
         rects.append(trans * _bbox(poly.vertices()))
@@ -106,6 +148,11 @@ def symbol_obstacles(s: Symbol, trans: TD4R, inst: SchemInstance|None = None) ->
         rects.append(trans * arc_bbox(arc))
     for pin in s.all(Pin):
         rects += pin_obstacles(pin, trans)
+    return rects
+
+def stack_obstacles(s: Symbol, trans: TD4R, inst: SchemInstance|None) -> list[Rect4R]:
+    """Rectangles covering the fixed annotation stacks of s under trans."""
+    rects = []
     for stack in s.all(SymbolAnnotationStack):
         lines = annotation_lines(s, inst, stack)
         if lines:
@@ -114,8 +161,32 @@ def symbol_obstacles(s: Symbol, trans: TD4R, inst: SchemInstance|None = None) ->
                 len(lines), halign=halign, valign=valign))
     return rects
 
-def schematic_obstacles(node: Schematic) -> list[Rect4R]:
-    """Rectangles covering everything drawn in node except annotation blocks."""
+def instance_obstacles(node: Schematic) -> dict[int, list[Rect4R]]:
+    """
+    symbol_obstacles of all instances of node, by instance nid. Instances
+    with the same symbol and orientation share the shape_obstacles, computed
+    once without translation: the Rational arithmetic is slow. Translating
+    afterwards is exact.
+    """
+    shapes = {}
+    ret = {}
+    for inst in node.all(SchemInstance):
+        trans = inst.loc_transform()
+        key = inst.symbol, trans.d4
+        if key not in shapes:
+            shapes[key] = shape_obstacles(inst.symbol, Vec2R(0, 0).transl() * trans.d4)
+        t = trans.transl
+        ret[inst.nid] = [Rect4R(r.lx + t.x, r.ly + t.y, r.ux + t.x, r.uy + t.y) for r in shapes[key]] \
+            + stack_obstacles(inst.symbol, trans, inst)
+    return ret
+
+def schematic_obstacles(node: Schematic, inst_obstacles: dict[int, list[Rect4R]]|None = None) -> list[Rect4R]:
+    """
+    Rectangles covering everything drawn in node except annotation blocks.
+    inst_obstacles can pass the result of instance_obstacles.
+    """
+    if inst_obstacles is None:
+        inst_obstacles = instance_obstacles(node)
     rects = []
     for wire in node.all(SchemWire):
         v = wire.vertices()
@@ -138,7 +209,7 @@ def schematic_obstacles(node: Schematic) -> list[Rect4R]:
             rects.append(Renderer.label_rect(trans, len(label), 1,
                 valign=VAlign.Middle, space=Renderer.port_text_space))
     for inst in node.all(SchemInstance):
-        rects += symbol_obstacles(inst.symbol, inst.loc_transform(), inst)
+        rects += inst_obstacles[inst.nid]
     return rects
 
 def block_size(rows: list[list]) -> tuple[R, R]:
@@ -168,9 +239,13 @@ def arrangements(lines: list) -> list[tuple[int, R, R]]:
             ret.append((wrap, *block_size(rows)))
     return ret
 
-def symbol_body(s: Symbol, trans: TD4R, inst: SchemInstance|None) -> Rect4R:
-    """Bounding box of the drawn geometry of s under trans (outline if none)."""
-    rects = symbol_obstacles(s, trans, inst)
+def symbol_body(s: Symbol, trans: TD4R, inst: SchemInstance|None, rects: list[Rect4R]|None = None) -> Rect4R:
+    """
+    Bounding box of the drawn geometry of s under trans (outline if none).
+    rects can pass the symbol_obstacles.
+    """
+    if rects is None:
+        rects = symbol_obstacles(s, trans, inst)
     if not rects:
         return trans * s.outline
     return Rect4R(min(r.lx for r in rects), min(r.ly for r in rects),
@@ -265,34 +340,49 @@ def empty_regions(x0: int, y0: int, nx: int, ny: int, obstacles: list[FloatRect]
     blocked as soon as an inflated obstacle reaches into it.
     """
     step, cx, cy = float(STEP), float(CLEARANCE_X), float(CLEARANCE_Y)
-    blocked = [[False]*nx for j in range(ny)]
+    spans = [] # blocked cell ranges (i0, i1, j0, j1)
+    xs, ys = {0, nx}, {0, ny}
     for olx, oly, oux, ouy in obstacles:
         i0 = max(math.floor((olx - cx)/step) - x0, 0)
         i1 = min(math.ceil((oux + cx)/step) - x0, nx)
         j0 = max(math.floor((oly - cy)/step) - y0, 0)
         j1 = min(math.ceil((ouy + cy)/step) - y0, ny)
-        if i0 >= i1:
-            continue
-        for j in range(j0, j1):
+        if i0 < i1 and j0 < j1:
+            spans.append((i0, i1, j0, j1))
+            xs.update((i0, i1))
+            ys.update((j0, j1))
+
+    # The scan runs on a compressed grid: blocked cells only start and end
+    # at obstacle edges, so between consecutive edges, all columns (rows)
+    # are equal. Column I of the compressed grid spans the cell columns
+    # xs[I] to xs[I + 1], row J likewise. This finds the same rectangles,
+    # in the same order, as a scan of the cell grid, on far fewer cells.
+    xs, ys = sorted(xs), sorted(ys)
+    x_index = {x: i for i, x in enumerate(xs)}
+    y_index = {y: j for j, y in enumerate(ys)}
+    nxc, nyc = len(xs) - 1, len(ys) - 1
+    blocked = [[False]*nxc for j in range(nyc)]
+    for i0, i1, j0, j1 in spans:
+        i0, i1 = x_index[i0], x_index[i1]
+        for j in range(y_index[j0], y_index[j1]):
             blocked[j][i0:i1] = [True]*(i1 - i0)
 
-    # Largest-rectangle-in-histogram scan, one histogram per cell row j
-    # (heights[i]: number of free cells ending in row j of column i). Each
+    # Largest-rectangle-in-histogram scan, one histogram per row j
+    # (heights[i]: number of free rows ending in row j of column i). Each
     # popped stack entry is a rectangle that cannot grow to the left, right
     # or downwards; it is maximal if it cannot grow upwards either.
     regions = []
-    heights = [0]*nx
-    for j in range(ny):
-        for i in range(nx):
-            heights[i] = 0 if blocked[j][i] else heights[i] + 1
+    heights = [0]*nxc
+    for j in range(nyc):
+        heights = [0 if b else h + 1 for b, h in zip(blocked[j], heights)]
         stack = [] # (start column, height), heights strictly increasing
-        for i in range(nx + 1):
-            h = heights[i] if i < nx else 0
+        for i, h in enumerate(heights + [0]):
             start = i
             while stack and stack[-1][1] > h:
                 start, sh = stack.pop()
-                if j == ny - 1 or any(blocked[j + 1][start:i]):
-                    regions.append((x0 + start, y0 + j + 1 - sh, x0 + i, y0 + j + 1))
+                if j == nyc - 1 or any(blocked[j + 1][start:i]):
+                    regions.append((x0 + xs[start], y0 + ys[j + 1 - sh],
+                        x0 + xs[i], y0 + ys[j + 1]))
             if h > 0 and (not stack or stack[-1][1] < h):
                 stack.append((start, h))
     return regions
@@ -350,10 +440,13 @@ def region_spot(region: tuple[int, int, int, int], length, depth, body, anchor, 
         return None
     return clamp(anchor[0] - length/2, lx, ux), clamp(anchor[1] - depth/2, ly, uy)
 
-def place_block(s: Symbol, trans: TD4R, inst: SchemInstance|None, obstacles: list[FloatRect], foreign: list[FloatRect]=()) -> tuple[Rect4R, int, HAlign] | None:
+def place_block(s: Symbol, trans: TD4R, inst: SchemInstance|None, body: Rect4R, obstacles: ObstacleIndex, bodies: ObstacleIndex, own_body: FloatRect|None = None) -> tuple[Rect4R, int, HAlign] | None:
     """
     Block rectangle and arrangement (wrap, see annotation_rows) for symbol s
-    drawn under trans (as instance inst or on its own), avoiding obstacles.
+    drawn under trans (as instance inst or on its own) with the given body
+    (see symbol_body), avoiding obstacles. bodies are the float bodies of all
+    instances; own_body (an entry of bodies, compared by identity) is the
+    one of inst, all others are foreign (see candidate_cost).
     Returns None if the block is empty, else the block rectangle, the
     arrangement and the alignment of the text in it.
 
@@ -371,7 +464,6 @@ def place_block(s: Symbol, trans: TD4R, inst: SchemInstance|None, obstacles: lis
     lines = annotation_lines(s, inst)
     if not lines:
         return None
-    body = symbol_body(s, trans, inst)
     sizes = arrangements(lines)
 
     # Grid window: the body plus the reach of the largest arrangement.
@@ -379,7 +471,17 @@ def place_block(s: Symbol, trans: TD4R, inst: SchemInstance|None, obstacles: lis
     reach_y = PUSH_MARGIN + CLEARANCE_Y + max(depth for wrap, length, depth in sizes)
     x0, y0 = math.floor((body.lx - reach_x)/STEP), math.floor((body.ly - reach_y)/STEP)
     x1, y1 = math.ceil((body.ux + reach_x)/STEP), math.ceil((body.uy + reach_y)/STEP)
+    step, cx, cy = float(STEP), float(CLEARANCE_X), float(CLEARANCE_Y)
+    obstacles = obstacles.near(x0*step - cx, y0*step - cy, x1*step + cx, y1*step + cy)
     regions = empty_regions(x0, y0, x1 - x0, y1 - y0, obstacles)
+    # All candidates lie within the window, so their gap to body is below
+    # reach_x + reach_y. Foreign bodies farther away from the window than
+    # that plus AMBIGUITY_MARGIN never add ambiguity cost (candidate_cost).
+    window = (x0*step, y0*step, x1*step, y1*step)
+    max_gap = float(reach_x + reach_y) + AMBIGUITY_MARGIN
+    foreign = [f for f in bodies.near(window[0] - max_gap, window[1] - max_gap,
+            window[2] + max_gap, window[3] + max_gap)
+        if f is not own_body and rect_gap(window, f) < max_gap]
 
     sides = preferred_sides(trans.d4, s.is_box)
     # Directions of East and North, the first two sides in either order.
@@ -396,13 +498,18 @@ def place_block(s: Symbol, trans: TD4R, inst: SchemInstance|None, obstacles: lis
 
     # The search runs in floats for speed.
     body_f = body.tofloat()
+    push_margin = float(PUSH_MARGIN)
     best = None
     for n, (wrap, length, depth) in enumerate(sizes):
         l, d = float(length), float(depth)
         anchors = [anchor(side, length, depth).tofloat() for side in sides + [None]]
         for region in regions:
+            # Shortcut for regions too small for the block, for which
+            # region_spot returns None.
+            if (region[2] - region[0])*step < l or (region[3] - region[1])*step < d:
+                continue
             for rank, side in enumerate(sides + [None]):
-                pos = region_spot(region, l, d, body_f, anchors[rank], float(STEP), float(PUSH_MARGIN), side)
+                pos = region_spot(region, l, d, body_f, anchors[rank], step, push_margin, side)
                 if pos is None:
                     continue
                 x, y = pos
@@ -447,9 +554,12 @@ def block_rects(node: Schematic) -> dict[int, tuple[Rect4R, int, HAlign]]:
     the others are placed greedily in instance order, seeing the blocks
     placed before them as obstacles.
     """
-    obstacles = [r.tofloat() for r in schematic_obstacles(node)]
-    bodies = {inst.nid: symbol_body(inst.symbol, inst.loc_transform(), inst).tofloat()
+    inst_obstacles = instance_obstacles(node)
+    obstacles = ObstacleIndex([r.tofloat() for r in schematic_obstacles(node, inst_obstacles)])
+    bodies = {inst.nid: symbol_body(inst.symbol, inst.loc_transform(), inst, inst_obstacles[inst.nid])
         for inst in node.all(SchemInstance)}
+    bodies_f = {nid: body.tofloat() for nid, body in bodies.items()}
+    bodies_index = ObstacleIndex(list(bodies_f.values()))
     rects = {}
     for inst in node.all(SchemInstance):
         if inst.annotation_pos is not None:
@@ -460,8 +570,8 @@ def block_rects(node: Schematic) -> dict[int, tuple[Rect4R, int, HAlign]]:
     for inst in node.all(SchemInstance):
         if inst.annotation_pos is not None:
             continue
-        foreign = [body for nid, body in bodies.items() if nid != inst.nid]
-        placed = place_block(inst.symbol, inst.loc_transform(), inst, obstacles, foreign)
+        placed = place_block(inst.symbol, inst.loc_transform(), inst, bodies[inst.nid],
+            obstacles, bodies_index, bodies_f[inst.nid])
         if placed is None:
             continue
         rects[inst.nid] = placed
