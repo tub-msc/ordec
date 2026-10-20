@@ -13,7 +13,6 @@ from ordec.core.schema.schematic import SchemInstanceSubcursor
 from ordec.lib.generic_mos import Nmos
 from ordec.schematic.auto_wire import (
     RoutingPort, GridConn, place_cells_and_ports, draw_connections,
-    _riding_moves, _corner_moves, _direction_bit,
     GRID_EMPTY, GRID_ROUTED, GRID_DIR, GRID_BLOCKED, GRID_PIN, GRID_PORT,
 )
 
@@ -35,40 +34,6 @@ def print_grid(grid, key_grid, width, height):
         print(''.join(
             f"{fmt_key(key_grid[(x, ry)]) if (x, ry) in key_grid else symbols.get(grid[ry][x], '?'):<{cell_width}}"
             for x in range(width)))
-
-
-def test_direction_bit():
-    # Documented encoding: N=1, S=2, E=4, W=8; one distinct bit per direction.
-    assert _direction_bit(0, 1) == 1
-    assert _direction_bit(0, -1) == 2
-    assert _direction_bit(1, 0) == 4
-    assert _direction_bit(-1, 0) == 8
-    # Consistent with the D4 directions' unit steps.
-    for d, bit in ((North, 1), (South, 2), (East, 4), (West, 8)):
-        v = d * Vec2R(0, 1)
-        assert _direction_bit(int(v.x), int(v.y)) == bit
-    # Non-cardinal moves encode to 0.
-    assert _direction_bit(0, 0) == 0
-    assert _direction_bit(1, 1) == 0
-
-
-def test_blocked_moves_match_direction_bit():
-    # _riding_moves() and _corner_moves() hardcode _direction_bit()'s
-    # encoding; this pins them to it.
-    height = 7
-    def key(x, y):
-        return x * height + y
-    def moves(steps):
-        return {(key(x, y), _direction_bit(dx, dy)) for x, y, dx, dy in steps}
-    assert set(_riding_moves(((3, 2), (3, 4)), height)) == moves([
-        (3, 2, 0, 1), (3, 3, 0, 1), (3, 3, 0, -1), (3, 4, 0, -1)])
-    assert set(_riding_moves(((4, 2), (3, 2)), height)) == moves([
-        (3, 2, 1, 0), (4, 2, -1, 0)])
-    # Out of and into the corner node; moves from outside the grid are
-    # dropped.
-    assert set(_corner_moves((0, 2), 5, height)) == moves([
-        (0, 2, 0, 1), (0, 2, 0, -1), (0, 2, 1, 0), (0, 2, -1, 0),
-        (0, 1, 0, 1), (0, 3, 0, -1), (1, 2, -1, 0)])
 
 
 def test_place_and_draw_connections():

@@ -22,12 +22,13 @@ Heuristics:
   A reroute must keep its net connected: paths that anchor the net's terminal
   are rerouted in full (no shortcut), and rearrangements that strand a branch
   of the removed route are rejected.
+
+The A* search loop and the blocked move updates are implemented in the C
+extension _auto_wire (_auto_wire.c), which also defines the cost constants.
 """
 
 import math
 import numpy as np
-import heapq
-import sys
 import logging
 from collections import defaultdict
 from typing import Iterable, NamedTuple
@@ -36,13 +37,12 @@ from dataclasses import dataclass
 from ..core import *
 from ..core.schema.schematic import SchemInstanceSubcursor
 from .render import Renderer
+from . import _auto_wire
 
 logger = logging.getLogger(__name__)
 
 SHORTCUT_ENABLED = True       # Enable branch-to-existing-path shortcut routing.
 MAX_RIPUP_CANDIDATES = 5      # Blocking routes to try for one-route rip-up.
-CONGESTION_PENALTY = 2.0      # Extra cost multiplier per routed-cell reuse.
-ROUTED_BASE_PENALTY = 0.25    # Base cost for stepping onto an already routed cell.
 
 
 # Grid cell type constants (int8 encoding)
@@ -62,8 +62,10 @@ class BlockedMoves:
     prevention). The net being routed is blocked by its own riding moves
     only, so its branches can still cross and attach.
 
-    Moves are keyed as (node_key << 4) | _direction_bit(). Per node, the
-    blocked directions are stored as bitmasks. Rebuilding the blocked moves
+    Moves are keyed as (node_key << 4) | bit, with bits N=1, S=2, E=4,
+    W=8. Per node, the blocked directions are stored as bitmasks. The
+    blocked directions for the net being routed are determined in
+    _auto_wire.c (block_mask). Rebuilding the blocked moves
     of all nets for every search made routing quadratic in the total wire
     length; here, appending segments only processes the new segments.
     """
@@ -74,6 +76,9 @@ class BlockedMoves:
         self.net_masks = defaultdict(dict)  # net -> node_key -> riding+corner bits
         self.count = defaultdict(int)       # move key -> number of nets blocking it
         self.any_mask = dict()              # node_key -> bits blocked by any net
+        # Search state of _auto_wire.search: up to 17 bytes per node, see
+        # SCRATCH_PER_NODE in _auto_wire.c.
+        self.scratch = bytearray(width * height * 17)
 
     def add(self, net: Net, segments: list, new_count: int):
         """Account for the last new_count entries of the net's segments."""
@@ -86,20 +91,8 @@ class BlockedMoves:
             corner_points = [point for segment in segments[first:] for point in segment]
         ride, own, count, any_mask = self.ride_masks[net], self.net_masks[net], \
             self.count, self.any_mask
-        riding = [move for segment in segments[old_count:]
-            for move in _riding_moves(segment, self.height)]
-        for key, bit in riding:
-            ride[key] = ride.get(key, 0) | bit
-        corners = [move for point in corner_points
-            for move in _corner_moves(point, self.width, self.height)]
-        for key, bit in riding + corners:
-            mask = own.get(key, 0)
-            if not mask & bit:
-                own[key] = mask | bit
-                move_key = (key << 4) | bit
-                count[move_key] += 1
-                if count[move_key] == 1:
-                    any_mask[key] = any_mask.get(key, 0) | bit
+        _auto_wire.add_moves(segments[old_count:], corner_points, ride, own, count,
+            any_mask, self.width, self.height)
 
     def reset(self, net: Net, segments: list):
         """Replace the net's segments."""
@@ -113,17 +106,6 @@ class BlockedMoves:
                         self.any_mask[key] &= ~bit
         self.ride_masks.pop(net, None)
         self.add(net, segments, len(segments))
-
-    def own_node_mask(self, net: Net, key: int) -> int:
-        """Blocked directions at node key for routing net, where the net
-        itself has blocked moves at that node."""
-        own = self.net_masks[net][key]
-        ride = self.ride_masks[net].get(key, 0)
-        mask = (self.any_mask.get(key, 0) & ~own) | ride
-        for bit in (1, 2, 4, 8):
-            if own & bit and not ride & bit and self.count[(key << 4) | bit] > 1:
-                mask |= bit
-        return mask
 
 @dataclass
 class RoutingPort:
@@ -165,6 +147,7 @@ class GridConn(NamedTuple):
 # tabulated, as the Rational arithmetic is slow.
 _STEPS = {d: (int(v.x), int(v.y))
     for d in (North, East, South, West) for v in [d * Vec2R(0, 1)]}
+_DIR_INDEX = {North: 0, South: 1, East: 2, West: 3} # see _auto_wire.c
 
 # Place cells and ports on the grid
 def place_cells_and_ports(grid: np.ndarray, cells: Iterable[SchemInstance],
@@ -244,51 +227,6 @@ def adjust_start_end_for_direction(start: tuple[int, int], start_dir: D4,
     ex, ey = _STEPS[end_dir]
     return (start[0] + sx, start[1] + sy), (end[0] + ex, end[1] + ey)
 
-def _riding_moves(segment, height):
-    """Yield (node_key, bit) of the moves in both directions along a
-    straight segment."""
-    (x1, y1), (x2, y2) = segment
-    if x1 == x2:
-        for y in range(min(y1, y2), max(y1, y2)):
-            yield x1 * height + y, 1        # North from (x1, y)
-            yield x1 * height + y + 1, 2    # South from (x1, y + 1)
-    elif y1 == y2:
-        for x in range(min(x1, x2), max(x1, x2)):
-            yield x * height + y1, 4        # East from (x, y1)
-            yield (x + 1) * height + y1, 8  # West from (x + 1, y1)
-
-
-def _corner_moves(point, width, height):
-    """Yield (node_key, bit) of all moves out of point and of all in-grid
-    moves into it."""
-    x, y = point
-    key = x * height + y
-    for bit in (1, 2, 4, 8):
-        yield key, bit
-    if y > 0:
-        yield key - 1, 1
-    if y < height - 1:
-        yield key + 1, 2
-    if x > 0:
-        yield key - height, 4
-    if x < width - 1:
-        yield key + height, 8
-
-
-# Blocked move directions are encoded as int bitmasks rather than as
-# set[D4]. This is a performance optimization: D4 hashing (Enum.__hash__ is
-# a Python-level method) is slow.
-def _direction_bit(dx, dy) -> int:
-    """Bit identifying the direction of a unit grid move (dx, dy):
-    N=1, S=2, E=4, W=8. Returns 0 if the move is not cardinal
-    (shouldn't occur)."""
-    if dx == 0 and dy != 0:
-        return 1 if dy > 0 else 2
-    if dy == 0 and dx != 0:
-        return 4 if dx > 0 else 8
-    return 0
-
-
 def _point_keys(points, height):
     return {x * height + y for x, y in points}
 
@@ -312,7 +250,8 @@ def a_star(cells: bytearray, start: tuple[int, int], end: tuple[int, int],
         route_cell_usage: Routed cell usage counts by node key (optional).
         use_congestion: Whether to apply congestion/history penalties.
         blocked_move_hits: If given, blocked moves encountered during search
-            are added to this set, encoded as (node_key << 4) | _direction_bit().
+            are added to this set, encoded as (node_key << 4) | bit, with
+            bits N=1, S=2, E=4, W=8.
 
     Returns:
         list: Calculated path as list of (x, y) tuples, or empty list on failure.
@@ -334,104 +273,10 @@ def a_star(cells: bytearray, start: tuple[int, int], end: tuple[int, int],
     if cells[start_key] >= GRID_BLOCKED or cells[end_key] >= GRID_BLOCKED:
         return []
 
-    # Keyed by node key (x * height + y). Dicts rather than grid-sized
-    # lists: a search visits only a small part of the grid, and allocating
-    # grid-sized lists dominated the routing time of large schematics.
-    inf_score = float("inf")
-    g_score = {start_key: 0.0}
-    came_from = {start_key: -1}
-
-    # Unit grid steps and blocked-move mask bits of the four directions,
-    # precomputed for the search loop.
-    moves = [(d, _direction_bit(*_STEPS[d]), *_STEPS[d])
-        for d in (North, South, East, West)]
-
-    # Priority queue: (f_score, node_key, direction, g_score). The direction
-    # (a D4, which is not orderable) is never compared: re-pushes of a node
-    # strictly improve g_score, so (f_score, node_key) pairs are unique.
-    h_start = abs(start[0] - end_x) + abs(start[1] - end_y)
-    open_set = [(h_start, start_key, start_dir, 0.0)]
-
-    while open_set:
-        _, current_key, current_direction, popped_g_score = heapq.heappop(open_set)
-        # Skip stale entries: a better path to this node was already found
-        if popped_g_score > g_score[current_key]:
-            continue
-
-        # Goal reached: reconstruct path by walking came_from chain
-        if current_key == end_key:
-            path = []
-            key = current_key
-            while came_from[key] != -1:
-                path.append((key // height, key % height))
-                key = came_from[key]
-            path.reverse()
-            return path
-
-        # Decode flat key back to 2D coordinates
-        cx = current_key // height
-        cy = current_key % height
-        remaining_distance = abs(cx - end_x) + abs(cy - end_y)
-        if current_key in own_masks:
-            block_mask = blocked.own_node_mask(net, current_key)
-        else:
-            block_mask = any_mask.get(current_key, 0)
-        current_g_score = g_score[current_key]
-
-        for d, bit, dx, dy in moves:
-            # Skip if this direction is blocked by an existing route segment
-            if block_mask & bit:
-                if blocked_move_hits is not None:
-                    blocked_move_hits.add((current_key << 4) | bit)
-                continue
-
-            nx = cx + dx
-            ny = cy + dy
-            if nx < 0 or nx >= width or ny < 0 or ny >= height:
-                continue
-            neighbor_key = nx * height + ny
-
-            # Direction markers enforce straight escape from pins/ports. A turn
-            # is allowed on this route's start marker, and on the destination
-            # marker if that marker is the current route target.
-            if (cells[current_key] == GRID_DIR and
-                    current_direction is not None and
-                    current_direction != d and
-                    current_key != start_key and
-                    current_key != end_key):
-                continue
-
-            if cells[neighbor_key] >= GRID_BLOCKED:
-                continue
-
-            # Penalize direction changes proportional to remaining distance
-            # to encourage straight runs near the destination
-            if current_direction is not None and current_direction != d:
-                direction_change_penalty = remaining_distance * 0.5
-                if direction_change_penalty < 10:
-                    direction_change_penalty = 10
-            else:
-                direction_change_penalty = 0
-
-            # Discourage reuse of cells already occupied by other routes
-            congestion_penalty = 0.0
-            if use_congestion:
-                if route_cell_usage is not None:
-                    usage = route_cell_usage.get(neighbor_key, 0)
-                    if usage > 0:
-                        congestion_penalty = ROUTED_BASE_PENALTY + (usage * CONGESTION_PENALTY)
-                elif cells[neighbor_key] == GRID_ROUTED:
-                    congestion_penalty = ROUTED_BASE_PENALTY
-
-            tentative_g_score = current_g_score + 1 + direction_change_penalty + congestion_penalty
-            if tentative_g_score < g_score.get(neighbor_key, inf_score):
-                came_from[neighbor_key] = current_key
-                g_score[neighbor_key] = tentative_g_score
-                f_score = tentative_g_score + abs(nx - end_x) + abs(ny - end_y)
-                heapq.heappush(open_set, (f_score, neighbor_key, d,
-                                          tentative_g_score))
-
-    return []
+    return _auto_wire.search(cells, blocked.scratch, width, height, start_key,
+        _DIR_INDEX[start_dir], end_key, any_mask, own_masks,
+        blocked.ride_masks.get(net, {}), blocked.count, route_cell_usage,
+        use_congestion, blocked_move_hits, None)
 
 
 def reverse_a_star(cells: bytearray, start_points: dict,
@@ -456,7 +301,8 @@ def reverse_a_star(cells: bytearray, start_points: dict,
         route_cell_usage: Routed cell usage counts by node key (optional).
         use_congestion: Whether to apply congestion/history penalties.
         blocked_move_hits: If given, blocked moves encountered during search
-            are added to this set, encoded as (node_key << 4) | _direction_bit().
+            are added to this set, encoded as (node_key << 4) | bit, with
+            bits N=1, S=2, E=4, W=8.
 
     Returns:
         list: Shortest path found as list of (x, y) tuples, or empty list.
@@ -476,117 +322,10 @@ def reverse_a_star(cells: bytearray, start_points: dict,
         return []
     endpoint_keys = endpoint_mapping.get(net, set())
 
-    # Use the closest start point for the heuristic estimate.
-    # This may be inadmissible for farther start points but keeps search fast.
-    min_distance = sys.maxsize
-    for sp in start_points.values():
-        distance = abs(end_x - sp[0]) + abs(end_y - sp[1])
-        if distance < min_distance:
-            start_point_min = sp
-            min_distance = distance
-    spm_x, spm_y = start_point_min
-
-    # Dicts rather than grid-sized lists, see a_star().
-    inf_score = float("inf")
-    g_score = {end_key: 0.0}
-    came_from = {end_key: -1}
-
-    # Unit grid steps and blocked-move mask bits of the four directions,
-    # precomputed for the search loop.
-    moves = [(d, _direction_bit(*_STEPS[d]), *_STEPS[d])
-        for d in (North, South, East, West)]
-
-    # Priority queue: (f_score, node_key, direction, g_score); the direction
-    # is never compared, see a_star().
-    open_set = [(min_distance, end_key, end_dir, 0.0)]
-
-    # Track the best path found so far; search continues to find shorter ones
-    best_path = []
-    best_path_score = sys.maxsize
-
-    while open_set:
-        _, current_key, current_direction, popped_g_score = heapq.heappop(open_set)
-        if popped_g_score > g_score[current_key]:
-            continue
-
-        # Prune paths that can't beat the current best
-        current_path_length = g_score[current_key]
-        if current_path_length >= best_path_score:
-            continue
-
-        # Reached one of the target start points, record if shortest so far
-        if current_key in start_points:
-            path = []
-            key = current_key
-            while came_from[key] != -1:
-                path.append((key // height, key % height))
-                key = came_from[key]
-            path.append((key // height, key % height))
-
-            current_path_score = len(path)
-            if current_path_score < best_path_score:
-                best_path = path
-                best_path_score = current_path_score
-
-            continue
-
-        cx = current_key // height
-        cy = current_key % height
-        remaining_distance = abs(cx - end_x) + abs(cy - end_y)
-        if current_key in own_masks:
-            block_mask = blocked.own_node_mask(net, current_key)
-        else:
-            block_mask = any_mask.get(current_key, 0)
-        current_g_score = g_score[current_key]
-
-        for d, bit, dx, dy in moves:
-            if block_mask & bit:
-                if blocked_move_hits is not None:
-                    blocked_move_hits.add((current_key << 4) | bit)
-                continue
-
-            nx = cx + dx
-            ny = cy + dy
-            if nx < 0 or nx >= width or ny < 0 or ny >= height:
-                continue
-            neighbor_key = nx * height + ny
-
-            if (cells[current_key] == GRID_DIR and
-                    current_direction is not None and
-                    current_direction != d and
-                    current_key != end_key and
-                    current_key not in endpoint_keys):
-                continue
-
-            if cells[neighbor_key] >= GRID_BLOCKED:
-                continue
-
-            if current_direction is not None and current_direction != d:
-                direction_change_penalty = remaining_distance * 0.5
-                if direction_change_penalty < 10:
-                    direction_change_penalty = 10
-            else:
-                direction_change_penalty = 0
-
-            congestion_penalty = 0.0
-            if use_congestion:
-                if route_cell_usage is not None:
-                    usage = route_cell_usage.get(neighbor_key, 0)
-                    if usage > 0:
-                        congestion_penalty = ROUTED_BASE_PENALTY + (usage * CONGESTION_PENALTY)
-                elif cells[neighbor_key] == GRID_ROUTED:
-                    congestion_penalty = ROUTED_BASE_PENALTY
-
-            tentative_g_score = current_g_score + 1 + direction_change_penalty + congestion_penalty
-            if tentative_g_score < g_score.get(neighbor_key, inf_score):
-                came_from[neighbor_key] = current_key
-                g_score[neighbor_key] = tentative_g_score
-                f_score = tentative_g_score + abs(nx - spm_x) + abs(ny - spm_y)
-                heapq.heappush(open_set, (f_score, neighbor_key, d,
-                                          tentative_g_score))
-
-    return best_path
-
+    return _auto_wire.search(cells, blocked.scratch, width, height, end_key,
+        _DIR_INDEX[end_dir], start_points, any_mask, own_masks,
+        blocked.ride_masks.get(net, {}), blocked.count, route_cell_usage,
+        use_congestion, blocked_move_hits, endpoint_keys)
 
 
 def shorten_lists(list_of_lists: list) -> list:
@@ -890,17 +629,13 @@ def draw_connections(grid: np.ndarray, connections: list[GridConn],
         return not pending
 
     def path_blocked_move_keys(path):
-        blocked_keys = set()
+        # The moves a net with only this path would block, see BlockedMoves.
         segments = transform_to_pairs(keep_corners_and_edges([path]), [])
-        for segment in segments:
-            for key, bit in _riding_moves(segment, height):
-                blocked_keys.add((key << 4) | bit)
-        if len(segments) > 1:
-            for segment in segments:
-                for point in segment:
-                    for key, bit in _corner_moves(point, width, height):
-                        blocked_keys.add((key << 4) | bit)
-        return blocked_keys
+        corner_points = [p for s in segments for p in s] if len(segments) > 1 else []
+        masks = {}
+        _auto_wire.add_moves(segments, corner_points, {}, masks, {}, {}, width, height)
+        return {(key << 4) | bit for key, mask in masks.items()
+            for bit in (1, 2, 4, 8) if mask & bit}
 
     def make_routed_entry(start, end, start_dir, end_dir, net, path, path_cells):
         return RoutedEntry(
