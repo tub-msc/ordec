@@ -13,7 +13,7 @@ from ordec.core.schema.schematic import SchemInstanceSubcursor
 from ordec.lib.generic_mos import Nmos
 from ordec.schematic.auto_wire import (
     RoutingPort, GridConn, place_cells_and_ports, draw_connections,
-    _blocked_masks_by_node, _direction_bit,
+    _riding_moves, _corner_moves, _direction_bit,
     GRID_EMPTY, GRID_ROUTED, GRID_DIR, GRID_BLOCKED, GRID_PIN, GRID_PORT,
 )
 
@@ -52,20 +52,23 @@ def test_direction_bit():
     assert _direction_bit(1, 1) == 0
 
 
-def test_blocked_masks_match_direction_bit():
-    # _blocked_masks_by_node() inlines _direction_bit()'s sign tests for
-    # performance; this pins the two copies to each other.
+def test_blocked_moves_match_direction_bit():
+    # _riding_moves() and _corner_moves() hardcode _direction_bit()'s
+    # encoding; this pins them to it.
     height = 7
-    key = 3 * height + 2
-    for step in ((0, 1), (0, -1), (1, 0), (-1, 0)):
-        move = ((3, 2), (3 + step[0], 2 + step[1]))
-        assert _blocked_masks_by_node({move}, height) \
-            == {key: _direction_bit(*step)}
-    # Non-cardinal moves are skipped.
-    assert _blocked_masks_by_node({((3, 2), (4, 3))}, height) == {}
-    # Moves from the same node combine into one mask.
-    moves = {((3, 2), (3, 3)), ((3, 2), (4, 2))}
-    assert _blocked_masks_by_node(moves, height) == {key: 1 | 4}
+    def key(x, y):
+        return x * height + y
+    def moves(steps):
+        return {(key(x, y), _direction_bit(dx, dy)) for x, y, dx, dy in steps}
+    assert set(_riding_moves(((3, 2), (3, 4)), height)) == moves([
+        (3, 2, 0, 1), (3, 3, 0, 1), (3, 3, 0, -1), (3, 4, 0, -1)])
+    assert set(_riding_moves(((4, 2), (3, 2)), height)) == moves([
+        (3, 2, 1, 0), (4, 2, -1, 0)])
+    # Out of and into the corner node; moves from outside the grid are
+    # dropped.
+    assert set(_corner_moves((0, 2), 5, height)) == moves([
+        (0, 2, 0, 1), (0, 2, 0, -1), (0, 2, 1, 0), (0, 2, -1, 0),
+        (0, 1, 0, 1), (0, 3, 0, -1), (1, 2, -1, 0)])
 
 
 def test_place_and_draw_connections():
