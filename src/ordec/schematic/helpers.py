@@ -6,6 +6,7 @@ import itertools
 import math
 from collections import defaultdict
 from dataclasses import dataclass
+from functools import cached_property
 from ..core import *
 from .auto_wire import tap_outline_point
 from .annotate import pin_obstacles
@@ -335,10 +336,13 @@ def first_last_iter(iterable):
 @dataclass
 class PinOfInstance:
     conn: SchemInstanceConn
+    transform: TD4R # loc_transform() of the instance
 
-    @property
+    # Cached: the checks read the position many times, and the Rational
+    # arithmetic is slow.
+    @cached_property
     def pos(self):
-        return self.conn.ref.loc_transform() * self.conn.there.pos
+        return self.transform * self.conn.there.pos
 
     @property
     def net(self):
@@ -347,11 +351,20 @@ class PinOfInstance:
     @property
     def orient(self):
         #TODO: check if this pin.orient transformation works:
-        return self.conn.ref.loc_transform().d4 * self.conn.there.orient
+        return self.transform.d4 * self.conn.there.orient
 
     @property
     def ref(self):
         return self.conn.here
+
+def _pin_terminals(node: Schematic) -> dict[int, PinOfInstance]:
+    """Terminals of all instance pins, by SchemInstanceConn nid."""
+    ret = {}
+    for inst in node.all(SchemInstance):
+        transform = inst.loc_transform()
+        for conn in node.all(SchemInstanceConn.ref_idx.query(inst)):
+            ret[conn.nid] = PinOfInstance(conn, transform)
+    return ret
 
 class SchematicError(Exception):
     pass
@@ -508,7 +521,7 @@ def _check_conn_points(node: Schematic, suppress_errors: bool = False):
                 seen_positions.add(p.pos)
 
 def _check_terminals(node: Schematic, g: ConnectivityGraph,
-                     add_terminal_taps: bool,
+                     pins: dict[int, PinOfInstance], add_terminal_taps: bool,
                      suppress_errors: bool = False) -> set[Vec2R]:
     """Validate terminals (ports + instance pins). Returns terminal positions."""
     terminal_positions = set()
@@ -559,7 +572,7 @@ def _check_terminals(node: Schematic, g: ConnectivityGraph,
         for conn in node.all(SchemInstanceConn.ref_idx.query(inst)):
             if conn.there.nid in pins_stray:
                 continue
-            add_terminal(PinOfInstance(conn))
+            add_terminal(pins[conn.nid])
 
     return terminal_positions
 
@@ -600,6 +613,7 @@ def _check_wiring_validity(node: Schematic, g: ConnectivityGraph,
                     node.root % SchemErrorMarker(pos=pos, error_type=SchemErrorType.MissingSchemConnPoint)
 
 def _check_net_connectivity(node: Schematic, g: ConnectivityGraph,
+                            pins: dict[int, PinOfInstance],
                             suppress_errors: bool = False):
     """Check that all terminals of each net are reachable.
 
@@ -614,7 +628,7 @@ def _check_net_connectivity(node: Schematic, g: ConnectivityGraph,
     for port in node.all(SchemPort):
         terminals_of_net[port.ref].append(port)
     for conn in node.all(SchemInstanceConn):
-        terminals_of_net[conn.here].append(PinOfInstance(conn))
+        terminals_of_net[conn.here].append(pins[conn.nid])
 
     for net, terminals in terminals_of_net.items():
         if len(terminals) == 0:
@@ -686,11 +700,12 @@ def schem_check(node: Schematic, add_conn_points: bool=False, add_terminal_taps=
     suppress = suppress or node.has_errors()
     _check_conn_points(node, suppress_errors=suppress)
     suppress = suppress or node.has_errors()
-    terminal_positions = _check_terminals(node, g, add_terminal_taps, suppress_errors=suppress)
+    pins = _pin_terminals(node)
+    terminal_positions = _check_terminals(node, g, pins, add_terminal_taps, suppress_errors=suppress)
     suppress = suppress or node.has_errors()
     _check_wiring_validity(node, g, terminal_positions, add_conn_points, suppress_errors=suppress)
     suppress = suppress or node.has_errors()
-    _check_net_connectivity(node, g, suppress_errors=suppress)
+    _check_net_connectivity(node, g, pins, suppress_errors=suppress)
     return node.has_errors()
 
 
