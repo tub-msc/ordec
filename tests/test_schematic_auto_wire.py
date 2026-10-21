@@ -342,6 +342,27 @@ def test_shortcut_without_branch_point():
     assert [Vec2R(4, 6), Vec2R(4, 7)] in vertices
 
 
+def test_shortcut_escape_outside_grid():
+    """Pin (4, 0) escapes South out of the grid, to (4, -1), whose node key
+    is that of (3, 4) on net y's first path. The connection must fail
+    rather than attach a stub outside the grid."""
+    width, height = 6, 5
+    s = Schematic()
+    s.y = Net()
+    ports = [
+        RoutingPort(0, 4, s.y, East),
+        RoutingPort(5, 4, s.y, West),
+        RoutingPort(4, 0, s.y, South),
+    ]
+    conns = [
+        GridConn(s.y, (0, 4), East, (5, 4), West),
+        GridConn(s.y, (0, 4), East, (4, 0), South),
+    ]
+    open_cells = [(x, y) for x in range(width) for y in range(height)]
+    vertices = route_maze(open_cells, ports, conns, width, height)
+    assert vertices[s.y] == [[(0, 4), (5, 4)]]
+
+
 def test_tap_point_routing_and_outline():
     """SchemTapPoints are routing terminals like ports and pins: auto_wire
     attaches wires to them (from the side opposite the glyph/label), and the

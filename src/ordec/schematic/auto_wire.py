@@ -672,7 +672,9 @@ def draw_connections(grid: np.ndarray, connections: list[GridConn],
             # connection
             shortcut_available = bool(points)
             if shortcut_available:
-                if end_new[0] * height + end_new[1] in points:
+                # Compared by point: the node key of an end_new outside
+                # the grid aliases a node of the neighboring column.
+                if points.get(end_new[0] * height + end_new[1]) == end_new:
                     # Endpoint already lies on an existing path --> trivial connection
                     path = [end_new]
                 else:
