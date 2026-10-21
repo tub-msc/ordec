@@ -422,7 +422,9 @@ def cbor_default(encoder, value):
         tag = CBOR_TYPED_ARRAY_TAGS[value.dtype]
     except KeyError:
         raise cbor2.CBOREncodeTypeError(f"unsupported array dtype {value.dtype}") from None
-    encoder.encode(cbor2.CBORTag(tag, np.ascontiguousarray(value).tobytes()))
+    # tobytes() returns C-order bytes also for strided views (SimColumn
+    # views of multi-field SimArrays), so no intermediate copy is needed.
+    encoder.encode(cbor2.CBORTag(tag, value.tobytes()))
 
 def ws_encode(payload) -> bytes:
     """Encodes one WebSocket message (see docs/dev/webui.rst)."""
