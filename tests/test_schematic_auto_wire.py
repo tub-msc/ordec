@@ -13,7 +13,6 @@ from ordec.core.schema.schematic import SchemInstanceSubcursor
 from ordec.lib.generic_mos import Nmos
 from ordec.schematic.auto_wire import (
     RoutingPort, GridConn, place_cells_and_ports, draw_connections,
-    _blocked_masks_by_node, _direction_bit,
     GRID_EMPTY, GRID_ROUTED, GRID_DIR, GRID_BLOCKED, GRID_PIN, GRID_PORT,
 )
 
@@ -35,37 +34,6 @@ def print_grid(grid, key_grid, width, height):
         print(''.join(
             f"{fmt_key(key_grid[(x, ry)]) if (x, ry) in key_grid else symbols.get(grid[ry][x], '?'):<{cell_width}}"
             for x in range(width)))
-
-
-def test_direction_bit():
-    # Documented encoding: N=1, S=2, E=4, W=8; one distinct bit per direction.
-    assert _direction_bit(0, 1) == 1
-    assert _direction_bit(0, -1) == 2
-    assert _direction_bit(1, 0) == 4
-    assert _direction_bit(-1, 0) == 8
-    # Consistent with the D4 directions' unit steps.
-    for d, bit in ((North, 1), (South, 2), (East, 4), (West, 8)):
-        v = d * Vec2R(0, 1)
-        assert _direction_bit(int(v.x), int(v.y)) == bit
-    # Non-cardinal moves encode to 0.
-    assert _direction_bit(0, 0) == 0
-    assert _direction_bit(1, 1) == 0
-
-
-def test_blocked_masks_match_direction_bit():
-    # _blocked_masks_by_node() inlines _direction_bit()'s sign tests for
-    # performance; this pins the two copies to each other.
-    height = 7
-    key = 3 * height + 2
-    for step in ((0, 1), (0, -1), (1, 0), (-1, 0)):
-        move = ((3, 2), (3 + step[0], 2 + step[1]))
-        assert _blocked_masks_by_node({move}, height) \
-            == {key: _direction_bit(*step)}
-    # Non-cardinal moves are skipped.
-    assert _blocked_masks_by_node({((3, 2), (4, 3))}, height) == {}
-    # Moves from the same node combine into one mask.
-    moves = {((3, 2), (3, 3)), ((3, 2), (4, 2))}
-    assert _blocked_masks_by_node(moves, height) == {key: 1 | 4}
 
 
 def test_place_and_draw_connections():
@@ -372,6 +340,52 @@ def test_shortcut_without_branch_point():
 
     vertices = [list(w.vertices()) for w in s.all(SchemWire.ref_idx.query(s.y))]
     assert [Vec2R(4, 6), Vec2R(4, 7)] in vertices
+
+
+def test_shortcut_escape_outside_grid():
+    """Pin (4, 0) escapes South out of the grid, to (4, -1), whose node key
+    is that of (3, 4) on net y's first path. The connection must fail
+    rather than attach a stub outside the grid."""
+    width, height = 6, 5
+    s = Schematic()
+    s.y = Net()
+    ports = [
+        RoutingPort(0, 4, s.y, East),
+        RoutingPort(5, 4, s.y, West),
+        RoutingPort(4, 0, s.y, South),
+    ]
+    conns = [
+        GridConn(s.y, (0, 4), East, (5, 4), West),
+        GridConn(s.y, (0, 4), East, (4, 0), South),
+    ]
+    open_cells = [(x, y) for x in range(width) for y in range(height)]
+    vertices = route_maze(open_cells, ports, conns, width, height)
+    assert vertices[s.y] == [[(0, 4), (5, 4)]]
+
+
+def test_endpoint_marker_outside_grid():
+    """Pin (4, 0) of net y escapes South out of the grid, to (4, -1), whose
+    node key is that of (3, 4), the direction marker of net z's port. The
+    only route from pin (3, 0) would turn on that marker, which must stay
+    forbidden."""
+    s = Schematic()
+    s.y = Net()
+    s.z = Net()
+    ports = [
+        RoutingPort(7, 0, s.y, North),
+        RoutingPort(7, 3, s.y, South),
+        RoutingPort(3, 0, s.y, North),
+        RoutingPort(4, 0, s.y, South),
+        RoutingPort(2, 4, s.z, East),
+    ]
+    conns = [
+        GridConn(s.y, (7, 0), North, end, end_dir)
+        for end, end_dir in (((7, 3), South), ((3, 0), North), ((4, 0), South))
+    ]
+    open_cells = [(3, 1), (3, 2), (3, 3), (3, 4), (4, 4), (5, 4), (5, 3),
+        (5, 2), (6, 2), (7, 1), (7, 2)]
+    vertices = route_maze(open_cells, ports, conns, width=8, height=5)
+    assert (3, 4) not in {p for path in vertices[s.y] for p in path}
 
 
 def test_tap_point_routing_and_outline():

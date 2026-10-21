@@ -1,7 +1,7 @@
 C extensions
 ============
 
-The ordec package contains two C extensions, both defined in ``setup.py``:
+The ordec package contains four C extensions, all defined in ``setup.py``:
 
 - :mod:`ordec.core.ordb._ordb`: the ORDB core (see :doc:`ordb_core`),
   sources in ``src/ordec/core/ordb/native/``. It is required; there is no
@@ -10,6 +10,10 @@ The ordec package contains two C extensions, both defined in ``setup.py``:
   ``src/ordec/layout/_gdsrecords.c``. It is optional: if it cannot be built,
   :mod:`ordec.layout.gdsrecords` falls back to an equivalent, but much slower
   pure-Python implementation.
+- :mod:`ordec.schematic._auto_wire` and :mod:`ordec.schematic._annotate`:
+  inner loops of the schematic router (A* search, blocked move updates) and
+  of the annotation placement (empty region scan), sources in
+  ``src/ordec/schematic/``. They are required like the ORDB core.
 
 Building
 --------
@@ -17,8 +21,10 @@ Building
 Building requires a C compiler and the Python headers (on Debian:
 ``sudo apt-get install build-essential python3-dev``).
 
-``pip3 install -e .[test]`` builds both extensions into the source tree
-(``src/ordec/core/ordb/_ordb.abi3.so``, ``src/ordec/layout/_gdsrecords.abi3.so``).
+``pip3 install -e .[test]`` builds the extensions into the source tree
+(``src/ordec/core/ordb/_ordb.abi3.so``, ``src/ordec/layout/_gdsrecords.abi3.so``,
+``src/ordec/schematic/_auto_wire.abi3.so``,
+``src/ordec/schematic/_annotate.abi3.so``).
 After changing the C sources, or after pulling changes to them, run the same
 command again. For a quick rebuild during development,
 ``python3 setup.py build_ext --inplace`` does the same if setuptools is
@@ -31,7 +37,7 @@ A missing or failed build of the ORDB core shows up on import as::
 Limited API
 -----------
 
-Both extensions use only the limited API of Python 3.11 (``Py_LIMITED_API``
+All extensions use only the limited API of Python 3.11 (``Py_LIMITED_API``
 in the sources), so one abi3 build serves all Python versions from 3.11.
 The limited API has no static types, no access to type object fields and no
 macros like ``PyTuple_GET_ITEM``: the types are heap types created with
