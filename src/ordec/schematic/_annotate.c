@@ -34,6 +34,10 @@ static PyObject *scan(PyObject *self, PyObject *args) {
     PyObject *spans_obj;
     if (!PyArg_ParseTuple(args, "llllO", &x0, &y0, &nx, &ny, &spans_obj))
         return NULL;
+    if (nx < 0 || ny < 0) {
+        PyErr_SetString(PyExc_ValueError, "negative grid size");
+        return NULL;
+    }
     PyObject *spans_seq = PySequence_Fast(spans_obj, "spans must be a sequence");
     if (!spans_seq)
         return NULL;

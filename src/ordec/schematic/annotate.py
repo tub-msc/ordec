@@ -89,14 +89,19 @@ class ObstacleIndex:
             for by in bys:
                 self.buckets[bx, by].append(index)
 
-    def near(self, lx, ly, ux, uy) -> list[FloatRect]:
-        """Obstacles that may intersect the window, in insertion order."""
+    def near_indices(self, lx, ly, ux, uy) -> list[int]:
+        """Indices of the obstacles that may intersect the window, in
+        insertion order."""
         indices = set()
         bxs, bys = self._bucket_range(lx, ly, ux, uy)
         for bx in bxs:
             for by in bys:
                 indices.update(self.buckets.get((bx, by), ()))
-        return [self.rects[i] for i in sorted(indices)]
+        return sorted(indices)
+
+    def near(self, lx, ly, ux, uy) -> list[FloatRect]:
+        """Obstacles that may intersect the window, in insertion order."""
+        return [self.rects[i] for i in self.near_indices(lx, ly, ux, uy)]
 
 def _bbox(points) -> Rect4R:
     xs = [p.x for p in points]
@@ -131,17 +136,9 @@ def pin_obstacles(pin: Pin, trans: TD4R) -> list[Rect4R]:
         rects.append(Renderer.label_rect(label_trans, len(pin.full_path_label()), 1, halign=halign, valign=valign, space=space))
     return rects
 
-def symbol_obstacles(s: Symbol, trans: TD4R, inst: SchemInstance|None = None) -> list[Rect4R]:
-    """
-    Rectangles covering the drawn geometry of symbol s under trans: polygons,
-    arcs, shown pin arrows and pin labels, and fixed annotation stacks. The
-    outline itself is not an obstacle, so blocks may use empty outline space.
-    """
-    return shape_obstacles(s, trans) + stack_obstacles(s, trans, inst)
-
 def shape_obstacles(s: Symbol, trans: TD4R) -> list[Rect4R]:
-    """symbol_obstacles without the annotation stacks, which depend on the
-    instance."""
+    """Rectangles covering the polygons, arcs, shown pin arrows and pin
+    labels of s under trans."""
     rects = []
     for poly in s.all(SymbolPoly):
         rects.append(trans * _bbox(poly.vertices()))
@@ -164,10 +161,12 @@ def stack_obstacles(s: Symbol, trans: TD4R, inst: SchemInstance|None) -> list[Re
 
 def instance_obstacles(node: Schematic) -> dict[int, list[Rect4R]]:
     """
-    symbol_obstacles of all instances of node, by instance nid. Instances
-    with the same symbol and orientation share the shape_obstacles, computed
-    once without translation: the Rational arithmetic is slow. Translating
-    afterwards is exact.
+    Rectangles covering the drawn geometry of all instances of node, by
+    instance nid: shape_obstacles and fixed annotation stacks. The outline
+    itself is not an obstacle, so blocks may use empty outline space.
+    Instances with the same symbol and orientation share the
+    shape_obstacles, computed once without translation: the Rational
+    arithmetic is slow. Translating afterwards is exact.
     """
     shapes = {}
     ret = {}
@@ -181,13 +180,11 @@ def instance_obstacles(node: Schematic) -> dict[int, list[Rect4R]]:
             + stack_obstacles(inst.symbol, trans, inst)
     return ret
 
-def schematic_obstacles(node: Schematic, inst_obstacles: dict[int, list[Rect4R]]|None = None) -> list[Rect4R]:
+def schematic_obstacles(node: Schematic, inst_obstacles: dict[int, list[Rect4R]]) -> list[Rect4R]:
     """
-    Rectangles covering everything drawn in node except annotation blocks.
-    inst_obstacles can pass the result of instance_obstacles.
+    Rectangles covering everything drawn in node except annotation blocks,
+    given its instance_obstacles.
     """
-    if inst_obstacles is None:
-        inst_obstacles = instance_obstacles(node)
     rects = []
     for wire in node.all(SchemWire):
         v = wire.vertices()
@@ -240,13 +237,11 @@ def arrangements(lines: list) -> list[tuple[int, R, R]]:
             ret.append((wrap, *block_size(rows)))
     return ret
 
-def symbol_body(s: Symbol, trans: TD4R, inst: SchemInstance|None, rects: list[Rect4R]|None = None) -> Rect4R:
+def symbol_body(s: Symbol, trans: TD4R, rects: list[Rect4R]) -> Rect4R:
     """
-    Bounding box of the drawn geometry of s under trans (outline if none).
-    rects can pass the symbol_obstacles.
+    Bounding box of the drawn geometry rects of s under trans (see
+    instance_obstacles), its outline if there are none.
     """
-    if rects is None:
-        rects = symbol_obstacles(s, trans, inst)
     if not rects:
         return trans * s.outline
     return Rect4R(min(r.lx for r in rects), min(r.ly for r in rects),
@@ -406,13 +401,13 @@ def region_spot(region: tuple[int, int, int, int], length, depth, body, anchor, 
         return None
     return clamp(anchor[0] - length/2, lx, ux), clamp(anchor[1] - depth/2, ly, uy)
 
-def place_block(s: Symbol, trans: TD4R, inst: SchemInstance|None, body: Rect4R, obstacles: ObstacleIndex, bodies: ObstacleIndex, own_body: FloatRect|None = None) -> tuple[Rect4R, int, HAlign] | None:
+def place_block(s: Symbol, trans: TD4R, inst: SchemInstance|None, body: Rect4R, obstacles: ObstacleIndex, bodies: ObstacleIndex, own_index: int|None = None) -> tuple[Rect4R, int, HAlign] | None:
     """
     Block rectangle and arrangement (wrap, see annotation_rows) for symbol s
     drawn under trans (as instance inst or on its own) with the given body
     (see symbol_body), avoiding obstacles. bodies are the float bodies of all
-    instances; own_body (an entry of bodies, compared by identity) is the
-    one of inst, all others are foreign (see candidate_cost).
+    instances; the one at own_index is the one of inst, all others are
+    foreign (see candidate_cost).
     Returns None if the block is empty, else the block rectangle, the
     arrangement and the alignment of the text in it.
 
@@ -445,9 +440,9 @@ def place_block(s: Symbol, trans: TD4R, inst: SchemInstance|None, body: Rect4R, 
     # that plus AMBIGUITY_MARGIN never add ambiguity cost (candidate_cost).
     window = (x0*step, y0*step, x1*step, y1*step)
     max_gap = float(reach_x + reach_y) + AMBIGUITY_MARGIN
-    foreign = [f for f in bodies.near(window[0] - max_gap, window[1] - max_gap,
-            window[2] + max_gap, window[3] + max_gap)
-        if f is not own_body and rect_gap(window, f) < max_gap]
+    foreign = [bodies.rects[i] for i in bodies.near_indices(window[0] - max_gap,
+            window[1] - max_gap, window[2] + max_gap, window[3] + max_gap)
+        if i != own_index and rect_gap(window, bodies.rects[i]) < max_gap]
 
     sides = preferred_sides(trans.d4, s.is_box)
     # Directions of East and North, the first two sides in either order.
@@ -522,10 +517,10 @@ def block_rects(node: Schematic) -> dict[int, tuple[Rect4R, int, HAlign]]:
     """
     inst_obstacles = instance_obstacles(node)
     obstacles = ObstacleIndex([r.tofloat() for r in schematic_obstacles(node, inst_obstacles)])
-    bodies = {inst.nid: symbol_body(inst.symbol, inst.loc_transform(), inst, inst_obstacles[inst.nid])
+    bodies = {inst.nid: symbol_body(inst.symbol, inst.loc_transform(), inst_obstacles[inst.nid])
         for inst in node.all(SchemInstance)}
-    bodies_f = {nid: body.tofloat() for nid, body in bodies.items()}
-    bodies_index = ObstacleIndex(list(bodies_f.values()))
+    bodies_index = ObstacleIndex([body.tofloat() for body in bodies.values()])
+    body_index = {nid: i for i, nid in enumerate(bodies)} # in bodies_index
     rects = {}
     for inst in node.all(SchemInstance):
         if inst.annotation_pos is not None:
@@ -537,7 +532,7 @@ def block_rects(node: Schematic) -> dict[int, tuple[Rect4R, int, HAlign]]:
         if inst.annotation_pos is not None:
             continue
         placed = place_block(inst.symbol, inst.loc_transform(), inst, bodies[inst.nid],
-            obstacles, bodies_index, bodies_f[inst.nid])
+            obstacles, bodies_index, body_index[inst.nid])
         if placed is None:
             continue
         rects[inst.nid] = placed

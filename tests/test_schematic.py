@@ -301,21 +301,22 @@ def test_pin_show_flags():
     assert 'text-anchor="middle"' in s.freeze().render().svg().decode()
 
 def test_annotation_placement():
-    from ordec.schematic.annotate import block_rects, schematic_obstacles, symbol_body, fits, rect_gap
+    from ordec.schematic.annotate import block_rects, instance_obstacles, schematic_obstacles, symbol_body, fits, rect_gap
     from ordec.lib.generic_mos import Inv
     from .lib.ord import strongarm
     # Inv wires manually and calls place_annotations itself, Strongarm runs
     # the viewgen pipeline and has mirrored instances. No block may overlap
     # another shape or block, and all stay close to their instance.
     for sch in (Inv().schematic, strongarm.Strongarm().schematic):
-        obstacles = [r.tofloat() for r in schematic_obstacles(sch)]
+        inst_obstacles = instance_obstacles(sch)
+        obstacles = [r.tofloat() for r in schematic_obstacles(sch, inst_obstacles)]
         rects = block_rects(sch)
         assert len(rects) == len(list(sch.all(SchemInstance)))
         for nid, (rect, wrap, halign) in rects.items():
             others = [r.tofloat() for n, (r, w, h) in rects.items() if n != nid]
             assert fits(rect.tofloat(), obstacles + others)
             inst = sch.cursor_at(nid)
-            body = symbol_body(inst.symbol, inst.loc_transform(), inst)
+            body = symbol_body(inst.symbol, inst.loc_transform(), inst_obstacles[nid])
             assert rect_gap(rect.tofloat(), body.tofloat()) == 0
             if rect.ux <= body.lx:
                 # Blocks left of their symbol are right-aligned.
@@ -331,7 +332,8 @@ def test_annotation_placement():
     # but still stays nearer to its own symbol than to any other.
     from ordec.examples.vco_pseudodiff import VcoRing
     sch = VcoRing().schematic
-    bodies = {inst.nid: symbol_body(inst.symbol, inst.loc_transform(), inst).tofloat()
+    inst_obstacles = instance_obstacles(sch)
+    bodies = {inst.nid: symbol_body(inst.symbol, inst.loc_transform(), inst_obstacles[inst.nid]).tofloat()
         for inst in sch.all(SchemInstance)}
     for nid, (rect, wrap, halign) in block_rects(sch).items():
         others = [rect_gap(rect.tofloat(), b) for n, b in bodies.items() if n != nid]

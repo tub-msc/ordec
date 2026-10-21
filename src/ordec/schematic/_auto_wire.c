@@ -3,21 +3,30 @@
 
 // Inner loops of the schematic router ordec.schematic.auto_wire: the A*
 // search of a_star() and reverse_a_star(), and the blocked move updates of
-// BlockedMoves.add().
+// BlockedMoves. Also defines the grid cell types (GRID_*), exported to
+// auto_wire.
 //
 // Nodes are keyed by x * height + y. Blocked moves and route cell usage stay
 // in the Python dicts of auto_wire (see BlockedMoves), queried per expanded
 // node. Pop order is fully determined by (f_score, node_key), so results do
 // not depend on the heap implementation.
+//
+// Blocked moves are encoded here only; auto_wire passes them through:
+// - direction mask: bits of move directions out of a node (BIT),
+// - move key: a unit move, MOVE_KEY(node key, direction bit).
 
 #define PY_SSIZE_T_CLEAN
 #define Py_LIMITED_API 0x030b0000 // abi3, Python 3.11+
 #include <Python.h>
 #include <stdlib.h>
 
-#define GRID_ROUTED 1
-#define GRID_DIR 2
-#define GRID_BLOCKED 3
+// Grid cell types. Types below GRID_BLOCKED are passable.
+#define GRID_EMPTY 0   // empty cell
+#define GRID_ROUTED 1  // routed path
+#define GRID_DIR 2     // direction marker (turn restriction)
+#define GRID_BLOCKED 3 // cell body
+#define GRID_PIN 4     // cell pin
+#define GRID_PORT 5    // port
 
 // Congestion cost of stepping onto a routed cell used u times:
 // ROUTED_BASE_PENALTY + u * CONGESTION_PENALTY.
@@ -27,11 +36,21 @@
 // least MIN_TURN_PENALTY. This favors straight runs near the destination.
 #define MIN_TURN_PENALTY 10
 
-// Search order and encoding of the move directions: North, South, East,
-// West (N=1, S=2, E=4, W=8, as in the move keys of BlockedMoves).
+// Search order, unit steps and direction mask bits of the move directions
+// North, South, East, West.
 static const int DX[4] = {0, 0, 1, -1};
 static const int DY[4] = {1, -1, 0, 0};
 static const int BIT[4] = {1, 2, 4, 8};
+
+#define MOVE_KEY(key, bit) (((key) << 4) | (bit))
+
+// Index of the move direction with unit step (dx, dy), -1 if none.
+static int dir_index(long dx, long dy) {
+    for (int d = 0; d < 4; d++)
+        if (DX[d] == dx && DY[d] == dy)
+            return d;
+    return -1;
+}
 
 typedef struct {
     double f;
@@ -151,7 +170,7 @@ static long block_mask(PyObject *any_mask, PyObject *own_masks,
     long mask = (any & ~own) | ride;
     for (int i = 0; i < 4; i++) {
         if ((own & BIT[i]) && !(ride & BIT[i])) {
-            long count = dict_get_long(counts, (key << 4) | BIT[i], 0);
+            long count = dict_get_long(counts, MOVE_KEY(key, BIT[i]), 0);
             if (count < 0)
                 return -1;
             if (count > 1)
@@ -189,57 +208,40 @@ static PyObject *trace(const long *came_from, long key, long height, int with_or
     return path;
 }
 
-// search(cells, scratch, width, height, origin_key, origin_dir, goal,
-//     any_mask, own_masks, ride_masks, counts, usage, use_congestion, hits,
-//     endpoint_keys)
+// Arguments of search_forward and search_reverse. The search starts at the
+// node origin, initially moving in the direction with unit step (dx, dy).
 //
 // scratch is a writable buffer of SCRATCH_PER_NODE bytes per node, zeroed
 // when first used; it is left zeroed for the next search. This avoids
 // allocating and clearing grid-sized arrays per search.
 //
-// Forward search (a_star) if goal is an int: the end key. Returns the path
-// from origin (excluded) to goal, [] on failure.
-//
-// Reverse search (reverse_a_star) if goal is a dict of target keys to
-// (x, y) points. Returns the path with the fewest points from a target to
-// origin (both included), [] on failure. Turns on direction markers are
-// allowed at origin and at endpoint_keys. The heuristic aims at the target
-// nearest to origin (the first one in dict order on ties).
-//
 // The heuristic is the Manhattan distance; each step costs 1, plus the
-// turn and congestion penalties (see above). origin_dir is the index of the
-// initial direction in N, S, E, W. Congestion costs apply if use_congestion,
-// from usage (dict of node key to use count) or, if usage is None, from
-// GRID_ROUTED cells. Blocked moves encountered are added to hits (set or
-// None) as (node_key << 4) | bit.
+// turn and congestion penalties (see above). Congestion costs apply if
+// use_congestion, from usage (dict of node key to use count) or, if usage
+// is None, from GRID_ROUTED cells. Blocked moves encountered are added to
+// hits (set or None) as move keys.
 #define SCRATCH_PER_NODE (sizeof(double) + sizeof(long) + 1)
 
-static PyObject *search(PyObject *self, PyObject *args) {
-    Py_buffer cells_buf, scratch_buf;
-    long width, height, origin;
-    int origin_dir, use_congestion;
-    PyObject *goal, *any_mask, *own_masks, *ride_masks, *counts, *usage, *hits, *endpoint_keys;
-    if (!PyArg_ParseTuple(args, "y*w*llliOOOOOOpOO", &cells_buf, &scratch_buf, &width, &height,
-            &origin, &origin_dir, &goal, &any_mask, &own_masks,
-            &ride_masks, &counts, &usage, &use_congestion, &hits, &endpoint_keys))
-        return NULL;
-    const unsigned char *cells = cells_buf.buf;
+typedef struct {
+    Py_buffer cells, scratch;
+    long width, height, origin, dx, dy;
+    PyObject *any_mask, *own_masks, *ride_masks, *counts, *usage, *hits;
+    int use_congestion;
+} Search;
+
+// The search of search_forward (targets NULL) and search_reverse.
+static PyObject *run_search(const Search *s, long end_key, PyObject *targets,
+        PyObject *endpoint_keys) {
+    const unsigned char *cells = s->cells.buf;
+    long width = s->width, height = s->height, origin = s->origin;
     long size = width * height;
-    if (cells_buf.len < size || scratch_buf.len < size * (Py_ssize_t)SCRATCH_PER_NODE
-            || origin < 0 || origin >= size) {
-        PyBuffer_Release(&cells_buf);
-        PyBuffer_Release(&scratch_buf);
+    int origin_dir = dir_index(s->dx, s->dy);
+    if (s->cells.len < size || s->scratch.len < size * (Py_ssize_t)SCRATCH_PER_NODE
+            || origin < 0 || origin >= size || origin_dir < 0) {
         PyErr_SetString(PyExc_ValueError, "invalid search arguments");
         return NULL;
     }
-    int reverse = !PyLong_Check(goal);
-    long end_key = reverse ? -1 : PyLong_AsLong(goal);
-    if (reverse && !PyDict_Check(goal)) {
-        PyBuffer_Release(&cells_buf);
-        PyBuffer_Release(&scratch_buf);
-        PyErr_SetString(PyExc_TypeError, "goal must be an int or a dict");
-        return NULL;
-    }
+    int reverse = targets != NULL;
 
     // Point (hx, hy) the heuristic aims at.
     long hx, hy;
@@ -249,13 +251,10 @@ static PyObject *search(PyObject *self, PyObject *args) {
         hy = oy;
         Py_ssize_t pos = 0;
         PyObject *k, *pt;
-        while (PyDict_Next(goal, &pos, &k, &pt)) {
+        while (PyDict_Next(targets, &pos, &k, &pt)) {
             long x, y;
-            if (!PyArg_ParseTuple(pt, "ll", &x, &y)) {
-                PyBuffer_Release(&cells_buf);
-                PyBuffer_Release(&scratch_buf);
+            if (!PyArg_ParseTuple(pt, "ll", &x, &y))
                 return NULL;
-            }
             long dist = labs(ox - x) + labs(oy - y);
             if (best < 0 || dist < best) {
                 best = dist;
@@ -271,7 +270,7 @@ static PyObject *search(PyObject *self, PyObject *args) {
     // g_score and came_from of a node are valid if it is visited. came_from
     // holds predecessor + 1, 0 for the origin. Visited nodes are listed in
     // touched, to unmark them in the end.
-    double *g_score = scratch_buf.buf;
+    double *g_score = s->scratch.buf;
     long *came_from = (long *)(g_score + size);
     char *visited = (char *)(came_from + size);
     Heap heap = {NULL, 0, 0};
@@ -295,7 +294,7 @@ static PyObject *search(PyObject *self, PyObject *args) {
         if (reverse) {
             if (best_len >= 0 && g_score[ck] >= best_len)
                 continue;
-            int hit = contains(goal, ck);
+            int hit = contains(targets, ck);
             if (hit < 0)
                 goto done;
             if (hit) {
@@ -321,7 +320,7 @@ static PyObject *search(PyObject *self, PyObject *args) {
         long remaining = labs(cx - hx) + labs(cy - hy);
         if (reverse)
             remaining = labs(cx - origin / height) + labs(cy - origin % height);
-        long mask = block_mask(any_mask, own_masks, ride_masks, counts, ck);
+        long mask = block_mask(s->any_mask, s->own_masks, s->ride_masks, s->counts, ck);
         if (mask < 0)
             goto done;
         double cur_g = g_score[ck];
@@ -343,9 +342,9 @@ static PyObject *search(PyObject *self, PyObject *args) {
 
         for (int d = 0; d < 4; d++) {
             if (mask & BIT[d]) {
-                if (hits != Py_None) {
-                    PyObject *hk = PyLong_FromLong((ck << 4) | BIT[d]);
-                    if (!hk || PySet_Add(hits, hk) < 0) {
+                if (s->hits != Py_None) {
+                    PyObject *hk = PyLong_FromLong(MOVE_KEY(ck, BIT[d]));
+                    if (!hk || PySet_Add(s->hits, hk) < 0) {
                         Py_XDECREF(hk);
                         goto done;
                     }
@@ -369,9 +368,9 @@ static PyObject *search(PyObject *self, PyObject *args) {
                     turn_penalty = MIN_TURN_PENALTY;
             }
             double congestion_penalty = 0.0;
-            if (use_congestion) {
-                if (usage != Py_None) {
-                    long u = dict_get_long(usage, nk, 0);
+            if (s->use_congestion) {
+                if (s->usage != Py_None) {
+                    long u = dict_get_long(s->usage, nk, 0);
                     if (u < 0)
                         goto done;
                     if (u > 0)
@@ -406,8 +405,46 @@ done:
     Py_XDECREF(best_path);
     free(heap.items);
     free(touched.items);
-    PyBuffer_Release(&cells_buf);
-    PyBuffer_Release(&scratch_buf);
+    return ret;
+}
+
+// search_forward(cells, scratch, width, height, origin, (dx, dy), end,
+//     any_mask, own_masks, ride_masks, counts, usage, use_congestion, hits):
+// search of a_star(). Returns the path from origin (excluded) to the node
+// end, [] on failure.
+static PyObject *search_forward(PyObject *self, PyObject *args) {
+    Search s;
+    long end_key;
+    if (!PyArg_ParseTuple(args, "y*w*lll(ll)lOOOOOpO", &s.cells, &s.scratch,
+            &s.width, &s.height, &s.origin, &s.dx, &s.dy, &end_key,
+            &s.any_mask, &s.own_masks, &s.ride_masks, &s.counts, &s.usage,
+            &s.use_congestion, &s.hits))
+        return NULL;
+    PyObject *ret = run_search(&s, end_key, NULL, NULL);
+    PyBuffer_Release(&s.cells);
+    PyBuffer_Release(&s.scratch);
+    return ret;
+}
+
+// search_reverse(cells, scratch, width, height, origin, (dx, dy), targets,
+//     endpoint_keys, any_mask, own_masks, ride_masks, counts, usage,
+//     use_congestion, hits): search of reverse_a_star(), towards any of the
+// targets (dict of node key to (x, y) point). Returns the path with the
+// fewest points from a target to origin (both included), [] on failure.
+// Turns on direction markers are allowed at origin and at endpoint_keys.
+// The heuristic aims at the target nearest to origin (the first one in
+// dict order on ties).
+static PyObject *search_reverse(PyObject *self, PyObject *args) {
+    Search s;
+    PyObject *targets, *endpoint_keys;
+    if (!PyArg_ParseTuple(args, "y*w*lll(ll)O!OOOOOOpO", &s.cells, &s.scratch,
+            &s.width, &s.height, &s.origin, &s.dx, &s.dy, &PyDict_Type,
+            &targets, &endpoint_keys, &s.any_mask, &s.own_masks,
+            &s.ride_masks, &s.counts, &s.usage, &s.use_congestion, &s.hits))
+        return NULL;
+    PyObject *ret = run_search(&s, -1, targets, endpoint_keys);
+    PyBuffer_Release(&s.cells);
+    PyBuffer_Release(&s.scratch);
     return ret;
 }
 
@@ -417,6 +454,14 @@ static int dict_set_long(PyObject *dict, long key, long value) {
     int ret = (k && v) ? PyDict_SetItem(dict, k, v) : -1;
     Py_XDECREF(k);
     Py_XDECREF(v);
+    return ret;
+}
+
+// del dict[key] (C long). Returns -1 on error.
+static int dict_del_long(PyObject *dict, long key) {
+    PyObject *k = PyLong_FromLong(key);
+    int ret = k ? PyDict_DelItem(dict, k) : -1;
+    Py_XDECREF(k);
     return ret;
 }
 
@@ -435,7 +480,7 @@ static int add_move(PyObject *ride, PyObject *own, PyObject *count,
         return 0;
     if (dict_set_long(own, key, mask | bit) < 0)
         return -1;
-    long move_key = (key << 4) | bit;
+    long move_key = MOVE_KEY(key, bit);
     long c = dict_get_long(count, move_key, 0);
     if (c < 0 || dict_set_long(count, move_key, c + 1) < 0)
         return -1;
@@ -506,9 +551,77 @@ static PyObject *add_moves(PyObject *self, PyObject *args) {
     Py_RETURN_NONE;
 }
 
+// remove_moves(own, count, any_mask): removes the blocked moves own of a
+// net (as built by add_moves) from count and any_mask.
+static PyObject *remove_moves(PyObject *self, PyObject *args) {
+    PyObject *own, *count, *any_mask, *k, *v;
+    if (!PyArg_ParseTuple(args, "O!OO", &PyDict_Type, &own, &count, &any_mask))
+        return NULL;
+    Py_ssize_t pos = 0;
+    while (PyDict_Next(own, &pos, &k, &v)) {
+        long key = PyLong_AsLong(k), mask = PyLong_AsLong(v);
+        if (PyErr_Occurred())
+            return NULL;
+        for (int b = 0; b < 4; b++) {
+            if (!(mask & BIT[b]))
+                continue;
+            long move_key = MOVE_KEY(key, BIT[b]);
+            long c = dict_get_long(count, move_key, 0);
+            if (c < 0)
+                return NULL;
+            if (c > 1) {
+                if (dict_set_long(count, move_key, c - 1) < 0)
+                    return NULL;
+                continue;
+            }
+            // Last net blocking the move.
+            if (dict_del_long(count, move_key) < 0)
+                return NULL;
+            long any = dict_get_long(any_mask, key, 0);
+            if (any < 0 || dict_set_long(any_mask, key, any & ~BIT[b]) < 0)
+                return NULL;
+        }
+    }
+    Py_RETURN_NONE;
+}
+
+// move_keys(masks): set of the move keys of the direction masks (dict of
+// node key to direction mask).
+static PyObject *move_keys(PyObject *self, PyObject *args) {
+    PyObject *masks, *k, *v;
+    if (!PyArg_ParseTuple(args, "O!", &PyDict_Type, &masks))
+        return NULL;
+    PyObject *ret = PySet_New(NULL);
+    if (!ret)
+        return NULL;
+    Py_ssize_t pos = 0;
+    while (PyDict_Next(masks, &pos, &k, &v)) {
+        long key = PyLong_AsLong(k), mask = PyLong_AsLong(v);
+        if (PyErr_Occurred())
+            goto error;
+        for (int b = 0; b < 4; b++) {
+            if (!(mask & BIT[b]))
+                continue;
+            PyObject *mk = PyLong_FromLong(MOVE_KEY(key, BIT[b]));
+            if (!mk || PySet_Add(ret, mk) < 0) {
+                Py_XDECREF(mk);
+                goto error;
+            }
+            Py_DECREF(mk);
+        }
+    }
+    return ret;
+error:
+    Py_DECREF(ret);
+    return NULL;
+}
+
 static PyMethodDef methods[] = {
-    {"search", search, METH_VARARGS, "A* search loop of a_star() and reverse_a_star()."},
+    {"search_forward", search_forward, METH_VARARGS, "A* search of a_star()."},
+    {"search_reverse", search_reverse, METH_VARARGS, "A* search of reverse_a_star()."},
     {"add_moves", add_moves, METH_VARARGS, "Loop of BlockedMoves.add()."},
+    {"remove_moves", remove_moves, METH_VARARGS, "Loop of BlockedMoves.reset()."},
+    {"move_keys", move_keys, METH_VARARGS, "Loop of BlockedMoves.move_keys()."},
     {NULL, NULL, 0, NULL}
 };
 
@@ -517,5 +630,18 @@ static struct PyModuleDef module = {
 };
 
 PyMODINIT_FUNC PyInit__auto_wire(void) {
-    return PyModule_Create(&module);
+    PyObject *m = PyModule_Create(&module);
+    if (!m)
+        return NULL;
+    if (PyModule_AddIntConstant(m, "GRID_EMPTY", GRID_EMPTY) < 0
+            || PyModule_AddIntConstant(m, "GRID_ROUTED", GRID_ROUTED) < 0
+            || PyModule_AddIntConstant(m, "GRID_DIR", GRID_DIR) < 0
+            || PyModule_AddIntConstant(m, "GRID_BLOCKED", GRID_BLOCKED) < 0
+            || PyModule_AddIntConstant(m, "GRID_PIN", GRID_PIN) < 0
+            || PyModule_AddIntConstant(m, "GRID_PORT", GRID_PORT) < 0
+            || PyModule_AddIntConstant(m, "SCRATCH_PER_NODE", (long)SCRATCH_PER_NODE) < 0) {
+        Py_DECREF(m);
+        return NULL;
+    }
+    return m;
 }

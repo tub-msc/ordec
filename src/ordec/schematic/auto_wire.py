@@ -24,7 +24,8 @@ Heuristics:
   of the removed route are rejected.
 
 The A* search loop and the blocked move updates are implemented in the C
-extension _auto_wire (_auto_wire.c), which also defines the cost constants.
+extension _auto_wire (_auto_wire.c), which also defines the grid cell types,
+the encoding of blocked moves and the cost constants.
 """
 
 import math
@@ -45,14 +46,9 @@ SHORTCUT_ENABLED = True       # Enable branch-to-existing-path shortcut routing.
 MAX_RIPUP_CANDIDATES = 5      # Blocking routes to try for one-route rip-up.
 
 
-# Grid cell type constants (int8 encoding)
-# Values < GRID_BLOCKED are passable
-GRID_EMPTY = 0    # passable empty cell
-GRID_ROUTED = 1   # passable routed path
-GRID_DIR = 2      # passable direction marker (turn restriction)
-GRID_BLOCKED = 3  # impassable cell body
-GRID_PIN = 4      # impassable cell pin
-GRID_PORT = 5     # impassable port
+# Grid cell types (int8 encoding, see _auto_wire.c)
+from ._auto_wire import GRID_EMPTY, GRID_ROUTED, GRID_DIR, GRID_BLOCKED, \
+    GRID_PIN, GRID_PORT
 
 class BlockedMoves:
     """Moves blocked by the routed segments of all nets, updated incrementally.
@@ -62,23 +58,20 @@ class BlockedMoves:
     prevention). The net being routed is blocked by its own riding moves
     only, so its branches can still cross and attach.
 
-    Moves are keyed as (node_key << 4) | bit, with bits N=1, S=2, E=4,
-    W=8. Per node, the blocked directions are stored as bitmasks. The
-    blocked directions for the net being routed are determined in
-    _auto_wire.c (block_mask). Rebuilding the blocked moves
+    The blocked directions are stored per node as direction masks, the
+    number of nets blocking a move per move key (encodings: see
+    _auto_wire.c). The blocked directions for the net being routed are
+    determined in _auto_wire.c (block_mask). Rebuilding the blocked moves
     of all nets for every search made routing quadratic in the total wire
     length; here, appending segments only processes the new segments.
     """
     def __init__(self, width: int, height: int):
         self.width = width
         self.height = height
-        self.ride_masks = defaultdict(dict) # net -> node_key -> riding bits
-        self.net_masks = defaultdict(dict)  # net -> node_key -> riding+corner bits
-        self.count = defaultdict(int)       # move key -> number of nets blocking it
-        self.any_mask = dict()              # node_key -> bits blocked by any net
-        # Search state of _auto_wire.search: up to 17 bytes per node, see
-        # SCRATCH_PER_NODE in _auto_wire.c.
-        self.scratch = bytearray(width * height * 17)
+        self.ride_masks = defaultdict(dict) # net -> node_key -> riding directions
+        self.net_masks = defaultdict(dict)  # net -> node_key -> riding+corner directions
+        self.count = dict()                 # move key -> number of nets blocking it
+        self.any_mask = dict()              # node_key -> directions blocked by any net
 
     def add(self, net: Net, segments: list, new_count: int):
         """Account for the last new_count entries of the net's segments."""
@@ -96,16 +89,13 @@ class BlockedMoves:
 
     def reset(self, net: Net, segments: list):
         """Replace the net's segments."""
-        for key, mask in self.net_masks.pop(net, {}).items():
-            for bit in (1, 2, 4, 8):
-                if mask & bit:
-                    move_key = (key << 4) | bit
-                    self.count[move_key] -= 1
-                    if self.count[move_key] == 0:
-                        del self.count[move_key]
-                        self.any_mask[key] &= ~bit
+        _auto_wire.remove_moves(self.net_masks.pop(net, {}), self.count, self.any_mask)
         self.ride_masks.pop(net, None)
         self.add(net, segments, len(segments))
+
+    def move_keys(self, net: Net) -> set[int]:
+        """Move keys of all moves blocked by the net's segments."""
+        return _auto_wire.move_keys(self.net_masks.get(net, {}))
 
 @dataclass
 class RoutingPort:
@@ -147,7 +137,6 @@ class GridConn(NamedTuple):
 # tabulated, as the Rational arithmetic is slow.
 _STEPS = {d: (int(v.x), int(v.y))
     for d in (North, East, South, West) for v in [d * Vec2R(0, 1)]}
-_DIR_INDEX = {North: 0, South: 1, East: 2, West: 3} # see _auto_wire.c
 
 # Place cells and ports on the grid
 def place_cells_and_ports(grid: np.ndarray, cells: Iterable[SchemInstance],
@@ -231,8 +220,8 @@ def _point_keys(points, height):
     return {x * height + y for x, y in points}
 
 
-def a_star(cells: bytearray, start: tuple[int, int], end: tuple[int, int],
-           width: int, height: int, blocked: BlockedMoves,
+def a_star(cells: bytearray, scratch: bytearray, start: tuple[int, int],
+           end: tuple[int, int], width: int, height: int, blocked: BlockedMoves,
            net: Net, start_dir: D4,
            route_cell_usage: dict | None = None, use_congestion: bool = True,
            blocked_move_hits: set | None = None) -> list[tuple[int, int]]:
@@ -240,6 +229,7 @@ def a_star(cells: bytearray, start: tuple[int, int], end: tuple[int, int],
 
     Args:
         cells: Routing grid cells, indexed by node key (x * height + y).
+        scratch: Search state, see SCRATCH_PER_NODE in _auto_wire.c.
         start: Point to start from (x, y).
         end: Point to reach (x, y).
         width: Width of the grid.
@@ -250,15 +240,11 @@ def a_star(cells: bytearray, start: tuple[int, int], end: tuple[int, int],
         route_cell_usage: Routed cell usage counts by node key (optional).
         use_congestion: Whether to apply congestion/history penalties.
         blocked_move_hits: If given, blocked moves encountered during search
-            are added to this set, encoded as (node_key << 4) | bit, with
-            bits N=1, S=2, E=4, W=8.
+            are added to this set as move keys (see _auto_wire.c).
 
     Returns:
         list: Calculated path as list of (x, y) tuples, or empty list on failure.
     """
-
-    any_mask = blocked.any_mask
-    own_masks = blocked.net_masks.get(net, {})
 
     start_x, start_y = start
     end_x, end_y = end
@@ -273,13 +259,13 @@ def a_star(cells: bytearray, start: tuple[int, int], end: tuple[int, int],
     if cells[start_key] >= GRID_BLOCKED or cells[end_key] >= GRID_BLOCKED:
         return []
 
-    return _auto_wire.search(cells, blocked.scratch, width, height, start_key,
-        _DIR_INDEX[start_dir], end_key, any_mask, own_masks,
+    return _auto_wire.search_forward(cells, scratch, width, height, start_key,
+        _STEPS[start_dir], end_key, blocked.any_mask, blocked.net_masks.get(net, {}),
         blocked.ride_masks.get(net, {}), blocked.count, route_cell_usage,
-        use_congestion, blocked_move_hits, None)
+        use_congestion, blocked_move_hits)
 
 
-def reverse_a_star(cells: bytearray, start_points: dict,
+def reverse_a_star(cells: bytearray, scratch: bytearray, start_points: dict,
                    end: tuple[int, int], width: int, height: int,
                    blocked: BlockedMoves, net: Net, end_dir: D4,
                    endpoint_mapping: dict,
@@ -290,6 +276,7 @@ def reverse_a_star(cells: bytearray, start_points: dict,
 
     Args:
         cells: Routing grid cells, indexed by node key (x * height + y).
+        scratch: Search state, see SCRATCH_PER_NODE in _auto_wire.c.
         start_points: Target points to reach, as node key -> (x, y).
         end: Endpoint to start search from (x, y).
         width: Width of the grid.
@@ -301,15 +288,11 @@ def reverse_a_star(cells: bytearray, start_points: dict,
         route_cell_usage: Routed cell usage counts by node key (optional).
         use_congestion: Whether to apply congestion/history penalties.
         blocked_move_hits: If given, blocked moves encountered during search
-            are added to this set, encoded as (node_key << 4) | bit, with
-            bits N=1, S=2, E=4, W=8.
+            are added to this set as move keys (see _auto_wire.c).
 
     Returns:
         list: Shortest path found as list of (x, y) tuples, or empty list.
     """
-
-    any_mask = blocked.any_mask
-    own_masks = blocked.net_masks.get(net, {})
 
     end_x, end_y = end
 
@@ -322,10 +305,10 @@ def reverse_a_star(cells: bytearray, start_points: dict,
         return []
     endpoint_keys = endpoint_mapping.get(net, set())
 
-    return _auto_wire.search(cells, blocked.scratch, width, height, end_key,
-        _DIR_INDEX[end_dir], start_points, any_mask, own_masks,
-        blocked.ride_masks.get(net, {}), blocked.count, route_cell_usage,
-        use_congestion, blocked_move_hits, endpoint_keys)
+    return _auto_wire.search_reverse(cells, scratch, width, height, end_key,
+        _STEPS[end_dir], start_points, endpoint_keys, blocked.any_mask,
+        blocked.net_masks.get(net, {}), blocked.ride_masks.get(net, {}),
+        blocked.count, route_cell_usage, use_congestion, blocked_move_hits)
 
 
 def shorten_lists(list_of_lists: list) -> list:
@@ -524,7 +507,11 @@ def draw_connections(grid: np.ndarray, connections: list[GridConn],
     """
     # Flat copy of the grid, indexed by node key (x * height + y) like all
     # routing state. Indexing it is much faster than indexing the numpy grid.
+    assert grid.dtype == np.int8
     cells = bytearray(grid.T.tobytes())
+    # Search state, reused by all searches: allocating grid-sized state per
+    # search dominated the routing time of large schematics.
+    scratch = bytearray(width * height * _auto_wire.SCRATCH_PER_NODE)
     blocked = BlockedMoves(width, height)
     port_drawing_dict = defaultdict(list)
     straight_lines = defaultdict(list)
@@ -629,13 +616,11 @@ def draw_connections(grid: np.ndarray, connections: list[GridConn],
         return not pending
 
     def path_blocked_move_keys(path):
-        # The moves a net with only this path would block, see BlockedMoves.
+        # The moves a net with only this path would block.
         segments = transform_to_pairs(keep_corners_and_edges([path]), [])
-        corner_points = [p for s in segments for p in s] if len(segments) > 1 else []
-        masks = {}
-        _auto_wire.add_moves(segments, corner_points, {}, masks, {}, {}, width, height)
-        return {(key << 4) | bit for key, mask in masks.items()
-            for bit in (1, 2, 4, 8) if mask & bit}
+        single = BlockedMoves(width, height)
+        single.add(None, segments, len(segments))
+        return single.move_keys(None)
 
     def make_routed_entry(start, end, start_dir, end_dir, net, path, path_cells):
         return RoutedEntry(
@@ -680,7 +665,7 @@ def draw_connections(grid: np.ndarray, connections: list[GridConn],
                 else:
                     # Try reverse A* from endpoint to any existing path point
                     path = reverse_a_star(
-                        cells, points, end_new, width, height,
+                        cells, scratch, points, end_new, width, height,
                         blocked, net, end_dir,
                         endpoint_key_mapping, route_cell_usage,
                         use_congestion=False,
@@ -689,7 +674,7 @@ def draw_connections(grid: np.ndarray, connections: list[GridConn],
                     # Fall back to forward A* if reverse search fails
                     if not path:
                         path = a_star(
-                            cells, start_new, end_new, width, height,
+                            cells, scratch, start_new, end_new, width, height,
                             blocked, net, start_dir,
                             route_cell_usage, use_congestion=False,
                             blocked_move_hits=blocked_move_hits
@@ -697,7 +682,7 @@ def draw_connections(grid: np.ndarray, connections: list[GridConn],
             else:
                 # First connection for this net, standard forward A*
                 path = a_star(
-                    cells, start_new, end_new, width, height,
+                    cells, scratch, start_new, end_new, width, height,
                     blocked, net, start_dir,
                     route_cell_usage,
                     blocked_move_hits=blocked_move_hits
