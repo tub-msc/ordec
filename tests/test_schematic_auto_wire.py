@@ -363,6 +363,31 @@ def test_shortcut_escape_outside_grid():
     assert vertices[s.y] == [[(0, 4), (5, 4)]]
 
 
+def test_endpoint_marker_outside_grid():
+    """Pin (4, 0) of net y escapes South out of the grid, to (4, -1), whose
+    node key is that of (3, 4), the direction marker of net z's port. The
+    only route from pin (3, 0) would turn on that marker, which must stay
+    forbidden."""
+    s = Schematic()
+    s.y = Net()
+    s.z = Net()
+    ports = [
+        RoutingPort(7, 0, s.y, North),
+        RoutingPort(7, 3, s.y, South),
+        RoutingPort(3, 0, s.y, North),
+        RoutingPort(4, 0, s.y, South),
+        RoutingPort(2, 4, s.z, East),
+    ]
+    conns = [
+        GridConn(s.y, (7, 0), North, end, end_dir)
+        for end, end_dir in (((7, 3), South), ((3, 0), North), ((4, 0), South))
+    ]
+    open_cells = [(3, 1), (3, 2), (3, 3), (3, 4), (4, 4), (5, 4), (5, 3),
+        (5, 2), (6, 2), (7, 1), (7, 2)]
+    vertices = route_maze(open_cells, ports, conns, width=8, height=5)
+    assert (3, 4) not in {p for path in vertices[s.y] for p in path}
+
+
 def test_tap_point_routing_and_outline():
     """SchemTapPoints are routing terminals like ports and pins: auto_wire
     attaches wires to them (from the side opposite the glyph/label), and the

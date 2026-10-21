@@ -216,8 +216,11 @@ def adjust_start_end_for_direction(start: tuple[int, int], start_dir: D4,
     ex, ey = _STEPS[end_dir]
     return (start[0] + sx, start[1] + sy), (end[0] + ex, end[1] + ey)
 
-def _point_keys(points, height):
-    return {x * height + y for x, y in points}
+def _point_keys(points, width, height):
+    # Points outside the grid are left out: their node keys would alias
+    # nodes of the neighboring column.
+    return {x * height + y for x, y in points
+        if 0 <= x < width and 0 <= y < height}
 
 
 def a_star(cells: bytearray, scratch: bytearray, start: tuple[int, int],
@@ -523,7 +526,7 @@ def draw_connections(grid: np.ndarray, connections: list[GridConn],
 
     endpoint_marker_mapping, sorted_connections = sort_connections(connections)
     endpoint_key_mapping = {
-        net: _point_keys(endpoints, height)
+        net: _point_keys(endpoints, width, height)
         for net, endpoints in endpoint_marker_mapping.items()
     }
 
