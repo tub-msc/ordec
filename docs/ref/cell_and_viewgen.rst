@@ -174,6 +174,17 @@ registered with ``cancelable_subprocess()``, and — on CPython — can even
 interrupt view generators that never reach a checkpoint. Cancelled (and
 failed) generations are not cached; only successful view results are.
 
+Closing the browser tab also cancels running generations. Browsers may
+discard background tabs to save memory (e.g. Chrome's Memory Saver), which
+has the same effect; in Chrome, the web UI shows a notice after the tab
+is reloaded. While a view generates, the tab title shows an hourglass and
+the elapsed time, which keeps Chrome's Memory Saver from discarding the
+tab. Discards under memory pressure are still possible: to protect runs of
+many hours, keep ORDeC in its own browser window or pin the tab, as Chrome
+does not discard those. In Firefox, setting
+``browser.tabs.unloadOnLowMemory`` to false in ``about:config`` disables
+tab unloading.
+
 :class:`GenCancelled` derives from ``BaseException``, not ``Exception``:
 it is out-of-band control flow rather than an error, much like
 ``KeyboardInterrupt`` and ``SystemExit``. A view generator's

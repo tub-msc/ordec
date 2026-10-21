@@ -86,10 +86,42 @@ function getSourceType() {
     return sourceTypeSelect.options[sourceTypeSelect.selectedIndex].value;
 }
 
+const baseTitle = document.title;
+let busySince = null;
+let busyTitleTimer = null;
+
 function setStatus(status) {
     let divStatus = document.querySelector("#status");
     divStatus.innerText = status;
     divStatus.className = 'item status-' + status;
+    updateBusyTitle(status == 'busy');
+}
+
+// After 10 s of being busy, the tab title shows an hourglass and, after the
+// first minute, how long the generation has been running. Besides being
+// informative, this protects long runs from Chrome's Memory Saver: a page
+// that updates its title in the background is not discarded proactively
+// (Chromium discard_eligibility_policy.cc, kBackgroundActivity), and a
+// discard would close the websocket and cancel all running generations.
+function updateBusyTitle(busy) {
+    if (!busy) {
+        busySince = null;
+        window.clearInterval(busyTitleTimer);
+        busyTitleTimer = null;
+    } else if (busySince === null) {
+        busySince = Date.now();
+        busyTitleTimer = window.setInterval(() => updateBusyTitle(true), 10000);
+    }
+    const elapsed = busy ? Date.now() - busySince : 0;
+    const minutes = Math.floor(elapsed / 60000);
+    let title = baseTitle;
+    if (elapsed >= 10000) {
+        title += ' ⏳' + (minutes > 0 ? ` ${minutes} min` : '');
+    }
+    // Assign only on change, so the title is not rewritten every 10 s.
+    if (document.title != title) {
+        document.title = title;
+    }
 }
 
 function unloadMsg() {
@@ -202,41 +234,63 @@ function popRestoreData() {
     }
 }
 
-// Page overlay shown when a hub-hosted instance is culled and can no longer be
-// reconnected to (OrdecClient calls this via its onSessionLost callback). The
-// restart button stashes the source for popRestoreData to pick up after the
-// reload respawns the instance through the hub.
-function showSessionLost() {
-    if (document.querySelector('#sessionlost')) {
+// Modal page overlay with a message and a single button. Shown at most once
+// per id.
+function showPageOverlay(id, message, buttonLabel, onClick) {
+    if (document.getElementById(id)) {
         return;
     }
     const overlay = document.createElement('div');
-    overlay.id = 'sessionlost';
+    overlay.id = id;
+    overlay.className = 'page-overlay';
     const box = document.createElement('div');
-    box.className = 'sessionlost-box';
+    box.className = 'page-overlay-box';
     const text = document.createElement('p');
-    text.textContent = 'Your session was stopped (e.g. after being idle '
-        + 'for a while). Restarting starts a fresh session and restores '
-        + 'your editor content.';
+    text.textContent = message;
     const button = document.createElement('button');
-    button.className = 'sessionlost-button';
-    button.textContent = 'Restart session';
-    button.onclick = () => {
-        // Integrated-mode source only lives in this page; carry it across the
-        // reload. (Course mode autosaves to localStorage independently of this.)
-        try {
-            window.sessionStorage.setItem('ordecRestore', JSON.stringify({
-                src: app.client.src,
-                srctype: app.client.srctype,
-            }));
-        } catch (e) { /* storage full/blocked: reload without restore */ }
-        window.onbeforeunload = null;
-        window.location.reload();
-    };
+    button.className = 'page-overlay-button';
+    button.textContent = buttonLabel;
+    button.onclick = () => onClick(overlay);
     box.appendChild(text);
     box.appendChild(button);
     overlay.appendChild(box);
     document.body.appendChild(overlay);
+}
+
+// Shown when a hub-hosted instance is culled and can no longer be
+// reconnected to (OrdecClient calls this via its onSessionLost callback). The
+// restart button stashes the source for popRestoreData to pick up after the
+// reload respawns the instance through the hub.
+function showSessionLost() {
+    showPageOverlay('sessionlost',
+        'Your session was stopped (e.g. after being idle for a while). '
+        + 'Restarting starts a fresh session and restores your editor content.',
+        'Restart session', () => {
+            // Integrated-mode source only lives in this page; carry it across
+            // the reload. (Course mode autosaves to localStorage independently
+            // of this.)
+            try {
+                window.sessionStorage.setItem('ordecRestore', JSON.stringify({
+                    src: app.client.src,
+                    srctype: app.client.srctype,
+                }));
+            } catch (e) { /* storage full/blocked: reload without restore */ }
+            window.onbeforeunload = null;
+            window.location.reload();
+        });
+}
+
+// Browsers discard background tabs to save memory (Chrome's Memory Saver or
+// memory pressure) without firing any event; the page is reloaded when the
+// user returns. To the server, this looks like a closed tab: the websocket
+// closes and all running generations are cancelled. Chrome reports the
+// discard afterwards through document.wasDiscarded, so explain what happened.
+if (document.wasDiscarded) {
+    showPageOverlay('discarded',
+        'The browser discarded this tab while it was in the background; '
+        + 'view generations running at that time were cancelled. To protect '
+        + 'long runs, keep ORDeC in its own browser window or pin the tab.',
+        'OK', overlay => overlay.remove());
 }
 
 const layout = new GoldenLayout(document.querySelector("#workspace"));
