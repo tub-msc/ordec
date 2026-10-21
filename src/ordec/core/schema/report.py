@@ -370,18 +370,12 @@ class Plot2D(ReportElement):
         return self.subgraph.all(Plot2DSeries.ref_idx.query(self))
 
     def element_webdata(self) -> dict:
-        # Non-finite values cross the protocol as null: JSON has no
-        # NaN/Infinity, and json.dumps would emit bare NaN tokens that the
-        # frontend's JSON.parse rejects, losing the whole view message.
-        # SimPlot.setData maps null back to NaN for gap rendering.
+        # Sent as CBOR typed arrays (see ws_encode); NaN passes through.
         return {
             "element_type": "plot2d",
-            "x": [v if isfinite(v) else None for v in self.x],
+            "x": self.x.to_numpy(),
             "series": [
-                {
-                    "name": s.name,
-                    "values": [v if isfinite(v) else None for v in s.values],
-                }
+                {"name": s.name, "values": s.values.to_numpy()}
                 for s in self.series()
             ],
             "xlabel": self.xlabel,

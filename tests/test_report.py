@@ -1,9 +1,12 @@
 # SPDX-FileCopyrightText: 2026 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+import math
+import numpy as np
 import pytest
 
 from ordec.core.ordb import SubgraphRoot
+from ordec.core.simarray import SimColumn
 from ordec.core.schema import Markdown, PlotGroup, Report
 from ordec.core.wire import ExportTable
 
@@ -30,9 +33,11 @@ def test_plot2d_webdata():
 
     report = Report()
     report.tran = PlotGroup()
+    # x as a strided column view (real part of a complex column), a NaN
+    # gap in the series: both must come out as plain float64 arrays.
     plot = report.plot2d(
-        [1.0, 2.0, 3.0],
-        ("v(out)", [0.1, 0.2, 0.3]),
+        SimColumn.from_values([1.0 + 0j, 2.0 + 0j, 3.0 + 0j]).real,
+        ("v(out)", [0.1, math.nan, 0.3]),
         xlabel="Time (s)",
         ylabel="Voltage (V)",
         height=180,
@@ -42,8 +47,12 @@ def test_plot2d_webdata():
     _, data = report.webdata(ExportTable())
     plot_data = data["elements"][0]
     assert plot_data["element_type"] == "plot2d"
-    assert plot_data["x"] == [1.0, 2.0, 3.0]
-    assert plot_data["series"] == [{"name": "v(out)", "values": [0.1, 0.2, 0.3]}]
+    assert plot_data["x"].dtype == np.float64
+    assert plot_data["x"].tolist() == [1.0, 2.0, 3.0]
+    (series,) = plot_data["series"]
+    assert series["name"] == "v(out)"
+    assert series["values"][[0, 2]].tolist() == [0.1, 0.3]
+    assert np.isnan(series["values"][1])
     assert plot_data["height"] == "180px"
     assert plot_data["group"] == report.tran.nid
 

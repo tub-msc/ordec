@@ -471,11 +471,10 @@ export class SimPlot {
     }
 
     setData(xValues, series) {
-        // Non-finite values arrive as null (see Plot2D.element_webdata).
-        this.xValues = Float64Array.from(xValues, v => v === null ? NaN : v);
+        // Float64Arrays (see Plot2D.element_webdata), NaN marks gaps.
+        this.xValues = xValues;
         this.series = series.map((s, i) => ({
             ...s,
-            values: Float64Array.from(s.values, v => v === null ? NaN : v),
             color: s.color || signalColor(i),
             visible: true,
         }));

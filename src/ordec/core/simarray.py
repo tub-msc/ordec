@@ -165,6 +165,14 @@ class SimColumn:
     def __len__(self):
         return self._length
 
+    def to_numpy(self):
+        """The column as a read-only numpy view of the packed data
+        (zero-copy; strided for a column of a multi-field SimArray)."""
+        import numpy as np
+        dtype = np.dtype('<f8' if self._dtype == 'f8' else '<c16')
+        return np.ndarray((self._length,), dtype=dtype, buffer=self._data,
+            offset=self._offset, strides=(self._stride,))
+
     def _unpack(self, i):
         pos = i * self._stride + self._offset
         if self._dtype == 'f8':

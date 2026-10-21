@@ -366,7 +366,7 @@ def test_bode_plot():
     for plot in (mag, phase):
         assert plot["element_type"] == "plot2d"
         assert plot["xscale"] == "log"
-        assert plot["x"] == [f.real for f in h.freq]
+        assert plot["x"].tolist() == [f.real for f in h.freq]
         assert [s["name"] for s in plot["series"]] == ["inp", "out"]
     # Both plots share one PlotGroup for x-axis synchronization.
     assert mag["group"] == phase["group"] is not None
