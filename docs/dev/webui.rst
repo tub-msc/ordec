@@ -63,6 +63,11 @@ The ``data`` of a layout view (``src/ordec/layout/webdata.py``, rendered by ``we
 
 The viewer loads each cell's geometry into the vertex buffer once and draws all placements of a cell in the top cell with one instanced draw call per layer and style, with the accumulated transforms as per-instance attributes. Rectangles are triangulated directly, only polygons go through earcut.
 
+Simulation plots
+~~~~~~~~~~~~~~~~
+
+A ``Plot2D`` report element arrives with its complete x column and series (``Plot2D.element_webdata``); ``SimPlot`` (``web/src/view/report-simplot.js``) keeps the full data for the crosshair tooltip. For drawing, every render reduces each visible series to the first, minimum, maximum and last sample per pixel column (``reduceColumns``). This bounds the SVG path to about four vertices per pixel column without distorting the waveform: each column covers the same vertical extent as the full-resolution stroke, so peaks are never lost (unlike decimation, which aliases, or LTTB-style reduction, which drops extremes). Only the samples in the visible x range are visited, so zooming in gets cheaper.
+
 View names are evaluated with ``eval()``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

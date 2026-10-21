@@ -7,6 +7,7 @@ than the frontend sources, so no manual 'npm run build' is required.
 """
 
 import json
+import re
 import pytest
 import time
 from urllib.parse import urlparse
@@ -51,8 +52,16 @@ def check_report_example(res_viewer):
     assert html.find('class="report-view"') >= 0
     assert html.count('class="report-element"') == 4
     assert html.count('class="report-svg"') == 2
-    assert html.count('class="report-plot2d"') == 4
+    assert html.count('class="report-plot2d"') == 5
     assert html.find('simplot') >= 0
+    # The dense (last) plot has at most four path vertices per pixel column
+    # and keeps the extremes +1/-1 as y ticks (d3 prints the minus as U+2212).
+    dense = html.split('class="report-plot2d"')[-1]
+    w = float(re.search(r'<clipPath[^>]*><rect width="([\d.]+)"', dense).group(1))
+    path_d = re.search(r'class="simplot-line" d="([^"]*)"', dense).group(1)
+    assert 100 < path_d.count('L') <= 4 * w + 16
+    labels = set(re.findall(r'<text[^>]*>([^<]*)</text>', dense))
+    assert {'1', '\u22121'} <= labels, labels
     assert html.find('Report Example') >= 0
     assert html.find('bold') >= 0
     assert html.find('alpha') >= 0
@@ -220,6 +229,12 @@ def request_local(web, module, request_views):
         assert found
 
         web.wait_for_ready()
+        # Plots draw after the (debounced) ResizeObserver of their wrapper:
+        # wait until every plot has its lines.
+        web.wait_until("""
+            return Array.from(document.querySelectorAll('.simplot svg'))
+                .every(svg => svg.querySelector('path.simplot-line'));
+        """)
 
         v = web.driver.execute_script("""
             let rv = window.ordecApp.client.resultViewers[0];
