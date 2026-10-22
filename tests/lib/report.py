@@ -61,4 +61,13 @@ def report_example() -> Report:
     )
     report.svg(resdiv.symbol)
     report.svg(resdiv.schematic)
+    # Dense series for the pixel-column reduction of the web plot: a carrier
+    # (four samples per period, under a ramp envelope) with single-sample
+    # spikes to +1 and -1, which the drawn path must keep.
+    n = 100000
+    t_dense = [i * 1e-8 for i in range(n)]
+    carrier = [(0.1 + 0.4 * i / n) * (0, 1, 0, -1)[i % 4] for i in range(n)]
+    carrier[n // 3] = 1.0
+    carrier[2 * n // 3] = -1.0
+    report.plot2d(t_dense, ("carrier", carrier), xlabel="Time (s)", ylabel="Voltage (V)")
     return report

@@ -38,6 +38,74 @@ function signalColor(i) {
     return `hsl(${hue}, 80%, ${lightness}%)`;
 }
 
+// First sample index of every pixel column 0..w+1 of xScale, by bisection
+// (x is sorted): sample i lies in column c for starts[c] <= i < starts[c + 1],
+// c = -1 and c = w + 1 collect the samples left and right of the plot.
+function columnStarts(xValues, xScale) {
+    const w = Math.floor(xScale.range()[1]);
+    const starts = new Int32Array(w + 2);
+    for (let c = 0; c <= w + 1; c++) {
+        starts[c] = d3.bisectLeft(xValues, xScale.invert(c));
+    }
+    return starts;
+}
+
+// Reduces the samples [i0, i1) of one series to the first, minimum, maximum
+// and last sample per pixel column (see columnStarts and docs/dev/webui.rst).
+// Non-finite samples become a single NaN, a gap for d3.line. Also returns the
+// y extent of the finite samples inside the plot, for the y autoscale.
+function reduceColumns(xValues, values, starts, i0, i1) {
+    const w = starts.length - 2;
+    const xs = [], ys = [];
+    let yMin = Infinity, yMax = -Infinity;
+    let c = -1;  // column of sample i: starts[c] <= i < starts[c + 1]
+    let col = null;  // column of the pending output, null if none
+    let iFirst = 0, iMin = 0, iMax = 0, iLast = 0;
+    let gap = true;  // last output point is a gap (or no output yet)
+    const push = (i) => {
+        xs.push(xValues[i]);
+        ys.push(values[i]);
+    };
+    const flush = () => {
+        if (col === null) return;
+        const a = Math.min(iMin, iMax), b = Math.max(iMin, iMax);
+        push(iFirst);
+        if (a > iFirst) push(a);
+        if (b > a) push(b);
+        if (iLast > b) push(iLast);
+        col = null;
+        gap = false;
+    };
+    for (let i = i0; i < i1; i++) {
+        while (c <= w && i >= starts[c + 1]) c++;
+        const v = values[i];
+        if (!isFinite(v)) {
+            flush();
+            if (!gap) {
+                xs.push(NaN);
+                ys.push(NaN);
+                gap = true;
+            }
+            continue;
+        }
+        if (c >= 0 && c <= w) {
+            if (v < yMin) yMin = v;
+            if (v > yMax) yMax = v;
+        }
+        if (c !== col) {
+            flush();
+            col = c;
+            iFirst = iMin = iMax = iLast = i;
+            continue;
+        }
+        iLast = i;
+        if (v < values[iMin]) iMin = i;
+        if (v > values[iMax]) iMax = i;
+    }
+    flush();
+    return { x: xs, y: ys, yMin, yMax };
+}
+
 export class SimPlot {
     constructor(container, options = {}) {
         this.options = {
@@ -54,6 +122,7 @@ export class SimPlot {
         this.onCrosshairXChange = null;
 
         this.xValues = null;
+        this._maxZoom = 100;
         this.series = [];
         this.currentTransform = d3.zoomIdentity;
         this._yZoomScale = 1;
@@ -168,7 +237,7 @@ export class SimPlot {
             .on('mouseleave', () => this._onMouseLeave());
 
         this.zoom = d3.zoom()
-            .scaleExtent([1, 100])
+            .scaleExtent([1, this._maxZoom])
             .filter(event => {
                 // Let shift events through to Y axis handlers instead
                 if (event.shiftKey) return false;
@@ -264,8 +333,7 @@ export class SimPlot {
     }
 
     _nearestXIndex(xValue) {
-        const bisect = d3.bisector(d => d).left;
-        let idx = bisect(this.xValues, xValue);
+        let idx = d3.bisectLeft(this.xValues, xValue);
         if (idx > 0 && idx < this.xValues.length) {
             if (Math.abs(this.xValues[idx - 1] - xValue) < Math.abs(this.xValues[idx] - xValue)) {
                 idx = idx - 1;
@@ -368,7 +436,7 @@ export class SimPlot {
         this.currentTransform = transform;
         this._suppressXDomainChange = suppressEvent;
         try {
-            this.svg.call(this.zoom.transform, transform);
+            this._applyTransform(transform);
         } finally {
             this._suppressXDomainChange = false;
         }
@@ -404,27 +472,29 @@ export class SimPlot {
         this._yZoomScale = state.yZoomScale;
         this._yPanOffset = state.yPanOffset;
         this.currentTransform = state.transform;
-        this.svg.call(this.zoom.transform, state.transform);
+        this._applyTransform(state.transform);
     }
 
     resetZoom() {
         this.currentTransform = d3.zoomIdentity;
         this._yZoomScale = 1;
         this._yPanOffset = 0;
-        this.svg.call(this.zoom.transform, d3.zoomIdentity);
+        this._applyTransform(d3.zoomIdentity);
     }
 
     setData(xValues, series) {
-        // Non-finite values arrive as null (JSON has no NaN/Infinity, see
-        // Plot2D.element_webdata); map them back to NaN so the isFinite gap
-        // handling in the line/crosshair rendering applies.
-        this.xValues = xValues.map(v => v === null ? NaN : v);
+        // Float64Arrays (see Plot2D.element_webdata), NaN marks gaps.
+        this.xValues = xValues;
         this.series = series.map((s, i) => ({
             ...s,
-            values: s.values.map(v => v === null ? NaN : v),
             color: s.color || signalColor(i),
             visible: true,
         }));
+        // x is sorted and finite (Plot2D.x is validated on the server).
+        this._xExtent = [this.xValues[0], this.xValues[this.xValues.length - 1]];
+        // Zoom limit: about ten samples across the plot width, at least 100x.
+        this._maxZoom = Math.max(100, this.xValues.length / 10);
+        this.zoom.scaleExtent([1, this._maxZoom]);
         this._updateLegend();
         // The old crosshair index points into the previous sweep: _render()
         // would restore it at a stale position, or at NaN if the new data is
@@ -439,8 +509,17 @@ export class SimPlot {
         // to resolve relative SVG lengths during default zoom extent lookup.
         this._render();
         if (this._plotW > 0 && this._plotH > 0) {
-            this.svg.call(this.zoom.transform, d3.zoomIdentity);
+            this._applyTransform(d3.zoomIdentity);
         }
+    }
+
+    // Applies a transform not coming from a zoom gesture. Its scale may exceed
+    // _maxZoom (x-synchronized plots with other limits, a zoom state restored
+    // after a re-run with fewer samples), so the limit is raised to it, else
+    // d3-zoom snaps the next gesture back. setData resets the limit.
+    _applyTransform(transform) {
+        this.zoom.scaleExtent([1, Math.max(this._maxZoom, transform.k)]);
+        this.svg.call(this.zoom.transform, transform);
     }
 
     getHiddenNames() {
@@ -491,7 +570,8 @@ export class SimPlot {
         const { w, h } = dims;
 
         const { xScale, xBase } = this._computeXScale(w);
-        const yScale = this._computeYScale(xScale, h);
+        const [yMin, yMax] = this._reduceSeries(xScale);
+        const yScale = this._computeYScale(yMin, yMax, h);
 
         this._renderAxesAndGrid(xScale, yScale, w, h);
         this._renderSeries(xScale, yScale);
@@ -528,7 +608,7 @@ export class SimPlot {
     // X scale for the data extent under the current zoom transform. xBase is
     // the un-zoomed scale, returned for crosshair math.
     _computeXScale(w) {
-        const xDomain = d3.extent(this.xValues);
+        const xDomain = this._xExtent;
         let xBase;
         if (this.options.xscale === 'log') {
             xBase = d3.scaleLog()
@@ -540,23 +620,36 @@ export class SimPlot {
         return { xScale: this.currentTransform.rescaleX(xBase), xBase };
     }
 
-    // Y scale fitted to the visible series within the current x range, with the
-    // Y zoom/pan applied (in log space for a log axis).
-    _computeYScale(xScale, h) {
-        const [xLo, xHi] = xScale.domain();
+    // Reduces every visible series into s.reduced (see reduceColumns) and
+    // returns their y extent. Reductions are kept while the x domain and plot
+    // width are unchanged, so y-only renders (Y zoom/pan, legend) reuse them.
+    _reduceSeries(xScale) {
+        const key = [...xScale.domain(), ...xScale.range()].join();
+        if (key !== this._reducedKey) {
+            this._reducedKey = key;
+            this.series.forEach(s => { s.reduced = null; });
+        }
+        let starts = null, i0, i1;
         let yMin = Infinity, yMax = -Infinity;
-        this.series.filter(s => s.visible).forEach(s => {
-            for (let i = 0; i < s.values.length; i++) {
-                const x = this.xValues[i];
-                if (x >= xLo && x <= xHi) {
-                    const v = s.values[i];
-                    if (isFinite(v)) {
-                        if (v < yMin) yMin = v;
-                        if (v > yMax) yMax = v;
-                    }
+        for (const s of this.series) {
+            if (!s.visible) continue;
+            if (!s.reduced) {
+                if (!starts) {
+                    starts = columnStarts(this.xValues, xScale);
+                    i0 = Math.max(0, starts[0] - 1);
+                    i1 = Math.min(this.xValues.length, starts[starts.length - 1] + 1);
                 }
+                s.reduced = reduceColumns(this.xValues, s.values, starts, i0, i1);
             }
-        });
+            yMin = Math.min(yMin, s.reduced.yMin);
+            yMax = Math.max(yMax, s.reduced.yMax);
+        }
+        return [yMin, yMax];
+    }
+
+    // Y scale fitted to the given y extent of the visible samples, with the
+    // Y zoom/pan applied (in log space for a log axis).
+    _computeYScale(yMin, yMax, h) {
         if (!isFinite(yMin)) { yMin = -1; yMax = 1; }
 
         if (this.options.yscale === 'log') {
@@ -622,10 +715,10 @@ export class SimPlot {
     }
 
     _renderSeries(xScale, yScale) {
-        const line = d3.line()
-            .defined((d) => isFinite(d))
-            .x((d, i) => xScale(this.xValues[i]))
-            .y(d => yScale(d));
+        const path = (r) => d3.line()
+            .defined(v => isFinite(v))
+            .x((v, i) => xScale(r.x[i]))
+            .y(v => yScale(v))(r.y);
 
         const visibleSeries = this.series.filter(s => s.visible);
 
@@ -636,7 +729,7 @@ export class SimPlot {
             .append('path')
             .attr('class', 'simplot-line')
             .merge(paths)
-            .attr('d', d => line(d.values))
+            .attr('d', d => path(d.reduced))
             .attr('stroke', d => d.color)
             .attr('fill', 'none')
             .attr('stroke-width', 1.5);
