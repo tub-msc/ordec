@@ -2034,10 +2034,10 @@ body.theme-dark .lm_content {
     padding-left: 24px;
 }
 
-/* Session-lost overlay, built in main.js (showSessionLost) when a hub-hosted
-   instance is culled. A modal backdrop over the whole page with a restart
-   prompt. */
-#sessionlost {
+/* Page overlay, built in main.js (showPageOverlay), e.g. when a hub-hosted
+   instance is culled or the browser discarded the tab. A modal backdrop over
+   the whole page with a message and a button. */
+.page-overlay {
     position: fixed;
     inset: 0;
     z-index: 1000;
@@ -2046,7 +2046,7 @@ body.theme-dark .lm_content {
     align-items: center;
     justify-content: center;
 }
-.sessionlost-box {
+.page-overlay-box {
     background: #fff;
     color: #333;
     padding: 24px 32px;
@@ -2055,7 +2055,7 @@ body.theme-dark .lm_content {
     text-align: center;
     font-family: Helvetica, sans-serif;
 }
-.sessionlost-button {
+.page-overlay-button {
     font-size: 15px;
     padding: 8px 20px;
     cursor: pointer;
