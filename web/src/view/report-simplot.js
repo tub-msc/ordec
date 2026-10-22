@@ -38,16 +38,28 @@ function signalColor(i) {
     return `hsl(${hue}, 80%, ${lightness}%)`;
 }
 
+// First sample index of every pixel column 0..w+1 of xScale, by bisection
+// (x is sorted): sample i lies in column c for starts[c] <= i < starts[c + 1],
+// c = -1 and c = w + 1 collect the samples left and right of the plot.
+function columnStarts(xValues, xScale) {
+    const w = Math.floor(xScale.range()[1]);
+    const starts = new Int32Array(w + 2);
+    for (let c = 0; c <= w + 1; c++) {
+        starts[c] = d3.bisectLeft(xValues, xScale.invert(c));
+    }
+    return starts;
+}
+
 // Reduces the samples [i0, i1) of one series to the first, minimum, maximum
-// and last sample per pixel column of xScale (see docs/dev/webui.rst).
-// Non-finite samples and samples without pixel position (x <= 0 on a log
-// axis) become a single NaN, a gap for d3.line. Also returns the y extent of
-// the finite samples inside the plot, for the y autoscale.
-function reduceColumns(xValues, values, xScale, i0, i1) {
-    const w = xScale.range()[1];
+// and last sample per pixel column (see columnStarts and docs/dev/webui.rst).
+// Non-finite samples become a single NaN, a gap for d3.line. Also returns the
+// y extent of the finite samples inside the plot, for the y autoscale.
+function reduceColumns(xValues, values, starts, i0, i1) {
+    const w = starts.length - 2;
     const xs = [], ys = [];
     let yMin = Infinity, yMax = -Infinity;
-    let col = null;
+    let c = -1;  // column of sample i: starts[c] <= i < starts[c + 1]
+    let col = null;  // column of the pending output, null if none
     let iFirst = 0, iMin = 0, iMax = 0, iLast = 0;
     let gap = true;  // last output point is a gap (or no output yet)
     const push = (i) => {
@@ -65,9 +77,9 @@ function reduceColumns(xValues, values, xScale, i0, i1) {
         gap = false;
     };
     for (let i = i0; i < i1; i++) {
+        while (c <= w && i >= starts[c + 1]) c++;
         const v = values[i];
-        const c = isFinite(v) ? Math.floor(xScale(xValues[i])) : NaN;
-        if (!isFinite(c)) {
+        if (!isFinite(v)) {
             flush();
             if (!gap) {
                 xs.push(NaN);
@@ -609,17 +621,26 @@ export class SimPlot {
     }
 
     // Reduces every visible series into s.reduced (see reduceColumns) and
-    // returns their y extent. Only the samples in the x domain plus one on
-    // each side (so lines reach the clip edge) are visited.
+    // returns their y extent. Reductions are kept while the x domain and plot
+    // width are unchanged, so y-only renders (Y zoom/pan, legend) reuse them.
     _reduceSeries(xScale) {
-        const n = this.xValues.length;
-        const [xLo, xHi] = xScale.domain();
-        const i0 = Math.max(0, d3.bisectLeft(this.xValues, xLo) - 1);
-        const i1 = Math.min(n, d3.bisectRight(this.xValues, xHi) + 1);
+        const key = [...xScale.domain(), ...xScale.range()].join();
+        if (key !== this._reducedKey) {
+            this._reducedKey = key;
+            this.series.forEach(s => { s.reduced = null; });
+        }
+        let starts = null, i0, i1;
         let yMin = Infinity, yMax = -Infinity;
         for (const s of this.series) {
             if (!s.visible) continue;
-            s.reduced = reduceColumns(this.xValues, s.values, xScale, i0, i1);
+            if (!s.reduced) {
+                if (!starts) {
+                    starts = columnStarts(this.xValues, xScale);
+                    i0 = Math.max(0, starts[0] - 1);
+                    i1 = Math.min(this.xValues.length, starts[starts.length - 1] + 1);
+                }
+                s.reduced = reduceColumns(this.xValues, s.values, starts, i0, i1);
+            }
             yMin = Math.min(yMin, s.reduced.yMin);
             yMax = Math.max(yMax, s.reduced.yMax);
         }

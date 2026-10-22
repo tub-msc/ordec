@@ -55,13 +55,17 @@ def check_report_example(res_viewer):
     assert html.count('class="report-plot2d"') == 5
     assert html.find('simplot') >= 0
     # The dense (last) plot has at most four path vertices per pixel column
-    # and keeps the extremes +1/-1 as y ticks (d3 prints the minus as U+2212).
+    # and its path reaches the spikes at the +1/-1 ticks (d3 prints the minus
+    # as U+2212).
     dense = html.split('class="report-plot2d"')[-1]
     w = float(re.search(r'<clipPath[^>]*><rect width="([\d.]+)"', dense).group(1))
     path_d = re.search(r'class="simplot-line" d="([^"]*)"', dense).group(1)
     assert 100 < path_d.count('L') <= 4 * w + 16
-    labels = set(re.findall(r'<text[^>]*>([^<]*)</text>', dense))
-    assert {'1', '\u22121'} <= labels, labels
+    ticks = dict((label, float(y)) for y, label in re.findall(
+        r'translate\(0,([-\d.e]+)\)"><line[^>]*></line><text[^>]*>([^<]+)</text>', dense))
+    path_y = [float(y) for y in re.findall(r'[ML][-\d.e]+,([-\d.e]+)', path_d)]
+    assert abs(min(path_y) - ticks['1']) < 1, ticks
+    assert abs(max(path_y) - ticks['\u22121']) < 1, ticks
     assert html.find('Report Example') >= 0
     assert html.find('bold') >= 0
     assert html.find('alpha') >= 0
