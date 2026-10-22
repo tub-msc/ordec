@@ -50,6 +50,10 @@ MAX_RIPUP_CANDIDATES = 5      # Blocking routes to try for one-route rip-up.
 from ._auto_wire import GRID_EMPTY, GRID_ROUTED, GRID_DIR, GRID_BLOCKED, \
     GRID_PIN, GRID_PORT
 
+# Grid point (x, y), and a straight wire segment between two grid points.
+Point = tuple[int, int]
+Segment = tuple[Point, Point]
+
 class BlockedMoves:
     """Moves blocked by the routed segments of all nets, updated incrementally.
 
@@ -73,7 +77,7 @@ class BlockedMoves:
         self.count = dict()                 # move key -> number of nets blocking it
         self.any_mask = dict()              # node_key -> directions blocked by any net
 
-    def add(self, net: Net, segments: list, new_count: int):
+    def add(self, net: Net, segments: list[Segment], new_count: int):
         """Account for the last new_count entries of the net's segments."""
         old_count = len(segments) - new_count
         # Corner nodes are the endpoints of all segments of nets with
@@ -87,7 +91,7 @@ class BlockedMoves:
         _auto_wire.add_moves(segments[old_count:], corner_points, ride, own, count,
             any_mask, self.width, self.height)
 
-    def reset(self, net: Net, segments: list):
+    def reset(self, net: Net, segments: list[Segment]):
         """Replace the net's segments."""
         _auto_wire.remove_moves(self.net_masks.pop(net, {}), self.count, self.any_mask)
         self.ride_masks.pop(net, None)
@@ -112,9 +116,9 @@ Connection = tuple[RoutingPort, RoutingPort]
 class GridConn(NamedTuple):
     """A Connection translated onto the routing grid."""
     net: Net
-    start: tuple[int, int]
+    start: Point
     start_dir: D4
-    end: tuple[int, int]
+    end: Point
     end_dir: D4
 
     @classmethod
@@ -142,7 +146,7 @@ _STEPS = {d: (int(v.x), int(v.y))
 def place_cells_and_ports(grid: np.ndarray, cells: Iterable[SchemInstance],
                           ports: Iterable[RoutingPort], width: int, height: int,
                           offset_x: int, offset_y: int
-                          ) -> dict[tuple[int, int], Net | SchemInstanceSubcursor]:
+                          ) -> dict[Point, Net | SchemInstanceSubcursor]:
     """Place cells and ports initially on the schematic grid.
 
     Args:
@@ -198,9 +202,9 @@ def place_cells_and_ports(grid: np.ndarray, cells: Iterable[SchemInstance],
 
     return key_grid
 
-def adjust_start_end_for_direction(start: tuple[int, int], start_dir: D4,
-                                   end: tuple[int, int], end_dir: D4
-                                   ) -> tuple[tuple[int, int], tuple[int, int]]:
+def adjust_start_end_for_direction(start: Point, start_dir: D4,
+                                   end: Point, end_dir: D4
+                                   ) -> tuple[Point, Point]:
     """Step the start and end points one grid cell in their facing direction.
 
     Args:
@@ -223,11 +227,11 @@ def _point_keys(points, width, height):
         if 0 <= x < width and 0 <= y < height}
 
 
-def a_star(cells: bytearray, scratch: bytearray, start: tuple[int, int],
-           end: tuple[int, int], width: int, height: int, blocked: BlockedMoves,
+def a_star(cells: bytearray, scratch: bytearray, start: Point,
+           end: Point, width: int, height: int, blocked: BlockedMoves,
            net: Net, start_dir: D4,
            route_cell_usage: dict | None = None, use_congestion: bool = True,
-           blocked_move_hits: set | None = None) -> list[tuple[int, int]]:
+           blocked_move_hits: set | None = None) -> list[Point]:
     """Perform A* pathfinding between a start and end point.
 
     Args:
@@ -269,12 +273,12 @@ def a_star(cells: bytearray, scratch: bytearray, start: tuple[int, int],
 
 
 def reverse_a_star(cells: bytearray, scratch: bytearray, start_points: dict,
-                   end: tuple[int, int], width: int, height: int,
+                   end: Point, width: int, height: int,
                    blocked: BlockedMoves, net: Net, end_dir: D4,
                    endpoint_mapping: dict,
                    route_cell_usage: dict | None = None,
                    use_congestion: bool = True,
-                   blocked_move_hits: set | None = None) -> list[tuple[int, int]]:
+                   blocked_move_hits: set | None = None) -> list[Point]:
     """Perform reverse A* from the end point towards any of the start points.
 
     Args:
@@ -294,7 +298,7 @@ def reverse_a_star(cells: bytearray, scratch: bytearray, start_points: dict,
             are added to this set as move keys (see _auto_wire.c).
 
     Returns:
-        list: Shortest path found as list of (x, y) tuples, or empty list.
+        list: Lowest-cost path found as list of (x, y) tuples, or empty list.
     """
 
     end_x, end_y = end
@@ -400,7 +404,8 @@ def keep_corners_and_edges(lines: list) -> list:
     return result
 
 
-def transform_to_pairs(list_of_lists: list, straights: list) -> list:
+def transform_to_pairs(list_of_lists: list[list[Point]], straights: list[Segment]
+    ) -> list[Segment]:
     """Transform point lists into consecutive pairs and append to straights.
 
     Example: ``[(2, 1), (5, 1), (5, 2)]`` becomes
@@ -481,128 +486,125 @@ class RoutedEntry:
     ``routed_entries`` match this exact entry rather than an
     equal-valued one.
     """
-    start: tuple[int, int]
-    end: tuple[int, int]
+    start: Point
+    end: Point
     start_dir: D4
     end_dir: D4
     net: Net
-    path: list[tuple[int, int]]
+    path: list[Point]
     path_cells: list[int]   # node keys
     # Moves blocked by path, see path_blocked_move_keys. Computed when
     # needed for rip-up only.
     blocked_move_keys: set[int] | None = None
 
 
-# Draw all connections with paths
-def draw_connections(grid: np.ndarray, connections: list[GridConn],
-                     width: int, height: int
-                     ) -> dict[Net, list[list[tuple[int, int]]]]:
-    """Route all connections and return the calculated vertices.
+class RoutingRun:
+    """Routing state of one draw_connections() run: grid cells, blocked
+    moves, and the routed paths and branch points of all nets."""
+    def __init__(self, grid: np.ndarray, width: int, height: int):
+        self.width = width
+        self.height = height
+        # Flat copy of the grid, indexed by node key (x * height + y) like all
+        # routing state. Indexing it is much faster than indexing the numpy grid.
+        assert grid.dtype == np.int8
+        self.cells = bytearray(grid.T.tobytes())
+        # Search state, reused by all searches: allocating grid-sized state per
+        # search dominated the routing time of large schematics.
+        self.scratch = bytearray(width * height * _auto_wire.SCRATCH_PER_NODE)
+        self.blocked = BlockedMoves(width, height)
+        self.port_drawing_dict = defaultdict(list)
+        self.straight_lines = defaultdict(list)
+        # Per net, the points where further paths can branch off (see
+        # try_route_connection), as node key -> (x, y) in path order.
+        self.branch_points = defaultdict(dict)
+        self.route_cell_usage = dict()
+        self.routed_entries = []
+        self.endpoint_key_mapping = {}
 
-    Args:
-        grid: Routing grid (int8 array).
-        connections: Grid connections to route.
-        width: Width of the grid.
-        height: Height of the grid.
-
-    Returns:
-        dict: Grid-space vertex paths per Net.
-    """
-    # Flat copy of the grid, indexed by node key (x * height + y) like all
-    # routing state. Indexing it is much faster than indexing the numpy grid.
-    assert grid.dtype == np.int8
-    cells = bytearray(grid.T.tobytes())
-    # Search state, reused by all searches: allocating grid-sized state per
-    # search dominated the routing time of large schematics.
-    scratch = bytearray(width * height * _auto_wire.SCRATCH_PER_NODE)
-    blocked = BlockedMoves(width, height)
-    port_drawing_dict = defaultdict(list)
-    straight_lines = defaultdict(list)
-    # Per net, the points where further paths can branch off (see
-    # try_route_connection), as node key -> (x, y) in path order.
-    branch_points = defaultdict(dict)
-    route_cell_usage = dict()
-    routed_entries = []
-
-    endpoint_marker_mapping, sorted_connections = sort_connections(connections)
-    endpoint_key_mapping = {
-        net: _point_keys(endpoints, width, height)
-        for net, endpoints in endpoint_marker_mapping.items()
-    }
-
-    def add_branch_points(net, path):
-        points = branch_points[net]
+    def add_branch_points(self, net, path):
+        points = self.branch_points[net]
         for x, y in path[1:-1]:
-            points.setdefault(x * height + y, (x, y))
+            points.setdefault(x * self.height + y, (x, y))
         if path:
             x, y = path[0]
-            if cells[x * height + y] < GRID_BLOCKED:
-                points.setdefault(x * height + y, (x, y))
+            if self.cells[x * self.height + y] < GRID_BLOCKED:
+                points.setdefault(x * self.height + y, (x, y))
 
-    def append_path(net, path):
-        port_drawing_dict[net].append(path)
-        add_branch_points(net, path)
+    def append_path(self, net, path):
+        self.port_drawing_dict[net].append(path)
+        self.add_branch_points(net, path)
         new_lines = transform_to_pairs(keep_corners_and_edges([path]), [])
-        straight_lines[net].extend(new_lines)
-        blocked.add(net, straight_lines[net], len(new_lines))
+        self.straight_lines[net].extend(new_lines)
+        self.blocked.add(net, self.straight_lines[net], len(new_lines))
 
-    def rebuild_straight_lines(net):
-        paths = port_drawing_dict[net]
+    def rebuild_straight_lines(self, net):
+        paths = self.port_drawing_dict[net]
         if paths:
-            straight_lines[net] = transform_to_pairs(
+            self.straight_lines[net] = transform_to_pairs(
                 keep_corners_and_edges(paths), []
             )
         else:
-            straight_lines[net] = []
-        blocked.reset(net, straight_lines[net])
-        branch_points[net] = {}
+            self.straight_lines[net] = []
+        self.blocked.reset(net, self.straight_lines[net])
+        self.branch_points[net] = {}
         for path in paths:
-            add_branch_points(net, path)
+            self.add_branch_points(net, path)
 
-    def apply_path_to_grid(path):
+    def apply_path_to_grid(self, path):
+        cells, usage = self.cells, self.route_cell_usage
         path_cells = []
         for (x, y) in path:
-            key = x * height + y
+            key = x * self.height + y
             if cells[key] == GRID_EMPTY:
                 cells[key] = GRID_ROUTED
             if cells[key] == GRID_ROUTED:
-                route_cell_usage[key] = route_cell_usage.get(key, 0) + 1
+                usage[key] = usage.get(key, 0) + 1
                 path_cells.append(key)
         return path_cells
 
-    def remove_path_from_grid(path_cells):
+    def remove_path_from_grid(self, path_cells):
         for key in path_cells:
-            usage = route_cell_usage.get(key, 0)
+            usage = self.route_cell_usage.get(key, 0)
             if usage <= 1:
-                route_cell_usage.pop(key, None)
-                if cells[key] == GRID_ROUTED:
-                    cells[key] = GRID_EMPTY
+                self.route_cell_usage.pop(key, None)
+                if self.cells[key] == GRID_ROUTED:
+                    self.cells[key] = GRID_EMPTY
             else:
-                route_cell_usage[key] = usage - 1
+                self.route_cell_usage[key] = usage - 1
 
-    def pop_path(entry):
-        paths = port_drawing_dict[entry.net]
+    def add_route(self, start, end, start_dir, end_dir, net, path):
+        """Apply a routed path and track it for rip-up."""
+        path_cells = self.apply_path_to_grid(path)
+        self.append_path(net, path)
+        entry = RoutedEntry(
+            start=start, end=end, start_dir=start_dir, end_dir=end_dir,
+            net=net, path=path, path_cells=path_cells)
+        self.routed_entries.append(entry)
+        return entry
+
+    def pop_path(self, entry):
+        paths = self.port_drawing_dict[entry.net]
         for index, path in enumerate(paths):
             if path is entry.path or path == entry.path:
                 paths.pop(index)
-                rebuild_straight_lines(entry.net)
+                self.rebuild_straight_lines(entry.net)
                 return index
         return None
 
-    def insert_path(entry, index):
-        paths = port_drawing_dict[entry.net]
+    def insert_path(self, entry, index):
+        paths = self.port_drawing_dict[entry.net]
         if index is None or index >= len(paths):
             paths.append(entry.path)
         else:
             paths.insert(index, entry.path)
-        rebuild_straight_lines(entry.net)
+        self.rebuild_straight_lines(entry.net)
 
     # Paths of a net attach where one path's first point lies on another path
     # (terminal anchor and branch junctions). Mere crossings do not connect
     # wires. Rip-up reroutes can violate this by no longer covering the branch
     # points of paths that branched off the removed route.
-    def net_paths_attached(net):
-        paths = port_drawing_dict[net]
+    def net_paths_attached(self, net):
+        paths = self.port_drawing_dict[net]
         if len(paths) <= 1:
             return True
         point_sets = [set(path) for path in paths]
@@ -618,26 +620,21 @@ def draw_connections(grid: np.ndarray, connections: list[GridConn],
             frontier.extend(attached)
         return not pending
 
-    def path_blocked_move_keys(path):
+    def path_blocked_move_keys(self, path):
         # The moves a net with only this path would block.
         segments = transform_to_pairs(keep_corners_and_edges([path]), [])
-        single = BlockedMoves(width, height)
+        single = BlockedMoves(self.width, self.height)
         single.add(None, segments, len(segments))
         return single.move_keys(None)
 
-    def make_routed_entry(start, end, start_dir, end_dir, net, path, path_cells):
-        return RoutedEntry(
-            start=start, end=end, start_dir=start_dir, end_dir=end_dir,
-            net=net, path=path, path_cells=path_cells)
-
-    def blocking_ripup_candidates(blocked_move_hits):
+    def blocking_ripup_candidates(self, blocked_move_hits):
         if not blocked_move_hits:
             return []
 
         scored_entries = []
-        for index, entry in enumerate(routed_entries):
+        for index, entry in enumerate(self.routed_entries):
             if entry.blocked_move_keys is None:
-                entry.blocked_move_keys = path_blocked_move_keys(entry.path)
+                entry.blocked_move_keys = self.path_blocked_move_keys(entry.path)
             hits = blocked_move_hits & entry.blocked_move_keys
             if hits:
                 scored_entries.append((len(hits), index, entry))
@@ -645,16 +642,17 @@ def draw_connections(grid: np.ndarray, connections: list[GridConn],
         scored_entries.sort(key=lambda item: (-item[0], -item[1]))
         return [entry for _, _, entry in scored_entries[:MAX_RIPUP_CANDIDATES]]
 
-    def try_route_connection(start, end, start_dir, end_dir, net,
-                             blocked_move_hits=None, allow_shortcut=True):
+    def try_route_connection(self, start, end, start_dir, end_dir, net,
+        blocked_move_hits=None, allow_shortcut=True):
         start_new, end_new = adjust_start_end_for_direction(start, start_dir, end, end_dir)
+        cells, scratch, width, height = self.cells, self.scratch, self.width, self.height
 
         if start != end_new and end != start_new:
             # Shortcut mode: if this net already has routed paths, try to
             # branch off an existing path via reverse A* instead of routing
             # all the way back to the original start
             # Branch candidates: interior points of existing paths
-            points = branch_points[net] if allow_shortcut and SHORTCUT_ENABLED else {}
+            points = self.branch_points[net] if allow_shortcut and SHORTCUT_ENABLED else {}
             # No candidates (e.g. the net's only path joins two adjacent
             # pins, so it has no interior points): route like a first
             # connection
@@ -669,8 +667,8 @@ def draw_connections(grid: np.ndarray, connections: list[GridConn],
                     # Try reverse A* from endpoint to any existing path point
                     path = reverse_a_star(
                         cells, scratch, points, end_new, width, height,
-                        blocked, net, end_dir,
-                        endpoint_key_mapping, route_cell_usage,
+                        self.blocked, net, end_dir,
+                        self.endpoint_key_mapping, self.route_cell_usage,
                         use_congestion=False,
                         blocked_move_hits=blocked_move_hits
                     )
@@ -678,16 +676,16 @@ def draw_connections(grid: np.ndarray, connections: list[GridConn],
                     if not path:
                         path = a_star(
                             cells, scratch, start_new, end_new, width, height,
-                            blocked, net, start_dir,
-                            route_cell_usage, use_congestion=False,
+                            self.blocked, net, start_dir,
+                            self.route_cell_usage, use_congestion=False,
                             blocked_move_hits=blocked_move_hits
                         )
             else:
                 # First connection for this net, standard forward A*
                 path = a_star(
                     cells, scratch, start_new, end_new, width, height,
-                    blocked, net, start_dir,
-                    route_cell_usage,
+                    self.blocked, net, start_dir,
+                    self.route_cell_usage,
                     blocked_move_hits=blocked_move_hits
                 )
 
@@ -706,113 +704,136 @@ def draw_connections(grid: np.ndarray, connections: list[GridConn],
 
         return path, start_new, end_new
 
-    for net, start, start_dir, end, end_dir in sorted_connections:
-        blocked_move_hits = set()
-        path, start_new, end_new = try_route_connection(
-            start, end, start_dir, end_dir, net, blocked_move_hits
-        )
+    def route_with_ripup(self, start, end, start_dir, end_dir, net,
+        blocked_move_hits):
+        """Route a connection that failed, by temporarily removing a route
+        that blocked the failed search and retrying. If both routes can be
+        completed, keep the new arrangement; otherwise restore the original.
 
-        # Rip-up/reroute: if routing failed, temporarily remove a
-        # route that blocked the failed search and retry. If both routes can be
-        # completed, keep the new arrangement; otherwise restore the original.
-        if path is None and MAX_RIPUP_CANDIDATES > 0 and routed_entries:
-            for blocking_entry in blocking_ripup_candidates(blocked_move_hits):
-                try:
-                    blocking_index = routed_entries.index(blocking_entry)
-                except ValueError:
-                    continue
-
-                routed_entries.pop(blocking_index)
-                blocking_net = blocking_entry.net
-                blocking_path_index = pop_path(blocking_entry)
-                remove_path_from_grid(blocking_entry.path_cells)
-
-                # Retry current connection with the blocking route removed
-                path, start_new, end_new = try_route_connection(
-                    start, end, start_dir, end_dir, net
-                )
-                if path is not None:
-                    path_cells = apply_path_to_grid(path)
-                    append_path(net, path)
-                    current_entry = make_routed_entry(
-                        start, end, start_dir, end_dir, net,
-                        path, path_cells
-                    )
-                    routed_entries.append(current_entry)
-
-                    # Try to reroute the removed blocking connection. If the
-                    # removed path anchored the net's start terminal, a shortcut
-                    # reroute would only reconnect the end pin and silently
-                    # leave the terminal unwired, so reroute it in full.
-                    anchors_terminal = (
-                        blocking_entry.path[0] == blocking_entry.start)
-                    blocking_path, _, _ = try_route_connection(
-                        blocking_entry.start,
-                        blocking_entry.end,
-                        blocking_entry.start_dir,
-                        blocking_entry.end_dir,
-                        blocking_net,
-                        allow_shortcut=not anchors_terminal,
-                    )
-                    if blocking_path is not None:
-                        blocking_cells = apply_path_to_grid(blocking_path)
-                        append_path(blocking_net, blocking_path)
-                        if net_paths_attached(blocking_net):
-                            # Both succeeded --> keep the new arrangement
-                            blocking_entry.path = blocking_path
-                            blocking_entry.path_cells = blocking_cells
-                            blocking_entry.blocked_move_keys = None
-                            routed_entries.append(blocking_entry)
-                            break
-                        # The reroute stranded a branch of the removed route:
-                        # undo it and treat it as failed.
-                        port_drawing_dict[blocking_net].pop()
-                        rebuild_straight_lines(blocking_net)
-                        remove_path_from_grid(blocking_cells)
-
-                    # Blocking route failed to reroute, undo current and restore
-                    if port_drawing_dict[net]:
-                        port_drawing_dict[net].pop()
-                    rebuild_straight_lines(net)
-                    remove_path_from_grid(path_cells)
-                    if current_entry in routed_entries:
-                        routed_entries.remove(current_entry)
-                    path = None
-
-                # Restore the original blocking route
-                restore_cells = apply_path_to_grid(blocking_entry.path)
-                insert_path(blocking_entry, blocking_path_index)
-                blocking_entry.path_cells = restore_cells
-                blocking_entry.blocked_move_keys = None
-                if blocking_index >= len(routed_entries):
-                    routed_entries.append(blocking_entry)
-                else:
-                    routed_entries.insert(blocking_index, blocking_entry)
-
-            if path is not None:
+        Returns:
+            bool: Whether the connection was routed.
+        """
+        routed_entries = self.routed_entries
+        for blocking_entry in self.blocking_ripup_candidates(blocked_move_hits):
+            try:
+                blocking_index = routed_entries.index(blocking_entry)
+            except ValueError:
                 continue
 
-        if path is None:
-            logger.warning(
-                f"Failed to connect net '{net.full_path_label()}' from "
-                f"{start_new} to {end_new}; wire dropped.")
-            continue
+            routed_entries.pop(blocking_index)
+            blocking_net = blocking_entry.net
+            blocking_path_index = self.pop_path(blocking_entry)
+            self.remove_path_from_grid(blocking_entry.path_cells)
 
-        path_cells = apply_path_to_grid(path)
-        append_path(net, path)
-        routed_entries.append(make_routed_entry(
-            start, end, start_dir, end_dir, net, path, path_cells
-        ))
+            # Retry current connection with the blocking route removed
+            path, _, _ = self.try_route_connection(
+                start, end, start_dir, end_dir, net
+            )
+            if path is not None:
+                current_entry = self.add_route(
+                    start, end, start_dir, end_dir, net, path)
 
-    # Post-process: reduce full paths to corner/edge vertices for rendering
-    for key in port_drawing_dict:
-        if SHORTCUT_ENABLED:
-            current_path = keep_corners_and_edges(port_drawing_dict[key])
-        else:
-            current_path = keep_corners_and_edges(shorten_lists(port_drawing_dict[key]))
-        port_drawing_dict[key] = current_path
-    grid[:] = np.frombuffer(cells, dtype=np.int8).reshape(width, height).T
-    return port_drawing_dict
+                # Try to reroute the removed blocking connection. If the
+                # removed path anchored the net's start terminal, a shortcut
+                # reroute would only reconnect the end pin and silently
+                # leave the terminal unwired, so reroute it in full.
+                anchors_terminal = (
+                    blocking_entry.path[0] == blocking_entry.start)
+                blocking_path, _, _ = self.try_route_connection(
+                    blocking_entry.start,
+                    blocking_entry.end,
+                    blocking_entry.start_dir,
+                    blocking_entry.end_dir,
+                    blocking_net,
+                    allow_shortcut=not anchors_terminal,
+                )
+                if blocking_path is not None:
+                    blocking_cells = self.apply_path_to_grid(blocking_path)
+                    self.append_path(blocking_net, blocking_path)
+                    if self.net_paths_attached(blocking_net):
+                        # Both succeeded --> keep the new arrangement
+                        blocking_entry.path = blocking_path
+                        blocking_entry.path_cells = blocking_cells
+                        blocking_entry.blocked_move_keys = None
+                        routed_entries.append(blocking_entry)
+                        return True
+                    # The reroute stranded a branch of the removed route:
+                    # undo it and treat it as failed.
+                    self.port_drawing_dict[blocking_net].pop()
+                    self.rebuild_straight_lines(blocking_net)
+                    self.remove_path_from_grid(blocking_cells)
+
+                # Blocking route failed to reroute, undo current and restore
+                if self.port_drawing_dict[net]:
+                    self.port_drawing_dict[net].pop()
+                self.rebuild_straight_lines(net)
+                self.remove_path_from_grid(current_entry.path_cells)
+                if current_entry in routed_entries:
+                    routed_entries.remove(current_entry)
+
+            # Restore the original blocking route
+            restore_cells = self.apply_path_to_grid(blocking_entry.path)
+            self.insert_path(blocking_entry, blocking_path_index)
+            blocking_entry.path_cells = restore_cells
+            blocking_entry.blocked_move_keys = None
+            if blocking_index >= len(routed_entries):
+                routed_entries.append(blocking_entry)
+            else:
+                routed_entries.insert(blocking_index, blocking_entry)
+        return False
+
+    def route(self, connections: list[GridConn]):
+        """Route all connections."""
+        endpoint_marker_mapping, sorted_connections = sort_connections(connections)
+        self.endpoint_key_mapping = {
+            net: _point_keys(endpoints, self.width, self.height)
+            for net, endpoints in endpoint_marker_mapping.items()
+        }
+
+        for net, start, start_dir, end, end_dir in sorted_connections:
+            blocked_move_hits = set()
+            path, start_new, end_new = self.try_route_connection(
+                start, end, start_dir, end_dir, net, blocked_move_hits
+            )
+            if path is None and MAX_RIPUP_CANDIDATES > 0 and self.routed_entries:
+                if self.route_with_ripup(start, end, start_dir, end_dir, net,
+                    blocked_move_hits):
+                    continue
+            if path is None:
+                logger.warning(
+                    f"Failed to connect net '{net.full_path_label()}' from "
+                    f"{start_new} to {end_new}; wire dropped.")
+                continue
+            self.add_route(start, end, start_dir, end_dir, net, path)
+
+    def vertices(self) -> dict[Net, list[list[Point]]]:
+        """Routed paths reduced to corner/edge vertices for rendering."""
+        result = {}
+        for net, paths in self.port_drawing_dict.items():
+            if not SHORTCUT_ENABLED:
+                paths = shorten_lists(paths)
+            result[net] = keep_corners_and_edges(paths)
+        return result
+
+
+def draw_connections(grid: np.ndarray, connections: list[GridConn],
+                     width: int, height: int
+                     ) -> dict[Net, list[list[Point]]]:
+    """Route all connections and return the calculated vertices.
+
+    Args:
+        grid: Routing grid (int8 array), updated with the routed cells.
+        connections: Grid connections to route.
+        width: Width of the grid.
+        height: Height of the grid.
+
+    Returns:
+        dict: Grid-space vertex paths per Net.
+    """
+    run = RoutingRun(grid, width, height)
+    run.route(connections)
+    grid[:] = np.frombuffer(run.cells, dtype=np.int8).reshape(width, height).T
+    return run.vertices()
 
 
 def calculate_vertices(outline: Rect4R, cells: Iterable[SchemInstance],
