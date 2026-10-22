@@ -294,7 +294,7 @@ def reverse_a_star(cells: bytearray, scratch: bytearray, start_points: dict,
             are added to this set as move keys (see _auto_wire.c).
 
     Returns:
-        list: Shortest path found as list of (x, y) tuples, or empty list.
+        list: Lowest-cost path found as list of (x, y) tuples, or empty list.
     """
 
     end_x, end_y = end

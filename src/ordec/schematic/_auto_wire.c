@@ -275,8 +275,9 @@ static PyObject *run_search(const Search *s, long end_key, PyObject *targets,
     char *visited = (char *)(came_from + size);
     Heap heap = {NULL, 0, 0};
     KeyList touched = {NULL, 0, 0};
+    // Reverse search: lowest-cost path to a target so far.
     PyObject *best_path = NULL, *ret = NULL;
-    long best_len = -1;
+    double best_g = -1.0;
     if (keys_append(&touched, origin) < 0)
         goto done;
     visited[origin] = 1;
@@ -292,7 +293,10 @@ static PyObject *run_search(const Search *s, long end_key, PyObject *targets,
         if (cur.g > g_score[ck])
             continue;
         if (reverse) {
-            if (best_len >= 0 && g_score[ck] >= best_len)
+            // The heuristic aims at one target only, so the first target
+            // reached need not be the cheapest: search on, but only below
+            // the cost of the best path found.
+            if (best_g >= 0 && g_score[ck] >= best_g)
                 continue;
             int hit = contains(targets, ck);
             if (hit < 0)
@@ -301,14 +305,9 @@ static PyObject *run_search(const Search *s, long end_key, PyObject *targets,
                 PyObject *path = trace(came_from, ck, height, 1, 0);
                 if (!path)
                     goto done;
-                long len = (long)PyList_Size(path);
-                if (best_len < 0 || len < best_len) {
-                    Py_XDECREF(best_path);
-                    best_path = path;
-                    best_len = len;
-                } else {
-                    Py_DECREF(path);
-                }
+                Py_XDECREF(best_path);
+                best_path = path;
+                best_g = g_score[ck];
                 continue;
             }
         } else if (ck == end_key) {
@@ -429,8 +428,8 @@ static PyObject *search_forward(PyObject *self, PyObject *args) {
 // search_reverse(cells, scratch, width, height, origin, (dx, dy), targets,
 //     endpoint_keys, any_mask, own_masks, ride_masks, counts, usage,
 //     use_congestion, hits): search of reverse_a_star(), towards any of the
-// targets (dict of node key to (x, y) point). Returns the path with the
-// fewest points from a target to origin (both included), [] on failure.
+// targets (dict of node key to (x, y) point). Returns the lowest-cost path
+// from a target to origin (both included), [] on failure.
 // Turns on direction markers are allowed at origin and at endpoint_keys.
 // The heuristic aims at the target nearest to origin (the first one in
 // dict order on ties).
