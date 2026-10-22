@@ -50,6 +50,10 @@ MAX_RIPUP_CANDIDATES = 5      # Blocking routes to try for one-route rip-up.
 from ._auto_wire import GRID_EMPTY, GRID_ROUTED, GRID_DIR, GRID_BLOCKED, \
     GRID_PIN, GRID_PORT
 
+# Grid point (x, y), and a straight wire segment between two grid points.
+Point = tuple[int, int]
+Segment = tuple[Point, Point]
+
 class BlockedMoves:
     """Moves blocked by the routed segments of all nets, updated incrementally.
 
@@ -73,7 +77,7 @@ class BlockedMoves:
         self.count = dict()                 # move key -> number of nets blocking it
         self.any_mask = dict()              # node_key -> directions blocked by any net
 
-    def add(self, net: Net, segments: list, new_count: int):
+    def add(self, net: Net, segments: list[Segment], new_count: int):
         """Account for the last new_count entries of the net's segments."""
         old_count = len(segments) - new_count
         # Corner nodes are the endpoints of all segments of nets with
@@ -87,7 +91,7 @@ class BlockedMoves:
         _auto_wire.add_moves(segments[old_count:], corner_points, ride, own, count,
             any_mask, self.width, self.height)
 
-    def reset(self, net: Net, segments: list):
+    def reset(self, net: Net, segments: list[Segment]):
         """Replace the net's segments."""
         _auto_wire.remove_moves(self.net_masks.pop(net, {}), self.count, self.any_mask)
         self.ride_masks.pop(net, None)
@@ -112,9 +116,9 @@ Connection = tuple[RoutingPort, RoutingPort]
 class GridConn(NamedTuple):
     """A Connection translated onto the routing grid."""
     net: Net
-    start: tuple[int, int]
+    start: Point
     start_dir: D4
-    end: tuple[int, int]
+    end: Point
     end_dir: D4
 
     @classmethod
@@ -142,7 +146,7 @@ _STEPS = {d: (int(v.x), int(v.y))
 def place_cells_and_ports(grid: np.ndarray, cells: Iterable[SchemInstance],
                           ports: Iterable[RoutingPort], width: int, height: int,
                           offset_x: int, offset_y: int
-                          ) -> dict[tuple[int, int], Net | SchemInstanceSubcursor]:
+                          ) -> dict[Point, Net | SchemInstanceSubcursor]:
     """Place cells and ports initially on the schematic grid.
 
     Args:
@@ -198,9 +202,9 @@ def place_cells_and_ports(grid: np.ndarray, cells: Iterable[SchemInstance],
 
     return key_grid
 
-def adjust_start_end_for_direction(start: tuple[int, int], start_dir: D4,
-                                   end: tuple[int, int], end_dir: D4
-                                   ) -> tuple[tuple[int, int], tuple[int, int]]:
+def adjust_start_end_for_direction(start: Point, start_dir: D4,
+                                   end: Point, end_dir: D4
+                                   ) -> tuple[Point, Point]:
     """Step the start and end points one grid cell in their facing direction.
 
     Args:
@@ -223,11 +227,11 @@ def _point_keys(points, width, height):
         if 0 <= x < width and 0 <= y < height}
 
 
-def a_star(cells: bytearray, scratch: bytearray, start: tuple[int, int],
-           end: tuple[int, int], width: int, height: int, blocked: BlockedMoves,
+def a_star(cells: bytearray, scratch: bytearray, start: Point,
+           end: Point, width: int, height: int, blocked: BlockedMoves,
            net: Net, start_dir: D4,
            route_cell_usage: dict | None = None, use_congestion: bool = True,
-           blocked_move_hits: set | None = None) -> list[tuple[int, int]]:
+           blocked_move_hits: set | None = None) -> list[Point]:
     """Perform A* pathfinding between a start and end point.
 
     Args:
@@ -269,12 +273,12 @@ def a_star(cells: bytearray, scratch: bytearray, start: tuple[int, int],
 
 
 def reverse_a_star(cells: bytearray, scratch: bytearray, start_points: dict,
-                   end: tuple[int, int], width: int, height: int,
+                   end: Point, width: int, height: int,
                    blocked: BlockedMoves, net: Net, end_dir: D4,
                    endpoint_mapping: dict,
                    route_cell_usage: dict | None = None,
                    use_congestion: bool = True,
-                   blocked_move_hits: set | None = None) -> list[tuple[int, int]]:
+                   blocked_move_hits: set | None = None) -> list[Point]:
     """Perform reverse A* from the end point towards any of the start points.
 
     Args:
@@ -400,7 +404,8 @@ def keep_corners_and_edges(lines: list) -> list:
     return result
 
 
-def transform_to_pairs(list_of_lists: list, straights: list) -> list:
+def transform_to_pairs(list_of_lists: list[list[Point]], straights: list[Segment]
+    ) -> list[Segment]:
     """Transform point lists into consecutive pairs and append to straights.
 
     Example: ``[(2, 1), (5, 1), (5, 2)]`` becomes
@@ -481,12 +486,12 @@ class RoutedEntry:
     ``routed_entries`` match this exact entry rather than an
     equal-valued one.
     """
-    start: tuple[int, int]
-    end: tuple[int, int]
+    start: Point
+    end: Point
     start_dir: D4
     end_dir: D4
     net: Net
-    path: list[tuple[int, int]]
+    path: list[Point]
     path_cells: list[int]   # node keys
     # Moves blocked by path, see path_blocked_move_keys. Computed when
     # needed for rip-up only.
@@ -801,7 +806,7 @@ class RoutingRun:
                 continue
             self.add_route(start, end, start_dir, end_dir, net, path)
 
-    def vertices(self) -> dict[Net, list[list[tuple[int, int]]]]:
+    def vertices(self) -> dict[Net, list[list[Point]]]:
         """Routed paths reduced to corner/edge vertices for rendering."""
         result = {}
         for net, paths in self.port_drawing_dict.items():
@@ -813,7 +818,7 @@ class RoutingRun:
 
 def draw_connections(grid: np.ndarray, connections: list[GridConn],
                      width: int, height: int
-                     ) -> dict[Net, list[list[tuple[int, int]]]]:
+                     ) -> dict[Net, list[list[Point]]]:
     """Route all connections and return the calculated vertices.
 
     Args:
