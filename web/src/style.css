@@ -1662,6 +1662,52 @@ body.theme-dark .schem-detail-toggle:hover {
     margin: 0;
     color: inherit;
 }
+/* Experimental style panel (layout-style.js) */
+.layout-sidebar-collapsed .layout-style {
+    display: none;
+}
+.layout-style {
+    flex: 0 0 auto;
+    padding: 4px 6px;
+    border-bottom: 1px solid #555;
+    font-size: var(--font-size-sm);
+}
+.layout-style summary {
+    cursor: pointer;
+    padding: 2px 0;
+}
+.layout-style-info {
+    margin: 2px 0 4px;
+    opacity: 0.7;
+}
+.layout-style-row {
+    display: grid;
+    grid-template-columns: 7.5em 1fr;
+    align-items: center;
+    gap: 6px;
+    margin: 3px 0;
+}
+.layout-style-row select,
+.layout-style-row input[type=range] {
+    width: 100%;
+    min-width: 0;
+}
+.layout-style-row select {
+    background: #2a2a2a;
+    color: inherit;
+    border: 1px solid #555;
+}
+.layout-style-row.inactive {
+    opacity: 0.4;
+}
+.layerList .layerItem {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.layerSwatch {
+    flex: 0 0 auto;
+}
 .layout-coordinates {
     color: inherit;
     border-top: 1px solid #555;

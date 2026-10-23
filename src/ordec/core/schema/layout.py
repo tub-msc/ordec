@@ -134,8 +134,8 @@ class LayoutStyle(SubgraphRoot):
     How layouts on a LayerStack are displayed. Technologies provide their
     default style as viewgen layout_style of the technology cell, read from a
     TOML file (see :func:`ordec.layout.style.read_layout_style`). Layers are
-    drawn in nid order of their LayoutStyleLayer nodes, bottom first; layers
-    without one are not drawn.
+    drawn in nid order of their LayoutStyleLayer nodes, bottom first; the web
+    viewer draws layers without one on top, filled in plain white.
     """
     wire_id = WIRE_DOMAIN | 13
     ref_layers = SubgraphRef(LayerStack, optional=False)

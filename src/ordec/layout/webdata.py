@@ -56,7 +56,8 @@ def layer_styles(style: LayoutStyle | None) -> dict:
         'pattern': None if node.pattern is None else node.pattern.name,
     } for i, node in enumerate(style.all(LayoutStyleLayer))}
 
-# Layers without style have order None.
+# Layers without style have order None (see layerFill in
+# web/src/view/layout-style.js).
 NO_LAYER_STYLE = {
     'order': None,
     'styleFill': None,

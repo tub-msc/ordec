@@ -8,15 +8,12 @@ attribute vec3 aTransformX;
 attribute vec3 aTransformY;
 uniform mat4 uProjectionMatrix;
 
-uniform highp vec4 uLayerColor;
+// Per-layer depth value (0..1), used to draw every pixel at most once per
+// layer (see drawGLShapes).
+uniform highp float uDepth;
 
 void main() {
     vec3 p = vec3(aVertexPosition, 1.0);
     vec4 pos = uProjectionMatrix * vec4(dot(aTransformX, p), dot(aTransformY, p), 0.0, 1.0);
-    gl_Position = vec4(
-        pos.x,
-        pos.y,
-        uLayerColor.a,
-        pos.w
-    );
+    gl_Position = vec4(pos.x, pos.y, uDepth, pos.w);
 }

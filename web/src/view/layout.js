@@ -7,6 +7,11 @@ import earcut from 'earcut';
 
 import { siFormat } from './siformat.js';
 import { View, CoordinateDisplay } from './view.js';
+import {
+    BLEND_MODES, PATTERN_SIZE, patternAtlas,
+    applyStyle, savePrefs, isLightBackground, intensity, layerFill, layerLook,
+    layerOrder, drawSwatch, buildStylePanel,
+} from './layout-style.js';
 
 // See: https://github.com/mdn/dom-examples/blob/main/webgl-examples/tutorial/sample2/webgl-demo.js
 
@@ -135,33 +140,17 @@ function transformPoint(m, p) {
     return [m[0]*p[0] + m[1]*p[1] + m[4], m[2]*p[0] + m[3]*p[1] + m[5]];
 }
 
-// Inline CSS of a layer's legend swatch; colors are [r, g, b] or null.
-function swatchCSS(layer) {
-    const css = c => c ? `rgb(${c[0]}, ${c[1]}, ${c[2]})` : 'none';
-    return `fill:${css(layer.styleFill)};stroke:${css(layer.styleStroke)};`;
-}
-
-function calcLayerColor(color, layerId, dampen) {
-    // If dampen is true, infinite / 0xFF brightness is 'scaled away'.
-    const dampenFactor = dampen?0.95:1.0;
-    return [
-        // The RGB values of layerColor are added to the RGB pixel buffer by the fragment shader:
-        -Math.log(1.0 - (color[0] / 255.0 * dampenFactor)),
-        -Math.log(1.0 - (color[1] / 255.0 * dampenFactor)),
-        -Math.log(1.0 - (color[2] / 255.0 * dampenFactor)),
-        // The alpha value of layerColor is used as Z value by the vertex shader to prevent coloring the same pixel for the same layer multiple times.
-        // This alpha / Z values has to be between 0.0 and 1.0!
-        layerId/65536,
-    ];
-}
-
 export class LayoutView extends View {
     constructor(resContent, viewName, resultViewer, panelContainer) {
         super(resContent, viewName, resultViewer, panelContainer);
         this.transform = d3.zoomIdentity.scale(1e-1,1e-1);
         this.projectionMatrix = mat4.create();
         this.visibility = new Map();
-        this.brightness = 60;
+        // Style settings: LayoutStyle and viewer preferences (see
+        // layout-style.js).
+        this.style = {};
+        applyStyle(this.style, null);
+        this.hoverNid = null; // layer under the mouse in the layer list
         this.initialZoomDone = false;
 
         this.root = document.createElement('div');
@@ -179,8 +168,10 @@ export class LayoutView extends View {
         this.sidebarToggle.onclick = () => this.toggleSidebar();
         this.layersUl = document.createElement('ul');
         this.layersUl.classList.add('layerList');
+        this.stylePanel = buildStylePanel(this.style, key => this.onStyleChange(key));
         this.sidebar.append(
             this.sidebarToggle,
+            this.stylePanel.element,
             this.layersUl
         );
         this.root.append(this.canvas, this.sidebar);
@@ -344,6 +335,9 @@ export class LayoutView extends View {
     update(msgData, wireHash) {
         this.data = msgData;
         this.wireHash = wireHash;
+        applyStyle(this.style, msgData.style);
+        this.stylePanel.sync();
+        this.loadPatterns();
         this.prepareHierarchy();
 
         // Populate the sidebar before any zoom-to-fit below, so that its
@@ -404,20 +398,26 @@ export class LayoutView extends View {
             <label for="${id}"><b>all</b></label> 
         `;
         layersUl.appendChild(li);
-        this.data.layers.forEach(layer => {
+        // The swatch under the mouse (if any) is removed with the list.
+        this.hoverNid = null;
+        // The list is in drawing order (bottom first).
+        this.drawOrder = layerOrder(this.data.layers);
+        this.drawOrder.forEach(layer => {
             li = document.createElement('li');
+            li.classList.add('layerItem');
             id = generateId();
-            let svgPath = "M0.5 0.5 L29.5 0.5 L29.5 14.5 L0.5 14.5 Z";
-            if(layer.styleCrossRect) {
-                svgPath += " M0.5 0.5 L29.5 14.5 M0.5 14.5 L29.5 0.5";
-            }
             li.innerHTML = `
                 <input type="checkbox" class="singleLayer" id="${id}" name="${layer.nid}">
-                <label for="${id}">
-                    <svg width="30px" height="15px" viewBox="0 0 30 15"><path style="${swatchCSS(layer)}" d="${svgPath}" /></svg>
-                    ${layer.path}
-                </label> 
+                <canvas class="layerSwatch"></canvas>
+                <label for="${id}">${layer.path}</label>
             `;
+            const swatch = li.querySelector('canvas');
+            drawSwatch(swatch, layerLook(layer, this.style), this.style);
+            // Only the swatch emphasizes its layer (and shows it if hidden,
+            // see isShown): hovering the checkbox or name (e.g. while toggling
+            // visibility) leaves the view as is.
+            swatch.onmouseenter = () => this.setHoverLayer(layer.nid);
+            swatch.onmouseleave = () => this.setHoverLayer(null);
             layersUl.appendChild(li);
         });
         this.layerCheckboxes = layersUl.querySelectorAll('.singleLayer');
@@ -437,21 +437,43 @@ export class LayoutView extends View {
             this.updateLayers();
         };
 
-        li = document.createElement('li');
-        li.innerHTML=`
-            <input type="range" min="1" max="100" value="${this.brightness}" class="brightness" />
-        `;
-        layersUl.appendChild(li);
-        li.querySelector('input').oninput = (range) => {
-            this.brightness = range.target.value;
-            this.drawGL();
-        }
-
         this.cursorCoordinates = new CoordinateDisplay({
             tagName: 'li',
             classNames: ['layout-coordinates'],
         });
         layersUl.appendChild(this.cursorCoordinates.element);
+    }
+
+    // Uploads the fill patterns of the style, stacked vertically (see
+    // patternAtlas); a layer's pattern is drawn by its index in them.
+    loadPatterns() {
+        const gl = this.gl;
+        const patterns = this.style.patterns;
+        this.patternIndex = new Map(patterns.map((p, i) => [p.name, i]));
+        gl.bindTexture(gl.TEXTURE_2D, this.patternTexture);
+        gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, PATTERN_SIZE, PATTERN_SIZE * Math.max(1, patterns.length),
+            0, gl.RED, gl.UNSIGNED_BYTE, patternAtlas(patterns));
+    }
+
+    // Called by the style panel after a viewer preference in this.style
+    // changed; none of them shows in the layer list.
+    onStyleChange(key) {
+        savePrefs(this.style);
+        if (this.data) {
+            this.drawGL();
+        }
+    }
+
+    // Whether a layer is drawn: if visible (checked or never unchecked), or
+    // while its swatch is hovered, which shows hidden layers too.
+    isShown(nid) {
+        return this.visibility.get(nid) != false || nid == this.hoverNid;
+    }
+
+    setHoverLayer(nid) {
+        this.hoverNid = nid;
+        this.drawGL();
     }
 
     destroy() {
@@ -490,13 +512,21 @@ export class LayoutView extends View {
             },
             uniformLocations: {
                 projectionMatrix: gl.getUniformLocation(prog, "uProjectionMatrix"),
-                layerColor: gl.getUniformLocation(prog, "uLayerColor"),
-                brightness: gl.getUniformLocation(prog, "uBrightness"),
+                depth: gl.getUniformLocation(prog, "uDepth"),
+                mode: gl.getUniformLocation(prog, "uMode"),
+                color: gl.getUniformLocation(prog, "uColor"),
+                gain: gl.getUniformLocation(prog, "uGain"),
+                weight: gl.getUniformLocation(prog, "uWeight"),
+                pattern: gl.getUniformLocation(prog, "uPattern"),
+                patternCount: gl.getUniformLocation(prog, "uPatternCount"),
+                patternMul: gl.getUniformLocation(prog, "uPatternMul"),
+                patternAdd: gl.getUniformLocation(prog, "uPatternAdd"),
+                patterns: gl.getUniformLocation(prog, "uPatterns"),
             },
         };
 
-        // The grid shares the fragment shader of the shapes program.
-        prog = this.glResources.createProgram(glslGridVert, glslShapesFrag);
+        // The grid shares the fragment shader of the highlight program.
+        prog = this.glResources.createProgram(glslGridVert, glslHighlightFrag);
         this.programInfos.grid = {
             program: prog,
             attribLocations: {
@@ -505,8 +535,8 @@ export class LayoutView extends View {
             uniformLocations: {
                 projectionMatrix: gl.getUniformLocation(prog, "uProjectionMatrix"),
                 modelViewMatrix: gl.getUniformLocation(prog, "uModelViewMatrix"),
-                layerColor: gl.getUniformLocation(prog, "uLayerColor"),
-                brightness: gl.getUniformLocation(prog, "uBrightness"),
+                viewport: gl.getUniformLocation(prog, "uViewport"),
+                color: gl.getUniformLocation(prog, "uColor"),
             },
         };
 
@@ -522,8 +552,8 @@ export class LayoutView extends View {
                 projectionMatrix: gl.getUniformLocation(prog, "uProjectionMatrix"),
                 modelViewMatrix: gl.getUniformLocation(prog, "uModelViewMatrix"),
                 pixelScale: gl.getUniformLocation(prog, "uPixelScale"),
-                //layerColor: gl.getUniformLocation(prog, "uLayerColor"),
                 sampler: gl.getUniformLocation(prog, "uSampler"),
+                invert: gl.getUniformLocation(prog, "uInvert"),
             },
         };
 
@@ -555,8 +585,20 @@ export class LayoutView extends View {
             uniformLocations: {
                 projectionMatrix: gl.getUniformLocation(prog, "uProjectionMatrix"),
                 sampler: gl.getUniformLocation(prog, "uSampler"),
+                mode: gl.getUniformLocation(prog, "uMode"),
+                bg: gl.getUniformLocation(prog, "uBg"),
+                gain: gl.getUniformLocation(prog, "uGain"),
             },
         };
+
+        // Fill patterns of the style (see loadPatterns):
+        this.patternTexture = this.glResources.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, this.patternTexture);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        this.loadPatterns();
 
         this.intermediateTexture = this.glResources.createTexture();
         this.intermediateTextureDepth = this.glResources.createTexture();
@@ -770,32 +812,32 @@ export class LayoutView extends View {
     loadShapes() {
         const gl = this.gl;
 
-        // For all shapes, separate triangle (fill) and line (stroke) vertex
-        // "segments" are loaded into the the shapeVertices buffer, per cell
-        // and layer. Currently, both triangle and line data is loaded into
-        // the buffer irrespective of whether it is needed to render the layer.
-        // This way, the data is always there, for example if something like
-        // "outline on select / hover" is desired in the future.
+        // For all shapes, separate triangle (fill), line (outline) and cross
+        // line vertex "segments" are loaded into the shapeVertices buffer,
+        // per cell and layer, irrespective of whether the layer's style uses
+        // them.
 
         // First pass: triangulate polygons and count vertices.
         let numVertices = 0;
         this.data.cells.forEach(cell => cell.layers.forEach(entry => {
-            const crossRect = this.layerByNid.get(entry.layer).styleCrossRect;
             const nRects = entry.rects.length / 4;
             const offs = entry.polyOffsets;
             entry.polyTriangles = [];
-            let lines = nRects * (crossRect ? 12 : 8);
+            let lines = nRects * 8;
+            let cross = nRects * 4;
             let tris = nRects * 6;
             for (let p = 0; p < offs.length - 1; p++) {
                 const nv = offs[p+1] - offs[p];
                 const triangles = earcut(entry.polyCoords.subarray(2*offs[p], 2*offs[p+1]));
                 entry.polyTriangles.push(triangles);
-                lines += 2*nv + ((crossRect && nv == 4) ? 4 : 0);
+                lines += 2*nv;
+                cross += nv == 4 ? 4 : 0;
                 tris += triangles.length;
             }
             entry.lineCount = lines;
+            entry.crossCount = cross;
             entry.triCount = tris;
-            numVertices += lines + tris;
+            numVertices += lines + cross + tris;
         }));
 
         // Second pass: fill the buffer.
@@ -803,7 +845,6 @@ export class LayoutView extends View {
         let n = 0; // vertices written
         const push = (x, y) => { buf[2*n] = x; buf[2*n + 1] = y; n++; };
         this.data.cells.forEach(cell => cell.layers.forEach(entry => {
-            const crossRect = this.layerByNid.get(entry.layer).styleCrossRect;
             const r = entry.rects;
             const offs = entry.polyOffsets;
             const c = entry.polyCoords;
@@ -815,10 +856,6 @@ export class LayoutView extends View {
                 push(ux, ly); push(ux, uy);
                 push(ux, uy); push(lx, uy);
                 push(lx, uy); push(lx, ly);
-                if (crossRect) {
-                    push(lx, ly); push(ux, uy);
-                    push(ux, ly); push(lx, uy);
-                }
             }
             for (let p = 0; p < offs.length - 1; p++) {
                 const s = 2*offs[p];
@@ -830,8 +867,19 @@ export class LayoutView extends View {
                     push(c[i], c[i+1]);
                 }
                 push(c[s], c[s+1]);
-                if (crossRect && e - s == 4*2) {
-                    // Add "X" shape if styleCrossRect is enabled:
+            }
+
+            // "X" through rectangles and four-vertex polygons, drawn for
+            // layers with styleCrossRect.
+            entry.crossOffset = n;
+            for (let i = 0; i < r.length; i += 4) {
+                const lx = r[i], ly = r[i+1], ux = r[i+2], uy = r[i+3];
+                push(lx, ly); push(ux, uy);
+                push(ux, ly); push(lx, uy);
+            }
+            for (let p = 0; p < offs.length - 1; p++) {
+                const s = 2*offs[p];
+                if (offs[p+1] - offs[p] == 4) {
                     push(c[s], c[s+1]); push(c[s+4], c[s+5]);
                     push(c[s+2], c[s+3]); push(c[s+6], c[s+7]);
                 }
@@ -887,29 +935,59 @@ export class LayoutView extends View {
 
     drawGLShapes() {
         const gl = this.gl;
+        const style = this.style;
         const programInfo = this.programInfos.shapes;
         const {vertexPosition, transformX, transformY} = programInfo.attribLocations;
+        const u = programInfo.uniformLocations;
+        const mode = BLEND_MODES.findIndex(([key]) => key == style.blend);
 
         gl.useProgram(programInfo.program);
 
         gl.bindFramebuffer(gl.FRAMEBUFFER, this.intermediateFramebuffer);
 
         gl.enable(gl.BLEND);
-        gl.blendFunc(gl.ONE, gl.ONE);
-        gl.blendEquation(gl.FUNC_ADD);
+        if (style.blend == 'over') {
+            // Premultiplied alpha, back to front:
+            gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+            gl.blendEquation(gl.FUNC_ADD);
+        } else if (style.blend == 'max') {
+            gl.blendFunc(gl.ONE, gl.ONE);
+            gl.blendEquation(gl.MAX);
+        } else {
+            gl.blendFunc(gl.ONE, gl.ONE);
+            gl.blendEquation(gl.FUNC_ADD);
+        }
 
-        // Depth testing is used to prevent rendering multiple overlapping polys:
+        // Every layer gets its own depth value; with depth func NOTEQUAL,
+        // overlapping shapes of one layer affect each pixel only once.
         gl.enable(gl.DEPTH_TEST);
         gl.depthFunc(gl.NOTEQUAL);
 
-        gl.clearColor(0.0, 0.0, 0.0, 1.0); // Opaque black
+        gl.clearColor(0.0, 0.0, 0.0, 0.0);
         gl.clearDepth(1.0);
 
         gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-        gl.uniformMatrix4fv(programInfo.uniformLocations.projectionMatrix, false, this.projectionMatrix);
+        gl.uniformMatrix4fv(u.projectionMatrix, false, this.projectionMatrix);
+        gl.uniform1i(u.mode, mode);
+        const k = intensity(style);
+        // At the default intensity, additive matches the original viewer.
+        const gain = {additive: k * Math.exp(-20/15), over: 1, mix: 1, max: k, ink: 0.25 * k};
+        gl.uniform1f(u.gain, gain[style.blend]);
 
-        const brightnessFactor = Math.exp((this.brightness - 80)/15);
+        // Pattern pixel coordinates (see layout-shapes.frag):
+        const ps = style.patternScale;
+        gl.uniform1f(u.patternCount, Math.max(1, this.style.patterns.length));
+        // Screen pixels, y pointing down; with 'pan', shifted along with the
+        // layout when panning, so that patterns do not swim.
+        const pan = style.patternAnchor == 'pan';
+        const tx = pan ? Math.round(this.transform.x) : 0;
+        const ty = pan ? Math.round(this.transform.y) : 0;
+        gl.uniform2fv(u.patternMul, [1/ps, -1/ps]);
+        gl.uniform2fv(u.patternAdd, [-tx/ps, (this.height - ty)/ps]);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, this.patternTexture);
+        gl.uniform1i(u.patterns, 0);
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.shapeVertices);
         gl.vertexAttribPointer(vertexPosition, 2, gl.FLOAT, false, 0, 0);
@@ -923,11 +1001,8 @@ export class LayoutView extends View {
         gl.vertexAttribDivisor(transformX, 1);
         gl.vertexAttribDivisor(transformY, 1);
 
-        gl.uniform1f(programInfo.uniformLocations.brightness, brightnessFactor);
-
-        const drawLayer = (layer, style, mode, offsetKey, countKey) => {
-            gl.uniform4fv(programInfo.uniformLocations.layerColor,
-                calcLayerColor(style, layer.nid, true));
+        const drawLayer = (layer, color, mode, offsetKey, countKey) => {
+            gl.uniform3fv(u.color, color.map(v => v / 255));
             this.cellLayers.forEach((layers, cellIdx) => {
                 const entry = layers.get(layer.nid);
                 const placements = this.cellPlacements[cellIdx];
@@ -942,17 +1017,37 @@ export class LayoutView extends View {
             });
         };
 
-        this.data.layers.forEach(layer => {
-            if(this.visibility.get(layer.nid)==false) {
-                // --> draw layer if visibility is either true or undefined.
-                return;
+        // The hovered layer is emphasized by dimming the others, and drawn
+        // on top in over mode.
+        const hover = this.hoverNid;
+        let order = this.drawOrder.filter(layer => this.isShown(layer.nid));
+        if (hover !== null && style.blend == 'over') {
+            order = order.filter(l => l.nid != hover).concat(order.filter(l => l.nid == hover));
+        }
+        const emphasis = layer => (hover === null || layer.nid == hover) ? 1.0 : 0.2;
+        const fillWeight = style.blend == 'over' ? style.opacity : 1.0;
+
+        const drawOutline = (layer, depth) => {
+            const color = layer.styleStroke;
+            if (color) {
+                gl.uniform1f(u.depth, depth);
+                gl.uniform1f(u.weight, emphasis(layer));
+                gl.uniform1f(u.pattern, -1);
+                drawLayer(layer, color, gl.LINES, 'lineOffset', 'lineCount');
+                if (layer.styleCrossRect) {
+                    drawLayer(layer, color, gl.LINES, 'crossOffset', 'crossCount');
+                }
             }
-            // In the future, layerColor could be an attribute, not a uniform value.
-            if(layer.styleStroke) {
-                drawLayer(layer, layer.styleStroke, gl.LINES, 'lineOffset', 'lineCount');
-            }
-            if(layer.styleFill) {
-                drawLayer(layer, layer.styleFill, gl.TRIANGLES, 'triOffset', 'triCount');
+        };
+        order.forEach((layer, i) => {
+            const depth = (i + 1) / 4096;
+            drawOutline(layer, depth);
+            const fill = layerFill(layer, style);
+            if (fill) {
+                gl.uniform1f(u.depth, depth);
+                gl.uniform1f(u.weight, fillWeight * emphasis(layer));
+                gl.uniform1f(u.pattern, layer.pattern === null ? -1 : this.patternIndex.get(layer.pattern));
+                drawLayer(layer, fill, gl.TRIANGLES, 'triOffset', 'triCount');
             }
         });
 
@@ -960,26 +1055,25 @@ export class LayoutView extends View {
         // objects are used), so the divisors must not leak into later draws.
         gl.vertexAttribDivisor(transformX, 0);
         gl.vertexAttribDivisor(transformY, 0);
-
-        this.drawGLGrid(brightnessFactor);
     }
 
-    drawGLGrid(brightnessFactor) {
-        // Drawn into the intermediate framebuffer, with the blend and depth
-        // state set up by drawGLShapes.
+    drawGLGrid() {
+        // Drawn onto the canvas after drawGLPost, in a contrasting color.
         const gl = this.gl;
         const programInfo = this.programInfos.grid;
-        const white = [255, 255, 255];
 
         gl.useProgram(programInfo.program);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.disable(gl.BLEND);
+        gl.disable(gl.DEPTH_TEST);
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.gridVertices);
         gl.vertexAttribPointer(programInfo.attribLocations.vertexPosition, 2, gl.FLOAT, false, 0, 0);
         gl.enableVertexAttribArray(programInfo.attribLocations.vertexPosition);
 
-        gl.uniform1f(programInfo.uniformLocations.brightness, brightnessFactor);
-        gl.uniform4fv(programInfo.uniformLocations.layerColor,
-            calcLayerColor(white, 0, false));
+        const v = isLightBackground(this.style) ? 0.0 : 1.0;
+        gl.uniform4fv(programInfo.uniformLocations.color, [v, v, v, 1.0]);
+        gl.uniform2fv(programInfo.uniformLocations.viewport, [this.width, this.height]);
         gl.uniformMatrix4fv(programInfo.uniformLocations.projectionMatrix, false, this.projectionMatrix);
         gl.uniformMatrix4fv(programInfo.uniformLocations.modelViewMatrix, false, this.scaleGrid());
 
@@ -994,11 +1088,14 @@ export class LayoutView extends View {
 
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
+        // Light text with MAX blending, or dark text with MIN blending on
+        // light backgrounds.
+        const light = isLightBackground(this.style);
         gl.enable(gl.BLEND);
         gl.blendFunc(gl.ONE, gl.ONE);
-        gl.blendEquation(gl.MAX);
+        gl.blendEquation(light ? gl.MIN : gl.MAX);
+        gl.uniform1f(programInfo.uniformLocations.invert, light ? 1.0 : 0.0);
 
-        // Depth testing is used to prevent rendering multiple overlapping polys:
         gl.disable(gl.DEPTH_TEST);
 
         gl.activeTexture(gl.TEXTURE0);
@@ -1022,8 +1119,7 @@ export class LayoutView extends View {
         gl.uniformMatrix4fv(programInfo.uniformLocations.modelViewMatrix, false, mat4.create());
 
         this.data.layers.forEach(layer => {
-            if(this.visibility.get(layer.nid)==false) {
-                // --> draw layer if visibility is either true or undefined.
+            if (!this.isShown(layer.nid)) {
                 return;
             }
 
@@ -1076,6 +1172,10 @@ export class LayoutView extends View {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
         gl.uniform1i(programInfo.uniformLocations.sampler, 0);
+        gl.uniform1i(programInfo.uniformLocations.mode,
+            BLEND_MODES.findIndex(([key]) => key == this.style.blend));
+        gl.uniform3fv(programInfo.uniformLocations.bg, this.style.background);
+        gl.uniform1f(programInfo.uniformLocations.gain, 1.5 * intensity(this.style));
 
         gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.postVertices);
         gl.vertexAttribPointer(programInfo.attribLocations.vertexPosition, 2, gl.FLOAT, false, 4*4, 0);
@@ -1272,9 +1372,15 @@ export class LayoutView extends View {
         gl.disable(gl.DEPTH_TEST);
         // MAX blend so overlapping quads (e.g. at segment joins) don't stack and
         // so the red highlight is forced on top of the underlying pixels:
-        gl.enable(gl.BLEND);
-        gl.blendFunc(gl.ONE, gl.ONE);
-        gl.blendEquation(gl.MAX);
+        // On light backgrounds, MAX would turn red into white; plain red
+        // is drawn instead.
+        if (isLightBackground(this.style)) {
+            gl.disable(gl.BLEND);
+        } else {
+            gl.enable(gl.BLEND);
+            gl.blendFunc(gl.ONE, gl.ONE);
+            gl.blendEquation(gl.MAX);
+        }
 
         gl.uniformMatrix4fv(programInfo.uniformLocations.projectionMatrix, false, this.projectionMatrix);
         gl.uniformMatrix4fv(programInfo.uniformLocations.modelViewMatrix, false, mat4.create());
@@ -1311,6 +1417,7 @@ export class LayoutView extends View {
             this.updateProjectionMatrix();
             this.drawGLShapes();
             this.drawGLPost();
+            this.drawGLGrid();
             this.drawGLLabels();
             if (this.crosshairPos) {
                 this.updateCrosshair();
