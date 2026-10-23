@@ -55,7 +55,8 @@ The ``data`` of a layout view (``src/ordec/layout/webdata.py``, rendered by ``we
 
 - ``unit``: size of one database unit in meters.
 - ``extent``: ``[lx, ly, ux, uy]`` of the whole hierarchy in top-cell coordinates, or null for an empty layout.
-- ``layers``: style of every layer used anywhere, sorted by nid: ``nid``, ``path``, ``styleFill``, ``styleStroke``, ``styleCrossRect``, ``styleCSS``.
+- ``style``: the settings of the LayoutStyle (``key``, ``background``, ``blend``, ``opacity``), the path of the user's customization file (``userFile``) and whether it sets anything (``customized``), and ``patterns``, the fill patterns of the style as ``{name, rows}`` (16 rows of 16 bits, top first, most significant bit left). Null if the layer stack has no LayoutStyle. The live viewer gets the customized style, ``webdata_static()`` (used for embedding layouts elsewhere) the default.
+- ``layers``: style of every layer used anywhere, sorted by nid: ``nid``, ``path``, ``order`` (position in the drawing order, null for layers the LayoutStyle does not style), ``styleFill``, ``styleStroke``, ``styleCrossRect``, ``pattern`` (name, null for solid).
 - ``cells``: list of cells; cell 0 is the requested layout. Each cell has:
 
   - ``layers``: per used layer ``{layer: nid, rects, polyOffsets, polyCoords, labels}``. ``rects`` holds ``lx, ly, ux, uy`` per rectangle; polygon ``p`` has the vertices ``polyOffsets[p]`` to ``polyOffsets[p+1]-1``, stored as ``x, y`` pairs in ``polyCoords``; ``labels`` is a list of ``{pos: [x, y], text}``. Paths and pins arrive already converted to polygons (pins on their pin layer, with a label). Pins are included for the requested layout only, not for instantiated cells (``SUBCELL_PINS`` in ``webdata.py``).

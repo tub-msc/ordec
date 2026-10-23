@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+from enum import Enum
 from public import public
 
 from ..rational import R
@@ -52,10 +53,6 @@ class Layer(NonLeafNode):
     gdslayer_text = Attr(GdsLayer)
     gdslayer_shapes = Attr(GdsLayer)
 
-    style_fill = Attr(RGBColor)
-    style_stroke = Attr(RGBColor)
-    style_crossrect = Attr(bool, optional=False, default=False)
-
     #: Indicates whether the present layer is suitable for pin shapes / text.
     #: This flag affects the behavior of the pinlayer() method.
     is_pinlayer = Attr(bool, optional=False, default=False) 
@@ -80,9 +77,6 @@ class Layer(NonLeafNode):
     gdslayer_text_index = Index(gdslayer_text, unique=True)
     gdslayer_shapes_index = Index(gdslayer_shapes, unique=True)
     pin_idx = Index(pin)
-
-    def inline_css(self) -> str:
-         return f"fill:{self.style_fill};stroke:{self.style_stroke};"
 
 # RoutingSpec
 # -----------
@@ -122,6 +116,85 @@ class RoutingSpecLayer(Node):
     route_id_index = Index(route_id, unique=True)
     layer_index = Index(layer, unique=True)
 
+# LayoutStyle
+# -----------
+
+@public
+class LayoutBlend(Enum):
+    """How the layers of a layout are combined into pixel colors."""
+    Additive = 'additive' #: Additive light, saturating towards white.
+    Over = 'over' #: Z-order: each layer over the ones below, with opacity.
+    Mix = 'mix' #: Average color of the layers present.
+    Max = 'max' #: Brightest layer per color channel (lighten).
+    Ink = 'ink' #: Subtractive: layers as filters on a light background.
+
+@public
+class LayoutStyle(SubgraphRoot):
+    """
+    How layouts on a LayerStack are displayed. Technologies provide their
+    default style as viewgen layout_style of the technology cell, read from a
+    TOML file (see :func:`ordec.layout.style.read_layout_style`). Layers are
+    drawn in nid order of their LayoutStyleLayer nodes, bottom first; layers
+    without one are not drawn.
+    """
+    wire_id = WIRE_DOMAIN | 13
+    ref_layers = SubgraphRef(LayerStack, optional=False)
+    #: Globally unique name, given by the technology (see
+    #: read_layout_style); names the user's customization file
+    #: ~/.config/ordec/layout/<key>.toml (see customized()).
+    key = Attr(str, optional=False)
+    background = Attr(RGBColor, optional=False, default=RGBColor(0, 0, 0))
+    blend = Attr(LayoutBlend, optional=False, default=LayoutBlend.Additive)
+    #: Fill opacity, used by LayoutBlend.Over.
+    opacity = Attr(float, optional=False, default=1.0)
+
+    def customized(self) -> 'LayoutStyle':
+        """
+        Returns this style with the user's customization file for its key
+        applied, or this style if there is no such file. See
+        :func:`ordec.layout.style.customized`.
+        """
+        from ...layout.style import customized
+        return customized(self)
+
+@public
+class LayoutStylePattern(Node):
+    """
+    Fill pattern (stipple) of a LayoutStyle: a 16x16 bitmap, repeated over
+    the fill. Set pixels are drawn in the fill color, the others are left
+    empty.
+    """
+    in_subgraphs = [LayoutStyle]
+    wire_id = WIRE_DOMAIN | 15
+
+    name = Attr(str, optional=False)
+    #: The 16 rows, top first, as two bytes each (most significant bit first,
+    #: so the first byte holds the left half).
+    bits = Attr(bytes, optional=False)
+
+    name_index = Index(name, unique=True)
+
+    def rows(self) -> list[str]:
+        """The rows as strings of '*' (set) and '.' (unset)."""
+        return [''.join('*' if self.bits[2*y + x // 8] & (0x80 >> x % 8) else '.'
+            for x in range(16)) for y in range(16)]
+
+@public
+class LayoutStyleLayer(Node):
+    """Display style of one layer in a LayoutStyle."""
+    in_subgraphs = [LayoutStyle]
+    wire_id = WIRE_DOMAIN | 14
+
+    layer = ExternalRef(Layer, of_subgraph=lambda c: c.root.ref_layers, optional=False)
+    fill = Attr(RGBColor)
+    stroke = Attr(RGBColor)
+    #: Whether shapes get a cross through their bounding box (e.g. vias).
+    cross = Attr(bool, optional=False, default=False)
+    #: Fill pattern; None for a solid fill.
+    pattern = LocalRef(LayoutStylePattern)
+
+    layer_index = Index(layer, unique=True)
+
 # Layout
 # ------
 
@@ -137,6 +210,11 @@ class Layout(SubgraphRoot):
     cell = LiveRef(Cell)
     symbol = SubgraphRef(Symbol) #: All LayoutPins in this subgraph reference this symbol.
     ref_layers = SubgraphRef(LayerStack) #: All .layer attributes of nodes in this subgraph reference this LayerStack.
+
+    def webdata(self, ept):
+        # The live viewer shows the user's customization of the LayoutStyle.
+        from ...layout.webdata import webdata
+        return webdata(self, customize=True)
 
     def webdata_static(self):
         from ...layout.webdata import webdata

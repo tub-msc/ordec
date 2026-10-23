@@ -86,6 +86,7 @@ from .schema.schematic import PinType, SchemErrorType, AnnotationKind, HAlign, V
 from .schema.report import ScaleType
 from .schema.simhier import SimType
 from .schema.lvs import LvsStatus, LvsItemType, LvsSide
+from .schema.layout import LayoutBlend
 
 # Hash-domain separator. The trailing digit is a manual format identifier,
 # not an auto-incremented version: wire data is fully ephemeral (regenerated
@@ -129,6 +130,7 @@ ENUM_TAGS = {
     AnnotationKind: 390019,
     HAlign: 390025,
     VAlign: 390026,
+    LayoutBlend: 390027,
 }
 ENUM_BY_TAG = {tag: cls for cls, tag in ENUM_TAGS.items()}
 

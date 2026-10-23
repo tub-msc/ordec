@@ -238,6 +238,39 @@ geometry and routing order used to connect nets.
    :members:
    :undoc-members:
 
+Layout styles
+-------------
+
+A :class:`LayoutStyle` describes how the web viewer displays layouts on a
+:class:`LayerStack`: background, blending and the colors and fill patterns of
+the layers. Like a routing specification, it is a separate subgraph
+referencing the LayerStack. A technology provides its default style as viewgen
+``layout_style`` of its technology cell (e.g. ``SG13G2().layout_style``), read
+from a TOML file that ships with the technology. Users customize it without
+touching the technology by putting the settings and layers they want to change
+into ``~/.config/ordec/layout/<key>.toml``, where ``<key>`` is the style's
+:attr:`~LayoutStyle.key`; the viewer applies this file
+(:meth:`LayoutStyle.customized`) on every request.
+
+.. autoclass:: LayoutStyle
+   :members:
+   :undoc-members:
+
+.. autoclass:: LayoutStyleLayer
+   :members:
+   :undoc-members:
+
+.. autoclass:: LayoutStylePattern
+   :members:
+   :undoc-members:
+
+.. autoclass:: LayoutBlend
+   :members:
+   :undoc-members:
+
+.. automodule:: ordec.layout.style
+   :members:
+
 Layout
 ------
 

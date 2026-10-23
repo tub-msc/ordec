@@ -5,6 +5,8 @@ import numpy as np
 from public import public
 from ..core import *
 from .helpers import path_to_poly_vertices, check_ref_layers, _interior_point
+from .style import (default_style, user_style_path, read_customization,
+    apply_customization, layer_name)
 
 INT32_MIN = -2**31
 INT32_MAX = 2**31 - 1
@@ -42,9 +44,31 @@ def union_extent(e1, e2):
         return e1
     return (min(e1[0], e2[0]), min(e1[1], e2[1]), max(e1[2], e2[2]), max(e1[3], e2[3]))
 
+def layer_styles(style: LayoutStyle | None) -> dict:
+    """Layer nid -> weblayer style dict (see WebdataBuilder.weblayer)."""
+    if style is None:
+        return {}
+    return {node.layer.nid: {
+        'order': i,
+        'styleFill': node.fill,
+        'styleStroke': node.stroke,
+        'styleCrossRect': node.cross,
+        'pattern': None if node.pattern is None else node.pattern.name,
+    } for i, node in enumerate(style.all(LayoutStyleLayer))}
+
+# Layers without style have order None.
+NO_LAYER_STYLE = {
+    'order': None,
+    'styleFill': None,
+    'styleStroke': None,
+    'styleCrossRect': False,
+    'pattern': None,
+}
+
 class WebdataBuilder:
-    def __init__(self, top: Layout):
+    def __init__(self, top: Layout, style: LayoutStyle | None):
         self.ref_layers = top.ref_layers
+        self.layer_styles = layer_styles(style)
         self.directory = Directory()
         self.cells = [] # cell dicts, index = cell id
         self.cell_ids = {} # id(subgraph) -> cell id
@@ -55,20 +79,10 @@ class WebdataBuilder:
     def weblayer(self, nid):
         if nid not in self.layers:
             layer = self.ref_layers.subgraph.cursor_at(nid)
-            try:
-                path = layer.full_path_str()
-            except TypeError:
-                # Pin layers are usually inserted anonymously; label them
-                # after the layer they belong to.
-                parent = layer.root.one(Layer.pin_idx.query(layer))
-                path = parent.full_path_str() + ".pin"
             self.layers[nid] = {
                 'nid': nid,
-                'path': path,
-                'styleFill': layer.style_fill,
-                'styleStroke': layer.style_stroke,
-                'styleCrossRect': layer.style_crossrect,
-                'styleCSS': layer.inline_css(),
+                'path': layer_name(layer),
+                **self.layer_styles.get(nid, NO_LAYER_STYLE),
             }
         return nid
 
@@ -174,17 +188,58 @@ class WebdataBuilder:
         self.extents[cell_id] = extent
         return cell_id
 
+def websettings(style: LayoutStyle) -> dict:
+    return {
+        'background': style.background,
+        'blend': style.blend.value,
+        'opacity': style.opacity,
+    }
+
 @public
-def webdata(layout: Layout.Frozen):
+def webstyle(style: LayoutStyle | None, customization: dict | None) -> dict | None:
+    if style is None:
+        return None
+    user_settings = [k for k in customization or {} if k not in ('layers', 'patterns')]
+    user_layers = list((customization or {}).get('layers', {}))
+    return {
+        'key': style.key,
+        # The user's customization file and whether it sets anything.
+        'userFile': str(user_style_path(style.key)),
+        'customized': bool(user_settings or user_layers),
+        **websettings(style),
+        # Pattern rows as 16-bit integers, top first, most significant bit
+        # left (see LayoutStylePattern).
+        'patterns': [{
+            'name': p.name,
+            'rows': [int.from_bytes(p.bits[2*y:2*y + 2], 'big') for y in range(16)],
+        } for p in style.all(LayoutStylePattern)],
+    }
+
+def webdata(layout: Layout.Frozen, customize: bool = False):
     """
     Web viewer data (web/src/view/layout.js) of a layout, keeping its
     hierarchy: every distinct layout (the given one and all instantiated
     ones) is one cell, sent once, with per-layer int32 arrays; instances
     refer to cells by index. See docs/dev/webui.rst for the format.
+
+    Args:
+        layout: The layout.
+        customize: Whether to apply the user's customization of the
+            LayoutStyle (see LayoutStyle.customized); only for the live
+            viewer, as it makes the result depend on a file outside the
+            design.
     """
-    b = WebdataBuilder(layout)
+    default = default_style(layout.ref_layers)
+    style = default
+    customization = None
+    if customize and default is not None:
+        customization = read_customization(default.key)
+        if customization is not None:
+            style = apply_customization(default, customization)
+    b = WebdataBuilder(layout, style)
     extent = b.extents[0]
     return 'layout', {
+        'style': webstyle(style, customization),
         'layers': [b.layers[nid] for nid in sorted(b.layers)],
         'cells': b.cells,
         'extent': None if extent is None else tuple(extent),

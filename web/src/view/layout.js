@@ -135,6 +135,12 @@ function transformPoint(m, p) {
     return [m[0]*p[0] + m[1]*p[1] + m[4], m[2]*p[0] + m[3]*p[1] + m[5]];
 }
 
+// Inline CSS of a layer's legend swatch; colors are [r, g, b] or null.
+function swatchCSS(layer) {
+    const css = c => c ? `rgb(${c[0]}, ${c[1]}, ${c[2]})` : 'none';
+    return `fill:${css(layer.styleFill)};stroke:${css(layer.styleStroke)};`;
+}
+
 function calcLayerColor(color, layerId, dampen) {
     // If dampen is true, infinite / 0xFF brightness is 'scaled away'.
     const dampenFactor = dampen?0.95:1.0;
@@ -408,7 +414,7 @@ export class LayoutView extends View {
             li.innerHTML = `
                 <input type="checkbox" class="singleLayer" id="${id}" name="${layer.nid}">
                 <label for="${id}">
-                    <svg width="30px" height="15px" viewBox="0 0 30 15"><path style="${layer.styleCSS}" d="${svgPath}" /></svg>
+                    <svg width="30px" height="15px" viewBox="0 0 30 15"><path style="${swatchCSS(layer)}" d="${svgPath}" /></svg>
                     ${layer.path}
                 </label> 
             `;
