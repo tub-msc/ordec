@@ -234,10 +234,12 @@ def request_local(web, module, request_views):
 
         web.wait_for_ready()
         # Plots draw after the (debounced) ResizeObserver of their wrapper:
-        # wait until every plot has its lines.
+        # wait until every plot has its lines. Plots without series (no
+        # legend items, set synchronously by setData) never draw a line.
         web.wait_until("""
-            return Array.from(document.querySelectorAll('.simplot svg'))
-                .every(svg => svg.querySelector('path.simplot-line'));
+            return Array.from(document.querySelectorAll('.simplot'))
+                .every(p => !p.querySelector('.simplot-legend-item')
+                    || p.querySelector('svg path.simplot-line'));
         """)
 
         v = web.driver.execute_script("""
