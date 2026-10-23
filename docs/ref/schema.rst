@@ -250,7 +250,9 @@ from a TOML file that ships with the technology. Users customize it without
 touching the technology by putting the settings and layers they want to change
 into ``~/.config/ordec/layout/<key>.toml``, where ``<key>`` is the style's
 :attr:`~LayoutStyle.key`; the viewer applies this file
-(:meth:`LayoutStyle.customized`) on every request.
+(:meth:`LayoutStyle.customized`) on every request. The style panel and the
+layer editor (click on a layer's swatch) of the web viewer write this file,
+keeping hand-made changes and comments in it.
 
 .. autoclass:: LayoutStyle
    :members:

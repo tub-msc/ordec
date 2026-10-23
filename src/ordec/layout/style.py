@@ -31,12 +31,17 @@ entries it lists as a whole (layer attributes left out fall back to the
 LayoutStyleLayer defaults, not to the default style); it can use the patterns
 of the default style. Layers missing in the default style go on top. Unknown
 layers, patterns or attributes are errors in either file.
+
+The web viewer edits the user's file through update_customization, which
+keeps the rest of the file (including comments) as it is.
 """
 
 import os
 import re
+import threading
 import tomllib
 from pathlib import Path
+import tomlkit
 from public import public
 
 from ..core import *
@@ -273,3 +278,57 @@ def customized(style: LayoutStyle) -> LayoutStyle:
     """
     data = read_customization(style.key)
     return style if data is None else apply_customization(style, data)
+
+# Serializes the read-modify-write cycles of update_customization (view
+# generation runs in several threads).
+_update_lock = threading.Lock()
+
+@public
+def update_customization(style: LayoutStyle, settings: dict, layers: dict):
+    """
+    Changes the user's customization file of style.key, keeping the rest of
+    the file (including comments) as it is.
+
+    Args:
+        style: The default style.
+        settings: Top-level attribute (TOML name) -> value, or None to remove
+            the attribute from the file, so that the default applies again.
+        layers: Layer name -> table replacing the layer's entry, or None to
+            remove the entry.
+
+    Raises:
+        ValueError: The changed file would be invalid; it is left unchanged.
+    """
+    path = user_style_path(style.key)
+    with _update_lock:
+        try:
+            doc = tomlkit.parse(path.read_text(encoding='utf-8'))
+        except FileNotFoundError:
+            doc = tomlkit.document()
+        for name, value in settings.items():
+            if value is None:
+                doc.pop(name, None)
+            else:
+                doc[name] = value
+        if layers:
+            if 'layers' not in doc:
+                doc['layers'] = tomlkit.table()
+            table = doc['layers']
+            for name, entry in layers.items():
+                if entry is None:
+                    table.pop(name, None)
+                else:
+                    inline = tomlkit.inline_table()
+                    inline.update(entry)
+                    table[name] = inline
+            if not table:
+                del doc['layers']
+        text = tomlkit.dumps(doc)
+        # Validate the result the way customized() will read it.
+        _parse(_load(text, path), style.ref_layers, path, _pattern_names(style))
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # Replaced atomically, so that concurrent readers see the old or the
+        # new file, never a partial one.
+        tmp = path.with_name(path.name + '.tmp')
+        tmp.write_text(text, encoding='utf-8')
+        os.replace(tmp, path)

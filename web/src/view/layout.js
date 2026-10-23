@@ -9,8 +9,9 @@ import { siFormat } from './siformat.js';
 import { View, CoordinateDisplay } from './view.js';
 import {
     BLEND_MODES, PATTERN_SIZE, patternAtlas,
-    applyStyle, savePrefs, isLightBackground, intensity, layerFill, layerLook,
-    layerOrder, drawSwatch, buildStylePanel,
+    applyStyle, applyStyleChange, savePrefs, resetPrefs, isPref, styleSettings,
+    isLightBackground, intensity, layerFill, layerLook, layerOrder, drawSwatch,
+    showLayerEditor, buildStylePanel,
 } from './layout-style.js';
 
 // See: https://github.com/mdn/dom-examples/blob/main/webgl-examples/tutorial/sample2/webgl-demo.js
@@ -168,7 +169,8 @@ export class LayoutView extends View {
         this.sidebarToggle.onclick = () => this.toggleSidebar();
         this.layersUl = document.createElement('ul');
         this.layersUl.classList.add('layerList');
-        this.stylePanel = buildStylePanel(this.style, key => this.onStyleChange(key));
+        this.stylePanel = buildStylePanel(this.style,
+            (keys, commit) => this.onStyleChange(keys, commit), () => this.resetStyle());
         this.sidebar.append(
             this.sidebarToggle,
             this.stylePanel.element,
@@ -240,6 +242,17 @@ export class LayoutView extends View {
         this.onLvsClear = () => this.clearHighlight();
         this.busSubscribe('lvs:layout-select', this.onLvsSelect);
         this.busSubscribe('lvs:clear', this.onLvsClear);
+
+        // Style changes of any layout viewer (this one included, see
+        // saveStyle) apply to all viewers showing the same LayoutStyle.
+        this.onLayoutStyleChange = ({key, settings, layers}) => {
+            if (!this.data || this.style.key !== key) return;
+            applyStyleChange(this.style, this.data.layers, settings, layers);
+            this.stylePanel.sync();
+            this.updateLayerList();
+            this.updateLayers();
+        };
+        this.busSubscribe('layoutstyle:change', this.onLayoutStyleChange);
 
         // Selections made before this view was opened; taken by update(),
         // once there is layout data to highlight in and a wire hash to match.
@@ -413,6 +426,11 @@ export class LayoutView extends View {
             `;
             const swatch = li.querySelector('canvas');
             drawSwatch(swatch, layerLook(layer, this.style), this.style);
+            if (this.style.key !== null) {
+                swatch.title = 'Click to edit';
+                swatch.onclick = () => showLayerEditor(this.root, swatch, layer, this.style,
+                    entry => this.saveStyle({}, {[layer.path]: entry}));
+            }
             // Only the swatch emphasizes its layer (and shows it if hidden,
             // see isShown): hovering the checkbox or name (e.g. while toggling
             // visibility) leaves the view as is.
@@ -456,11 +474,50 @@ export class LayoutView extends View {
             0, gl.RED, gl.UNSIGNED_BYTE, patternAtlas(patterns));
     }
 
-    // Called by the style panel after a viewer preference in this.style
-    // changed; none of them shows in the layer list.
-    onStyleChange(key) {
-        savePrefs(this.style);
-        if (this.data) {
+    // Called by the style panel after the settings keys of this.style
+    // changed (see buildStylePanel).
+    onStyleChange(keys, commit) {
+        if (keys.some(isPref)) {
+            savePrefs(this.style);
+        }
+        const settings = keys.filter(k => !isPref(k));
+        if (commit && settings.length && this.style.key !== null) {
+            // Redraws via onLayoutStyleChange.
+            this.saveStyle(styleSettings(this.style, settings), {});
+            return;
+        }
+        if (!this.data) return;
+        if (keys.every(k => k == 'brightness' || k == 'opacity')) {
+            // Not shown in the layer list: redraw only.
+            this.drawGL();
+        } else {
+            // Swatches, patterns or order changed: rebuild the list.
+            this.updateLayerList();
+            this.updateLayers();
+        }
+    }
+
+    // Changes the user's customization of the LayoutStyle (see
+    // update_customization in src/ordec/layout/style.py): applied locally by
+    // all viewers of the style right away, and saved by the server. If saving
+    // fails, the change stays on display with an error.
+    saveStyle(settings, layers) {
+        this.eventBus.emit('layoutstyle:change', {key: this.style.key, settings, layers});
+        this.resultViewer.client.setLayoutStyle(this.viewName, settings, layers, exception => {
+            this.stylePanel.setError(exception && `Not saved: ${exception.message}`);
+        });
+    }
+
+    // Resets the viewer preferences and removes the settings and layers of
+    // the customization file (see onLayoutStyleChange for the redraw).
+    resetStyle() {
+        resetPrefs(this.style);
+        if (this.style.customized) {
+            this.saveStyle(
+                Object.fromEntries(this.style.userSettings.map(k => [k, null])),
+                Object.fromEntries(this.style.userLayers.map(path => [path, null])));
+        } else {
+            this.stylePanel.sync();
             this.drawGL();
         }
     }
@@ -815,7 +872,8 @@ export class LayoutView extends View {
         // For all shapes, separate triangle (fill), line (outline) and cross
         // line vertex "segments" are loaded into the shapeVertices buffer,
         // per cell and layer, irrespective of whether the layer's style uses
-        // them.
+        // them. This way, style changes (see onLayoutStyleChange) need no
+        // reload.
 
         // First pass: triangulate polygons and count vertices.
         let numVertices = 0;

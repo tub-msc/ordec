@@ -1697,8 +1697,24 @@ body.theme-dark .schem-detail-toggle:hover {
     color: inherit;
     border: 1px solid #555;
 }
+.layout-style-row input[type=checkbox] {
+    justify-self: start;
+}
 .layout-style-row.inactive {
     opacity: 0.4;
+}
+.layout-style button,
+.layout-layer-editor button {
+    margin-top: 4px;
+    background: #333;
+    color: inherit;
+    border: 1px solid #555;
+    cursor: pointer;
+}
+.layout-style button:disabled,
+.layout-layer-editor button:disabled {
+    opacity: 0.4;
+    cursor: default;
 }
 .layerList .layerItem {
     display: flex;
@@ -1707,6 +1723,80 @@ body.theme-dark .schem-detail-toggle:hover {
 }
 .layerSwatch {
     flex: 0 0 auto;
+    cursor: pointer;
+}
+/* Outside the sidebar, but with its forced dark colors (see .layout-sidebar). */
+.layout-layer-editor {
+    position: absolute;
+    z-index: 4;
+    width: max-content;
+    padding: 6px;
+    background: #1e1e1e;
+    color: #ccc;
+    border: 1px solid #777;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+    font-size: var(--font-size-sm);
+}
+.layout-layer-editor-title {
+    font-weight: bold;
+    margin-bottom: 4px;
+}
+.layout-style input[type=color],
+.layout-layer-editor input[type=color] {
+    width: 3em;
+    height: 1.6em;
+    padding: 0 2px;
+    background: #2a2a2a;
+    border: 1px solid #555;
+    justify-self: end;
+}
+/* Between the fill and outline color inputs, see showLayerEditor. */
+.layout-layer-editor .layout-layer-link {
+    justify-self: end;
+    width: 3em;
+    height: 1.2em;
+    margin: -2px 0;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    color: #777;
+}
+.layout-layer-editor .layout-layer-link.linked {
+    color: #4af;
+}
+/* "solid" plus the patterns of the style: scrolls when there are many. */
+.layout-pattern-grid {
+    display: grid;
+    grid-template-columns: repeat(8, auto);
+    gap: 4px;
+    margin: 4px 0;
+    padding: 2px;
+    max-height: 12em;
+    overflow-y: auto;
+}
+.layout-pattern-grid canvas {
+    cursor: pointer;
+    outline: 1px solid #555;
+}
+.layout-pattern-grid canvas.selected {
+    outline: 2px solid #4af;
+}
+.layout-style-warning {
+    margin: 2px 0 4px;
+    color: #fc6;
+}
+.layout-style-warning:empty {
+    display: none;
+}
+.layout-style-error {
+    margin: 2px 0 4px;
+    color: #f66;
+}
+.layout-style-error:empty {
+    display: none;
 }
 .layout-coordinates {
     color: inherit;

@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+import os
 import numpy as np
 from public import public
 from ..core import *
@@ -67,9 +68,10 @@ NO_LAYER_STYLE = {
 }
 
 class WebdataBuilder:
-    def __init__(self, top: Layout, style: LayoutStyle | None):
+    def __init__(self, top: Layout, style: LayoutStyle | None, default: LayoutStyle | None):
         self.ref_layers = top.ref_layers
         self.layer_styles = layer_styles(style)
+        self.default_layer_styles = layer_styles(default)
         self.directory = Directory()
         self.cells = [] # cell dicts, index = cell id
         self.cell_ids = {} # id(subgraph) -> cell id
@@ -84,6 +86,8 @@ class WebdataBuilder:
                 'nid': nid,
                 'path': layer_name(layer),
                 **self.layer_styles.get(nid, NO_LAYER_STYLE),
+                # For resetting the layer to the default style in the viewer.
+                'default': self.default_layer_styles.get(nid, NO_LAYER_STYLE),
             }
         return nid
 
@@ -197,16 +201,23 @@ def websettings(style: LayoutStyle) -> dict:
     }
 
 @public
-def webstyle(style: LayoutStyle | None, customization: dict | None) -> dict | None:
+def webstyle(style: LayoutStyle | None, default: LayoutStyle | None,
+        customization: dict | None) -> dict | None:
     if style is None:
         return None
     user_settings = [k for k in customization or {} if k not in ('layers', 'patterns')]
     user_layers = list((customization or {}).get('layers', {}))
     return {
         'key': style.key,
-        # The user's customization file and whether it sets anything.
+        # The user's customization file (written by the viewer's style
+        # editing) and which settings and layers it sets.
         'userFile': str(user_style_path(style.key)),
         'customized': bool(user_settings or user_layers),
+        'userSettings': user_settings,
+        'userLayers': user_layers,
+        # Set in container images: files written there are lost with the
+        # container (see Dockerfile).
+        'userFileEphemeral': os.environ.get('ORDEC_CONFIG_EPHEMERAL', '') not in ('', '0'),
         **websettings(style),
         # Pattern rows as 16-bit integers, top first, most significant bit
         # left (see LayoutStylePattern).
@@ -214,6 +225,8 @@ def webstyle(style: LayoutStyle | None, customization: dict | None) -> dict | No
             'name': p.name,
             'rows': [int.from_bytes(p.bits[2*y:2*y + 2], 'big') for y in range(16)],
         } for p in style.all(LayoutStylePattern)],
+        # For resetting to the default style in the viewer.
+        'default': websettings(default),
     }
 
 def webdata(layout: Layout.Frozen, customize: bool = False):
@@ -237,10 +250,10 @@ def webdata(layout: Layout.Frozen, customize: bool = False):
         customization = read_customization(default.key)
         if customization is not None:
             style = apply_customization(default, customization)
-    b = WebdataBuilder(layout, style)
+    b = WebdataBuilder(layout, style, default)
     extent = b.extents[0]
     return 'layout', {
-        'style': webstyle(style, customization),
+        'style': webstyle(style, default, customization),
         'layers': [b.layers[nid] for nid in sorted(b.layers)],
         'cells': b.cells,
         'extent': None if extent is None else tuple(extent),

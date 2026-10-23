@@ -75,10 +75,11 @@ from websockets.exceptions import ConnectionClosed, ConnectionClosedOK
 from . import importer, language
 from .hub import HubIntegration, HubAuthError
 from .version import version, doc_url
-from .core import Cell, SubgraphRoot
+from .core import Cell, SubgraphRoot, Layout
 from .core.cell import ViewGenerator
 from .core.wire import ExportTable
 from .language import compile_ord
+from .layout.style import default_style, update_customization
 from .extlibrary import ExtLibrary
 from .jobrunner import ThreadedJobRunner
 
@@ -476,6 +477,26 @@ class ConnectionHandler:
 
         return msg_ret
 
+    def set_layout_style(self, msg, conn_globals):
+        """
+        Changes the user's customization of the LayoutStyle of the layout
+        msg['view'] (see update_customization) and returns the reply. Called
+        in the message loop rather than as a job, so that changes reach the
+        file in the order they were made; the view is one the client shows,
+        so evaluating it hits the viewgen cache.
+        """
+        try:
+            view_name = msg['view']
+            with self.import_lock.read():
+                view = eval(view_name, conn_globals, conn_globals)
+                style = default_style(view.ref_layers) if isinstance(view, Layout) else None
+                if style is None:
+                    raise ValueError(f"{view_name} has no LayoutStyle to customize.")
+                update_customization(style, msg.get('settings', {}), msg.get('layers', {}))
+        except Exception as e:
+            return {'msg': 'setlayoutstyle', 'exception': format_user_exception(e)}
+        return {'msg': 'setlayoutstyle'}
+
     def build_cells(self, source_type: str, source_data: str,
             check_src: str=None) -> (dict, dict):
         conn_globals = {}
@@ -705,6 +726,12 @@ class ConnectionHandler:
                     except KeyError as e:
                         raise ValueError(f"getview message missing key {e}")
                     submit_view_job(req, view_name)
+                elif msg_type == 'setlayoutstyle':
+                    try:
+                        req = msg['req']
+                    except KeyError as e:
+                        raise ValueError(f"setlayoutstyle message missing key {e}")
+                    send_msg(dict(self.set_layout_style(msg, conn_globals), req=req))
                 elif msg_type == 'cancelview':
                     with jobs_lock:
                         job = jobs.get(msg.get('req'))

@@ -68,6 +68,10 @@ ENV LD_LIBRARY_PATH="/home/app/klayout"
 ENV ORDEC_PDK_SKY130A="/home/app/skywater/sky130A"
 ENV ORDEC_PDK_SKY130B="/home/app/skywater/sky130B"
 ENV ORDEC_PDK_IHP_SG13G2="/home/app/IHP-Open-PDK/ihp-sg13g2"
+# Files written to the container (e.g. the LayoutStyle customizations in
+# ~/.config/ordec) are lost with it; the web UI warns about this. Set to 0
+# when ~/.config/ordec is a volume.
+ENV ORDEC_CONFIG_EPHEMERAL=1
 
 EXPOSE 8100
 CMD ["ordec", "-l", "0.0.0.0", "-p", "8100", "--no-browser", "--url-authority", "127.0.0.1:8100"]
