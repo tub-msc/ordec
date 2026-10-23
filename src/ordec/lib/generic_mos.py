@@ -46,6 +46,14 @@ class Mos(SimLeafCell):
 
 @public
 class Nmos(Mos):
+    """
+    Generic NMOS transistor (level 1 model).
+
+    ``l`` and ``w`` default to 1u, against ORDeC's convention that a parameter
+    without a sensible default value should have none. To make it easier to
+    get started and simplify examples, tests and docs, this cell is an
+    exception.
+    """
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
@@ -69,6 +77,14 @@ class Nmos(Mos):
 
 @public
 class Pmos(Mos):
+    """
+    Generic PMOS transistor (level 1 model).
+
+    ``l`` and ``w`` default to 1u, against ORDeC's convention that a parameter
+    without a sensible default value should have none. To make it easier to
+    get started and simplify examples, tests and docs, this cell is an
+    exception.
+    """
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)

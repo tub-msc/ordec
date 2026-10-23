@@ -1378,7 +1378,7 @@ class Via(Cell):
     Via array of one via type, as the PDK's native PCell Via: nx x ny cuts
     centered on the origin, plates at least w/h_bottom and w/h_top.
     """
-    via = Parameter(str, default="SG13G2_VIA_M1_M2")  #: Via type, a key of VIA_RULES
+    via = Parameter(str)  #: Via type, a key of VIA_RULES
     nx = Parameter(int, default=1)  #: Columns
     ny = Parameter(int, default=1)  #: Rows
     w_bottom = Parameter(R, default=R(0))  #: Minimum bottom plate width
@@ -1392,7 +1392,7 @@ class Via(Cell):
 
     @classmethod
     def discoverable_instances(cls):
-        return [cls()]
+        return [cls(via="SG13G2_VIA_M1_M2")]
 
 def layoutgen_via_stack(cell: Cell) -> Layout:
     """Generate a via stack, as the PCell via_stack_code.py."""
@@ -1438,10 +1438,10 @@ class ViaStack(Cell):
     Metal5, ``vt1_*`` and ``vt2_*`` for TopVia1 and TopVia2. Each plate covers
     the one below.
     """
-    b_layer = Parameter(str, default="Metal1")  #: Bottom layer (Activ, GatPoly or a metal)
-    t_layer = Parameter(str, default="Metal2")  #: Top layer
-    vn_columns = Parameter(int, default=2)
-    vn_rows = Parameter(int, default=2)
+    b_layer = Parameter(str)  #: Bottom layer (Activ, GatPoly or a metal)
+    t_layer = Parameter(str)  #: Top layer
+    vn_columns = Parameter(int)
+    vn_rows = Parameter(int)
     vt1_columns = Parameter(int, default=1)
     vt1_rows = Parameter(int, default=1)
     vt2_columns = Parameter(int, default=1)
@@ -1453,7 +1453,7 @@ class ViaStack(Cell):
 
     @classmethod
     def discoverable_instances(cls):
-        return [cls()]
+        return [cls(b_layer="Metal1", t_layer="Metal2", vn_columns=2, vn_rows=2)]
 
 def layoutgen_no_filler_stack(cell: Cell) -> Layout:
     """Generate fill blocking, as the PCell NoFillerStack_code.py."""
