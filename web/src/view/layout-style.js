@@ -369,7 +369,8 @@ export function showLayerEditor(container, anchor, layer, style, onSave) {
     crossRow.append(crossSpan);
     editor.appendChild(crossRow);
 
-    // Pattern choice, shown in the layer's fill color.
+    // Pattern choice, shown in the color of the fill row (also while the fill
+    // is unchecked).
     const grid = document.createElement('div');
     grid.classList.add('layout-pattern-grid');
     editor.appendChild(grid);
@@ -378,7 +379,7 @@ export function showLayerEditor(container, anchor, layer, style, onSave) {
         grid.replaceChildren(...[null, ...style.patterns.map(p => p.name)].map(name => {
             const item = document.createElement('canvas');
             item.title = name ?? 'solid';
-            drawSwatch(item, {fill: look.fill ?? layerFill({...layer, order: null}, style),
+            drawSwatch(item, {fill: unhex(fill.color.value),
                 stroke: null, cross: false, pattern: name}, pickStyle);
             item.classList.toggle('selected', name === look.pattern);
             item.onclick = () => {
