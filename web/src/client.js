@@ -16,8 +16,11 @@ export class OrdecClient {
         // may be in flight at once; the server's pass manager decides how
         // many run concurrently.
         this.inflight = new Map();
-        // In-flight setlayoutstyle requests: req id -> callback.
-        this.styleRequests = new Map();
+        // In-flight setlayoutstyle and setconfig requests: req id -> callback.
+        this.saveRequests = new Map();
+        // The user's configuration file (see src/ordec/config.py), as sent
+        // with the view list and changed by setConfig.
+        this.config = {};
         this.reqCounter = 0;
         this.srctype = srctype;
         this.src = ""; // set by Editor from the outside
@@ -78,7 +81,7 @@ export class OrdecClient {
         this.sock.onclose = (ev) => this.wsOnClose(ev);
         this.sock.onerror = (ev) => this.wsOnError(ev);
         this.inflight.clear();
-        this.failStyleRequests();
+        this.failSaveRequests();
         this.buildPending = true;
         this.updateStatus();
     }
@@ -95,6 +98,8 @@ export class OrdecClient {
             // Successful build: clear the error annotation in the editor.
             this.app?.eventBus.emit('editor:build-exception', null);
             this.views.clear();
+            this.config = msg['config'] ?? {};
+            this.app?.eventBus.emit('config:change', this.config);
             msg['views'].forEach(view => {
                 this.views.set(view.name, view);
             });
@@ -125,9 +130,9 @@ export class OrdecClient {
             } finally {
                 this.requestViews();
             }
-        } else if (msg['msg'] == 'setlayoutstyle') {
-            const onReply = this.styleRequests.get(msg['req']);
-            this.styleRequests.delete(msg['req']);
+        } else if (msg['msg'] == 'setlayoutstyle' || msg['msg'] == 'setconfig') {
+            const onReply = this.saveRequests.get(msg['req']);
+            this.saveRequests.delete(msg['req']);
             onReply?.(msg.exception ?? null);
         } else if (msg['msg'] == 'viewprogress') {
             this.inflight.get(msg['req'])?.updateProgress(msg);
@@ -151,7 +156,7 @@ export class OrdecClient {
         // reconnect doesn't get stuck waiting for responses that will never
         // arrive.
         this.inflight.clear();
-        this.failStyleRequests();
+        this.failSaveRequests();
         this.buildPending = false;
         if (session.hubMode && !this.sockOpened) {
             // Hub-hosted and the socket never opened: the server instance
@@ -240,11 +245,11 @@ export class OrdecClient {
         this.updateStatus();
     }
 
-    // Pending setlayoutstyle requests get no answer once the socket is gone.
-    failStyleRequests() {
-        this.styleRequests.forEach(onReply =>
+    // Pending save requests get no answer once the socket is gone.
+    failSaveRequests() {
+        this.saveRequests.forEach(onReply =>
             onReply({etype: 'Error', message: 'Connection to the server lost before saving.'}));
-        this.styleRequests.clear();
+        this.saveRequests.clear();
     }
 
     // Changes the user's customization of the LayoutStyle with the given key
@@ -257,13 +262,35 @@ export class OrdecClient {
             return;
         }
         const req = ++this.reqCounter;
-        this.styleRequests.set(req, onReply);
+        this.saveRequests.set(req, onReply);
         this.sock.send(cbor.encode({
             msg: 'setlayoutstyle',
             key: key,
             req: req,
             settings: settings,
             layers: layers,
+        }));
+    }
+
+    // Changes a setting of the user's configuration file (see update_config
+    // in src/ordec/config.py; value null removes it): applied by all viewers
+    // right away (config:change), and saved by the server. onReply as in
+    // setLayoutStyle.
+    setConfig(table, name, value, onReply) {
+        this.config = {...this.config, [table]: {...this.config[table], [name]: value}};
+        this.app?.eventBus.emit('config:change', this.config);
+        if (this.exception || !this.sock || this.sock.readyState != WebSocket.OPEN) {
+            onReply({etype: 'Error', message: 'Not connected to the server.'});
+            return;
+        }
+        const req = ++this.reqCounter;
+        this.saveRequests.set(req, onReply);
+        this.sock.send(cbor.encode({
+            msg: 'setconfig',
+            req: req,
+            table: table,
+            name: name,
+            value: value,
         }));
     }
 

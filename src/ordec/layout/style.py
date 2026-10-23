@@ -45,6 +45,7 @@ import tomlkit
 from public import public
 
 from ..core import *
+from ..config import config_home
 
 KEY_RE = re.compile(r'[a-z0-9][a-z0-9_-]*')
 COLOR_RE = re.compile(r'#[0-9a-fA-F]{6}')
@@ -244,8 +245,7 @@ def default_style(ref_layers: LayerStack) -> LayoutStyle | None:
 @public
 def user_style_path(key: str) -> Path:
     """Path of the user's customization file for a LayoutStyle key."""
-    config = os.environ.get('XDG_CONFIG_HOME') or Path.home() / '.config'
-    return Path(config) / 'ordec' / 'layout' / f'{key}.toml'
+    return config_home() / 'layout' / f'{key}.toml'
 
 @public
 def read_customization(key: str) -> dict | None:

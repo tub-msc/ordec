@@ -80,6 +80,7 @@ from .core.cell import ViewGenerator
 from .core.wire import ExportTable
 from .language import compile_ord
 from .layout.style import default_style, update_customization
+from .config import read_config, update_config
 from .extlibrary import ExtLibrary
 from .jobrunner import ThreadedJobRunner
 
@@ -504,6 +505,18 @@ class ConnectionHandler:
             return {'msg': 'setlayoutstyle', 'exception': format_user_exception(e)}
         return {'msg': 'setlayoutstyle'}
 
+    def set_config(self, msg):
+        """
+        Changes a setting of the user's configuration file (see
+        update_config) and returns the reply. Called in the message loop, so
+        that changes reach the file in the order they were made.
+        """
+        try:
+            update_config(msg['table'], msg['name'], msg.get('value'))
+        except Exception as e:
+            return {'msg': 'setconfig', 'exception': format_user_exception(e)}
+        return {'msg': 'setconfig'}
+
     def build_cells(self, source_type: str, source_data: str,
             check_src: str=None) -> (dict, dict):
         conn_globals = {}
@@ -655,10 +668,17 @@ class ConnectionHandler:
                 'msg': 'exception',
                 'exception': format_user_exception(exc),
             }))
-        else: 
+        else:
+            try:
+                config = read_config()
+            except (OSError, ValueError) as e:
+                # An invalid file must not keep the design from showing.
+                print(f"{remote}: ignoring the configuration file: {e}")
+                config = {}
             websocket.send(ws_encode({
                 'msg': 'viewlist',
                 'views': discover_views(conn_globals),
+                'config': config,
             }))
 
         # Create websocket send lock to prevent concurrent sends from corrupting messages
@@ -739,6 +759,12 @@ class ConnectionHandler:
                     except KeyError as e:
                         raise ValueError(f"setlayoutstyle message missing key {e}")
                     send_msg(dict(self.set_layout_style(msg), req=req))
+                elif msg_type == 'setconfig':
+                    try:
+                        req = msg['req']
+                    except KeyError as e:
+                        raise ValueError(f"setconfig message missing key {e}")
+                    send_msg(dict(self.set_config(msg), req=req))
                 elif msg_type == 'cancelview':
                     with jobs_lock:
                         job = jobs.get(msg.get('req'))
