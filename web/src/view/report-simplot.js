@@ -50,59 +50,162 @@ function columnStarts(xValues, xScale) {
     return starts;
 }
 
+// Samples per block on the lowest pyramid level (see buildPyramid).
+const PYRAMID_BLOCK = 16;
+
+// Min/max pyramid of a series: level k holds, per block of
+// PYRAMID_BLOCK * 2**k samples, the index of its minimum and maximum (first
+// occurrence on ties), or -1 for blocks with a non-finite sample. A trailing
+// partial block is left out. With it, rangeMinMax finds the extremes of a
+// pixel column in O(PYRAMID_BLOCK + log n) instead of visiting all its
+// samples. Memory: about 16 / PYRAMID_BLOCK bytes per sample.
+function buildPyramid(values) {
+    const B = PYRAMID_BLOCK;
+    let min = new Int32Array(Math.floor(values.length / B));
+    let max = new Int32Array(min.length);
+    for (let j = 0; j < min.length; j++) {
+        const m = [j * B, j * B];
+        if (!scanMinMax(values, j * B, (j + 1) * B, m)) m[0] = m[1] = -1;
+        min[j] = m[0];
+        max[j] = m[1];
+    }
+    const levels = [{ min, max }];
+    while (min.length >= 2) {
+        const up = { min: new Int32Array(min.length >> 1), max: new Int32Array(min.length >> 1) };
+        for (let j = 0; j < up.min.length; j++) {
+            const a = min[2 * j], b = min[2 * j + 1];
+            if (a < 0 || b < 0) {
+                up.min[j] = up.max[j] = -1;
+                continue;
+            }
+            // Ties go to the left child, which holds the lower index.
+            up.min[j] = values[b] < values[a] ? b : a;
+            const c = max[2 * j], d = max[2 * j + 1];
+            up.max[j] = values[d] > values[c] ? d : c;
+        }
+        levels.push(up);
+        ({ min, max } = up);
+    }
+    return levels;
+}
+
+// Updates m = [iMin, iMax] with the samples [from, to), visited in index
+// order (first occurrence wins on ties). Returns false at the first
+// non-finite sample.
+function scanMinMax(values, from, to, m) {
+    let iMin = m[0], iMax = m[1];
+    for (let i = from; i < to; i++) {
+        const v = values[i];
+        if (!isFinite(v)) return false;
+        if (v < values[iMin]) iMin = i;
+        if (v > values[iMax]) iMax = i;
+    }
+    m[0] = iMin;
+    m[1] = iMax;
+    return true;
+}
+
+// [iMin, iMax] of the samples [s, e) (first occurrence on ties), or null if
+// the range holds a non-finite sample. Scans the partial blocks at both ends
+// and takes the whole blocks in between from the pyramid, by the usual
+// bottom-up segment decomposition.
+function rangeMinMax(values, pyramid, s, e) {
+    const B = PYRAMID_BLOCK;
+    const m = [s, s];
+    let bs = Math.ceil(s / B), be = Math.floor(e / B);
+    if (bs >= be) return scanMinMax(values, s, e, m) ? m : null;
+    if (!scanMinMax(values, s, bs * B, m) || !scanMinMax(values, be * B, e, m)) return null;
+    // Blocks are taken out of index order, so ties compare indices.
+    const take = ({ min, max }, j) => {
+        const jMin = min[j], jMax = max[j];
+        if (jMin < 0) return false;
+        const vMin = values[jMin], vMax = values[jMax];
+        if (vMin < values[m[0]] || (vMin === values[m[0]] && jMin < m[0])) m[0] = jMin;
+        if (vMax > values[m[1]] || (vMax === values[m[1]] && jMax < m[1])) m[1] = jMax;
+        return true;
+    };
+    for (let k = 0; bs < be; k++) {
+        if (bs & 1) {
+            if (!take(pyramid[k], bs)) return null;
+            bs++;
+        }
+        if (be & 1) {
+            be--;
+            if (!take(pyramid[k], be)) return null;
+        }
+        bs >>= 1;
+        be >>= 1;
+    }
+    return m;
+}
+
 // Reduces the samples [i0, i1) of one series to the first, minimum, maximum
 // and last sample per pixel column (see columnStarts and docs/dev/webui.rst).
 // Non-finite samples become a single NaN, a gap for d3.line. Also returns the
 // y extent of the finite samples inside the plot, for the y autoscale.
-function reduceColumns(xValues, values, starts, i0, i1) {
+// Columns without non-finite samples get their extremes from the pyramid
+// (see buildPyramid); the others are scanned and split into finite runs.
+function reduceColumns(xValues, values, pyramid, starts, i0, i1) {
     const w = starts.length - 2;
     const xs = [], ys = [];
     let yMin = Infinity, yMax = -Infinity;
-    let c = -1;  // column of sample i: starts[c] <= i < starts[c + 1]
-    let col = null;  // column of the pending output, null if none
-    let iFirst = 0, iMin = 0, iMax = 0, iLast = 0;
     let gap = true;  // last output point is a gap (or no output yet)
     const push = (i) => {
         xs.push(xValues[i]);
         ys.push(values[i]);
     };
-    const flush = () => {
-        if (col === null) return;
+    // Emits a finite run [iFirst, iLast] with its extremes, in index order.
+    const emit = (iFirst, iMin, iMax, iLast) => {
         const a = Math.min(iMin, iMax), b = Math.max(iMin, iMax);
         push(iFirst);
         if (a > iFirst) push(a);
         if (b > a) push(b);
         if (iLast > b) push(iLast);
-        col = null;
         gap = false;
     };
-    for (let i = i0; i < i1; i++) {
-        while (c <= w && i >= starts[c + 1]) c++;
-        const v = values[i];
-        if (!isFinite(v)) {
-            flush();
-            if (!gap) {
-                xs.push(NaN);
-                ys.push(NaN);
-                gap = true;
+    // Column c holds the samples [starts[c], starts[c + 1]); c = -1 and
+    // c = w + 1 hold the samples left and right of the plot.
+    for (let c = -1; c <= w + 1; c++) {
+        const s = c < 0 ? i0 : Math.max(starts[c], i0);
+        const e = c > w ? i1 : Math.min(starts[c + 1], i1);
+        if (s >= e) continue;
+        const inPlot = c >= 0 && c <= w;
+        const m = rangeMinMax(values, pyramid, s, e);
+        if (m) {
+            emit(s, m[0], m[1], e - 1);
+            if (inPlot) {
+                yMin = Math.min(yMin, values[m[0]]);
+                yMax = Math.max(yMax, values[m[1]]);
             }
             continue;
         }
-        if (c >= 0 && c <= w) {
-            if (v < yMin) yMin = v;
-            if (v > yMax) yMax = v;
+        let iFirst = -1, iMin = 0, iMax = 0, iLast = 0;  // iFirst < 0: no run
+        for (let i = s; i < e; i++) {
+            const v = values[i];
+            if (!isFinite(v)) {
+                if (iFirst >= 0) emit(iFirst, iMin, iMax, iLast);
+                iFirst = -1;
+                if (!gap) {
+                    xs.push(NaN);
+                    ys.push(NaN);
+                    gap = true;
+                }
+                continue;
+            }
+            if (inPlot) {
+                if (v < yMin) yMin = v;
+                if (v > yMax) yMax = v;
+            }
+            if (iFirst < 0) {
+                iFirst = iMin = iMax = iLast = i;
+                continue;
+            }
+            iLast = i;
+            if (v < values[iMin]) iMin = i;
+            if (v > values[iMax]) iMax = i;
         }
-        if (c !== col) {
-            flush();
-            col = c;
-            iFirst = iMin = iMax = iLast = i;
-            continue;
-        }
-        iLast = i;
-        if (v < values[iMin]) iMin = i;
-        if (v > values[iMax]) iMax = i;
+        if (iFirst >= 0) emit(iFirst, iMin, iMax, iLast);
     }
-    flush();
     return { x: xs, y: ys, yMin, yMax };
 }
 
@@ -493,6 +596,7 @@ export class SimPlot {
             ...s,
             color: s.color || signalColor(i),
             visible: true,
+            pyramid: buildPyramid(s.values),
         }));
         // x is sorted and finite (Plot2D.x is validated on the server).
         this._xExtent = [this.xValues[0], this.xValues[this.xValues.length - 1]];
@@ -657,7 +761,7 @@ export class SimPlot {
                     i0 = Math.max(0, starts[0] - 1);
                     i1 = Math.min(this.xValues.length, starts[starts.length - 1] + 1);
                 }
-                s.reduced = reduceColumns(this.xValues, s.values, starts, i0, i1);
+                s.reduced = reduceColumns(this.xValues, s.values, s.pyramid, starts, i0, i1);
             }
             yMin = Math.min(yMin, s.reduced.yMin);
             yMax = Math.max(yMax, s.reduced.yMax);
