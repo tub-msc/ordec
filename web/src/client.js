@@ -247,11 +247,11 @@ export class OrdecClient {
         this.styleRequests.clear();
     }
 
-    // Changes the user's customization of the LayoutStyle of the layout view
+    // Changes the user's customization of the LayoutStyle with the given key
     // (settings and layers as in update_customization in
     // src/ordec/layout/style.py). onReply(exception) is called with the
     // server's answer: null once the file is written, else the exception.
-    setLayoutStyle(view, settings, layers, onReply) {
+    setLayoutStyle(key, settings, layers, onReply) {
         if (this.exception || !this.sock || this.sock.readyState != WebSocket.OPEN) {
             onReply({etype: 'Error', message: 'Not connected to the server.'});
             return;
@@ -260,7 +260,7 @@ export class OrdecClient {
         this.styleRequests.set(req, onReply);
         this.sock.send(cbor.encode({
             msg: 'setlayoutstyle',
-            view: view,
+            key: key,
             req: req,
             settings: settings,
             layers: layers,

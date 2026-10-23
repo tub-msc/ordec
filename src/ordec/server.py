@@ -446,6 +446,9 @@ class ConnectionHandler:
         # initial phase, no query_view operations are in process.
         # In RWLock's logic, query_view is the resource reader and the initial
         # build_cells / build_localmodule phase is the resource writer. 
+        # Default LayoutStyles of the layouts sent, by key (see query_view and
+        # set_layout_style).
+        self.layout_styles = {}
 
     def query_view(self, view_name, conn_globals, ept):
         msg_ret = {
@@ -463,6 +466,10 @@ class ConnectionHandler:
                     report.pre(view)
                     view = report
                 viewtype, data = view.webdata(ept)
+                if isinstance(view, Layout):
+                    style = default_style(view.ref_layers)
+                    if style is not None:
+                        self.layout_styles[style.key] = style
             msg_ret['type'] = viewtype
             msg_ret['data'] = data
             if isinstance(view, SubgraphRoot):
@@ -477,22 +484,22 @@ class ConnectionHandler:
 
         return msg_ret
 
-    def set_layout_style(self, msg, conn_globals):
+    def set_layout_style(self, msg):
         """
-        Changes the user's customization of the LayoutStyle of the layout
-        msg['view'] (see update_customization) and returns the reply. Called
-        in the message loop rather than as a job, so that changes reach the
-        file in the order they were made; the view is one the client shows,
-        so evaluating it hits the viewgen cache.
+        Changes the user's customization of the LayoutStyle msg['key'] (see
+        update_customization) and returns the reply. Called in the message
+        loop rather than as a job, so that changes reach the file in the
+        order they were made. The style is one of a layout sent before (see
+        query_view): evaluating the client's view here instead could mean
+        generating it in the message loop, e.g. after a module reload while
+        the client still shows the old layout.
         """
         try:
-            view_name = msg['view']
-            with self.import_lock.read():
-                view = eval(view_name, conn_globals, conn_globals)
-                style = default_style(view.ref_layers) if isinstance(view, Layout) else None
-                if style is None:
-                    raise ValueError(f"{view_name} has no LayoutStyle to customize.")
-                update_customization(style, msg.get('settings', {}), msg.get('layers', {}))
+            key = msg['key']
+            if key not in self.layout_styles:
+                raise ValueError(f"No layout with LayoutStyle {key!r} was shown.")
+            update_customization(self.layout_styles[key],
+                msg.get('settings', {}), msg.get('layers', {}))
         except Exception as e:
             return {'msg': 'setlayoutstyle', 'exception': format_user_exception(e)}
         return {'msg': 'setlayoutstyle'}
@@ -731,7 +738,7 @@ class ConnectionHandler:
                         req = msg['req']
                     except KeyError as e:
                         raise ValueError(f"setlayoutstyle message missing key {e}")
-                    send_msg(dict(self.set_layout_style(msg, conn_globals), req=req))
+                    send_msg(dict(self.set_layout_style(msg), req=req))
                 elif msg_type == 'cancelview':
                     with jobs_lock:
                         job = jobs.get(msg.get('req'))

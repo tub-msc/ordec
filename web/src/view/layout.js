@@ -503,7 +503,7 @@ export class LayoutView extends View {
     // fails, the change stays on display with an error.
     saveStyle(settings, layers) {
         this.eventBus.emit('layoutstyle:change', {key: this.style.key, settings, layers});
-        this.resultViewer.client.setLayoutStyle(this.viewName, settings, layers, exception => {
+        this.resultViewer.client.setLayoutStyle(this.style.key, settings, layers, exception => {
             this.stylePanel.setError(exception && `Not saved: ${exception.message}`);
         });
     }
