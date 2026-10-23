@@ -50,7 +50,7 @@ ordec Docker image
 
 The `ordec <https://github.com/tub-msc/ordec/pkgs/container/ordec>`_ image is built on top of ordec-base. It contains an installation of ORDeC that can be run by users through a single docker command, as described in the Readme.
 
-The image sets ``ORDEC_CONFIG_EPHEMERAL=1``: files ORDeC writes to the user's configuration directory (such as the LayoutStyle customizations in ``~/.config/ordec/layout/``) are lost with the container, which the web UI points out when saving them. Users who mount ``~/.config/ordec`` as a volume can set it to ``0``.
+The image sets ``ORDEC_CONFIG_EPHEMERAL=1``: files ORDeC writes to the user's configuration directory (the LayoutStyle customizations in ``~/.config/ordec/layout/`` and the settings in ``~/.config/ordec/config.toml``, such as the crossing style of schematics) are lost with the container. The layout viewer points this out when saving a LayoutStyle customization. Users who mount ``~/.config/ordec`` as a volume can set it to ``0``.
 
 This image is automatically built through *.github/workflows/build.yaml* using *Dockerfile*. It can also be built manually using this *Dockerfile*.
 

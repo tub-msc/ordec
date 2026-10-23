@@ -1,29 +1,21 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1050.0px" height="600.0px" viewBox="-2.0 0.0 42.0 24.0">
   <g class="schematic" transform="matrix(1 0 0 -1 0 24.0)">
     <path d="M38.0 16.0 L37.0 16.0 L36.0 16.0 L35.0 16.0" class="schemWire" />
-    <path d="M36.0 16.0 L36.0 13.0 L16.0 13.0 L16.0 17.0 L18.0 17.0" class="schemWire crossing-plain" />
-    <path d="M36.0 16.0 L36.0 13.0 L17.25 13.0 A0.25 0.25 0 0 1 16.75 13.0 L16.0 13.0 L16.0 17.0 L18.0 17.0" class="schemWire crossing-bridge-h" />
-    <path d="M36.0 16.0 L36.0 13.0 L16.0 13.0 L16.0 17.0 L18.0 17.0" class="schemWire crossing-bridge-v" />
-    <path d="M36.0 16.0 L36.0 13.0 L17.25 13.0 M16.75 13.0 L16.0 13.0 L16.0 17.0 L18.0 17.0" class="schemWire crossing-gap-h" />
-    <path d="M36.0 16.0 L36.0 13.0 L16.0 13.0 L16.0 17.0 L18.0 17.0" class="schemWire crossing-gap-v" />
+    <path d="M36.0 16.0 L36.0 13.0 L17.25 13.0 M16.75 13.0 L16.0 13.0 L16.0 17.0 L18.0 17.0" class="schemWire" />
+    <path d="M16.75 13.0 L17.25 13.0" class="schemWire crossing-line-h" />
+    <path d="M16.75 13.0 A0.25 0.25 0 0 0 17.25 13.0" class="schemWire crossing-bridge-h" />
     <path d="M1.0 18.0 L2.0 18.0 L4.0 18.0 L5.0 18.0" class="schemWire" />
     <path d="M4.0 18.0 L4.0 8.0 L5.0 8.0" class="schemWire" />
-    <path d="M5.0 7.0 L4.0 7.0 L4.0 3.0 L17.0 3.0 L17.0 6.0 L16.0 6.0" class="schemWire crossing-plain" />
-    <path d="M5.0 7.0 L4.0 7.0 L4.0 3.0 L17.0 3.0 L17.0 6.0 L16.0 6.0" class="schemWire crossing-bridge-h" />
-    <path d="M5.0 7.0 L4.0 7.0 L4.0 6.25 A0.25 0.25 0 0 0 4.0 5.75 L4.0 3.0 L17.0 3.0 L17.0 6.0 L16.0 6.0" class="schemWire crossing-bridge-v" />
-    <path d="M5.0 7.0 L4.0 7.0 L4.0 3.0 L17.0 3.0 L17.0 6.0 L16.0 6.0" class="schemWire crossing-gap-h" />
-    <path d="M5.0 7.0 L4.0 7.0 L4.0 6.25 M4.0 5.75 L4.0 3.0 L17.0 3.0 L17.0 6.0 L16.0 6.0" class="schemWire crossing-gap-v" />
-    <path d="M17.0 6.0 L17.0 16.0 L18.0 16.0" class="schemWire crossing-plain" />
-    <path d="M17.0 6.0 L17.0 16.0 L18.0 16.0" class="schemWire crossing-bridge-h" />
-    <path d="M17.0 6.0 L17.0 12.75 A0.25 0.25 0 0 1 17.0 13.25 L17.0 16.0 L18.0 16.0" class="schemWire crossing-bridge-v" />
-    <path d="M17.0 6.0 L17.0 16.0 L18.0 16.0" class="schemWire crossing-gap-h" />
-    <path d="M17.0 6.0 L17.0 12.75 M17.0 13.25 L17.0 16.0 L18.0 16.0" class="schemWire crossing-gap-v" />
+    <path d="M5.0 7.0 L4.0 7.0 L4.0 6.25 M4.0 5.75 L4.0 3.0 L17.0 3.0 L17.0 6.0 L16.0 6.0" class="schemWire" />
+    <path d="M4.0 5.75 L4.0 6.25" class="schemWire crossing-line-v" />
+    <path d="M4.0 5.75 A0.25 0.25 0 0 1 4.0 6.25" class="schemWire crossing-bridge-v" />
+    <path d="M17.0 6.0 L17.0 12.75 M17.0 13.25 L17.0 16.0 L18.0 16.0" class="schemWire" />
+    <path d="M17.0 12.75 L17.0 13.25" class="schemWire crossing-line-v" />
+    <path d="M17.0 12.75 A0.25 0.25 0 0 1 17.0 13.25" class="schemWire crossing-bridge-v" />
     <path d="M9.0 6.0 L12.0 6.0" class="schemWire" />
-    <path d="M1.0 6.0 L5.0 6.0" class="schemWire crossing-plain" />
-    <path d="M1.0 6.0 L3.75 6.0 A0.25 0.25 0 0 0 4.25 6.0 L5.0 6.0" class="schemWire crossing-bridge-h" />
-    <path d="M1.0 6.0 L5.0 6.0" class="schemWire crossing-bridge-v" />
-    <path d="M1.0 6.0 L3.75 6.0 M4.25 6.0 L5.0 6.0" class="schemWire crossing-gap-h" />
-    <path d="M1.0 6.0 L5.0 6.0" class="schemWire crossing-gap-v" />
+    <path d="M1.0 6.0 L3.75 6.0 M4.25 6.0 L5.0 6.0" class="schemWire" />
+    <path d="M3.75 6.0 L4.25 6.0" class="schemWire crossing-line-h" />
+    <path d="M3.75 6.0 A0.25 0.25 0 0 0 4.25 6.0" class="schemWire crossing-bridge-h" />
     <path d="M9.0 18.0 L18.0 18.0" class="schemWire" />
     <path d="M22.0 16.0 L31.0 16.0" class="schemWire" />
     <circle cx="4.0" cy="18.0" r="0.1625" class="connPoint" />

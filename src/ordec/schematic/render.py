@@ -119,7 +119,7 @@ def wire_crossings(s: Schematic) -> set[Vec2R]:
     """
     Points where a horizontal and a vertical SchemWire segment cross each
     other (each passing through, not ending at the point) without a
-    SchemConnPoint. See SchematicRenderer.wire_svg_path for how they are
+    SchemConnPoint. See SchematicRenderer.draw_wire for how they are
     drawn.
     """
     horizontal, vertical = [], []
@@ -414,8 +414,9 @@ class SchematicRenderer(Renderer):
     wire_color = '#1a80e6'
     #: Styles of drawing wire crossings without SchemConnPoint: 'plain',
     #: bridges on horizontal or vertical wires ('bridge-h', 'bridge-v') or
-    #: gaps in them ('gap-h', 'gap-v'). Only 'plain' is shown unless the
-    #: web UI selects another one.
+    #: gaps in them ('gap-h', 'gap-v'). The data-crossings attribute of the
+    #: schematic group selects one (the web UI sets it from the user's
+    #: configuration, see ordec.config), 'plain' without it.
     crossing_styles = ('plain', 'bridge-h', 'bridge-v', 'gap-h', 'gap-v')
 
     css = clean_css(Template("""
@@ -456,15 +457,23 @@ class SchematicRenderer(Renderer):
         .schematic .detailOnly {
             display: none;
         }
-        .schematic .crossing-bridge-h, .schematic .crossing-bridge-v,
-        .schematic .crossing-gap-h, .schematic .crossing-gap-v {
-            display: none;
-        }
         .schematic .schemWire, .schematic .tapPoint {
             stroke: $wire_color;
         }
         .schematic .schemWire {
             stroke-linecap: square;
+        }
+        .schematic .crossing-bridge-h, .schematic .crossing-bridge-v {
+            display: none;
+            stroke-linecap: butt;
+        }
+        .schematic[data-crossings="bridge-h"] .crossing-bridge-h,
+        .schematic[data-crossings="bridge-v"] .crossing-bridge-v {
+            display: inline;
+        }
+        .schematic[data-crossings$$="-h"] .crossing-line-h,
+        .schematic[data-crossings$$="-v"] .crossing-line-v {
+            display: none;
         }
         .schematic .connPoint, .schematic .portArrow {
             fill: $wire_color;
@@ -531,19 +540,9 @@ class SchematicRenderer(Renderer):
         if self.enable_grid:
             self.draw_grid(s.outline)
 
-        # Wires passing through crossings get one path per crossing style,
-        # of which the web UI shows the selected one (see crossing_styles).
         crossings = wire_crossings(s)
-        for poly in s.all(SchemWire):
-            variants = {style: self.wire_svg_path(poly, crossings, style)
-                for style in self.crossing_styles}
-            if len(set(variants.values())) == 1:
-                variants = {None: variants['plain']}
-            for style, d in variants.items():
-                p = ET.SubElement(self.cur_group, 'path', d=d)
-                p.attrib['class'] = 'schemWire' if style is None else f'schemWire crossing-{style}'
-                if self.include_nids:
-                    p.attrib['data-nid'] = str(poly.ref.nid)
+        for wire in s.all(SchemWire):
+            self.draw_wire(wire, crossings)
 
         for p in s.all(SchemConnPoint):
             cx, cy = p.pos.tofloat()
@@ -571,27 +570,30 @@ class SchematicRenderer(Renderer):
         for err in s.all(SchemErrorMarker):
             self.draw_error_marker(err)
 
-    def wire_svg_path(self, wire: SchemWire, crossings: set[Vec2R], style: str) -> str:
+    def draw_wire(self, wire: SchemWire, crossings: set[Vec2R]):
         """
-        SVG path of wire in the given crossing style (see crossing_styles).
-        Except for 'plain', the wire is drawn with a bridge (half circle
-        bulging up or right) or a gap at each of the given crossings on its
-        horizontal (-h) or vertical (-v) segments.
+        Draws wire as one path, interrupted at each of the given crossings
+        that one of its segments passes through. Separate pieces of every
+        crossing style fill the interruptions: a straight line
+        ('crossing-line-h') and a bridge ('crossing-bridge-h', half circle
+        bulging up) on horizontal segments, likewise ('-v', bulging right)
+        on vertical ones. The CSS shows the pieces of the style that the
+        data-crossings attribute of the schematic group selects (see
+        crossing_styles).
         """
-        if style == 'plain':
-            return wire.svg_path()
-        kind, orient = style.split('-')
-        vertical = orient == 'v'
-        # (u, w): coordinate along and across the decorated segments.
-        uw = lambda p: (p.y, p.x) if vertical else (p.x, p.y)
-        xy = lambda u, w: (w, u) if vertical else (u, w)
         r = self.crossing_radius
         vertices = wire.vertices()
         x, y = vertices[0].tofloat()
         d = [f"M{x} {y}"]
+        pieces = [] # (class, path)
         for a, b in zip(vertices, vertices[1:]):
+            vertical = a.x == b.x
+            # (u, w): coordinate along and across the segment.
+            uw = lambda p: (p.y, p.x) if vertical else (p.x, p.y)
+            xy = lambda u, w: (w, u) if vertical else (u, w)
             (ua, w), (ub, wb) = uw(a), uw(b)
             if w == wb:
+                orient = 'v' if vertical else 'h'
                 step = 1 if ub > ua else -1
                 # Crossings in the order the segment passes them.
                 us = sorted((float(uw(c)[0]) for c in crossings
@@ -601,19 +603,26 @@ class SchematicRenderer(Renderer):
                 for u in us:
                     x0, y0 = xy(u - step*r, w)
                     x1, y1 = xy(u + step*r, w)
-                    d.append(f"L{x0} {y0}")
-                    if kind == 'gap':
-                        d.append(f"M{x1} {y1}")
-                    else:
-                        # Sweep flag 1 is counterclockwise in schematic
-                        # coordinates (y up, see setup_canvas): bulging up
-                        # when going right is clockwise, bulging right when
-                        # going up is counterclockwise.
-                        sweep = int((step > 0) == vertical)
-                        d.append(f"A{r} {r} 0 0 {sweep} {x1} {y1}")
+                    d.append(f"L{x0} {y0} M{x1} {y1}")
+                    # The pieces run left to right or bottom to top. Sweep
+                    # flag 1 is counterclockwise in schematic coordinates
+                    # (y up, see setup_canvas): bulging up when going right
+                    # is clockwise, bulging right when going up is
+                    # counterclockwise.
+                    xl, yl = xy(u - r, w)
+                    xh, yh = xy(u + r, w)
+                    pieces.append((f'crossing-line-{orient}', f"M{xl} {yl} L{xh} {yh}"))
+                    pieces.append((f'crossing-bridge-{orient}',
+                        f"M{xl} {yl} A{r} {r} 0 0 {int(vertical)} {xh} {yh}"))
             x, y = b.tofloat()
             d.append(f"L{x} {y}")
-        return ' '.join(d)
+        paths = [('schemWire', ' '.join(d) if pieces else wire.svg_path())]
+        paths += [(f'schemWire {cls}', piece) for cls, piece in pieces]
+        for cls, path in paths:
+            p = ET.SubElement(self.cur_group, 'path', d=path)
+            p.attrib['class'] = cls
+            if self.include_nids:
+                p.attrib['data-nid'] = str(wire.ref.nid)
 
     def draw_error_marker(self, err: SchemErrorMarker):
         cx, cy = err.pos.tofloat()

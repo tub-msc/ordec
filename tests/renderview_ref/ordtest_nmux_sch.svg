@@ -1,111 +1,83 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1350.0px" height="1300.0px" viewBox="-16.0 -9.0 54.0 52.0">
   <g class="schematic" transform="matrix(1 0 0 -1 0 34.0)">
-    <path d="M-2.0 -5.0 L-2.0 -4.0 L-2.0 4.0 L-1.0 4.0 L0.0 4.0" class="schemWire crossing-plain" />
-    <path d="M-2.0 -5.0 L-2.0 -4.0 L-2.0 4.0 L-1.0 4.0 L0.0 4.0" class="schemWire crossing-bridge-h" />
-    <path d="M-2.0 -5.0 L-2.0 -4.0 L-2.0 1.75 A0.25 0.25 0 0 1 -2.0 2.25 L-2.0 2.75 A0.25 0.25 0 0 1 -2.0 3.25 L-2.0 4.0 L-1.0 4.0 L0.0 4.0" class="schemWire crossing-bridge-v" />
-    <path d="M-2.0 -5.0 L-2.0 -4.0 L-2.0 4.0 L-1.0 4.0 L0.0 4.0" class="schemWire crossing-gap-h" />
-    <path d="M-2.0 -5.0 L-2.0 -4.0 L-2.0 1.75 M-2.0 2.25 L-2.0 2.75 M-2.0 3.25 L-2.0 4.0 L-1.0 4.0 L0.0 4.0" class="schemWire crossing-gap-v" />
-    <path d="M-1.0 4.0 L-1.0 14.0 L0.0 14.0" class="schemWire crossing-plain" />
-    <path d="M-1.0 4.0 L-1.0 14.0 L0.0 14.0" class="schemWire crossing-bridge-h" />
-    <path d="M-1.0 4.0 L-1.0 11.75 A0.25 0.25 0 0 1 -1.0 12.25 L-1.0 12.75 A0.25 0.25 0 0 1 -1.0 13.25 L-1.0 14.0 L0.0 14.0" class="schemWire crossing-bridge-v" />
-    <path d="M-1.0 4.0 L-1.0 14.0 L0.0 14.0" class="schemWire crossing-gap-h" />
-    <path d="M-1.0 4.0 L-1.0 11.75 M-1.0 12.25 L-1.0 12.75 M-1.0 13.25 L-1.0 14.0 L0.0 14.0" class="schemWire crossing-gap-v" />
-    <path d="M-1.0 14.0 L-1.0 24.0 L0.0 24.0" class="schemWire crossing-plain" />
-    <path d="M-1.0 14.0 L-1.0 24.0 L0.0 24.0" class="schemWire crossing-bridge-h" />
-    <path d="M-1.0 14.0 L-1.0 21.75 A0.25 0.25 0 0 1 -1.0 22.25 L-1.0 22.75 A0.25 0.25 0 0 1 -1.0 23.25 L-1.0 24.0 L0.0 24.0" class="schemWire crossing-bridge-v" />
-    <path d="M-1.0 14.0 L-1.0 24.0 L0.0 24.0" class="schemWire crossing-gap-h" />
-    <path d="M-1.0 14.0 L-1.0 21.75 M-1.0 22.25 L-1.0 22.75 M-1.0 23.25 L-1.0 24.0 L0.0 24.0" class="schemWire crossing-gap-v" />
-    <path d="M-1.0 24.0 L-1.0 34.0 L0.0 34.0" class="schemWire crossing-plain" />
-    <path d="M-1.0 24.0 L-1.0 34.0 L0.0 34.0" class="schemWire crossing-bridge-h" />
-    <path d="M-1.0 24.0 L-1.0 31.75 A0.25 0.25 0 0 1 -1.0 32.25 L-1.0 32.75 A0.25 0.25 0 0 1 -1.0 33.25 L-1.0 34.0 L0.0 34.0" class="schemWire crossing-bridge-v" />
-    <path d="M-1.0 24.0 L-1.0 34.0 L0.0 34.0" class="schemWire crossing-gap-h" />
-    <path d="M-1.0 24.0 L-1.0 31.75 M-1.0 32.25 L-1.0 32.75 M-1.0 33.25 L-1.0 34.0 L0.0 34.0" class="schemWire crossing-gap-v" />
-    <path d="M10.0 -5.0 L10.0 -4.0 L10.0 14.0 L11.0 14.0 L12.0 14.0" class="schemWire crossing-plain" />
-    <path d="M10.0 -5.0 L10.0 -4.0 L10.0 14.0 L11.0 14.0 L12.0 14.0" class="schemWire crossing-bridge-h" />
-    <path d="M10.0 -5.0 L10.0 -4.0 L10.0 1.75 A0.25 0.25 0 0 1 10.0 2.25 L10.0 12.75 A0.25 0.25 0 0 1 10.0 13.25 L10.0 14.0 L11.0 14.0 L12.0 14.0" class="schemWire crossing-bridge-v" />
-    <path d="M10.0 -5.0 L10.0 -4.0 L10.0 14.0 L11.0 14.0 L12.0 14.0" class="schemWire crossing-gap-h" />
-    <path d="M10.0 -5.0 L10.0 -4.0 L10.0 1.75 M10.0 2.25 L10.0 12.75 M10.0 13.25 L10.0 14.0 L11.0 14.0 L12.0 14.0" class="schemWire crossing-gap-v" />
-    <path d="M11.0 14.0 L11.0 24.0 L12.0 24.0" class="schemWire crossing-plain" />
-    <path d="M11.0 14.0 L11.0 24.0 L12.0 24.0" class="schemWire crossing-bridge-h" />
-    <path d="M11.0 14.0 L11.0 21.75 A0.25 0.25 0 0 1 11.0 22.25 L11.0 22.75 A0.25 0.25 0 0 1 11.0 23.25 L11.0 24.0 L12.0 24.0" class="schemWire crossing-bridge-v" />
-    <path d="M11.0 14.0 L11.0 24.0 L12.0 24.0" class="schemWire crossing-gap-h" />
-    <path d="M11.0 14.0 L11.0 21.75 M11.0 22.25 L11.0 22.75 M11.0 23.25 L11.0 24.0 L12.0 24.0" class="schemWire crossing-gap-v" />
-    <path d="M4.0 22.0 L12.0 22.0" class="schemWire crossing-plain" />
-    <path d="M4.0 22.0 L10.75 22.0 A0.25 0.25 0 0 0 11.25 22.0 L12.0 22.0" class="schemWire crossing-bridge-h" />
-    <path d="M4.0 22.0 L12.0 22.0" class="schemWire crossing-bridge-v" />
-    <path d="M4.0 22.0 L10.75 22.0 M11.25 22.0 L12.0 22.0" class="schemWire crossing-gap-h" />
-    <path d="M4.0 22.0 L12.0 22.0" class="schemWire crossing-gap-v" />
-    <path d="M4.0 12.0 L9.0 12.0 L9.0 13.0 L12.0 13.0" class="schemWire crossing-plain" />
-    <path d="M4.0 12.0 L9.0 12.0 L9.0 13.0 L9.75 13.0 A0.25 0.25 0 0 0 10.25 13.0 L12.0 13.0" class="schemWire crossing-bridge-h" />
-    <path d="M4.0 12.0 L9.0 12.0 L9.0 13.0 L12.0 13.0" class="schemWire crossing-bridge-v" />
-    <path d="M4.0 12.0 L9.0 12.0 L9.0 13.0 L9.75 13.0 M10.25 13.0 L12.0 13.0" class="schemWire crossing-gap-h" />
-    <path d="M4.0 12.0 L9.0 12.0 L9.0 13.0 L12.0 13.0" class="schemWire crossing-gap-v" />
+    <path d="M-2.0 -5.0 L-2.0 -4.0 L-2.0 1.75 M-2.0 2.25 L-2.0 2.75 M-2.0 3.25 L-2.0 4.0 L-1.0 4.0 L0.0 4.0" class="schemWire" />
+    <path d="M-2.0 1.75 L-2.0 2.25" class="schemWire crossing-line-v" />
+    <path d="M-2.0 1.75 A0.25 0.25 0 0 1 -2.0 2.25" class="schemWire crossing-bridge-v" />
+    <path d="M-2.0 2.75 L-2.0 3.25" class="schemWire crossing-line-v" />
+    <path d="M-2.0 2.75 A0.25 0.25 0 0 1 -2.0 3.25" class="schemWire crossing-bridge-v" />
+    <path d="M-1.0 4.0 L-1.0 11.75 M-1.0 12.25 L-1.0 12.75 M-1.0 13.25 L-1.0 14.0 L0.0 14.0" class="schemWire" />
+    <path d="M-1.0 11.75 L-1.0 12.25" class="schemWire crossing-line-v" />
+    <path d="M-1.0 11.75 A0.25 0.25 0 0 1 -1.0 12.25" class="schemWire crossing-bridge-v" />
+    <path d="M-1.0 12.75 L-1.0 13.25" class="schemWire crossing-line-v" />
+    <path d="M-1.0 12.75 A0.25 0.25 0 0 1 -1.0 13.25" class="schemWire crossing-bridge-v" />
+    <path d="M-1.0 14.0 L-1.0 21.75 M-1.0 22.25 L-1.0 22.75 M-1.0 23.25 L-1.0 24.0 L0.0 24.0" class="schemWire" />
+    <path d="M-1.0 21.75 L-1.0 22.25" class="schemWire crossing-line-v" />
+    <path d="M-1.0 21.75 A0.25 0.25 0 0 1 -1.0 22.25" class="schemWire crossing-bridge-v" />
+    <path d="M-1.0 22.75 L-1.0 23.25" class="schemWire crossing-line-v" />
+    <path d="M-1.0 22.75 A0.25 0.25 0 0 1 -1.0 23.25" class="schemWire crossing-bridge-v" />
+    <path d="M-1.0 24.0 L-1.0 31.75 M-1.0 32.25 L-1.0 32.75 M-1.0 33.25 L-1.0 34.0 L0.0 34.0" class="schemWire" />
+    <path d="M-1.0 31.75 L-1.0 32.25" class="schemWire crossing-line-v" />
+    <path d="M-1.0 31.75 A0.25 0.25 0 0 1 -1.0 32.25" class="schemWire crossing-bridge-v" />
+    <path d="M-1.0 32.75 L-1.0 33.25" class="schemWire crossing-line-v" />
+    <path d="M-1.0 32.75 A0.25 0.25 0 0 1 -1.0 33.25" class="schemWire crossing-bridge-v" />
+    <path d="M10.0 -5.0 L10.0 -4.0 L10.0 1.75 M10.0 2.25 L10.0 12.75 M10.0 13.25 L10.0 14.0 L11.0 14.0 L12.0 14.0" class="schemWire" />
+    <path d="M10.0 1.75 L10.0 2.25" class="schemWire crossing-line-v" />
+    <path d="M10.0 1.75 A0.25 0.25 0 0 1 10.0 2.25" class="schemWire crossing-bridge-v" />
+    <path d="M10.0 12.75 L10.0 13.25" class="schemWire crossing-line-v" />
+    <path d="M10.0 12.75 A0.25 0.25 0 0 1 10.0 13.25" class="schemWire crossing-bridge-v" />
+    <path d="M11.0 14.0 L11.0 21.75 M11.0 22.25 L11.0 22.75 M11.0 23.25 L11.0 24.0 L12.0 24.0" class="schemWire" />
+    <path d="M11.0 21.75 L11.0 22.25" class="schemWire crossing-line-v" />
+    <path d="M11.0 21.75 A0.25 0.25 0 0 1 11.0 22.25" class="schemWire crossing-bridge-v" />
+    <path d="M11.0 22.75 L11.0 23.25" class="schemWire crossing-line-v" />
+    <path d="M11.0 22.75 A0.25 0.25 0 0 1 11.0 23.25" class="schemWire crossing-bridge-v" />
+    <path d="M4.0 22.0 L10.75 22.0 M11.25 22.0 L12.0 22.0" class="schemWire" />
+    <path d="M10.75 22.0 L11.25 22.0" class="schemWire crossing-line-h" />
+    <path d="M10.75 22.0 A0.25 0.25 0 0 0 11.25 22.0" class="schemWire crossing-bridge-h" />
+    <path d="M4.0 12.0 L9.0 12.0 L9.0 13.0 L9.75 13.0 M10.25 13.0 L12.0 13.0" class="schemWire" />
+    <path d="M9.75 13.0 L10.25 13.0" class="schemWire crossing-line-h" />
+    <path d="M9.75 13.0 A0.25 0.25 0 0 0 10.25 13.0" class="schemWire crossing-bridge-h" />
     <path d="M36.0 15.0 L29.0 15.0 L29.0 17.0 L28.0 17.0" class="schemWire" />
-    <path d="M16.0 22.0 L23.0 22.0 L23.0 18.0 L24.0 18.0" class="schemWire crossing-plain" />
-    <path d="M16.0 22.0 L23.0 22.0 L23.0 18.0 L24.0 18.0" class="schemWire crossing-bridge-h" />
-    <path d="M16.0 22.0 L23.0 22.0 L23.0 19.25 A0.25 0.25 0 0 0 23.0 18.75 L23.0 18.0 L24.0 18.0" class="schemWire crossing-bridge-v" />
-    <path d="M16.0 22.0 L23.0 22.0 L23.0 18.0 L24.0 18.0" class="schemWire crossing-gap-h" />
-    <path d="M16.0 22.0 L23.0 22.0 L23.0 19.25 M23.0 18.75 L23.0 18.0 L24.0 18.0" class="schemWire crossing-gap-v" />
-    <path d="M16.0 12.0 L23.0 12.0 L23.0 17.0 L24.0 17.0" class="schemWire crossing-plain" />
-    <path d="M16.0 12.0 L21.75 12.0 A0.25 0.25 0 0 0 22.25 12.0 L23.0 12.0 L23.0 17.0 L24.0 17.0" class="schemWire crossing-bridge-h" />
-    <path d="M16.0 12.0 L23.0 12.0 L23.0 17.0 L24.0 17.0" class="schemWire crossing-bridge-v" />
-    <path d="M16.0 12.0 L21.75 12.0 M22.25 12.0 L23.0 12.0 L23.0 17.0 L24.0 17.0" class="schemWire crossing-gap-h" />
-    <path d="M16.0 12.0 L23.0 12.0 L23.0 17.0 L24.0 17.0" class="schemWire crossing-gap-v" />
-    <path d="M-12.0 2.0 L0.0 2.0" class="schemWire crossing-plain" />
-    <path d="M-12.0 2.0 L-2.25 2.0 A0.25 0.25 0 0 0 -1.75 2.0 L0.0 2.0" class="schemWire crossing-bridge-h" />
-    <path d="M-12.0 2.0 L0.0 2.0" class="schemWire crossing-bridge-v" />
-    <path d="M-12.0 2.0 L-2.25 2.0 M-1.75 2.0 L0.0 2.0" class="schemWire crossing-gap-h" />
-    <path d="M-12.0 2.0 L0.0 2.0" class="schemWire crossing-gap-v" />
-    <path d="M-12.0 3.0 L0.0 3.0" class="schemWire crossing-plain" />
-    <path d="M-12.0 3.0 L-2.25 3.0 A0.25 0.25 0 0 0 -1.75 3.0 L0.0 3.0" class="schemWire crossing-bridge-h" />
-    <path d="M-12.0 3.0 L0.0 3.0" class="schemWire crossing-bridge-v" />
-    <path d="M-12.0 3.0 L-2.25 3.0 M-1.75 3.0 L0.0 3.0" class="schemWire crossing-gap-h" />
-    <path d="M-12.0 3.0 L0.0 3.0" class="schemWire crossing-gap-v" />
-    <path d="M-12.0 12.0 L0.0 12.0" class="schemWire crossing-plain" />
-    <path d="M-12.0 12.0 L-1.25 12.0 A0.25 0.25 0 0 0 -0.75 12.0 L0.0 12.0" class="schemWire crossing-bridge-h" />
-    <path d="M-12.0 12.0 L0.0 12.0" class="schemWire crossing-bridge-v" />
-    <path d="M-12.0 12.0 L-1.25 12.0 M-0.75 12.0 L0.0 12.0" class="schemWire crossing-gap-h" />
-    <path d="M-12.0 12.0 L0.0 12.0" class="schemWire crossing-gap-v" />
-    <path d="M-12.0 13.0 L0.0 13.0" class="schemWire crossing-plain" />
-    <path d="M-12.0 13.0 L-1.25 13.0 A0.25 0.25 0 0 0 -0.75 13.0 L0.0 13.0" class="schemWire crossing-bridge-h" />
-    <path d="M-12.0 13.0 L0.0 13.0" class="schemWire crossing-bridge-v" />
-    <path d="M-12.0 13.0 L-1.25 13.0 M-0.75 13.0 L0.0 13.0" class="schemWire crossing-gap-h" />
-    <path d="M-12.0 13.0 L0.0 13.0" class="schemWire crossing-gap-v" />
-    <path d="M-12.0 22.0 L0.0 22.0" class="schemWire crossing-plain" />
-    <path d="M-12.0 22.0 L-1.25 22.0 A0.25 0.25 0 0 0 -0.75 22.0 L0.0 22.0" class="schemWire crossing-bridge-h" />
-    <path d="M-12.0 22.0 L0.0 22.0" class="schemWire crossing-bridge-v" />
-    <path d="M-12.0 22.0 L-1.25 22.0 M-0.75 22.0 L0.0 22.0" class="schemWire crossing-gap-h" />
-    <path d="M-12.0 22.0 L0.0 22.0" class="schemWire crossing-gap-v" />
-    <path d="M-12.0 23.0 L0.0 23.0" class="schemWire crossing-plain" />
-    <path d="M-12.0 23.0 L-1.25 23.0 A0.25 0.25 0 0 0 -0.75 23.0 L0.0 23.0" class="schemWire crossing-bridge-h" />
-    <path d="M-12.0 23.0 L0.0 23.0" class="schemWire crossing-bridge-v" />
-    <path d="M-12.0 23.0 L-1.25 23.0 M-0.75 23.0 L0.0 23.0" class="schemWire crossing-gap-h" />
-    <path d="M-12.0 23.0 L0.0 23.0" class="schemWire crossing-gap-v" />
-    <path d="M-12.0 32.0 L0.0 32.0" class="schemWire crossing-plain" />
-    <path d="M-12.0 32.0 L-1.25 32.0 A0.25 0.25 0 0 0 -0.75 32.0 L0.0 32.0" class="schemWire crossing-bridge-h" />
-    <path d="M-12.0 32.0 L0.0 32.0" class="schemWire crossing-bridge-v" />
-    <path d="M-12.0 32.0 L-1.25 32.0 M-0.75 32.0 L0.0 32.0" class="schemWire crossing-gap-h" />
-    <path d="M-12.0 32.0 L0.0 32.0" class="schemWire crossing-gap-v" />
-    <path d="M-12.0 33.0 L0.0 33.0" class="schemWire crossing-plain" />
-    <path d="M-12.0 33.0 L-1.25 33.0 A0.25 0.25 0 0 0 -0.75 33.0 L0.0 33.0" class="schemWire crossing-bridge-h" />
-    <path d="M-12.0 33.0 L0.0 33.0" class="schemWire crossing-bridge-v" />
-    <path d="M-12.0 33.0 L-1.25 33.0 M-0.75 33.0 L0.0 33.0" class="schemWire crossing-gap-h" />
-    <path d="M-12.0 33.0 L0.0 33.0" class="schemWire crossing-gap-v" />
-    <path d="M4.0 32.0 L10.0 32.0 L10.0 23.0 L12.0 23.0" class="schemWire crossing-plain" />
-    <path d="M4.0 32.0 L10.0 32.0 L10.0 23.0 L10.75 23.0 A0.25 0.25 0 0 0 11.25 23.0 L12.0 23.0" class="schemWire crossing-bridge-h" />
-    <path d="M4.0 32.0 L10.0 32.0 L10.0 23.0 L12.0 23.0" class="schemWire crossing-bridge-v" />
-    <path d="M4.0 32.0 L10.0 32.0 L10.0 23.0 L10.75 23.0 M11.25 23.0 L12.0 23.0" class="schemWire crossing-gap-h" />
-    <path d="M4.0 32.0 L10.0 32.0 L10.0 23.0 L12.0 23.0" class="schemWire crossing-gap-v" />
-    <path d="M4.0 2.0 L11.0 2.0 L11.0 12.0 L12.0 12.0" class="schemWire crossing-plain" />
-    <path d="M4.0 2.0 L9.75 2.0 A0.25 0.25 0 0 0 10.25 2.0 L11.0 2.0 L11.0 12.0 L12.0 12.0" class="schemWire crossing-bridge-h" />
-    <path d="M4.0 2.0 L11.0 2.0 L11.0 12.0 L12.0 12.0" class="schemWire crossing-bridge-v" />
-    <path d="M4.0 2.0 L9.75 2.0 M10.25 2.0 L11.0 2.0 L11.0 12.0 L12.0 12.0" class="schemWire crossing-gap-h" />
-    <path d="M4.0 2.0 L11.0 2.0 L11.0 12.0 L12.0 12.0" class="schemWire crossing-gap-v" />
-    <path d="M22.0 -5.0 L22.0 19.0 L24.0 19.0" class="schemWire crossing-plain" />
-    <path d="M22.0 -5.0 L22.0 19.0 L22.75 19.0 A0.25 0.25 0 0 0 23.25 19.0 L24.0 19.0" class="schemWire crossing-bridge-h" />
-    <path d="M22.0 -5.0 L22.0 11.75 A0.25 0.25 0 0 1 22.0 12.25 L22.0 19.0 L24.0 19.0" class="schemWire crossing-bridge-v" />
-    <path d="M22.0 -5.0 L22.0 19.0 L22.75 19.0 M23.25 19.0 L24.0 19.0" class="schemWire crossing-gap-h" />
-    <path d="M22.0 -5.0 L22.0 11.75 M22.0 12.25 L22.0 19.0 L24.0 19.0" class="schemWire crossing-gap-v" />
+    <path d="M16.0 22.0 L23.0 22.0 L23.0 19.25 M23.0 18.75 L23.0 18.0 L24.0 18.0" class="schemWire" />
+    <path d="M23.0 18.75 L23.0 19.25" class="schemWire crossing-line-v" />
+    <path d="M23.0 18.75 A0.25 0.25 0 0 1 23.0 19.25" class="schemWire crossing-bridge-v" />
+    <path d="M16.0 12.0 L21.75 12.0 M22.25 12.0 L23.0 12.0 L23.0 17.0 L24.0 17.0" class="schemWire" />
+    <path d="M21.75 12.0 L22.25 12.0" class="schemWire crossing-line-h" />
+    <path d="M21.75 12.0 A0.25 0.25 0 0 0 22.25 12.0" class="schemWire crossing-bridge-h" />
+    <path d="M-12.0 2.0 L-2.25 2.0 M-1.75 2.0 L0.0 2.0" class="schemWire" />
+    <path d="M-2.25 2.0 L-1.75 2.0" class="schemWire crossing-line-h" />
+    <path d="M-2.25 2.0 A0.25 0.25 0 0 0 -1.75 2.0" class="schemWire crossing-bridge-h" />
+    <path d="M-12.0 3.0 L-2.25 3.0 M-1.75 3.0 L0.0 3.0" class="schemWire" />
+    <path d="M-2.25 3.0 L-1.75 3.0" class="schemWire crossing-line-h" />
+    <path d="M-2.25 3.0 A0.25 0.25 0 0 0 -1.75 3.0" class="schemWire crossing-bridge-h" />
+    <path d="M-12.0 12.0 L-1.25 12.0 M-0.75 12.0 L0.0 12.0" class="schemWire" />
+    <path d="M-1.25 12.0 L-0.75 12.0" class="schemWire crossing-line-h" />
+    <path d="M-1.25 12.0 A0.25 0.25 0 0 0 -0.75 12.0" class="schemWire crossing-bridge-h" />
+    <path d="M-12.0 13.0 L-1.25 13.0 M-0.75 13.0 L0.0 13.0" class="schemWire" />
+    <path d="M-1.25 13.0 L-0.75 13.0" class="schemWire crossing-line-h" />
+    <path d="M-1.25 13.0 A0.25 0.25 0 0 0 -0.75 13.0" class="schemWire crossing-bridge-h" />
+    <path d="M-12.0 22.0 L-1.25 22.0 M-0.75 22.0 L0.0 22.0" class="schemWire" />
+    <path d="M-1.25 22.0 L-0.75 22.0" class="schemWire crossing-line-h" />
+    <path d="M-1.25 22.0 A0.25 0.25 0 0 0 -0.75 22.0" class="schemWire crossing-bridge-h" />
+    <path d="M-12.0 23.0 L-1.25 23.0 M-0.75 23.0 L0.0 23.0" class="schemWire" />
+    <path d="M-1.25 23.0 L-0.75 23.0" class="schemWire crossing-line-h" />
+    <path d="M-1.25 23.0 A0.25 0.25 0 0 0 -0.75 23.0" class="schemWire crossing-bridge-h" />
+    <path d="M-12.0 32.0 L-1.25 32.0 M-0.75 32.0 L0.0 32.0" class="schemWire" />
+    <path d="M-1.25 32.0 L-0.75 32.0" class="schemWire crossing-line-h" />
+    <path d="M-1.25 32.0 A0.25 0.25 0 0 0 -0.75 32.0" class="schemWire crossing-bridge-h" />
+    <path d="M-12.0 33.0 L-1.25 33.0 M-0.75 33.0 L0.0 33.0" class="schemWire" />
+    <path d="M-1.25 33.0 L-0.75 33.0" class="schemWire crossing-line-h" />
+    <path d="M-1.25 33.0 A0.25 0.25 0 0 0 -0.75 33.0" class="schemWire crossing-bridge-h" />
+    <path d="M4.0 32.0 L10.0 32.0 L10.0 23.0 L10.75 23.0 M11.25 23.0 L12.0 23.0" class="schemWire" />
+    <path d="M10.75 23.0 L11.25 23.0" class="schemWire crossing-line-h" />
+    <path d="M10.75 23.0 A0.25 0.25 0 0 0 11.25 23.0" class="schemWire crossing-bridge-h" />
+    <path d="M4.0 2.0 L9.75 2.0 M10.25 2.0 L11.0 2.0 L11.0 12.0 L12.0 12.0" class="schemWire" />
+    <path d="M9.75 2.0 L10.25 2.0" class="schemWire crossing-line-h" />
+    <path d="M9.75 2.0 A0.25 0.25 0 0 0 10.25 2.0" class="schemWire crossing-bridge-h" />
+    <path d="M22.0 -5.0 L22.0 11.75 M22.0 12.25 L22.0 19.0 L22.75 19.0 M23.25 19.0 L24.0 19.0" class="schemWire" />
+    <path d="M22.0 11.75 L22.0 12.25" class="schemWire crossing-line-v" />
+    <path d="M22.0 11.75 A0.25 0.25 0 0 1 22.0 12.25" class="schemWire crossing-bridge-v" />
+    <path d="M22.75 19.0 L23.25 19.0" class="schemWire crossing-line-h" />
+    <path d="M22.75 19.0 A0.25 0.25 0 0 0 23.25 19.0" class="schemWire crossing-bridge-h" />
     <circle cx="-1.0" cy="4.0" r="0.1625" class="connPoint" />
     <circle cx="-1.0" cy="14.0" r="0.1625" class="connPoint" />
     <circle cx="-1.0" cy="24.0" r="0.1625" class="connPoint" />

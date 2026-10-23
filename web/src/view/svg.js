@@ -4,6 +4,8 @@
 import * as d3 from "d3";
 import { View, CoordinateDisplay } from './view.js';
 
+const CROSSING_TITLE = 'How wires crossing without connection are drawn (saved for all schematics)';
+
 // SVG viewer for schematics and symbols.
 // Listens to lvs:schem-select and lvs:clear for LVS highlighting.
 // Also consumes pending 'lvs:select' on init if schematic opened after LVS item selected.
@@ -22,9 +24,8 @@ export class SvgView extends View {
         // labels that symbols mark as hidden (class "detailOnly" in render.py),
         // on shows them.
         this.detail = false;
-        // Crossing style select, kept across updates: one of crossing_styles
-        // in render.py, which emits a path per style for crossing wires.
-        this.crossings = 'plain';
+        // Crossing style select of schematics (null for symbols).
+        this.crossingSelect = null;
 
         this.onLvsSelect = (data) => {
             if (data && !this.selectionApplies(data.schemView, data.schemWireHash)) {
@@ -35,6 +36,8 @@ export class SvgView extends View {
         this.onLvsClear = () => this.clearHighlight();
         this.busSubscribe('lvs:schem-select', this.onLvsSelect);
         this.busSubscribe('lvs:clear', this.onLvsClear);
+        // The crossing style is global: a change in any viewer applies to all.
+        this.busSubscribe('config:change', () => this.applyCrossings());
 
         // A selection made before this view was opened; taken by update(),
         // once there is an SVG to highlight in and a wire hash to match.
@@ -129,7 +132,7 @@ export class SvgView extends View {
         } else if (itemType === 'net') {
             // Net highlighting: highlight wires and tap points only (not ports)
             elements.each(function() {
-                // Skip the wire paths of unselected crossing styles.
+                // Skip the crossing pieces of unselected crossing styles.
                 if (getComputedStyle(this).display === 'none') {
                     return;
                 }
@@ -264,10 +267,10 @@ export class SvgView extends View {
         };
         applyDetail();
         statusBar.append(detailToggle);
+        this.crossingSelect = null;
         if (msgData.crossing_select) {
             const crossingSelect = document.createElement('select');
             crossingSelect.className = 'schem-crossing-select';
-            crossingSelect.title = 'How wires crossing without connection are drawn';
             for (const [value, label] of [
                 ['plain', 'Crossings: plain'],
                 ['bridge-h', 'Crossings: bridge horizontal'],
@@ -277,17 +280,17 @@ export class SvgView extends View {
             ]) {
                 crossingSelect.add(new Option(label, value));
             }
-            const applyCrossings = () => {
-                crossingSelect.value = this.crossings;
-                this.svgNode.dataset.crossings = this.crossings;
-            };
             crossingSelect.onchange = () => {
-                this.crossings = crossingSelect.value;
-                applyCrossings();
+                this.resultViewer.client.setConfig('schematic', 'crossings', crossingSelect.value, exception => {
+                    crossingSelect.classList.toggle('error', !!exception);
+                    crossingSelect.title = exception ? `Not saved: ${exception.message}` : CROSSING_TITLE;
+                });
             };
-            applyCrossings();
+            crossingSelect.title = CROSSING_TITLE;
             statusBar.append(crossingSelect);
+            this.crossingSelect = crossingSelect;
         }
+        this.applyCrossings();
         statusBar.append(this.coordsDisplay.element);
         schemRoot.append(svgHost, statusBar);
 
@@ -364,6 +367,16 @@ export class SvgView extends View {
         const pending = this.takePendingSelection('pendingHighlight');
         if (pending) {
             this.setHighlight(pending);
+        }
+    }
+    // Shows the crossing style of the user's configuration: render.py emits
+    // pieces of all styles at crossings, and its CSS shows those of the
+    // style in the data-crossings attribute of the schematic group.
+    applyCrossings() {
+        const crossings = this.resultViewer.client.config.schematic?.crossings ?? 'plain';
+        this.svgNode?.querySelector('.schematic')?.setAttribute('data-crossings', crossings);
+        if (this.crossingSelect) {
+            this.crossingSelect.value = crossings;
         }
     }
     destroy() {
