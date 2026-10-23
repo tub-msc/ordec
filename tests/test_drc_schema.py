@@ -20,8 +20,6 @@ def drc_test_layers():
     layers % Layer(
         gdslayer_shapes=GdsLayer(1, 0),
         gdslayer_text=GdsLayer(1, 1),
-        style_fill=RGBColor(255, 0, 0),
-        style_stroke=RGBColor(200, 0, 0),
     )
     return layers
 

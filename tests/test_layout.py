@@ -983,3 +983,41 @@ def test_create_pin_method():
     assert isinstance(pin_cursor, LayoutPin.Mutable)
     assert pin_cursor.ref.nid == r.nid
     assert pin_cursor.pin.nid == sym.my_pin.nid
+
+def test_layout_style(tmp_path, monkeypatch):
+    from ordec.layout.style import read_layout_style, update_customization
+    layers = SG13G2().layers
+    style = SG13G2().layout_style
+    assert style.customized() is style # no user file
+
+    monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path))
+    user = tmp_path / 'ordec' / 'layout' / 'ihp-sg13g2.toml'
+    user.parent.mkdir(parents=True)
+    user.write_text('# my colors\n[patterns]\ndots = ' + repr(['*...' * 4, '.' * 16] * 8) + '\n')
+    update_customization(style, {'background': '#ffffff', 'opacity': 0.5},
+        {'Metal1.pin': {'stroke': '#123456', 'pattern': 'dots'}})
+    update_customization(style, {'opacity': None}, {})
+    assert user.read_text().startswith('# my colors\n')
+    c = style.customized()
+    entry = lambda s: s.one(LayoutStyleLayer.layer_index.query(layers.Metal1.pin))
+    # The entry is replaced as a whole (no fill), in its place in the drawing order.
+    assert (c.background, entry(c).stroke, entry(c).fill, entry(c).pattern.name) == \
+        (RGBColor(255, 255, 255), RGBColor(0x12, 0x34, 0x56), None, 'dots')
+    assert entry(c).nid == entry(style).nid
+    assert (c.blend, c.opacity) == (style.blend, style.opacity)
+    _, data = Layout(ref_layers=layers).freeze().webdata(None)
+    assert (data['style']['userSettings'], data['style']['userLayers']) == \
+        (['background'], ['Metal1.pin'])
+    assert data['style']['default']['background'] == style.background
+
+    # Unknown layers are errors, in the user file as in the default; an
+    # update leaves the file unchanged then.
+    text = user.read_text()
+    with pytest.raises(ValueError, match="unknown layer 'Metal9'"):
+        update_customization(style, {}, {'Metal9': {'fill': '#000000'}})
+    assert user.read_text() == text
+    user.write_text('[layers]\nMetal9 = { fill = "#000000" }\n')
+    with pytest.raises(ValueError, match="unknown layer 'Metal9'"):
+        style.customized()
+    with pytest.raises(ValueError, match="unknown layer 'Metal9'"):
+        read_layout_style(layers, user, 'x')

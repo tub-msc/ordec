@@ -30,6 +30,7 @@ dependencies = [
     "python-gdsii>=0.2.1",
     "sc-leflib>=0.5.1",
     "cbor2>=6.0.0",
+    "tomlkit>=0.13",
 ]
 dynamic = ["version"]
 license = "Apache-2.0"
@@ -77,6 +78,7 @@ where = ["src"]
 [tool.setuptools.package-data]
 "ordec.ord" = ["*.lark"]
 "ordec.layout" = ["*.lark"]
+"ordec.lib" = ["*.toml"]
 "ordec.examples" = ["*.json", "*.ord"]
 "ordec.courses.getting_started" = ["*.json", "*.ord"]
 "ordec.courses.cmos_circuits" = ["*.json", "*.ord"]

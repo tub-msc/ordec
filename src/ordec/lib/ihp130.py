@@ -8,6 +8,7 @@ from pathlib import Path
 from dataclasses import dataclass
 from public import public
 import functools
+from importlib import resources
 from enum import Enum
 
 from ..schematic.spice_in import DeviceMapping
@@ -17,6 +18,7 @@ from ..sim.ngspice import NgspiceSetup
 from . import base, generic_mos
 from .pdk_common import PdkDict, check_dir, check_file, rundir
 from ..layout import makevias, write_gds, flatten
+from ..layout.style import read_layout_style
 from ..extlibrary import ExtLibrary
 from ..layout import klayout
 from ..layout.pnr import GridConfig
@@ -241,361 +243,198 @@ class SG13G2(Cell):
 
         s.Activ = Layer(
             gdslayer_shapes=GdsLayer(layer=1, data_type=0),
-            style_fill=rgb_color("#00ff00"),
             pin=s % Layer(
                 # Pin names on the label purpose: the PDK has no text purpose
                 # here (LVS reads neither).
                 gdslayer_text=GdsLayer(layer=1, data_type=1),
                 gdslayer_shapes=GdsLayer(layer=1, data_type=2),
-                style_fill=rgb_color("#00ff00"),
                 is_pinlayer=True,
             ),
             )
-        s.Activ.mask = Layer(
-            gdslayer_shapes=GdsLayer(layer=1, data_type=20),
-            style_fill=rgb_color("#00ff00"),
-            )
-        s.Activ.noqrc = Layer(
-            gdslayer_shapes=GdsLayer(layer=1, data_type=28),
-            style_fill=rgb_color("#ff0000"),
-            )
-        s.Activ.nofill = Layer(
-            gdslayer_shapes=GdsLayer(layer=1, data_type=23),
-            style_fill=rgb_color("#00ff00"),
-            )
+        s.Activ.mask = Layer(gdslayer_shapes=GdsLayer(layer=1, data_type=20))
+        s.Activ.noqrc = Layer(gdslayer_shapes=GdsLayer(layer=1, data_type=28))
+        s.Activ.nofill = Layer(gdslayer_shapes=GdsLayer(layer=1, data_type=23))
 
         s.GatPoly = Layer(
             gdslayer_shapes=GdsLayer(layer=5, data_type=0),
-            style_fill=rgb_color("#bf4026"),
             pin=s % Layer(
                 # Pin names on the label purpose: the PDK has no text purpose
                 # here (LVS reads neither).
                 gdslayer_text=GdsLayer(layer=5, data_type=1),
                 gdslayer_shapes=GdsLayer(layer=5, data_type=2),
-                style_fill=rgb_color("#bf4026"),
                 is_pinlayer=True,
             ),
         )
-        s.GatPoly.nofill = Layer(
-            gdslayer_shapes=GdsLayer(layer=5, data_type=23),
-            style_fill=rgb_color("#bf4026"),
-            )
+        s.GatPoly.nofill = Layer(gdslayer_shapes=GdsLayer(layer=5, data_type=23))
         
-        s.Cont = Layer(
-            gdslayer_shapes=GdsLayer(layer=6, data_type=0),
-            style_stroke=rgb_color("#00ffff"),
-            style_crossrect=True,
-            )
+        s.Cont = Layer(gdslayer_shapes=GdsLayer(layer=6, data_type=0))
 
-        s.pSD = Layer(
-            gdslayer_shapes=GdsLayer(layer=14, data_type=0),
-            style_fill=rgb_color("#ccb899"),
-            )
+        s.pSD = Layer(gdslayer_shapes=GdsLayer(layer=14, data_type=0))
 
-        s.nSD = Layer(
-            gdslayer_shapes=GdsLayer(layer=7, data_type=0),
-            style_fill=rgb_color("#99b8d9"),
-            )
-        s.nSD.block = Layer(
-            gdslayer_shapes=GdsLayer(layer=7, data_type=21),
-            style_fill=rgb_color("#00cc66"),
-            )
+        s.nSD = Layer(gdslayer_shapes=GdsLayer(layer=7, data_type=0))
+        s.nSD.block = Layer(gdslayer_shapes=GdsLayer(layer=7, data_type=21))
 
         s.NWell = Layer(
             gdslayer_shapes=GdsLayer(layer=31, data_type=0),
             gdslayer_text=GdsLayer(layer=31, data_type=0),
-            style_fill=rgb_color("#268c6b"),
             pin=s % Layer(
                 gdslayer_text=GdsLayer(layer=31, data_type=25),
                 gdslayer_shapes=GdsLayer(layer=31, data_type=2),
-                style_fill=rgb_color("#268c6b"),
                 is_pinlayer=True,
             ),
             )
 
-        s.nBuLay = Layer(
-            gdslayer_shapes=GdsLayer(layer=32, data_type=0),
-            style_fill=rgb_color("#8c8ca6"),
-            )
+        s.nBuLay = Layer(gdslayer_shapes=GdsLayer(layer=32, data_type=0))
 
-        s.PWell = Layer(
-            gdslayer_shapes=GdsLayer(layer=46, data_type=0),
-            style_fill=rgb_color("#ffff00"),
-            )
-        s.PWell.block = Layer(
-            gdslayer_shapes=GdsLayer(layer=46, data_type=21),
-            style_fill=rgb_color("#ff8000"),
-            )
+        s.PWell = Layer(gdslayer_shapes=GdsLayer(layer=46, data_type=0))
+        s.PWell.block = Layer(gdslayer_shapes=GdsLayer(layer=46, data_type=21))
 
-        s.ThickGateOx = Layer(
-            gdslayer_shapes=GdsLayer(layer=44, data_type=0),
-            style_fill=rgb_color("#ffffcc"),
-            )
+        s.ThickGateOx = Layer(gdslayer_shapes=GdsLayer(layer=44, data_type=0))
 
-        s.TRANS = Layer(
-            gdslayer_shapes=GdsLayer(layer=26, data_type=0),
-            style_fill=rgb_color("#00ffff"),
-            )
+        s.TRANS = Layer(gdslayer_shapes=GdsLayer(layer=26, data_type=0))
 
-        s.EmWind = Layer(
-            gdslayer_shapes=GdsLayer(layer=33, data_type=0),
-            style_fill=rgb_color("#00cc66"),
-            )
+        s.EmWind = Layer(gdslayer_shapes=GdsLayer(layer=33, data_type=0))
 
-        s.EmWiHV = Layer(
-            gdslayer_shapes=GdsLayer(layer=156, data_type=0),
-            style_fill=rgb_color("#00cc66"),
-            )
+        s.EmWiHV = Layer(gdslayer_shapes=GdsLayer(layer=156, data_type=0))
 
         # Metal stack
         # -----------
 
-        def metal(layer, color):
+        def metal(layer):
             """Insert a metal layer with its pin layer; the caller names the metal."""
             pin = s % Layer(
                 gdslayer_text=GdsLayer(layer=layer, data_type=25),
                 gdslayer_shapes=GdsLayer(layer=layer, data_type=2),
-                style_fill=color,
                 is_pinlayer=True,
             )
-            return s % Layer(
-                gdslayer_shapes=GdsLayer(layer=layer, data_type=0),
-                style_fill=color,
-                pin=pin,
-            )
+            return s % Layer(gdslayer_shapes=GdsLayer(layer=layer, data_type=0), pin=pin)
 
-        def via(layer, color):
-            return Layer(
-                gdslayer_shapes=GdsLayer(layer=layer, data_type=0),
-                style_stroke=color,
-                style_crossrect=True,
-            )
+        def via(layer):
+            return Layer(gdslayer_shapes=GdsLayer(layer=layer, data_type=0))
 
-        s.Metal1 = metal(8, rgb_color("#39bfff"))
-        s.Via1 = via(19, rgb_color("#ccccff"))
-        s.Metal2 = metal(10, rgb_color("#ccccd9"))
-        s.Via2 = via(29, rgb_color("#ff3736"))
-        s.Metal3 = metal(30, rgb_color("#d80000"))
-        s.Via3 = via(49, rgb_color("#9ba940"))
-        s.Metal4 = metal(50, rgb_color("#93e837"))
-        s.Via4 = via(66, rgb_color("#deac5e"))
-        s.Metal5 = metal(67, rgb_color("#dcd146"))
-        s.TopVia1 = via(125, rgb_color("#ffe6bf"))
-        s.TopMetal1 = metal(126, rgb_color("#ffe6bf"))
-        s.TopVia2 = via(133, rgb_color("#ff8000"))
-        s.TopMetal2 = metal(134, rgb_color("#ff8000"))
+        s.Metal1 = metal(8)
+        s.Via1 = via(19)
+        s.Metal2 = metal(10)
+        s.Via2 = via(29)
+        s.Metal3 = metal(30)
+        s.Via3 = via(49)
+        s.Metal4 = metal(50)
+        s.Via4 = via(66)
+        s.Metal5 = metal(67)
+        s.TopVia1 = via(125)
+        s.TopMetal1 = metal(126)
+        s.TopVia2 = via(133)
+        s.TopMetal2 = metal(134)
 
         for m in (s.Metal1, s.Metal2, s.Metal3, s.Metal4, s.Metal5, s.TopMetal1):
-            m.noqrc = Layer(
-                gdslayer_shapes=GdsLayer(layer=m.gdslayer_shapes.layer, data_type=28),
-                style_fill=rgb_color("#ff0000"),
-                )
+            m.noqrc = Layer(gdslayer_shapes=GdsLayer(layer=m.gdslayer_shapes.layer, data_type=28))
         for m in (s.Metal1, s.Metal2, s.Metal3, s.Metal4, s.Metal5, s.TopMetal1, s.TopMetal2):
             n = m.gdslayer_shapes.layer
-            m.mask = Layer(
-                gdslayer_shapes=GdsLayer(layer=n, data_type=20),
-                style_fill=m.style_fill,
-                )
-            m.nofill = Layer(
-                gdslayer_shapes=GdsLayer(layer=n, data_type=23),
-                style_fill=m.style_fill,
-                )
+            m.mask = Layer(gdslayer_shapes=GdsLayer(layer=n, data_type=20))
+            m.nofill = Layer(gdslayer_shapes=GdsLayer(layer=n, data_type=23))
             # Metal resistor marker and probe points
-            m.res = Layer(
-                gdslayer_shapes=GdsLayer(layer=n, data_type=29),
-                style_fill=rgb_color("#bf4026"),
-                )
-            m.iprobe = Layer(
-                gdslayer_shapes=GdsLayer(layer=n, data_type=33),
-                style_fill=m.style_fill,
-                )
-            m.diffprb = Layer(
-                gdslayer_shapes=GdsLayer(layer=n, data_type=34),
-                style_fill=m.style_fill,
-                )
+            m.res = Layer(gdslayer_shapes=GdsLayer(layer=n, data_type=29))
+            m.iprobe = Layer(gdslayer_shapes=GdsLayer(layer=n, data_type=33))
+            m.diffprb = Layer(gdslayer_shapes=GdsLayer(layer=n, data_type=34))
 
         # Other layers
         # ------------
 
-        s.EXTBlock = Layer(
-            gdslayer_shapes=GdsLayer(layer=111, data_type=0),
-            style_fill=rgb_color("#5e00e6"),
-            )
+        s.EXTBlock = Layer(gdslayer_shapes=GdsLayer(layer=111, data_type=0))
 
-        s.RES = Layer(
-            gdslayer_shapes=GdsLayer(layer=24, data_type=0),
-            style_fill=rgb_color("#ff9966"),
-            )
+        s.RES = Layer(gdslayer_shapes=GdsLayer(layer=24, data_type=0))
 
-        s.SalBlock = Layer(
-            gdslayer_shapes=GdsLayer(layer=28, data_type=0),
-            style_fill=rgb_color("#996633"),
-            )
+        s.SalBlock = Layer(gdslayer_shapes=GdsLayer(layer=28, data_type=0))
 
-        s.MIM = Layer(
-            gdslayer_shapes=GdsLayer(layer=36, data_type=0),
-            style_fill=rgb_color("#268c6b"),
-            )
+        s.MIM = Layer(gdslayer_shapes=GdsLayer(layer=36, data_type=0))
 
         s.Substrate = Layer(
             gdslayer_shapes=GdsLayer(layer=40, data_type=0),
             gdslayer_text=GdsLayer(layer=40, data_type=0),
-            style_fill=rgb_color("#ffffff"),
             )
 
         s.HeatTrans = Layer(
             gdslayer_shapes=GdsLayer(layer=51, data_type=0),
             gdslayer_text=GdsLayer(layer=51, data_type=0),
-            style_fill=rgb_color("#8c8ca6"),
             )
 
         s.HeatRes = Layer(
             gdslayer_shapes=GdsLayer(layer=52, data_type=0),
             gdslayer_text=GdsLayer(layer=52, data_type=0),
-            style_fill=rgb_color("#8c8ca6"),
             )
 
         s.IND = Layer(
             gdslayer_shapes=GdsLayer(layer=27, data_type=0),
-            style_fill=rgb_color("#ffff00"),
             pin=s % Layer(
                 gdslayer_text=GdsLayer(layer=27, data_type=25),
                 gdslayer_shapes=GdsLayer(layer=27, data_type=2),
-                style_fill=rgb_color("#ffff00"),
                 is_pinlayer=True,
             ),
             )
 
-        s.IND.boundary = Layer(
-            gdslayer_shapes=GdsLayer(layer=27, data_type=4),
-            style_fill=rgb_color("#ffff00"),
-            )
+        s.IND.boundary = Layer(gdslayer_shapes=GdsLayer(layer=27, data_type=4))
 
-        s.NoRCX = Layer(
-            gdslayer_shapes=GdsLayer(layer=148, data_type=0),
-            style_fill=rgb_color("#ff0000"),
-            )
+        s.NoRCX = Layer(gdslayer_shapes=GdsLayer(layer=148, data_type=0))
 
-        s.DigiBnd = Layer(
-            gdslayer_shapes=GdsLayer(layer=16, data_type=0),
-            style_fill=rgb_color("#ff0000"),
-            )
+        s.DigiBnd = Layer(gdslayer_shapes=GdsLayer(layer=16, data_type=0))
 
-        s.SRAM = Layer(
-            gdslayer_shapes=GdsLayer(layer=25, data_type=0),
-            style_fill=rgb_color("#ffff00"),
-            )
+        s.SRAM = Layer(gdslayer_shapes=GdsLayer(layer=25, data_type=0))
 
-        s.MemCap = Layer(
-            gdslayer_shapes=GdsLayer(layer=69, data_type=0),
-            style_fill=rgb_color("#ff00ff"),
-            )
+        s.MemCap = Layer(gdslayer_shapes=GdsLayer(layer=69, data_type=0))
 
-        s.Passiv = Layer(
-            gdslayer_shapes=GdsLayer(layer=9, data_type=0),
-            style_fill=rgb_color("#e61f0d"),
-            )
+        s.Passiv = Layer(gdslayer_shapes=GdsLayer(layer=9, data_type=0))
 
-        s.dfpad = Layer(
-            gdslayer_shapes=GdsLayer(layer=41, data_type=0),
-            style_fill=rgb_color("#5e00e6"),
-            )
+        s.dfpad = Layer(gdslayer_shapes=GdsLayer(layer=41, data_type=0))
 
-        s.EdgeSeal = Layer(
-            gdslayer_shapes=GdsLayer(layer=39, data_type=0),
-            style_fill=rgb_color("#5e00e6"),
-            )
+        s.EdgeSeal = Layer(gdslayer_shapes=GdsLayer(layer=39, data_type=0))
 
-        s.EdgeSealBoundary = Layer(
-            gdslayer_shapes=GdsLayer(layer=39, data_type=4),
-            style_stroke=rgb_color("#5e00e6"),
-            )
+        s.EdgeSealBoundary = Layer(gdslayer_shapes=GdsLayer(layer=39, data_type=4))
 
         s.TEXT = Layer(
             gdslayer_text=GdsLayer(layer=63, data_type=0),
             gdslayer_shapes=GdsLayer(layer=63, data_type=0),
             )
 
-        s.Recog = Layer(
-            gdslayer_shapes=GdsLayer(layer=99, data_type=0),
-            style_fill=rgb_color("#bdcccc"),
-            )
-        s.Recog.esd = Layer(
-            gdslayer_shapes=GdsLayer(layer=99, data_type=30),
-            style_fill=rgb_color("#ffff00"),
-            )
-        s.Recog.diode = Layer(
-            gdslayer_shapes=GdsLayer(layer=99, data_type=31),
-            style_fill=rgb_color("#5e00e6"),
-            )
-        s.Recog.mom = Layer(
-            gdslayer_shapes=GdsLayer(layer=99, data_type=39),
-            style_fill=rgb_color("#268c6b"),
-            )
+        s.Recog = Layer(gdslayer_shapes=GdsLayer(layer=99, data_type=0))
+        s.Recog.esd = Layer(gdslayer_shapes=GdsLayer(layer=99, data_type=30))
+        s.Recog.diode = Layer(gdslayer_shapes=GdsLayer(layer=99, data_type=31))
+        s.Recog.mom = Layer(gdslayer_shapes=GdsLayer(layer=99, data_type=39))
 
-        s.Vmim = Layer(
-            gdslayer_shapes=GdsLayer(layer=129, data_type=0),
-            style_fill=rgb_color("#ffe6bf"),
-            )
+        s.Vmim = Layer(gdslayer_shapes=GdsLayer(layer=129, data_type=0))
 
         s.PolyRes = Layer(
             gdslayer_shapes=GdsLayer(layer=128, data_type=0),
-            style_fill=rgb_color("#cc6633"),
-            pin=s % Layer(
-                gdslayer_shapes=GdsLayer(layer=128, data_type=2),
-                style_fill=rgb_color("#cc6633"),
-                is_pinlayer=True,
-            ),
+            pin=s % Layer(gdslayer_shapes=GdsLayer(layer=128, data_type=2), is_pinlayer=True),
         )
 
-        s.prBoundary = Layer(
-            gdslayer_shapes=GdsLayer(layer=189, data_type=4), # data_type 4 or 0?
-            style_fill=rgb_color("#9900e6"),
-            style_stroke=rgb_color("#ff00ff"),
-            )
-        s.prBoundary.drawing = Layer(
-            gdslayer_shapes=GdsLayer(layer=189, data_type=0),
-            style_stroke=rgb_color("#ff00ff"),
-            )
+        s.prBoundary = Layer(gdslayer_shapes=GdsLayer(layer=189, data_type=4)) # data_type 4 or 0?
+        s.prBoundary.drawing = Layer(gdslayer_shapes=GdsLayer(layer=189, data_type=0))
 
-        s.NoMetFiller = Layer(
-            gdslayer_shapes=GdsLayer(layer=160, data_type=0),
-            style_fill=rgb_color("#ff0000"),
-            )
-        s.LBE = Layer(
-            gdslayer_shapes=GdsLayer(layer=157, data_type=0),
-            style_fill=rgb_color("#bfbfbf"),
-            )
-        s.DigiSub = Layer(
-            gdslayer_shapes=GdsLayer(layer=60, data_type=0),
-            style_fill=rgb_color("#ff00ff"),
-            )
+        s.NoMetFiller = Layer(gdslayer_shapes=GdsLayer(layer=160, data_type=0))
+        s.LBE = Layer(gdslayer_shapes=GdsLayer(layer=157, data_type=0))
+        s.DigiSub = Layer(gdslayer_shapes=GdsLayer(layer=60, data_type=0))
 
         # Further purposes of the PDK layers, as hand-drawn layouts use them:
         # fill, labels, text shapes and boundaries.
         metals = (s.Metal1, s.Metal2, s.Metal3, s.Metal4, s.Metal5, s.TopMetal1, s.TopMetal2)
         vias = (s.Cont, s.Via1, s.Via2, s.Via3, s.Via4, s.TopVia1, s.TopVia2)
         for l in (s.Activ, s.GatPoly) + metals:
-            l.filler = Layer(
-                gdslayer_shapes=GdsLayer(layer=l.gdslayer_shapes.layer, data_type=22),
-                style_fill=l.style_fill,
-                )
+            l.filler = Layer(gdslayer_shapes=GdsLayer(layer=l.gdslayer_shapes.layer, data_type=22))
         # Activ and GatPoly carry their labels on the pin layers (see above).
         for l in (s.PolyRes, s.NWell, s.nBuLay, s.PWell, s.Passiv, s.RES, s.SRAM, s.prBoundary) + metals:
             l.label = Layer(gdslayer_text=GdsLayer(layer=l.gdslayer_shapes.layer, data_type=1))
         for l in metals:
-            l.text = Layer(
-                gdslayer_shapes=GdsLayer(layer=l.gdslayer_shapes.layer, data_type=25),
-                style_fill=l.style_fill,
-                )
+            l.text = Layer(gdslayer_shapes=GdsLayer(layer=l.gdslayer_shapes.layer, data_type=25))
         for l in (s.Activ, s.GatPoly, s.PolyRes, s.NWell, s.nBuLay, s.PWell, s.MIM, s.Passiv, s.SRAM) \
             + metals + vias:
-            l.boundary = Layer(
-                gdslayer_shapes=GdsLayer(layer=l.gdslayer_shapes.layer, data_type=4),
-                style_stroke=l.style_fill or l.style_stroke,
-                )
+            l.boundary = Layer(gdslayer_shapes=GdsLayer(layer=l.gdslayer_shapes.layer, data_type=4))
 
         return s
+
+    @viewgen_noctx
+    def layout_style(self):
+        return read_layout_style(self.layers,
+            resources.files(__package__) / 'ihp130_layout_style.toml', 'ihp-sg13g2')
 
     @viewgen_noctx
     def default_routing_spec(self):

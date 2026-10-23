@@ -1071,6 +1071,31 @@ def myhistogram(img, thresh=50):
     return h
 
 @pytest.mark.web
+def test_layout_style_edit(web, tmp_path, monkeypatch):
+    """Style changes in the layout viewer apply right away and are saved to
+    the user's customization file."""
+    monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path))
+    web.resize_viewport()
+    qs_local = web.key.query_string_local("tests.lib.layoutgl_example", ["layoutgl_example()"])
+    web.navigate(f'app.html#refreshall=true&{qs_local}')
+    web.wait_for_ready()
+    web.driver.execute_script("""
+        const blend = Array.from(document.querySelectorAll('.layout-style-row'))
+            .find(row => row.textContent.startsWith('Blend')).querySelector('select');
+        blend.value = 'ink';
+        blend.onchange();
+    """)
+    assert '(customized)' in web.driver.execute_script(
+        "return document.querySelector('.layout-style-info').textContent")
+    user = tmp_path / 'ordec' / 'layout' / 'ihp-sg13g2.toml'
+    for _ in range(100):
+        if user.exists() and 'blend = "ink"' in user.read_text():
+            break
+        time.sleep(0.05)
+    else:
+        pytest.fail("customization file not written")
+
+@pytest.mark.web
 def test_layoutgl(web):
     """Fuzzy visual testing of web layout viewer (layout-gl.js)."""
     web.resize_viewport()

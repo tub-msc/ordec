@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import os
+import shutil
+import tempfile
 import types
 
 import pytest
@@ -16,6 +18,15 @@ MAX_WORKERS = 8
 # web tests starts its own ORDeC server and headless Chrome (about 1 GB per
 # Chrome), which is why they are not distributed freely.
 WEB_WORKERS = 4
+
+def pytest_configure(config):
+    # Keep the user's configuration (such as LayoutStyle customizations in
+    # ~/.config/ordec/layout/, see ordec.layout.style) out of the tests.
+    config.ordec_config_home = tempfile.mkdtemp(prefix='ordec-test-config-')
+    os.environ['XDG_CONFIG_HOME'] = config.ordec_config_home
+
+def pytest_unconfigure(config):
+    shutil.rmtree(config.ordec_config_home, ignore_errors=True)
 
 def pytest_xdist_auto_num_workers(config):
     return min(MAX_WORKERS, os.cpu_count() or 1)

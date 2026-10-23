@@ -16,6 +16,8 @@ export class OrdecClient {
         // may be in flight at once; the server's pass manager decides how
         // many run concurrently.
         this.inflight = new Map();
+        // In-flight setlayoutstyle requests: req id -> callback.
+        this.styleRequests = new Map();
         this.reqCounter = 0;
         this.srctype = srctype;
         this.src = ""; // set by Editor from the outside
@@ -76,6 +78,7 @@ export class OrdecClient {
         this.sock.onclose = (ev) => this.wsOnClose(ev);
         this.sock.onerror = (ev) => this.wsOnError(ev);
         this.inflight.clear();
+        this.failStyleRequests();
         this.buildPending = true;
         this.updateStatus();
     }
@@ -122,6 +125,10 @@ export class OrdecClient {
             } finally {
                 this.requestViews();
             }
+        } else if (msg['msg'] == 'setlayoutstyle') {
+            const onReply = this.styleRequests.get(msg['req']);
+            this.styleRequests.delete(msg['req']);
+            onReply?.(msg.exception ?? null);
         } else if (msg['msg'] == 'viewprogress') {
             this.inflight.get(msg['req'])?.updateProgress(msg);
         } else if (msg['msg'] == 'localmodule_changed') {
@@ -144,6 +151,7 @@ export class OrdecClient {
         // reconnect doesn't get stuck waiting for responses that will never
         // arrive.
         this.inflight.clear();
+        this.failStyleRequests();
         this.buildPending = false;
         if (session.hubMode && !this.sockOpened) {
             // Hub-hosted and the socket never opened: the server instance
@@ -230,6 +238,33 @@ export class OrdecClient {
             });
         }
         this.updateStatus();
+    }
+
+    // Pending setlayoutstyle requests get no answer once the socket is gone.
+    failStyleRequests() {
+        this.styleRequests.forEach(onReply =>
+            onReply({etype: 'Error', message: 'Connection to the server lost before saving.'}));
+        this.styleRequests.clear();
+    }
+
+    // Changes the user's customization of the LayoutStyle with the given key
+    // (settings and layers as in update_customization in
+    // src/ordec/layout/style.py). onReply(exception) is called with the
+    // server's answer: null once the file is written, else the exception.
+    setLayoutStyle(key, settings, layers, onReply) {
+        if (this.exception || !this.sock || this.sock.readyState != WebSocket.OPEN) {
+            onReply({etype: 'Error', message: 'Not connected to the server.'});
+            return;
+        }
+        const req = ++this.reqCounter;
+        this.styleRequests.set(req, onReply);
+        this.sock.send(cbor.encode({
+            msg: 'setlayoutstyle',
+            key: key,
+            req: req,
+            settings: settings,
+            layers: layers,
+        }));
     }
 
     cancelView(rv) {

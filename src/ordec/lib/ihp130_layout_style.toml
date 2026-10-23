@@ -1,0 +1,258 @@
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# Default LayoutStyle of SG13G2 (see ordec/layout/style.py for the format).
+# To customize it, put the settings and layers to change into
+# ~/.config/ordec/layout/ihp-sg13g2.toml.
+
+background = "#000000"
+blend = "additive"
+opacity = 1.0
+
+# Fill patterns offered in the layer editor (see LayoutStylePattern).
+[patterns]
+dots = [
+    "*...*...*...*...",
+    "................",
+    "..*...*...*...*.",
+    "................",
+    "*...*...*...*...",
+    "................",
+    "..*...*...*...*.",
+    "................",
+    "*...*...*...*...",
+    "................",
+    "..*...*...*...*.",
+    "................",
+    "*...*...*...*...",
+    "................",
+    "..*...*...*...*.",
+    "................",
+]
+hatch = [
+    ".......*.......*",
+    "......*.......*.",
+    ".....*.......*..",
+    "....*.......*...",
+    "...*.......*....",
+    "..*.......*.....",
+    ".*.......*......",
+    "*.......*.......",
+    ".......*.......*",
+    "......*.......*.",
+    ".....*.......*..",
+    "....*.......*...",
+    "...*.......*....",
+    "..*.......*.....",
+    ".*.......*......",
+    "*.......*.......",
+]
+backhatch = [
+    "*.......*.......",
+    ".*.......*......",
+    "..*.......*.....",
+    "...*.......*....",
+    "....*.......*...",
+    ".....*.......*..",
+    "......*.......*.",
+    ".......*.......*",
+    "*.......*.......",
+    ".*.......*......",
+    "..*.......*.....",
+    "...*.......*....",
+    "....*.......*...",
+    ".....*.......*..",
+    "......*.......*.",
+    ".......*.......*",
+]
+crosshatch = [
+    "*......**......*",
+    ".*....*..*....*.",
+    "..*..*....*..*..",
+    "...**......**...",
+    "...**......**...",
+    "..*..*....*..*..",
+    ".*....*..*....*.",
+    "*......**......*",
+    "*......**......*",
+    ".*....*..*....*.",
+    "..*..*....*..*..",
+    "...**......**...",
+    "...**......**...",
+    "..*..*....*..*..",
+    ".*....*..*....*.",
+    "*......**......*",
+]
+checker = [
+    "*.*.*.*.*.*.*.*.",
+    ".*.*.*.*.*.*.*.*",
+    "*.*.*.*.*.*.*.*.",
+    ".*.*.*.*.*.*.*.*",
+    "*.*.*.*.*.*.*.*.",
+    ".*.*.*.*.*.*.*.*",
+    "*.*.*.*.*.*.*.*.",
+    ".*.*.*.*.*.*.*.*",
+    "*.*.*.*.*.*.*.*.",
+    ".*.*.*.*.*.*.*.*",
+    "*.*.*.*.*.*.*.*.",
+    ".*.*.*.*.*.*.*.*",
+    "*.*.*.*.*.*.*.*.",
+    ".*.*.*.*.*.*.*.*",
+    "*.*.*.*.*.*.*.*.",
+    ".*.*.*.*.*.*.*.*",
+]
+
+# Drawing order, bottom first: markers, then wells and implants, then the
+# rest, pin layers right above their layer.
+[layers]
+"IND.boundary" = { fill = "#ffff00" }
+dfpad = { fill = "#5e00e6" }
+EdgeSeal = { fill = "#5e00e6" }
+EdgeSealBoundary = { stroke = "#5e00e6" }
+Recog = { fill = "#bdcccc" }
+prBoundary = { fill = "#9900e6", stroke = "#ff00ff" }
+"Metal1.text" = { fill = "#39bfff" }
+"Metal2.text" = { fill = "#ccccd9" }
+"Metal3.text" = { fill = "#d80000" }
+"Metal4.text" = { fill = "#93e837" }
+"Metal5.text" = { fill = "#dcd146" }
+"TopMetal1.text" = { fill = "#ffe6bf" }
+"TopMetal2.text" = { fill = "#ff8000" }
+"Activ.boundary" = { stroke = "#00ff00" }
+"GatPoly.boundary" = { stroke = "#bf4026" }
+"PolyRes.boundary" = { stroke = "#cc6633" }
+"NWell.boundary" = { stroke = "#268c6b" }
+"nBuLay.boundary" = { stroke = "#8c8ca6" }
+"PWell.boundary" = { stroke = "#ffff00" }
+"MIM.boundary" = { stroke = "#268c6b" }
+"Passiv.boundary" = { stroke = "#e61f0d" }
+"SRAM.boundary" = { stroke = "#ffff00" }
+"Metal1.boundary" = { stroke = "#39bfff" }
+"Metal2.boundary" = { stroke = "#ccccd9" }
+"Metal3.boundary" = { stroke = "#d80000" }
+"Metal4.boundary" = { stroke = "#93e837" }
+"Metal5.boundary" = { stroke = "#dcd146" }
+"TopMetal1.boundary" = { stroke = "#ffe6bf" }
+"TopMetal2.boundary" = { stroke = "#ff8000" }
+"Cont.boundary" = { stroke = "#00ffff" }
+"Via1.boundary" = { stroke = "#ccccff" }
+"Via2.boundary" = { stroke = "#ff3736" }
+"Via3.boundary" = { stroke = "#9ba940" }
+"Via4.boundary" = { stroke = "#deac5e" }
+"TopVia1.boundary" = { stroke = "#ffe6bf" }
+"TopVia2.boundary" = { stroke = "#ff8000" }
+pSD = { fill = "#ccb899" }
+nSD = { fill = "#99b8d9" }
+NWell = { fill = "#268c6b" }
+"NWell.pin" = { fill = "#268c6b" }
+nBuLay = { fill = "#8c8ca6" }
+PWell = { fill = "#ffff00" }
+ThickGateOx = { fill = "#ffffcc" }
+"Metal1.res" = { fill = "#bf4026" }
+"Metal2.res" = { fill = "#bf4026" }
+"Metal3.res" = { fill = "#bf4026" }
+"Metal4.res" = { fill = "#bf4026" }
+"Metal5.res" = { fill = "#bf4026" }
+"TopMetal1.res" = { fill = "#bf4026" }
+"TopMetal2.res" = { fill = "#bf4026" }
+EXTBlock = { fill = "#5e00e6" }
+RES = { fill = "#ff9966" }
+SalBlock = { fill = "#996633" }
+Substrate = { fill = "#ffffff" }
+HeatTrans = { fill = "#8c8ca6" }
+HeatRes = { fill = "#8c8ca6" }
+Passiv = { fill = "#e61f0d" }
+Activ = { fill = "#00ff00" }
+"Activ.pin" = { fill = "#00ff00" }
+"Activ.mask" = { fill = "#00ff00" }
+"Activ.noqrc" = { fill = "#ff0000" }
+"Activ.nofill" = { fill = "#00ff00" }
+GatPoly = { fill = "#bf4026" }
+"GatPoly.pin" = { fill = "#bf4026" }
+"GatPoly.nofill" = { fill = "#bf4026" }
+Cont = { stroke = "#00ffff", cross = true }
+"nSD.block" = { fill = "#00cc66" }
+"PWell.block" = { fill = "#ff8000" }
+TRANS = { fill = "#00ffff" }
+EmWind = { fill = "#00cc66" }
+EmWiHV = { fill = "#00cc66" }
+Metal1 = { fill = "#39bfff" }
+"Metal1.pin" = { fill = "#39bfff" }
+Via1 = { stroke = "#ccccff", cross = true }
+Metal2 = { fill = "#ccccd9" }
+"Metal2.pin" = { fill = "#ccccd9" }
+Via2 = { stroke = "#ff3736", cross = true }
+Metal3 = { fill = "#d80000" }
+"Metal3.pin" = { fill = "#d80000" }
+Via3 = { stroke = "#9ba940", cross = true }
+Metal4 = { fill = "#93e837" }
+"Metal4.pin" = { fill = "#93e837" }
+Via4 = { stroke = "#deac5e", cross = true }
+Metal5 = { fill = "#dcd146" }
+"Metal5.pin" = { fill = "#dcd146" }
+TopVia1 = { stroke = "#ffe6bf", cross = true }
+TopMetal1 = { fill = "#ffe6bf" }
+"TopMetal1.pin" = { fill = "#ffe6bf" }
+TopVia2 = { stroke = "#ff8000", cross = true }
+TopMetal2 = { fill = "#ff8000" }
+"TopMetal2.pin" = { fill = "#ff8000" }
+"Metal1.noqrc" = { fill = "#ff0000" }
+"Metal2.noqrc" = { fill = "#ff0000" }
+"Metal3.noqrc" = { fill = "#ff0000" }
+"Metal4.noqrc" = { fill = "#ff0000" }
+"Metal5.noqrc" = { fill = "#ff0000" }
+"TopMetal1.noqrc" = { fill = "#ff0000" }
+"Metal1.mask" = { fill = "#39bfff" }
+"Metal1.nofill" = { fill = "#39bfff" }
+"Metal1.iprobe" = { fill = "#39bfff" }
+"Metal1.diffprb" = { fill = "#39bfff" }
+"Metal2.mask" = { fill = "#ccccd9" }
+"Metal2.nofill" = { fill = "#ccccd9" }
+"Metal2.iprobe" = { fill = "#ccccd9" }
+"Metal2.diffprb" = { fill = "#ccccd9" }
+"Metal3.mask" = { fill = "#d80000" }
+"Metal3.nofill" = { fill = "#d80000" }
+"Metal3.iprobe" = { fill = "#d80000" }
+"Metal3.diffprb" = { fill = "#d80000" }
+"Metal4.mask" = { fill = "#93e837" }
+"Metal4.nofill" = { fill = "#93e837" }
+"Metal4.iprobe" = { fill = "#93e837" }
+"Metal4.diffprb" = { fill = "#93e837" }
+"Metal5.mask" = { fill = "#dcd146" }
+"Metal5.nofill" = { fill = "#dcd146" }
+"Metal5.iprobe" = { fill = "#dcd146" }
+"Metal5.diffprb" = { fill = "#dcd146" }
+"TopMetal1.mask" = { fill = "#ffe6bf" }
+"TopMetal1.nofill" = { fill = "#ffe6bf" }
+"TopMetal1.iprobe" = { fill = "#ffe6bf" }
+"TopMetal1.diffprb" = { fill = "#ffe6bf" }
+"TopMetal2.mask" = { fill = "#ff8000" }
+"TopMetal2.nofill" = { fill = "#ff8000" }
+"TopMetal2.iprobe" = { fill = "#ff8000" }
+"TopMetal2.diffprb" = { fill = "#ff8000" }
+MIM = { fill = "#268c6b" }
+IND = { fill = "#ffff00" }
+"IND.pin" = { fill = "#ffff00" }
+NoRCX = { fill = "#ff0000" }
+DigiBnd = { fill = "#ff0000" }
+SRAM = { fill = "#ffff00" }
+MemCap = { fill = "#ff00ff" }
+"Recog.esd" = { fill = "#ffff00" }
+"Recog.diode" = { fill = "#5e00e6" }
+"Recog.mom" = { fill = "#268c6b" }
+Vmim = { fill = "#ffe6bf" }
+PolyRes = { fill = "#cc6633" }
+"PolyRes.pin" = { fill = "#cc6633" }
+"prBoundary.drawing" = { stroke = "#ff00ff" }
+NoMetFiller = { fill = "#ff0000" }
+LBE = { fill = "#bfbfbf" }
+DigiSub = { fill = "#ff00ff" }
+"Activ.filler" = { fill = "#00ff00" }
+"GatPoly.filler" = { fill = "#bf4026" }
+"Metal1.filler" = { fill = "#39bfff" }
+"Metal2.filler" = { fill = "#ccccd9" }
+"Metal3.filler" = { fill = "#d80000" }
+"Metal4.filler" = { fill = "#93e837" }
+"Metal5.filler" = { fill = "#dcd146" }
+"TopMetal1.filler" = { fill = "#ffe6bf" }
+"TopMetal2.filler" = { fill = "#ff8000" }

@@ -50,6 +50,8 @@ ordec Docker image
 
 The `ordec <https://github.com/tub-msc/ordec/pkgs/container/ordec>`_ image is built on top of ordec-base. It contains an installation of ORDeC that can be run by users through a single docker command, as described in the Readme.
 
+The image sets ``ORDEC_CONFIG_EPHEMERAL=1``: files ORDeC writes to the user's configuration directory (such as the LayoutStyle customizations in ``~/.config/ordec/layout/``) are lost with the container, which the web UI points out when saving them. Users who mount ``~/.config/ordec`` as a volume can set it to ``0``.
+
 This image is automatically built through *.github/workflows/build.yaml* using *Dockerfile*. It can also be built manually using this *Dockerfile*.
 
 Before pushing the image, *build.yaml* tests it. This is important because the automated pytest runs (see below) use the ordec-base image, not the ordec image: a runtime tool that is present in ordec-base but missing from the ordec image (e.g. KLayout not copied over from the base image) is invisible to *tests.yaml*. The full test suite, including web tests, is run inside the freshly built image. Chromium and Selenium are installed into the throwaway test container for this (they are not part of the pushed image). Since npm is absent from the image, the web tests exercise the packaged *webdist.tar* — the frontend assets that users of the image actually get.
