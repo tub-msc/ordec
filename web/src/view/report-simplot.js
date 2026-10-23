@@ -299,6 +299,10 @@ export class SimPlot {
         this._xBase = null;
         this._plotW = 0;
         this._plotH = 0;
+        // y extent of the last reduction (empty: _computeYScale falls back
+        // to [-1, 1]) and the pending _draw frame.
+        this._yExtent = [Infinity, -Infinity];
+        this._drawFrame = null;
     }
 
     static _normalizeCssSize(size) {
@@ -562,6 +566,14 @@ export class SimPlot {
         });
     }
 
+    // Updates geometry and scales synchronously and schedules the drawing for
+    // the next animation frame. Browsers may dispatch several wheel/mousemove
+    // events per frame (the spec leaves coalescing to them); this way they
+    // cost one reduction. Callers rely on the scales being current right
+    // after this returns (x-domain group sync, setXDomain, crosshair, Y zoom
+    // anchor). After a change of the x domain or of the visible series, the
+    // y extent is only known after the reduction, so until the frame
+    // _yScale uses the previous extent.
     _render() {
         if (!this.xValues || !this.series.length) return;
 
@@ -570,19 +582,25 @@ export class SimPlot {
         const { w, h } = dims;
 
         const { xScale, xBase } = this._computeXScale(w);
-        const [yMin, yMax] = this._reduceSeries(xScale);
-        const yScale = this._computeYScale(yMin, yMax, h);
-
-        this._renderAxesAndGrid(xScale, yScale, w, h);
-        this._renderSeries(xScale, yScale);
-
-        // Store scales/dimensions for crosshair interaction.
         this._xScale = xScale;
-        this._yScale = yScale;
         this._xBase = xBase;
+        this._yScale = this._computeYScale(...this._yExtent, h);
         this._plotW = w;
         this._plotH = h;
 
+        if (this._drawFrame === null) {
+            this._drawFrame = requestAnimationFrame(() => {
+                this._drawFrame = null;
+                this._draw();
+            });
+        }
+    }
+
+    _draw() {
+        this._yExtent = this._reduceSeries(this._xScale);
+        this._yScale = this._computeYScale(...this._yExtent, this._plotH);
+        this._renderAxesAndGrid(this._xScale, this._yScale, this._plotW, this._plotH);
+        this._renderSeries(this._xScale, this._yScale);
         this._restoreCrosshair();
     }
 
@@ -748,6 +766,8 @@ export class SimPlot {
 
     destroy() {
         clearTimeout(this._resizeTimer);
+        cancelAnimationFrame(this._drawFrame);
+        this._drawFrame = null;
         if (this.resizeObserver) {
             this.resizeObserver.disconnect();
             this.resizeObserver = null;
