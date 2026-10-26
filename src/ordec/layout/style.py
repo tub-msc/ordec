@@ -36,15 +36,14 @@ The web viewer edits the user's file through update_customization, which
 keeps the rest of the file (including comments) as it is.
 """
 
-import os
 import re
-import threading
 import tomllib
 from pathlib import Path
 import tomlkit
 from public import public
 
 from ..core import *
+from ..config import config_home, update_toml
 
 KEY_RE = re.compile(r'[a-z0-9][a-z0-9_-]*')
 COLOR_RE = re.compile(r'#[0-9a-fA-F]{6}')
@@ -244,8 +243,7 @@ def default_style(ref_layers: LayerStack) -> LayoutStyle | None:
 @public
 def user_style_path(key: str) -> Path:
     """Path of the user's customization file for a LayoutStyle key."""
-    config = os.environ.get('XDG_CONFIG_HOME') or Path.home() / '.config'
-    return Path(config) / 'ordec' / 'layout' / f'{key}.toml'
+    return config_home() / 'layout' / f'{key}.toml'
 
 @public
 def read_customization(key: str) -> dict | None:
@@ -279,10 +277,6 @@ def customized(style: LayoutStyle) -> LayoutStyle:
     data = read_customization(style.key)
     return style if data is None else apply_customization(style, data)
 
-# Serializes the read-modify-write cycles of update_customization (view
-# generation runs in several threads).
-_update_lock = threading.Lock()
-
 @public
 def update_customization(style: LayoutStyle, settings: dict, layers: dict):
     """
@@ -300,11 +294,10 @@ def update_customization(style: LayoutStyle, settings: dict, layers: dict):
         ValueError: The changed file would be invalid; it is left unchanged.
     """
     path = user_style_path(style.key)
-    with _update_lock:
-        try:
-            doc = tomlkit.parse(path.read_text(encoding='utf-8'))
-        except FileNotFoundError:
-            doc = tomlkit.document()
+    def check(text):
+        # Validate the result the way customized() will read it.
+        _parse(_load(text, path), style.ref_layers, path, _pattern_names(style))
+    with update_toml(path, check) as doc:
         for name, value in settings.items():
             if value is None:
                 doc.pop(name, None)
@@ -323,12 +316,3 @@ def update_customization(style: LayoutStyle, settings: dict, layers: dict):
                     table[name] = inline
             if not table:
                 del doc['layers']
-        text = tomlkit.dumps(doc)
-        # Validate the result the way customized() will read it.
-        _parse(_load(text, path), style.ref_layers, path, _pattern_names(style))
-        path.parent.mkdir(parents=True, exist_ok=True)
-        # Replaced atomically, so that concurrent readers see the old or the
-        # new file, never a partial one.
-        tmp = path.with_name(path.name + '.tmp')
-        tmp.write_text(text, encoding='utf-8')
-        os.replace(tmp, path)
