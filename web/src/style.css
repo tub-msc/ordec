@@ -1561,9 +1561,7 @@ body.theme-dark .spotlight-buttons .spotlight-skip {
 body.theme-dark .schem-detail-toggle:hover {
     background-color: rgba(255, 255, 255, 0.08);
 }
-/* Crossing style select of schematics. The schematic stylesheet (see
-   render.py) shows the style of the schematic group's data-crossings
-   attribute, set by svg.js. */
+/* Crossing style select of schematics (see drawCrossings in svg.js). */
 .schem-crossing-select {
     font-family: var(--font-sans);
     font-size: var(--font-size-sm);

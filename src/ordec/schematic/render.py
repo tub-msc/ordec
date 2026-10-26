@@ -453,12 +453,12 @@ class SchematicRenderer(Renderer):
         self.enable_grid = enable_grid
         # Set by render_schematic: the web UI offers the crossing styles (see
         # web/src/view/svg.js) only for schematics, not for symbols.
-        self.crossing_select = False
+        self.is_schematic = False
         return super().__init__(include_nids=include_nids, enable_css=enable_css)
 
     def webdata(self):
         view_type, data = super().webdata()
-        data['crossing_select'] = self.crossing_select
+        data['is_schematic'] = self.is_schematic
         return view_type, data
 
     def draw_grid(self, rect: Rect4R, dot_size: float = 0.1):
@@ -485,7 +485,7 @@ class SchematicRenderer(Renderer):
         self.draw_symbol(s, TD4R())
 
     def render_schematic(self, s: Schematic):
-        self.crossing_select = True
+        self.is_schematic = True
         # Annotation blocks may lie outside the outline (e.g. of instances
         # that were never placed, see annotation_anchor).
         canvas = s.outline
@@ -504,6 +504,9 @@ class SchematicRenderer(Renderer):
                 p.attrib['data-nid'] = str(poly.ref.nid)
 
         for p in s.all(SchemConnPoint):
+            # The web UI matches cx/cy against the wire vertices of svg_path
+            # as strings (findCrossings in web/src/view/svg.js): keep both
+            # formatted alike.
             cx, cy = p.pos.tofloat()
             circle = ET.SubElement(self.cur_group, 'circle', cx=str(cx), cy=str(cy), r=str(self.conn_point_radius))
             circle.attrib['class'] = 'connPoint'

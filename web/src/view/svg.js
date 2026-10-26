@@ -393,8 +393,8 @@ export class SvgView extends View {
         applyDetail();
         statusBar.append(detailToggle);
         this.crossingSelect = null;
-        this.crossingWires = msgData.crossing_select ? findCrossings(this.svgNode) : [];
-        if (msgData.crossing_select) {
+        this.crossingWires = msgData.is_schematic ? findCrossings(this.svgNode) : [];
+        if (msgData.is_schematic) {
             const crossingSelect = document.createElement('select');
             crossingSelect.className = 'schem-crossing-select';
             for (const [value, label] of CROSSING_STYLES) {

@@ -109,7 +109,14 @@ class MixinPolygonalChain:
     __slots__ = ()
 
     def svg_path(self) -> str:
-        """Returns SVG path string of polygon."""
+        """
+        Returns SVG path string of polygon.
+
+        The web UI parses this format for schematic wires (pathVertices and
+        findCrossings in web/src/view/svg.js): "Mx y Lx y ...", optionally
+        ending in "Z", with coordinates written exactly like the cx/cy of
+        connPoint circles (render.py), as they are compared as strings.
+        """
         d = []
         vertices = self.vertices()
         x, y = vertices[0].tofloat()
