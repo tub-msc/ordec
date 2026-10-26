@@ -38,6 +38,8 @@ The **IHP Open PDK** can be downloaded using the following shell command::
 
 The submodules include the PDK's PCell support (pycell4klayout-api, pypreprocessor), which ``tests/test_ihp130_pcells.py`` needs to compare ORDeC's layouts with the PCells. In an existing checkout, fetch them with ``git submodule update --init``.
 
+ORDeC is tested against the release that *base.Dockerfile* pins (the tag in its ``git fetch`` line). Check out that tag with ``git checkout <tag>`` in the clone, so that your PDK matches the container image.
+
 The IHP Open PDK includes Verilog-A models, which must be compiled before use using OpenVAF::
 
     cd IHP-Open-PDK/ihp-sg13g2/libs.tech/verilog-a/

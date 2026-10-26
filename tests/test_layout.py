@@ -114,6 +114,7 @@ def test_gds_path(endtype):
         Vec2I(0, 500),
         Vec2I(500, 500),
     ]
+    assert path.width == 160
     expected_endtype = getattr(PathEndType, endtype.capitalize())
     assert path.endtype == expected_endtype
 
@@ -127,6 +128,7 @@ def test_gds_path_custom():
     path = paths[0]
     assert path.layer == tech_layers.Metal1
     assert path.vertices() == [Vec2I(0, 0), Vec2I(0, 500), Vec2I(500, 500)]
+    assert path.width == 160
     assert path.endtype == PathEndType.Custom
     assert path.ext_bgn == 50
     assert path.ext_end == 100

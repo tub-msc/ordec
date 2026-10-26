@@ -77,6 +77,13 @@ def test_parse_lvsdb_fixture():
     }
 
 
+def test_parse_lvsdb_nothing_compared(tmp_path):
+    text = LVSDB_FILE.read_text()
+    empty = tmp_path / 'empty.lvsdb'
+    empty.write_text(text[:text.index('\nZ(')] + '\nZ(\n)\n')
+    assert not parse_lvsdb(empty, None, None).clean()
+
+
 def test_parse_lvsdb_device_details():
     report = parse_lvsdb(LVSDB_FILE, None, None)
     pair_a = next(p for p in report.all(LvsCircuitPair)
