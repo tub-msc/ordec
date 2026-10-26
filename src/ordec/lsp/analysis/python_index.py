@@ -104,6 +104,10 @@ class PythonModuleIndex:
             if module_path.resolve() == path:
                 del self.python_modules[module_path]
 
+    def has_module_path(self, path: Path):
+        """Return whether analysis of the module at a symlink-resolved path is cached."""
+        return any(module_path.resolve() == path for module_path in self.python_modules)
+
     def import_path(self, module_info, module_name: str):
         """Return the source file an import inside an indexed module names."""
         return self.resolver.module_path(module_info["uri"], module_name, script=False)

@@ -416,6 +416,10 @@ class OrdLanguageServer:
         canonical_ord_uris = set()
         for change in changes:
             uri = self.file_change_uri(change)
+            # Documents can reach an .ord file through Python modules, which
+            # the import graph misses. Check before invalidation forgets it.
+            if self.session.is_ord_uri(uri) and self.session.read_by_python_index(uri):
+                python_changed = True
 
             canonical_invalidated_uri = self.session.invalidate_uri(
                 uri,
