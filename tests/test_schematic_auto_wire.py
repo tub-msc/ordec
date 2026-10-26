@@ -12,9 +12,11 @@ from ordec.core import *
 from ordec.core.schema.schematic import SchemInstanceSubcursor
 from ordec.lib.generic_mos import Nmos
 from ordec.schematic.auto_wire import (
-    RoutingPort, GridConn, place_cells_and_ports, draw_connections,
+    RoutingPort, GridConn, BlockedMoves, place_cells_and_ports,
+    draw_connections, reverse_a_star,
     GRID_EMPTY, GRID_ROUTED, GRID_DIR, GRID_BLOCKED, GRID_PIN, GRID_PORT,
 )
+from ordec.schematic import _auto_wire
 
 
 def print_grid(grid, key_grid, width, height):
@@ -340,6 +342,19 @@ def test_shortcut_without_branch_point():
 
     vertices = [list(w.vertices()) for w in s.all(SchemWire.ref_idx.query(s.y))]
     assert [Vec2R(4, 6), Vec2R(4, 7)] in vertices
+
+
+def test_reverse_search_lowest_cost():
+    """From (0, 0) heading East, target (2, 2) takes fewer steps but a
+    turn, target (8, 0) more steps but no turn. The reverse search must
+    return the cheaper straight path, not the one with fewer points."""
+    width, height = 9, 3
+    cells = bytearray(width * height)
+    scratch = bytearray(width * height * _auto_wire.SCRATCH_PER_NODE)
+    targets = {x * height + y: (x, y) for x, y in ((2, 2), (8, 0))}
+    path = reverse_a_star(cells, scratch, targets, (0, 0), width, height,
+        BlockedMoves(width, height), Net(), East, {})
+    assert path == [(x, 0) for x in range(8, -1, -1)]
 
 
 def test_shortcut_escape_outside_grid():
