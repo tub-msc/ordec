@@ -352,6 +352,25 @@ def test_boxed_in_end_fails_early():
     assert hits and hits <= blocked.move_keys(s.box)
 
 
+def test_route_through_marker():
+    """Pin (0, 2) of net y can only be reached straight down through the
+    marker of net z's port (0, 3). The search first reaches that marker
+    from the side, a dead end that must not hide the way through."""
+    s = Schematic()
+    s.y = Net()
+    s.z = Net()
+    ports = [
+        RoutingPort(4, 1, s.y, West),
+        RoutingPort(0, 2, s.y, East),
+        RoutingPort(0, 3, s.z, East),
+    ]
+    conns = [GridConn(s.y, (4, 1), West, (0, 2), East)]
+    open_cells = [(3, 1), (3, 2), (3, 3), (3, 4), (2, 4), (1, 4), (2, 3),
+        (1, 3), (1, 2)]
+    vertices = route_maze(open_cells, ports, conns, width=5, height=5)
+    assert vertices[s.y] == [[(4, 1), (3, 1), (3, 4), (1, 4), (1, 2), (0, 2)]]
+
+
 def test_shortcut_without_branch_point():
     """Net y first joins the adjacent pins m1.d and m2.s, a path without
     interior points to branch off. Routing m2.b must then fall back to
