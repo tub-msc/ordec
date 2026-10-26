@@ -263,9 +263,14 @@ def test_ord_star_imports(tmp_path):
         cell Mux2:
             viewgen symbol(self) -> Symbol:
                 input a
+
+        cell _Hidden:
+            pass
         """))
+    (tmp_path / "gates.py").write_text("class Nand:\n    pass\n\nclass _Base:\n    pass\n")
     star_source = dedent("""\
         from .mux2 import *
+        from .gates import *
 
         cell Top:
             viewgen schematic(self) -> Schematic:
@@ -278,6 +283,10 @@ def test_ord_star_imports(tmp_path):
     session = AnalysisSession(workspace_root=str(tmp_path))
     star_uri = session.open_path(str(star_path))
 
+    # Star imports bind public names only, of ORD and of Python modules.
+    assert session.resolve_name(star_uri, "Nand") is not None
+    assert session.resolve_name(star_uri, "_Hidden") is None
+    assert session.resolve_name(star_uri, "_Base") is None
     assert session.diagnostics(star_uri) == []
     assert session.definition(star_uri, position_at(star_source, "Mux2 child"))["name"] == "Mux2"
 
@@ -357,6 +366,8 @@ def test_python_members_and_completions():
     session.open_document(uri, source, version=1)
 
     assert session.diagnostics(uri) == []
+    # The star import binds public names only.
+    assert session.resolve_name(uri, "__init__") is None
     assert session.definition(uri, position_at(source, "s --"))["name"] == "s"
     assert session.definition(uri, position_after(source, "$"))["name"] == "l"
     assert session.definition(uri, position_at(source, "pos"))["name"] == "pos"
