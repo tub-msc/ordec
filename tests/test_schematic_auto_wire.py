@@ -13,7 +13,7 @@ from ordec.core.schema.schematic import SchemInstanceSubcursor
 from ordec.lib.generic_mos import Nmos
 from ordec.schematic.auto_wire import (
     RoutingPort, GridConn, BlockedMoves, place_cells_and_ports,
-    draw_connections, reverse_a_star,
+    draw_connections, a_star, reverse_a_star,
     GRID_EMPTY, GRID_ROUTED, GRID_DIR, GRID_BLOCKED, GRID_PIN, GRID_PORT,
 )
 from ordec.schematic import _auto_wire
@@ -327,6 +327,48 @@ def test_ripup_rejected_when_reroute_rides_own_net():
     vertices, net_y, net_a = route_ripup_overlap_maze()
     assert not vertices[net_a]
     assert_anchor_hosts_branch(vertices[net_y], ends={(5, 1), (7, 7)})
+
+
+def test_boxed_in_end_fails_early():
+    """The end's neighbors are corners of net box. The search must stop when
+    the flood from the end runs out, reporting only the blocked moves around
+    the end, not those of net far."""
+    width = height = 30
+    cells = bytearray(width * height)
+    scratch = bytearray(width * height * _auto_wire.SCRATCH_PER_NODE)
+    s = Schematic()
+    s.y, s.box, s.far = Net(), Net(), Net()
+    blocked = BlockedMoves(width, height)
+    box = [((19, 20), (19, 23)), ((20, 21), (23, 21)),
+        ((21, 20), (21, 17)), ((20, 19), (17, 19))]
+    blocked.add(s.box, box, len(box))
+    far = [((5, 2), (5, 28)), ((5, 28), (28, 28))]
+    blocked.add(s.far, far, len(far))
+
+    hits = set()
+    path = a_star(cells, scratch, (2, 2), (20, 20), width, height, blocked,
+        s.y, North, blocked_move_hits=hits)
+    assert path == []
+    assert hits and hits <= blocked.move_keys(s.box)
+
+
+def test_route_through_marker():
+    """Pin (0, 2) of net y can only be reached straight down through the
+    marker of net z's port (0, 3). The search first reaches that marker
+    from the side, a dead end that must not hide the way through."""
+    s = Schematic()
+    s.y = Net()
+    s.z = Net()
+    ports = [
+        RoutingPort(4, 1, s.y, West),
+        RoutingPort(0, 2, s.y, East),
+        RoutingPort(0, 3, s.z, East),
+    ]
+    conns = [GridConn(s.y, (4, 1), West, (0, 2), East)]
+    open_cells = [(3, 1), (3, 2), (3, 3), (3, 4), (2, 4), (1, 4), (2, 3),
+        (1, 3), (1, 2)]
+    vertices = route_maze(open_cells, ports, conns, width=5, height=5)
+    assert vertices[s.y] == [[(4, 1), (3, 1), (3, 4), (1, 4), (1, 2), (0, 2)]]
 
 
 def test_shortcut_without_branch_point():

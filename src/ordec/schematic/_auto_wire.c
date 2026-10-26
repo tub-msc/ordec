@@ -154,6 +154,16 @@ static int contains(PyObject *container, long key) {
     return ret;
 }
 
+// Adds move_key to hits (set or None). Returns -1 on error.
+static int add_hit(PyObject *hits, long move_key) {
+    if (hits == Py_None)
+        return 0;
+    PyObject *k = PyLong_FromLong(move_key);
+    int ret = k ? PySet_Add(hits, k) : -1;
+    Py_XDECREF(k);
+    return ret;
+}
+
 // Blocked directions at node key for the routed net. Moves blocked by
 // other nets (any_mask) block, except where only the routed net itself
 // blocks them as corner moves (counts: number of nets per move). The
@@ -220,7 +230,7 @@ static PyObject *trace(const long *came_from, long key, long height, int with_or
 // use_congestion, from usage (dict of node key to use count) or, if usage
 // is None, from GRID_ROUTED cells. Blocked moves encountered are added to
 // hits (set or None) as move keys.
-#define SCRATCH_PER_NODE (sizeof(double) + sizeof(long) + 1)
+#define SCRATCH_PER_NODE (sizeof(double) + sizeof(long) + 2)
 
 typedef struct {
     Py_buffer cells, scratch;
@@ -228,6 +238,20 @@ typedef struct {
     PyObject *any_mask, *own_masks, *ride_masks, *counts, *usage, *hits;
     int use_congestion;
 } Search;
+
+// 1 if the search may turn on the direction marker at key, 0 if not, -1 on
+// error. Markers in front of terminals enforce straight escapes: turns on
+// them are only allowed at the origin and at the end (the forward search's
+// end_key, the reverse search's endpoint_keys and targets).
+static int turn_allowed_at(long key, long origin, long end_key,
+        PyObject *targets, PyObject *endpoint_keys) {
+    if (key == origin)
+        return 1;
+    if (!targets)
+        return key == end_key;
+    int r = contains(endpoint_keys, key);
+    return r ? r : contains(targets, key);
+}
 
 // The search of search_forward (targets NULL) and search_reverse.
 static PyObject *run_search(const Search *s, long end_key, PyObject *targets,
@@ -278,6 +302,21 @@ static PyObject *run_search(const Search *s, long end_key, PyObject *targets,
     // Reverse search: lowest-cost path to a target so far.
     PyObject *best_path = NULL, *ret = NULL;
     double best_g = -1.0;
+
+    // Bidirectional failure detection, forward search only: a flood from
+    // the end, one node per search step. If it runs out before reaching the
+    // origin, there is no path. Moves into a node are blocked like the
+    // moves out of it (see add_moves).
+    char *flooded = visited + size;
+    KeyList flood = {NULL, 0, 0};
+    Py_ssize_t flood_next = 0;
+    int flooding = !reverse;
+    if (flooding) {
+        if (keys_append(&flood, end_key) < 0)
+            goto done;
+        flooded[end_key] = 1;
+    }
+
     if (keys_append(&touched, origin) < 0)
         goto done;
     visited[origin] = 1;
@@ -288,6 +327,38 @@ static PyObject *run_search(const Search *s, long end_key, PyObject *targets,
         goto done;
 
     while (heap.len > 0) {
+        if (flooding) {
+            if (flood_next == flood.len) {
+                ret = PyList_New(0);
+                goto done;
+            }
+            long fk = flood.items[flood_next++];
+            long fmask = block_mask(s->any_mask, s->own_masks, s->ride_masks, s->counts, fk);
+            if (fmask < 0)
+                goto done;
+            long fx = fk / height, fy = fk % height;
+            for (int d = 0; d < 4; d++) {
+                if (fmask & BIT[d]) {
+                    if (add_hit(s->hits, MOVE_KEY(fk, BIT[d])) < 0)
+                        goto done;
+                    continue;
+                }
+                long nx = fx + DX[d], ny = fy + DY[d];
+                if (nx < 0 || nx >= width || ny < 0 || ny >= height)
+                    continue;
+                long nk = nx * height + ny;
+                if (nk == origin) {
+                    flooding = 0;
+                    break;
+                }
+                if (cells[nk] >= GRID_BLOCKED || flooded[nk])
+                    continue;
+                if (keys_append(&flood, nk) < 0)
+                    goto done;
+                flooded[nk] = 1;
+            }
+        }
+
         Entry cur = heap_pop(&heap);
         long ck = cur.key;
         if (cur.g > g_score[ck])
@@ -324,31 +395,17 @@ static PyObject *run_search(const Search *s, long end_key, PyObject *targets,
             goto done;
         double cur_g = g_score[ck];
 
-        // Direction markers in front of terminals enforce straight escapes:
-        // turns on them are only allowed at the origin and at the end (the
-        // forward search's end key, the reverse search's endpoint_keys).
         int turn_allowed = 1;
-        if (cells[ck] == GRID_DIR && ck != origin) {
-            if (reverse) {
-                int r = contains(endpoint_keys, ck);
-                if (r < 0)
-                    goto done;
-                turn_allowed = r;
-            } else {
-                turn_allowed = ck == end_key;
-            }
+        if (cells[ck] == GRID_DIR) {
+            turn_allowed = turn_allowed_at(ck, origin, end_key, targets, endpoint_keys);
+            if (turn_allowed < 0)
+                goto done;
         }
 
         for (int d = 0; d < 4; d++) {
             if (mask & BIT[d]) {
-                if (s->hits != Py_None) {
-                    PyObject *hk = PyLong_FromLong(MOVE_KEY(ck, BIT[d]));
-                    if (!hk || PySet_Add(s->hits, hk) < 0) {
-                        Py_XDECREF(hk);
-                        goto done;
-                    }
-                    Py_DECREF(hk);
-                }
+                if (add_hit(s->hits, MOVE_KEY(ck, BIT[d])) < 0)
+                    goto done;
                 continue;
             }
             long nx = cx + DX[d], ny = cy + DY[d];
@@ -359,6 +416,19 @@ static PyObject *run_search(const Search *s, long end_key, PyObject *targets,
                 continue;
             if (cells[nk] >= GRID_BLOCKED)
                 continue;
+            // Skip markers that are dead ends (no turn, blocked ahead):
+            // entering one would hide it from paths passing straight through.
+            if (cells[nk] == GRID_DIR) {
+                long ax = nx + DX[d], ay = ny + DY[d];
+                if (ax < 0 || ax >= width || ay < 0 || ay >= height
+                        || cells[ax * height + ay] >= GRID_BLOCKED) {
+                    int r = turn_allowed_at(nk, origin, end_key, targets, endpoint_keys);
+                    if (r < 0)
+                        goto done;
+                    if (!r)
+                        continue;
+                }
+            }
 
             double turn_penalty = 0;
             if (cur.dir != d) {
@@ -401,9 +471,12 @@ static PyObject *run_search(const Search *s, long end_key, PyObject *targets,
 done:
     for (Py_ssize_t i = 0; i < touched.len; i++)
         visited[touched.items[i]] = 0;
+    for (Py_ssize_t i = 0; i < flood.len; i++)
+        flooded[flood.items[i]] = 0;
     Py_XDECREF(best_path);
     free(heap.items);
     free(touched.items);
+    free(flood.items);
     return ret;
 }
 
@@ -430,7 +503,8 @@ static PyObject *search_forward(PyObject *self, PyObject *args) {
 //     use_congestion, hits): search of reverse_a_star(), towards any of the
 // targets (dict of node key to (x, y) point). Returns the lowest-cost path
 // from a target to origin (both included), [] on failure.
-// Turns on direction markers are allowed at origin and at endpoint_keys.
+// Turns on direction markers are allowed at origin, endpoint_keys and
+// targets.
 // The heuristic aims at the target nearest to origin (the first one in
 // dict order on ties).
 static PyObject *search_reverse(PyObject *self, PyObject *args) {
