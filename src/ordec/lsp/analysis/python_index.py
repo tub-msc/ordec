@@ -523,6 +523,10 @@ class PythonModuleIndex:
             if match is not None:
                 return match
 
+        # Star imports bind public names only (__all__ is not supported).
+        if export_name.startswith("_"):
+            return None
+
         for star_module in module_info["star_modules"]:
             match = self.definition(
                 self.import_path(module_info, star_module),
@@ -545,7 +549,8 @@ class PythonModuleIndex:
             return [(imported_path, imported["export_name"])]
 
         refs = []
-        for star_module in module_info["star_modules"]:
+        star_modules = [] if base_name.startswith("_") else module_info["star_modules"]
+        for star_module in star_modules:
             match = self.definition(
                 self.import_path(module_info, star_module),
                 export_name=base_name,

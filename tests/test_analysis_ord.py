@@ -352,6 +352,8 @@ def test_python_members_and_completions():
     session.open_document(uri, source, version=1)
 
     assert session.diagnostics(uri) == []
+    # The star import binds public names only.
+    assert session.resolve_name(uri, "__init__") is None
     assert session.definition(uri, position_at(source, "s --"))["name"] == "s"
     assert session.definition(uri, position_after(source, "$"))["name"] == "l"
     assert session.definition(uri, position_at(source, "pos"))["name"] == "pos"

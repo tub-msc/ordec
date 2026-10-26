@@ -1003,7 +1003,9 @@ class AnalysisSession:
             if match is not None:
                 return match
 
-        for import_entry in reversed(analysis.import_entries):
+        # Star imports bind public names only (__all__ is not supported).
+        star_entries = [] if name.startswith("_") else analysis.import_entries
+        for import_entry in reversed(star_entries):
             if import_entry.kind != "from" or import_entry.export_name != "*":
                 continue
 
