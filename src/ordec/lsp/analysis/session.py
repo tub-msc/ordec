@@ -391,6 +391,15 @@ class AnalysisSession:
         """Return whether an import name resolves to an ORD or Python module."""
         return self.resolver.module_exists(uri, module_name)
 
+    def read_by_python_index(self, uri: str):
+        """Return whether the Python index has read the file at a URI.
+
+        ORD documents may then depend on the file through Python modules,
+        which the workspace import graph does not track.
+        """
+        path = self.file_uri_path(uri)
+        return path is not None and self.python_index.has_module_path(path.resolve())
+
     def invalidate_python_module_path(self, path: Path, created_or_deleted: bool = True):
         """Invalidate cached Python analysis for modules backed by a path."""
         self.python_index.invalidate_module_path(path, created_or_deleted)

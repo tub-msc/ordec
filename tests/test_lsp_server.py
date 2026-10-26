@@ -214,11 +214,18 @@ def test_lsp_watched_file_changes_republish_dependent_diagnostics(tmp_path):
         """)
     top_path = tmp_path / "top.ord"
     top_path.write_text(top_source)
+    # The import graph has no edges through Python modules.
+    (tmp_path / "helper.py").write_text("from device import Device\n")
+    via_python_source = top_source.replace("from .device", "from helper")
+    via_python_path = tmp_path / "via_python.ord"
+    via_python_path.write_text(via_python_source)
 
     server = initialize_server(tmp_path)
     top_uri = top_path.resolve().as_uri()
+    via_python_uri = via_python_path.resolve().as_uri()
     device_uri = device_path.resolve().as_uri()
     assert open_document(server, top_uri, top_source) == []
+    assert open_document(server, via_python_uri, via_python_source) == []
 
     device_path.write_text(dedent("""\
         cell Other:
@@ -236,11 +243,13 @@ def test_lsp_watched_file_changes_republish_dependent_diagnostics(tmp_path):
         },
     )
 
-    assert [response["params"]["uri"] for response in responses] == [top_uri]
-    assert "unresolved-import-member" in {
-        diagnostic["code"]
-        for diagnostic in responses[0]["params"]["diagnostics"]
-    }
+    published_uris = [response["params"]["uri"] for response in responses]
+    assert published_uris == sorted([top_uri, via_python_uri])
+    for response in responses:
+        assert "unresolved-import-member" in {
+            diagnostic["code"]
+            for diagnostic in response["params"]["diagnostics"]
+        }
 
 
 def test_lsp_deleted_file_with_cold_index_refreshes_open_documents(tmp_path):
