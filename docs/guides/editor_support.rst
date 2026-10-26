@@ -448,7 +448,7 @@ that is already being handled is never interrupted.
 Most language intelligence lives in ``ordec.lsp.analysis``:
 
 * ``model.py`` defines shared positions, ranges, diagnostics, symbols, import
-  records, and ``DocumentAnalysis``.
+  records, resolved definitions, and ``DocumentAnalysis``.
 * ``parser_pass.py`` parses ORD source and uses an ``OrdAnalysisBuilder`` to
   walk the parse tree and collect scopes, bindings, occurrences, imports, ORD
   node statement records, view generator return records, constraint records, and

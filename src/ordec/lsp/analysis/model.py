@@ -206,6 +206,31 @@ class AnalysisSymbol(NamedTuple):
 
 
 
+class AnalysisDefinition(NamedTuple):
+    """Resolved definition of a name or member, in ORD or Python source.
+
+    ``origin_range`` is the identifier a lookup started from. ORD bindings
+    carry their ``binding_id``; Python classes carry ``python_module`` and
+    ``python_class`` for member lookup.
+    """
+    uri: str
+    name: str
+    kind: str
+    range: AnalysisRange
+    selection_range: AnalysisRange
+    origin_range: Optional[AnalysisRange] = None
+    binding_id: Optional[int] = None
+    scope_id: Optional[int] = None
+    exported: Optional[bool] = None
+    cell_member: bool = False
+    docstring: Optional[str] = None
+    signature: Optional[dict] = None
+    default: Optional[str] = None
+    python_module: Optional[Path] = None
+    python_class: Optional[str] = None
+
+
+
 class AnalysisImport(NamedTuple):
     """Import statement captured from an ORD document.
 

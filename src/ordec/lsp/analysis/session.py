@@ -11,6 +11,7 @@ from typing import Optional
 from . import completions, diagnostics, hierarchy, rename, signatures
 from .import_resolver import ImportResolver, from_import_module_name
 from .model import (
+    AnalysisDefinition,
     AnalysisPosition,
     AnalysisRange,
     DocumentAnalysis,
@@ -694,17 +695,17 @@ class AnalysisSession:
             if not range_contains(binding["selection_range"], position):
                 continue
 
-            return {
-                "uri": uri,
-                "name": binding["name"],
-                "kind": binding["kind"],
-                "range": binding["range"],
-                "selection_range": binding["selection_range"],
-                "origin_range": binding["selection_range"],
-                "binding_id": binding["id"],
-                "scope_id": binding["scope_id"],
-                "exported": binding["exported"],
-            }
+            return AnalysisDefinition(
+                uri=uri,
+                name=binding["name"],
+                kind=binding["kind"],
+                range=binding["range"],
+                selection_range=binding["selection_range"],
+                origin_range=binding["selection_range"],
+                binding_id=binding["id"],
+                scope_id=binding["scope_id"],
+                exported=binding["exported"],
+            )
 
         for occurrence in analysis.occurrences:
             if not range_contains(occurrence["range"], position):
@@ -714,17 +715,17 @@ class AnalysisSession:
             if binding is None:
                 continue
 
-            return {
-                "uri": uri,
-                "name": binding["name"],
-                "kind": binding["kind"],
-                "range": binding["range"],
-                "selection_range": binding["selection_range"],
-                "origin_range": occurrence["range"],
-                "binding_id": binding["id"],
-                "scope_id": binding["scope_id"],
-                "exported": binding["exported"],
-            }
+            return AnalysisDefinition(
+                uri=uri,
+                name=binding["name"],
+                kind=binding["kind"],
+                range=binding["range"],
+                selection_range=binding["selection_range"],
+                origin_range=occurrence["range"],
+                binding_id=binding["id"],
+                scope_id=binding["scope_id"],
+                exported=binding["exported"],
+            )
 
         return None
 
@@ -814,23 +815,16 @@ class AnalysisSession:
 
     def definition_key(self, definition):
         """Return a stable key used to compare resolved definitions."""
-        if definition.get("binding_id") is not None and not definition.get("exported"):
-            return (definition["uri"], definition["binding_id"])
+        if definition.binding_id is not None and not definition.exported:
+            return (definition.uri, definition.binding_id)
 
-        selection_range = definition.get("selection_range")
-        if selection_range is not None:
-            return (
-                definition["uri"],
-                selection_range.start.line,
-                selection_range.start.character,
-                selection_range.end.line,
-                selection_range.end.character,
-            )
-
+        selection_range = definition.selection_range
         return (
-            definition["uri"],
-            definition["name"],
-            definition["kind"],
+            definition.uri,
+            selection_range.start.line,
+            selection_range.start.character,
+            selection_range.end.line,
+            selection_range.end.character,
         )
 
     def member_reachable_definition(self, definition):
@@ -841,27 +835,27 @@ class AnalysisSession:
         Both spellings must compare and search alike for references and
         rename to see one symbol.
         """
-        if definition.get("cell_member"):
+        if definition.cell_member:
             return True
-        if definition.get("binding_id") is None:
+        if definition.binding_id is None:
             return False
 
-        uri = definition["uri"]
+        uri = definition.uri
         if not self.is_ord_uri(uri):
             return False
 
         analysis = self.analyze(uri)
-        start = definition["selection_range"].start
+        start = definition.selection_range.start
         for symbol in analysis.symbols:
             if symbol.kind != "class":
                 continue
             if not range_contains(symbol.range, start):
                 continue
 
-            member = self.ord_cell_members(uri, symbol.name).get(definition["name"])
+            member = self.ord_cell_members(uri, symbol.name).get(definition.name)
             return (
                 member is not None
-                and member["selection_range"] == definition["selection_range"]
+                and member.selection_range == definition.selection_range
             )
         return False
 
@@ -870,9 +864,7 @@ class AnalysisSession:
         if definition is None:
             return None
 
-        result = dict(definition)
-        result["origin_range"] = origin_range
-        return result
+        return definition._replace(origin_range=origin_range)
 
     def find_export(self, uri: str, name: str):
         """Find an exported ORD symbol in a document and its imports."""
@@ -882,13 +874,13 @@ class AnalysisSession:
 
             for symbol in analysis.symbols:
                 if symbol.name == name:
-                    return {
-                        "uri": analysis_uri,
-                        "name": symbol.name,
-                        "kind": symbol.kind,
-                        "range": symbol.range,
-                        "selection_range": symbol.selection_range,
-                    }
+                    return AnalysisDefinition(
+                        uri=analysis_uri,
+                        name=symbol.name,
+                        kind=symbol.kind,
+                        range=symbol.range,
+                        selection_range=symbol.selection_range,
+                    )
 
         return None
 
@@ -900,19 +892,19 @@ class AnalysisSession:
             return self.python_definition(self.resolve_python_module_path(uri, module_name))
 
         module_base = module_name.split(".")[-1]
-        return {
-            "uri": module_uri,
-            "name": module_base,
-            "kind": "module",
-            "range": AnalysisRange(
+        return AnalysisDefinition(
+            uri=module_uri,
+            name=module_base,
+            kind="module",
+            range=AnalysisRange(
                 start=AnalysisPosition(1, 1),
                 end=AnalysisPosition(1, 1),
             ),
-            "selection_range": AnalysisRange(
+            selection_range=AnalysisRange(
                 start=AnalysisPosition(1, 1),
                 end=AnalysisPosition(1, 1),
             ),
-        }
+        )
 
     def import_entry_at_position(self, uri: str, position: AnalysisPosition):
         """Return the import entry whose selected name contains a position."""
@@ -1035,15 +1027,15 @@ class AnalysisSession:
             if binding is None or binding["name"] != name:
                 continue
 
-            return {
-                "uri": uri,
-                "name": binding["name"],
-                "kind": binding["kind"],
-                "range": binding["range"],
-                "selection_range": binding["selection_range"],
-                "binding_id": binding["id"],
-                "exported": binding.get("exported"),
-            }
+            return AnalysisDefinition(
+                uri=uri,
+                name=binding["name"],
+                kind=binding["kind"],
+                range=binding["range"],
+                selection_range=binding["selection_range"],
+                binding_id=binding["id"],
+                exported=binding.get("exported"),
+            )
 
         return None
 
@@ -1055,13 +1047,13 @@ class AnalysisSession:
             return None
 
         name_info = self.name_at_position(uri, position)
-        hover_range = definition["selection_range"]
+        hover_range = definition.selection_range
         if name_info is not None:
             hover_range = name_info["range"]
 
-        contents = "{} {}".format(definition["kind"], definition["name"])
-        if definition["uri"] != uri:
-            contents += "\n{}".format(self.display_uri(definition["uri"]))
+        contents = "{} {}".format(definition.kind, definition.name)
+        if definition.uri != uri:
+            contents += "\n{}".format(self.display_uri(definition.uri))
 
         return {
             "contents": contents,
@@ -1074,10 +1066,10 @@ class AnalysisSession:
         parts = [
             "```ord\n{}\n```".format(self.definition_header(uri, definition)),
         ]
-        if definition["uri"] != uri:
-            parts.append("*{}*".format(self.display_uri(definition["uri"])))
+        if definition.uri != uri:
+            parts.append("*{}*".format(self.display_uri(definition.uri)))
 
-        docstring = definition.get("docstring")
+        docstring = definition.docstring
         if docstring:
             parts.append(docstring)
 
@@ -1085,8 +1077,8 @@ class AnalysisSession:
 
     def definition_header(self, uri: str, definition):
         """Return the signature-style header line for a definition."""
-        kind = definition["kind"]
-        name = definition["name"]
+        kind = definition.kind
+        name = definition.name
 
         if kind == "class":
             signature = signatures.callable_signature(self, uri, definition)
@@ -1094,7 +1086,7 @@ class AnalysisSession:
             # Classes that declare cell parameters, and everything defined in
             # ORD source, read as cells to ORD users.
             keyword = "class"
-            if parameters or self.is_ord_uri(definition["uri"]):
+            if parameters or self.is_ord_uri(definition.uri):
                 keyword = "cell"
             if parameters:
                 return "{} {}({})".format(
@@ -1110,8 +1102,8 @@ class AnalysisSession:
                 return "def {}".format(signature["label"])
             return "function {}".format(name)
 
-        if kind == "parameter" and definition.get("default"):
-            return "parameter {} = {}".format(name, definition["default"])
+        if kind == "parameter" and definition.default:
+            return "parameter {} = {}".format(name, definition.default)
 
         return "{} {}".format(kind, name)
 
@@ -1187,15 +1179,15 @@ class AnalysisSession:
             if "Parameter" in (binding.get("type_names") or []):
                 kind = "parameter"
 
-            members.setdefault(binding["name"], {
-                "uri": cell_uri,
-                "name": binding["name"],
-                "kind": kind,
-                "range": binding["range"],
-                "selection_range": binding["selection_range"],
-                "binding_id": binding["id"],
-                "cell_member": True,
-            })
+            members.setdefault(binding["name"], AnalysisDefinition(
+                uri=cell_uri,
+                name=binding["name"],
+                kind=kind,
+                range=binding["range"],
+                selection_range=binding["selection_range"],
+                binding_id=binding["id"],
+                cell_member=True,
+            ))
 
         # Include directly declared cell members and view generators. This
         # covers self.schematic/self.layout and compact tests that declare pins
@@ -1251,7 +1243,7 @@ class AnalysisSession:
             self.resolver.installed_module_path("ordec.core"),
             export_name=core_type_name,
         )
-        if type_definition is None or type_definition.get("kind") != "class":
+        if type_definition is None or type_definition.kind != "class":
             return None
         return type_definition
 
@@ -1300,20 +1292,20 @@ class AnalysisSession:
 
     def type_members(self, type_definition):
         """Return a name→metadata mapping for members of a resolved type."""
-        if "python_module" in type_definition and "python_class" in type_definition:
+        if type_definition.python_class is not None:
             members = self.python_class_members(
-                type_definition["python_module"],
-                type_definition["python_class"],
+                type_definition.python_module,
+                type_definition.python_class,
             )
-            if self.resolve_core_type(type_definition["python_class"]) is None:
+            if self.resolve_core_type(type_definition.python_class) is None:
                 members = dict(members)
                 members.update(self.cell_instance_members())
             return members
 
-        if type_definition.get("kind") == "class" and "uri" in type_definition:
+        if type_definition.kind == "class":
             members = self.ord_cell_members(
-                type_definition["uri"],
-                type_definition["name"],
+                type_definition.uri,
+                type_definition.name,
             )
             members = dict(members)
             members.update(self.cell_instance_members())
@@ -1588,13 +1580,13 @@ class AnalysisSession:
                 if query and query not in symbol.name.lower():
                     continue
 
-                result.append({
-                    "uri": uri,
-                    "name": symbol.name,
-                    "kind": symbol.kind,
-                    "range": symbol.range,
-                    "selection_range": symbol.selection_range,
-                })
+                result.append(AnalysisDefinition(
+                    uri=uri,
+                    name=symbol.name,
+                    kind=symbol.kind,
+                    range=symbol.range,
+                    selection_range=symbol.selection_range,
+                ))
 
         self.evict_closed_documents()
         return result
@@ -1659,13 +1651,13 @@ class AnalysisSession:
         """Return the documents that may contain references to a definition."""
         uri = self.canonical_uri(uri)
         if (
-            definition.get("binding_id") is not None
-            and not definition.get("exported")
+            definition.binding_id is not None
+            and not definition.exported
             and not self.member_reachable_definition(definition)
         ):
             return [uri]
 
-        target_uri = definition["uri"]
+        target_uri = definition.uri
         if self.is_ord_uri(target_uri):
             uris = [uri, target_uri]
             uris.extend(sorted(self.workspace_dependents(target_uri)))
@@ -1697,8 +1689,8 @@ class AnalysisSession:
             return []
 
         definition_range = None
-        if definition["uri"] == uri:
-            definition_range = definition["selection_range"]
+        if definition.uri == uri:
+            definition_range = definition.selection_range
 
         name_info = self.name_at_position(uri, position)
         if name_info is not None:
@@ -1733,20 +1725,20 @@ class AnalysisSession:
         origin_range = None
 
         local = self.local_definition(uri, position)
-        if local is not None and local.get("binding_id") is not None:
-            binding = analysis.binding_map.get(local["binding_id"])
+        if local is not None and local.binding_id is not None:
+            binding = analysis.binding_map.get(local.binding_id)
             if binding is not None:
                 type_names = list(binding.get("type_names", []))
-                origin_range = local.get("origin_range")
+                origin_range = local.origin_range
 
         for type_name in self.normalize_type_names(type_names):
             resolved = self.resolve_completion_type(uri, type_name)
-            if resolved is not None and resolved.get("kind") == "class":
+            if resolved is not None and resolved.kind == "class":
                 return self.definition_with_origin(resolved, origin_range)
 
         # On a type name itself, the type definition is the definition.
         definition = self.definition(uri, position)
-        if definition is not None and definition.get("kind") == "class":
+        if definition is not None and definition.kind == "class":
             return definition
 
         return None
@@ -1771,7 +1763,7 @@ class AnalysisSession:
             # class, so heuristic guesses do not turn into noise.
             for type_name in record["type_names"]:
                 resolved = self.resolve_completion_type(uri, type_name)
-                if resolved is None or resolved.get("kind") != "class":
+                if resolved is None or resolved.kind != "class":
                     continue
 
                 hints.append({
@@ -1805,14 +1797,14 @@ class AnalysisSession:
         analysis = self.analyze(uri)
         for symbol in analysis.symbols:
             if range_contains(symbol.selection_range, lookup_position):
-                return {
-                    "uri": uri,
-                    "name": symbol.name,
-                    "kind": symbol.kind,
-                    "range": symbol.range,
-                    "selection_range": symbol.selection_range,
-                    "origin_range": symbol.selection_range,
-                }
+                return AnalysisDefinition(
+                    uri=uri,
+                    name=symbol.name,
+                    kind=symbol.kind,
+                    range=symbol.range,
+                    selection_range=symbol.selection_range,
+                    origin_range=symbol.selection_range,
+                )
 
         import_entry = self.import_entry_at_position(uri, lookup_position)
         if import_entry is not None:

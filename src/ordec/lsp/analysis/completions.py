@@ -185,20 +185,20 @@ def member_completion_items(session, uri: str, position: AnalysisPosition, conte
                 continue
             if prefix and not name.startswith(prefix):
                 continue
-            if context["mode"] == "parameter" and member["kind"] != "parameter":
+            if context["mode"] == "parameter" and member.kind != "parameter":
                 continue
 
-            detail = "{} of {}".format(member["kind"], type_name)
-            if member.get("default"):
-                detail = "{}, default {}".format(detail, member["default"])
+            detail = "{} of {}".format(member.kind, type_name)
+            if member.default:
+                detail = "{}, default {}".format(detail, member.default)
 
             item = {
                 "label": name,
-                "kind": member["kind"],
+                "kind": member.kind,
                 "detail": detail,
             }
-            if member.get("docstring"):
-                item["documentation"] = member["docstring"]
+            if member.docstring:
+                item["documentation"] = member.docstring
             items.setdefault(name, item)
 
     return items
@@ -256,7 +256,7 @@ def completions(session, uri: str, position: AnalysisPosition):
                 import_entry.module,
                 import_entry.export_name,
             )
-            import_kind = "module" if match is None else match["kind"]
+            import_kind = "module" if match is None else match.kind
 
             detail = "from {} import {}".format(import_entry.module, import_entry.export_name)
             if import_entry.local_name != import_entry.export_name:
@@ -267,8 +267,8 @@ def completions(session, uri: str, position: AnalysisPosition):
                 "kind": import_kind,
                 "detail": detail,
             }
-            if match is not None and match.get("docstring"):
-                item["documentation"] = match["docstring"]
+            if match is not None and match.docstring:
+                item["documentation"] = match.docstring
             items.setdefault(import_entry.local_name, item)
 
         else:

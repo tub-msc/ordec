@@ -18,6 +18,7 @@ from .import_resolver import (
     module_name_in,
     package_context,
 )
+from .model import AnalysisDefinition
 from .model import AnalysisPosition
 from .model import AnalysisRange
 from .model import split_source_lines
@@ -182,26 +183,28 @@ class PythonModuleIndex:
             if name.startswith("_") or name in exports:
                 return
 
-            exports[name] = {
-                "uri": module_path.as_uri(),
-                "name": name,
-                "kind": kind,
-                "range": node_range(node),
-                "selection_range": name_range(node, name),
-            }
+            docstring = None
             if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
-                docstring = ast.get_docstring(node)
-                if docstring:
-                    exports[name]["docstring"] = docstring
+                docstring = ast.get_docstring(node) or None
+            signature = None
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                exports[name]["signature"] = {
+                signature = {
                     "params": function_signature_params(node),
                 }
-            if kind == "class" and module_path.suffix != ".ord":
-                # Cells from .ord modules resolve members through the ORD
-                # analysis of their uri, not the Python class machinery.
-                exports[name]["python_module"] = module_path
-                exports[name]["python_class"] = name
+            # Cells from .ord modules resolve members through the ORD
+            # analysis of their uri, not the Python class machinery.
+            python_class = kind == "class" and module_path.suffix != ".ord"
+            exports[name] = AnalysisDefinition(
+                uri=module_path.as_uri(),
+                name=name,
+                kind=kind,
+                range=node_range(node),
+                selection_range=name_range(node, name),
+                docstring=docstring,
+                signature=signature,
+                python_module=module_path if python_class else None,
+                python_class=name if python_class else None,
+            )
 
         def add_public_call_exports(node):
             if not isinstance(node, ast.Expr) or not isinstance(node.value, ast.Call):
@@ -216,7 +219,7 @@ class PythonModuleIndex:
 
                 value_name = node_name(keyword.value)
                 value_export = exports.get(value_name)
-                if value_export is not None and value_export.get("kind") == "class":
+                if value_export is not None and value_export.kind == "class":
                     exports[keyword.arg] = value_export
                     continue
 
@@ -236,15 +239,15 @@ class PythonModuleIndex:
             if name.startswith("_"):
                 return
 
-            member = class_info["members"].setdefault(name, {
-                "uri": module_path.as_uri(),
-                "name": name,
-                "kind": kind,
-                "range": node_range(node),
-                "selection_range": node_range(node),
-            })
-            if default is not None and "default" not in member:
-                member["default"] = default
+            member = class_info["members"].setdefault(name, AnalysisDefinition(
+                uri=module_path.as_uri(),
+                name=name,
+                kind=kind,
+                range=node_range(node),
+                selection_range=node_range(node),
+            ))
+            if default is not None and member.default is None:
+                class_info["members"][name] = member._replace(default=default)
 
         def imported_module_name(node):
             # Kept relative: the resolver resolves it from this module's path.
@@ -332,19 +335,24 @@ class PythonModuleIndex:
                         continue
 
                     if not class_node.name.startswith("_"):
-                        method_member = class_info["members"].setdefault(class_node.name, {
-                            "uri": module_path.as_uri(),
-                            "name": class_node.name,
-                            "kind": "function",
-                            "range": node_range(class_node),
-                            "selection_range": name_range(class_node, class_node.name),
-                        })
-                        method_docstring = ast.get_docstring(class_node)
-                        if method_docstring:
-                            method_member.setdefault("docstring", method_docstring)
-                        method_member.setdefault("signature", {
-                            "params": function_signature_params(class_node, skip_receiver=True),
-                        })
+                        method_member = class_info["members"].setdefault(
+                            class_node.name,
+                            AnalysisDefinition(
+                                uri=module_path.as_uri(),
+                                name=class_node.name,
+                                kind="function",
+                                range=node_range(class_node),
+                                selection_range=name_range(class_node, class_node.name),
+                            ),
+                        )
+                        if method_member.docstring is None:
+                            method_member = method_member._replace(
+                                docstring=ast.get_docstring(class_node) or None,
+                            )
+                        if method_member.signature is None:
+                            params = function_signature_params(class_node, skip_receiver=True)
+                            method_member = method_member._replace(signature={"params": params})
+                        class_info["members"][class_node.name] = method_member
 
                     container_names = set()
                     for stmt in ast.walk(class_node):
@@ -387,19 +395,19 @@ class PythonModuleIndex:
                                 target.end_lineno,
                                 target.end_col_offset,
                             )
-                            class_info["members"].setdefault(target.attr, {
-                                "uri": module_path.as_uri(),
-                                "name": target.attr,
-                                "kind": member_kind,
-                                "range": node_range(target),
-                                "selection_range": AnalysisRange(
+                            class_info["members"].setdefault(target.attr, AnalysisDefinition(
+                                uri=module_path.as_uri(),
+                                name=target.attr,
+                                kind=member_kind,
+                                range=node_range(target),
+                                selection_range=AnalysisRange(
                                     start=AnalysisPosition(
                                         attribute_end.line,
                                         attribute_end.character - len(target.attr),
                                     ),
                                     end=attribute_end,
                                 ),
-                            })
+                            ))
 
                     for stmt in ast.walk(class_node):
                         targets = []
@@ -487,19 +495,19 @@ class PythonModuleIndex:
 
         if export_name is None:
             name = module_path.parent.name if module_path.stem == "__init__" else module_path.stem
-            return {
-                "uri": module_info["uri"],
-                "name": name,
-                "kind": "module",
-                "range": AnalysisRange(
+            return AnalysisDefinition(
+                uri=module_info["uri"],
+                name=name,
+                kind="module",
+                range=AnalysisRange(
                     start=AnalysisPosition(1, 1),
                     end=AnalysisPosition(1, 1),
                 ),
-                "selection_range": AnalysisRange(
+                selection_range=AnalysisRange(
                     start=AnalysisPosition(1, 1),
                     end=AnalysisPosition(1, 1),
                 ),
-            }
+            )
 
         match = module_info["exports"].get(export_name)
         if match is not None:
@@ -561,8 +569,8 @@ class PythonModuleIndex:
             )
             if match is None:
                 continue
-            if "python_module" in match and "python_class" in match:
-                refs.append((match["python_module"], match["python_class"]))
+            if match.python_class is not None:
+                refs.append((match.python_module, match.python_class))
 
         if refs:
             return refs
@@ -612,11 +620,11 @@ class PythonModuleIndex:
             # The class may only be re-exported here (e.g. a package
             # __init__.py). Follow the export to its defining module.
             resolved = self.definition(module_path, export_name=class_name)
-            if resolved is None or "python_module" not in resolved:
+            if resolved is None or resolved.python_class is None:
                 return dict()
             return self.class_members(
-                resolved["python_module"],
-                resolved["python_class"],
+                resolved.python_module,
+                resolved.python_class,
                 seen=seen,
             )
 
