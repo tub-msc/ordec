@@ -530,8 +530,8 @@ class OrdLanguageServer:
         result = None
         if definition is not None:
             result = {
-                "uri": definition["uri"],
-                "range": self.lsp_range(definition["uri"], definition["selection_range"]),
+                "uri": definition.uri,
+                "range": self.lsp_range(definition.uri, definition.selection_range),
             }
         return self.result_response(message, result)
 
@@ -587,11 +587,11 @@ class OrdLanguageServer:
     def lsp_hierarchy_item(self, item):
         """Convert an analysis call hierarchy item to LSP shape."""
         return {
-            "name": item["name"],
-            "kind": self.symbol_kind(item["kind"]),
-            "uri": item["uri"],
-            "range": self.lsp_range(item["uri"], item["range"]),
-            "selectionRange": self.lsp_range(item["uri"], item["selection_range"]),
+            "name": item.name,
+            "kind": self.symbol_kind(item.kind),
+            "uri": item.uri,
+            "range": self.lsp_range(item.uri, item.range),
+            "selectionRange": self.lsp_range(item.uri, item.selection_range),
         }
 
     def hierarchy_request_location(self, message):
@@ -619,7 +619,7 @@ class OrdLanguageServer:
             result.append({
                 "from": self.lsp_hierarchy_item(item),
                 "fromRanges": [
-                    self.lsp_range(item["uri"], from_range)
+                    self.lsp_range(item.uri, from_range)
                     for from_range in call["from_ranges"]
                 ],
             })
@@ -898,11 +898,11 @@ class OrdLanguageServer:
         result = []
         for symbol in self.session.workspace_symbols(params.get("query", "")):
             result.append({
-                "name": symbol["name"],
-                "kind": self.symbol_kind(symbol["kind"]),
+                "name": symbol.name,
+                "kind": self.symbol_kind(symbol.kind),
                 "location": {
-                    "uri": symbol["uri"],
-                    "range": self.lsp_range(symbol["uri"], symbol["selection_range"]),
+                    "uri": symbol.uri,
+                    "range": self.lsp_range(symbol.uri, symbol.selection_range),
                 },
             })
         return self.result_response(message, result)
@@ -1053,24 +1053,24 @@ class OrdLanguageServer:
     def lsp_definition_result(self, source_uri: str, definition):
         """Convert an analysis definition to the client-supported LSP shape."""
         target_selection_range = self.lsp_range(
-            definition["uri"],
-            definition["selection_range"],
+            definition.uri,
+            definition.selection_range,
         )
         if not self.definition_link_support:
             return {
-                "uri": definition["uri"],
+                "uri": definition.uri,
                 "range": target_selection_range,
             }
 
         result = {
-            "targetUri": definition["uri"],
-            "targetRange": self.lsp_range(definition["uri"], definition["range"]),
+            "targetUri": definition.uri,
+            "targetRange": self.lsp_range(definition.uri, definition.range),
             "targetSelectionRange": target_selection_range,
         }
-        if definition.get("origin_range") is not None:
+        if definition.origin_range is not None:
             result["originSelectionRange"] = self.lsp_range(
                 source_uri,
-                definition["origin_range"],
+                definition.origin_range,
             )
 
         return [result]

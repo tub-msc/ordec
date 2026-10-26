@@ -232,7 +232,7 @@ def semantic_diagnostics(session, uri: str):
             if type_definition is None:
                 continue
 
-            if type_definition.get("kind") != "class" and "python_class" not in type_definition:
+            if type_definition.kind != "class" and type_definition.python_class is None:
                 continue
 
             resolved_any = True
@@ -244,7 +244,7 @@ def semantic_diagnostics(session, uri: str):
             member = session.type_members(type_definition).get(occurrence["name"])
             if member is None:
                 continue
-            if parameter_only and member["kind"] != "parameter":
+            if parameter_only and member.kind != "parameter":
                 continue
             matched = True
             break

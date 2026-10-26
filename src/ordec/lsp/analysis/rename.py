@@ -24,12 +24,12 @@ def prepare_rename(session, uri: str, position: AnalysisPosition):
     if definition is None:
         return None
 
-    if definition["kind"] == "module":
+    if definition.kind == "module":
         if not import_alias_binds(session, uri, name_info["name"]):
             return None
     elif (
-        name_info["name"] == definition["name"]
-        and session.file_uri_suffix(definition["uri"]) == ".py"
+        name_info["name"] == definition.name
+        and session.file_uri_suffix(definition.uri) == ".py"
     ):
         return None
 
@@ -57,17 +57,17 @@ def import_alias_binds(session, uri: str, name: str):
 
 def rename_conflict(session, definition, new_name: str):
     """Return a same-scope binding that conflicts with a rename."""
-    if definition["name"] == new_name:
+    if definition.name == new_name:
         return None
 
-    if session.file_uri_suffix(definition["uri"]) != ".ord":
+    if session.file_uri_suffix(definition.uri) != ".ord":
         return None
 
-    analysis = session.analyze(definition["uri"])
-    binding = analysis.binding_map.get(definition.get("binding_id"))
+    analysis = session.analyze(definition.uri)
+    binding = analysis.binding_map.get(definition.binding_id)
     if binding is None:
         for candidate in analysis.bindings:
-            if candidate["selection_range"] == definition["selection_range"]:
+            if candidate["selection_range"] == definition.selection_range:
                 binding = candidate
                 break
     if binding is None:
@@ -117,13 +117,13 @@ def rename(session, uri: str, position: AnalysisPosition, new_name: str):
         raise ValueError("Rename conflicts with existing name: {}".format(new_name))
 
     if (
-        definition["kind"] == "module"
+        definition.kind == "module"
         and not import_alias_binds(session, uri, name_info["name"])
     ):
         return None
 
     references = session.references(uri, lookup_position)
-    if definition["kind"] == "module" or name_info["name"] != definition["name"]:
+    if definition.kind == "module" or name_info["name"] != definition.name:
         changes = []
         for reference in references:
             if reference["uri"] != uri or reference["name"] != name_info["name"]:
@@ -144,14 +144,14 @@ def rename(session, uri: str, position: AnalysisPosition, new_name: str):
     # A workspace-wide rename would rewrite the imported name everywhere
     # but cannot touch its Python definition, breaking the import.
     # Aliased usages take the local branch above and stay valid.
-    if session.file_uri_suffix(definition["uri"]) == ".py":
+    if session.file_uri_suffix(definition.uri) == ".py":
         return None
 
     changes = dict()
     for reference in references:
         # Alias tokens of from-imports reference the same definition
         # under a different name and must keep their spelling.
-        if reference["name"] != definition["name"]:
+        if reference["name"] != definition.name:
             continue
 
         changes.setdefault(reference["uri"], []).append({

@@ -128,7 +128,7 @@ def test_document_versions():
     assert analysis.version == 2
     assert analysis.diagnostics[0].code == "unexpected-token"
     assert [symbol.name for symbol in analysis.symbols] == ["Inv", "symbol", "a"]
-    assert session.definition(uri, position_at("cell Inv:\n", "Inv"))["name"] == "Inv"
+    assert session.definition(uri, position_at("cell Inv:\n", "Inv")).name == "Inv"
 
     session.close_document(uri)
     assert session.documents == {}
@@ -254,8 +254,8 @@ def test_ord_imports(tmp_path):
         (tmp_path / "mux2.ord").resolve().as_uri(),
         (package_path / "__init__.ord").resolve().as_uri(),
     ]
-    assert session.definition(uri, position_at(top_source, "Stage child"))["name"] == "Mux2"
-    assert session.definition(uri, position_at(top_source, "Exported exp"))["name"] == "Exported"
+    assert session.definition(uri, position_at(top_source, "Stage child")).name == "Mux2"
+    assert session.definition(uri, position_at(top_source, "Exported exp")).name == "Exported"
 
 
 def test_ord_star_imports(tmp_path):
@@ -288,7 +288,7 @@ def test_ord_star_imports(tmp_path):
     assert session.resolve_name(star_uri, "_Hidden") is None
     assert session.resolve_name(star_uri, "_Base") is None
     assert session.diagnostics(star_uri) == []
-    assert session.definition(star_uri, position_at(star_source, "Mux2 child"))["name"] == "Mux2"
+    assert session.definition(star_uri, position_at(star_source, "Mux2 child")).name == "Mux2"
 
 
 def test_python_import_variants(tmp_path):
@@ -337,13 +337,13 @@ def test_python_import_variants(tmp_path):
     uri = session.open_path(str(path))
 
     assert session.diagnostics(uri) == []
-    assert session.resolve_name(uri, "ExtLib")["kind"] == "class"
-    assert session.resolve_name(uri, "helpers")["kind"] == "module"
+    assert session.resolve_name(uri, "ExtLib").kind == "class"
+    assert session.resolve_name(uri, "helpers").kind == "module"
     # import ordec.lib.base binds the package ordec.
-    assert session.resolve_name(uri, "ordec")["name"] == "ordec"
+    assert session.resolve_name(uri, "ordec").name == "ordec"
     # A package without __init__ has no source file of its own.
-    assert session.resolve_name(uri, "plain")["kind"] == "module"
-    assert session.definition(uri, position_at(source, "Nmos m"))["name"] == "Nmos"
+    assert session.resolve_name(uri, "plain").kind == "module"
+    assert session.definition(uri, position_at(source, "Nmos m")).name == "Nmos"
 
 
 def test_python_members_and_completions():
@@ -368,10 +368,10 @@ def test_python_members_and_completions():
     assert session.diagnostics(uri) == []
     # The star import binds public names only.
     assert session.resolve_name(uri, "__init__") is None
-    assert session.definition(uri, position_at(source, "s --"))["name"] == "s"
-    assert session.definition(uri, position_after(source, "$"))["name"] == "l"
-    assert session.definition(uri, position_at(source, "pos"))["name"] == "pos"
-    assert session.definition(uri, position_at(source, "g --"))["name"] == "g"
+    assert session.definition(uri, position_at(source, "s --")).name == "s"
+    assert session.definition(uri, position_after(source, "$")).name == "l"
+    assert session.definition(uri, position_at(source, "pos")).name == "pos"
+    assert session.definition(uri, position_at(source, "g --")).name == "g"
 
     edited = source.replace(".s -- vss", ".")
     session.update_document(uri, edited, version=2)
@@ -401,8 +401,8 @@ def test_reused_symbol_members():
     session.open_document(uri, source)
 
     assert session.diagnostics(uri) == []
-    assert session.definition(uri, position_at(source, "Nmos(w"))["name"] == "Nmos"
-    assert session.definition(uri, position_at(source, "g --"))["name"] == "g"
+    assert session.definition(uri, position_at(source, "Nmos(w")).name == "Nmos"
+    assert session.definition(uri, position_at(source, "g --")).name == "g"
 
 
 def test_net_path_statement_bodies():
@@ -425,8 +425,8 @@ def test_net_path_statement_bodies():
 
     assert session.diagnostics(uri) == []
     # References inside and after a statement body resolve to the net targets.
-    assert session.definition(uri, position_at(source, "vss.auto_wire"))["name"] == "vss"
-    assert session.definition(uri, position_at(source, "clk.auto_wire = True"))["name"] == "clk"
+    assert session.definition(uri, position_at(source, "vss.auto_wire")).name == "vss"
+    assert session.definition(uri, position_at(source, "clk.auto_wire = True")).name == "clk"
 
 
 def test_cell_member_sources():
@@ -457,9 +457,9 @@ def test_cell_member_sources():
     session.open_document(uri, source)
 
     assert session.diagnostics(uri) == []
-    assert session.definition(uri, position_at(source, "schematic", 2))["name"] == "schematic"
-    assert session.definition(uri, position_at(source, "q -- out"))["name"] == "q"
-    assert session.definition(uri, position_at(source, "bodybar"))["name"] == "bodybar"
+    assert session.definition(uri, position_at(source, "schematic", 2)).name == "schematic"
+    assert session.definition(uri, position_at(source, "q -- out")).name == "q"
+    assert session.definition(uri, position_at(source, "bodybar")).name == "bodybar"
 
 
 def test_relative_python_cells(tmp_path):
@@ -546,7 +546,7 @@ def test_navigation_and_rename(tmp_path):
     uri = session.open_path(str(user_path))
     position = position_at(source, "Stage", 2)
 
-    assert session.definition(uri, position)["name"] == "Mux2"
+    assert session.definition(uri, position).name == "Mux2"
     assert "Mux2" in session.hover(uri, position)["contents"]
     # Three Stage tokens, the imported Mux2 token, and the definition.
     assert len(session.references(uri, position)) == 5
@@ -576,8 +576,8 @@ def test_python_scopes(tmp_path):
 
     for name in ("left", "right", "idx", "pin", "handle", "exc"):
         definition = session.definition(uri, position_at(source, name, 2))
-        assert definition["name"] == name
-        assert definition["uri"] == uri
+        assert definition.name == name
+        assert definition.uri == uri
 
     assert "current" in completion_labels(session, uri, position_at(source, "return"))
 
@@ -595,7 +595,7 @@ def test_assignment_targets_not_bindings(tmp_path):
     session = AnalysisSession(workspace_root=str(tmp_path))
     uri = path.resolve().as_uri()
 
-    assert session.definition(uri, position_at(source, "idx]"))["name"] == "idx"
+    assert session.definition(uri, position_at(source, "idx]")).name == "idx"
     assert session.definition(uri, position_at(source, "unknown", 2)) is None
     assert session.definition(uri, position_at(source, "target", 2)) is None
 
@@ -618,7 +618,7 @@ def test_workspace_cache(tmp_path):
     session = AnalysisSession(workspace_root=str(tmp_path))
     uri = session.open_path(str(path))
 
-    assert [symbol["name"] for symbol in session.workspace_symbols("mux")] == ["Mux2"]
+    assert [symbol.name for symbol in session.workspace_symbols("mux")] == ["Mux2"]
     assert session.folding_ranges(uri)
     assert session.selection_ranges(uri, [position_at(source, "symbol")])[0] is not None
     assert {
@@ -628,7 +628,7 @@ def test_workspace_cache(tmp_path):
 
     path.write_text(source.replace("Mux2", "Mux4"))
     session.invalidate_path(str(path))
-    assert [symbol["name"] for symbol in session.workspace_symbols("mux")] == ["Mux4"]
+    assert [symbol.name for symbol in session.workspace_symbols("mux")] == ["Mux4"]
 
 
 def test_dirty_rows_refresh_without_rescan(tmp_path, monkeypatch):
@@ -705,7 +705,7 @@ def test_simulation_alias():
     session.open_document(uri, source)
 
     assert session.diagnostics(uri) == []
-    assert session.definition(uri, position_at(source, "Simulation"))["name"] == "SimHierarchy"
+    assert session.definition(uri, position_at(source, "Simulation")).name == "SimHierarchy"
 
 
 def test_windows_drive_uri():
@@ -777,7 +777,7 @@ def test_rename_refuses_python_symbols(tmp_path):
     uri = session.open_path(str(path))
     position = position_at(source, "Stage", occurrence=2)
 
-    assert session.definition(uri, position)["uri"].endswith("extlib.py")
+    assert session.definition(uri, position).uri.endswith("extlib.py")
     assert session.prepare_rename(uri, position) is None
     assert session.rename(uri, position, "Driver") is None
 
@@ -832,7 +832,7 @@ def test_imports_follow_runtime_rules(tmp_path):
     assert diagnostic_codes(session, uri) == []
     for name, module in [("Shadow", "foo.py"), ("Helper", "helper.py"), ("Lib", "lib.py")]:
         definition = session.definition(uri, position_at(source, name))
-        assert definition["uri"] == (tmp_path / module).resolve().as_uri()
+        assert definition.uri == (tmp_path / module).resolve().as_uri()
 
     # Deleting the shadowing foo.py makes foo.ord the imported document.
     foo_uri = (tmp_path / "foo.ord").as_uri()
@@ -858,7 +858,7 @@ def test_imports_follow_runtime_rules(tmp_path):
     uri = session.open_path(str(package_path / "top.ord"))
     assert diagnostic_codes(session, uri) == ["unresolved-import"]
     definition = session.definition(uri, position_at(source, "A"))
-    assert definition["uri"] == (package_path / "a.py").resolve().as_uri()
+    assert definition.uri == (package_path / "a.py").resolve().as_uri()
 
     # One module name names a different file for each directory, also
     # next to a same-named module in the workspace root.
@@ -872,7 +872,7 @@ def test_imports_follow_runtime_rules(tmp_path):
         uri = session.open_path(str(doc_path / "top.ord"))
         assert diagnostic_codes(session, uri) == []
         definition = session.definition(uri, position_at(source, name))
-        assert definition["uri"] == (doc_path / "helper.py").resolve().as_uri()
+        assert definition.uri == (doc_path / "helper.py").resolve().as_uri()
 
     # Untitled documents have no directory of their own, only the
     # workspace root to import from.
@@ -917,7 +917,7 @@ def test_init_ord_packages(tmp_path, monkeypatch):
     session = AnalysisSession(workspace_root=str(tmp_path))
     uri = session.open_path(str(top_path))
     assert session.diagnostics(uri) == []
-    assert session.definition(uri, position_at(source, "sub"))["uri"] == sub_path.as_uri()
+    assert session.definition(uri, position_at(source, "sub")).uri == sub_path.as_uri()
 
 
 def test_imports_match_runtime_importer(tmp_path):
@@ -951,11 +951,11 @@ def test_imports_match_runtime_importer(tmp_path):
 
     # The runtime importer searches the script's own directory, so the
     # sibling import must resolve and appear in the import graph.
-    assert session.definition(top_uri, position_at(top_source, "Inv"))["uri"] == lib_uri
+    assert session.definition(top_uri, position_at(top_source, "Inv")).uri == lib_uri
     assert top_uri in session.workspace_dependents(lib_uri)
 
     # "from . import X" names the package, never the sibling sub.ord.
-    assert session.definition(top_uri, position_at(top_source, "Inner"))["uri"] == init_uri
+    assert session.definition(top_uri, position_at(top_source, "Inner")).uri == init_uri
 
 
 def test_export_ranges_avoid_keywords(tmp_path):
@@ -971,15 +971,9 @@ def test_export_ranges_avoid_keywords(tmp_path):
     index = PythonModuleIndex(ImportResolver(str(tmp_path)))
 
     # A short name must not match inside the def or class keyword.
-    assert index.definition(path, export_name="f")[
-        "selection_range"
-    ].start == AnalysisPosition(line=1, character=5)
-    assert index.definition(path, export_name="C")[
-        "selection_range"
-    ].start == AnalysisPosition(line=4, character=7)
-    assert index.class_members(path, "C")["d"][
-        "selection_range"
-    ].start == AnalysisPosition(line=5, character=9)
+    assert index.definition(path, export_name="f").selection_range.start == AnalysisPosition(1, 5)
+    assert index.definition(path, export_name="C").selection_range.start == AnalysisPosition(4, 7)
+    assert index.class_members(path, "C")["d"].selection_range.start == AnalysisPosition(5, 9)
 
 
 def test_port_action_refuses_stale():
@@ -1200,7 +1194,7 @@ def test_rename_preserves_import_alias(tmp_path):
 
     # The exported-name token of an aliased from-import resolves to the
     # cell definition, like the alias token does.
-    assert session.definition(top_uri, export_position)["uri"] == lib_uri
+    assert session.definition(top_uri, export_position).uri == lib_uri
 
     # Renaming the cell must rewrite the exported name but keep the alias,
     # yielding "from lib import Nand as I".
@@ -1226,10 +1220,10 @@ def test_subtree_bindings():
     session.open_document(uri, source)
     analysis = session.analyze(uri)
 
-    assert session.definition(uri, position_at(source, "width", occurrence=2))["name"] == "width"
-    assert session.definition(uri, position_at(source, "lib", occurrence=2))["name"] == "lib"
+    assert session.definition(uri, position_at(source, "width", occurrence=2)).name == "width"
+    assert session.definition(uri, position_at(source, "lib", occurrence=2)).name == "lib"
     item_definition = session.definition(uri, position_at(source, "item for"))
-    assert item_definition["selection_range"].start == position_at(source, "item in")
+    assert item_definition.selection_range.start == position_at(source, "item in")
     i1_binding = next(binding for binding in analysis.bindings if binding["name"] == "i1")
     assert i1_binding["type_names"] == ["Inv"]
     assert any(member["name"] == "Inv" for member in analysis.member_occurrences)
@@ -1269,8 +1263,8 @@ def test_relative_from_imports(tmp_path):
         uri,
         position_at(source, "device", occurrence=2),
     )
-    assert device_definition["uri"] == device_path.as_uri()
-    assert session.definition(uri, position_at(source, "Root", occurrence=2))["uri"] == (
+    assert device_definition.uri == device_path.as_uri()
+    assert session.definition(uri, position_at(source, "Root", occurrence=2)).uri == (
         package_path / "__init__.ord"
     ).as_uri()
     assert set(session.resolve_import_uris(uri)) == {
@@ -1344,7 +1338,7 @@ def test_indexed_member_navigation():
     session.open_document(uri, source, version=1)
 
     definition = session.definition(uri, position_at(source, "q -- out", occurrence=2))
-    assert definition["name"] == "q"
+    assert definition.name == "q"
 
     completion_source = dedent("""\
         from ordec.lib.generic_mos import Nmos
@@ -1384,10 +1378,10 @@ def test_lambda_and_with_bindings():
 
     for name in ("first", "second", "kwargs"):
         definition = session.definition(uri, position_at(source, name, occurrence=2))
-        assert definition["name"] == name
-        assert definition["kind"] == "parameter"
+        assert definition.name == name
+        assert definition.kind == "parameter"
     for name in ("handle", "first_handle", "group", "grouped"):
-        assert session.definition(uri, position_at(source, name, occurrence=2))["name"] == name
+        assert session.definition(uri, position_at(source, name, occurrence=2)).name == name
 
 
 def test_python_index_edge_cases(tmp_path, monkeypatch):
@@ -1418,7 +1412,7 @@ def test_python_index_edge_cases(tmp_path, monkeypatch):
         from second import Choice as Selected
         """))
     index = PythonModuleIndex(ImportResolver(str(tmp_path)))
-    assert index.definition(bridge_path, export_name="Selected")["uri"] == second_path.as_uri()
+    assert index.definition(bridge_path, export_name="Selected").uri == second_path.as_uri()
 
     ord_path = tmp_path / "celllib.ord"
     ord_path.write_text(dedent("""\
@@ -1465,19 +1459,19 @@ def test_function_header_bindings():
 
     outer_x = session.definition(uri, position_at(source, "x", occurrence=1))
     parameter_x = session.definition(uri, position_at(source, "x", occurrence=2))
-    assert parameter_x["binding_id"] != outer_x["binding_id"]
+    assert parameter_x.binding_id != outer_x.binding_id
     for occurrence in (3, 4):
         definition = session.definition(uri, position_at(source, "x", occurrence))
-        assert definition["binding_id"] == outer_x["binding_id"]
+        assert definition.binding_id == outer_x.binding_id
 
     outer_t = session.definition(uri, position_at(source, "T"))
     for occurrence in range(2, 6):
         definition = session.definition(uri, position_at(source, "T", occurrence))
-        assert definition["binding_id"] == outer_t["binding_id"]
+        assert definition.binding_id == outer_t.binding_id
 
     for name in ("args", "kwargs"):
         definition = session.definition(uri, position_at(source, name, occurrence=2))
-        assert definition["kind"] == "parameter"
+        assert definition.kind == "parameter"
 
 
 def test_lone_carriage_returns():
@@ -1488,7 +1482,7 @@ def test_lone_carriage_returns():
 
     assert session.diagnostics(uri) == []
     definition = session.definition(uri, AnalysisPosition(3, 12))
-    assert definition["selection_range"].start == AnalysisPosition(1, 1)
+    assert definition.selection_range.start == AnalysisPosition(1, 1)
 
 
 def test_definition_at_identifier_end():
@@ -1505,8 +1499,8 @@ def test_definition_at_identifier_end():
         uri,
         position_after(source, "local", occurrence=2),
     )
-    assert definition["kind"] == "variable"
-    assert definition["selection_range"].start == position_at(source, "local")
+    assert definition.kind == "variable"
+    assert definition.selection_range.start == position_at(source, "local")
 
 
 def test_rename_collision():
@@ -1559,8 +1553,8 @@ def test_python_index_unicode_attribute_ranges(tmp_path, suffix):
     path.write_text(source)
     member = PythonModuleIndex(ImportResolver()).class_members(path, "Device")["élé"]
 
-    assert member["selection_range"].start == AnalysisPosition(4, 14)
-    assert member["selection_range"].end == AnalysisPosition(4, 17)
+    assert member.selection_range.start == AnalysisPosition(4, 14)
+    assert member.selection_range.end == AnalysisPosition(4, 17)
 
 
 def test_close_keeps_import_index(tmp_path):
@@ -1595,8 +1589,8 @@ def test_workspace_symbols_reuse_scan(tmp_path, monkeypatch):
         yield from original(root_path)
 
     monkeypatch.setattr(session, "workspace_ord_paths", counted_paths)
-    assert [item["name"] for item in session.workspace_symbols()] == ["First"]
-    assert [item["name"] for item in session.workspace_symbols()] == ["First"]
+    assert [item.name for item in session.workspace_symbols()] == ["First"]
+    assert [item.name for item in session.workspace_symbols()] == ["First"]
     assert len(calls) == 1
 
     second_path = tmp_path / "second.ord"
@@ -1605,7 +1599,7 @@ def test_workspace_symbols_reuse_scan(tmp_path, monkeypatch):
             pass
         """))
     session.invalidate_path(str(second_path))
-    assert {item["name"] for item in session.workspace_symbols()} == {
+    assert {item.name for item in session.workspace_symbols()} == {
         "First",
         "Second",
     }
