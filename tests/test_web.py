@@ -1096,6 +1096,33 @@ def test_layout_style_edit(web, tmp_path, monkeypatch):
         pytest.fail("customization file not written")
 
 @pytest.mark.web
+def test_schematic_crossings(web, tmp_path, monkeypatch):
+    """The crossing style select changes the drawing right away, is saved
+    to the user's configuration file and applies after reconnecting."""
+    monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path))
+    qs_local = web.key.query_string_local("tests.lib.ord.nand", ["Nand().schematic"])
+    web.navigate(f'app.html#refreshall=true&{qs_local}')
+    web.wait_for_ready()
+    d = web.driver.execute_script("""
+        const select = document.querySelector('.schem-crossing-select');
+        select.value = 'bridge-h';
+        select.onchange();
+        return [...document.querySelectorAll('path.schemWire')].map(p => p.getAttribute('d')).join(' ');
+    """)
+    assert d.count(' A') == 3 # one bridge per crossing of the Nand schematic
+    config = tmp_path / 'ordec' / 'config.toml'
+    for _ in range(100):
+        if config.exists() and 'crossings = "bridge-h"' in config.read_text():
+            break
+        time.sleep(0.05)
+    else:
+        pytest.fail("configuration file not written")
+    web.driver.refresh()
+    web.wait_for_ready()
+    assert web.driver.execute_script(
+        "return document.querySelector('.schem-crossing-select').value") == 'bridge-h'
+
+@pytest.mark.web
 def test_layoutgl(web):
     """Fuzzy visual testing of web layout viewer (layout-gl.js)."""
     web.resize_viewport()
