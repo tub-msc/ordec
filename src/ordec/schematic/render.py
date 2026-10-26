@@ -505,8 +505,8 @@ class SchematicRenderer(Renderer):
 
         for p in s.all(SchemConnPoint):
             # The web UI matches cx/cy against the wire vertices of svg_path
-            # as strings (findCrossings in web/src/view/svg.js): keep both
-            # formatted alike.
+            # (findCrossings in web/src/view/svg.js): both must be the same
+            # float values.
             cx, cy = p.pos.tofloat()
             circle = ET.SubElement(self.cur_group, 'circle', cx=str(cx), cy=str(cy), r=str(self.conn_point_radius))
             circle.attrib['class'] = 'connPoint'

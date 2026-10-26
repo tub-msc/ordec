@@ -1573,6 +1573,10 @@ body.theme-dark .schem-detail-toggle:hover {
 .schem-crossing-select.error {
     color: var(--color-schem-err-text);
 }
+body.theme-dark .schem-crossing-select option {
+    color: initial;
+    background-color: initial;
+}
 .viewer-coordinates {
     font-family: var(--font-mono);
     font-size: var(--font-size-md);
