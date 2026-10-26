@@ -268,6 +268,7 @@ def test_lsp_deleted_file_with_cold_index_refreshes_open_documents(tmp_path):
 
     # An import graph built only after the deletion has no edge to the
     # missing file, so the importer must be refreshed regardless.
+    device_text = device_path.read_text()
     device_path.unlink()
     server.session.invalidate_workspace_index()
     responses = notify(
@@ -286,6 +287,25 @@ def test_lsp_deleted_file_with_cold_index_refreshes_open_documents(tmp_path):
         diagnostic["code"]
         for diagnostic in responses[0]["params"]["diagnostics"]
     }
+
+    # Creating the missing file resolves the import, also for a new server
+    # that builds its import graph only while handling the event.
+    server = initialize_server(tmp_path)
+    assert open_document(server, top_uri, top_source) != []
+    device_path.write_text(device_text)
+    responses = notify(
+        server,
+        "workspace/didChangeWatchedFiles",
+        {
+            "changes": [{
+                "uri": device_uri,
+                "type": 1,
+            }],
+        },
+    )
+
+    assert [response["params"]["uri"] for response in responses] == [top_uri]
+    assert responses[0]["params"]["diagnostics"] == []
 
 
 def test_lsp_navigation_references_rename_and_symbols(tmp_path):

@@ -4,7 +4,6 @@
 # standard imports
 import ast
 import importlib
-import importlib.util
 import re
 from pathlib import Path
 from typing import Optional
@@ -13,15 +12,15 @@ from lark.exceptions import LarkError
 
 # ordec imports
 from ...ord.parser import ord_to_py
+from .import_resolver import (
+    ImportResolver,
+    from_import_module_name,
+    module_name_in,
+    package_context,
+)
 from .model import AnalysisPosition
 from .model import AnalysisRange
-from .model import file_uri_to_path
-from .model import find_module_source
 from .model import split_source_lines
-
-# Suffix precedence for the Python module index, which resolves both
-# plain Python modules and ORD modules importable through ordec's hook.
-MODULE_SOURCE_SUFFIXES = (".py", ".ord")
 
 
 def expression_text(node, limit: int = 32):
@@ -78,158 +77,44 @@ class PythonModuleIndex:
 
     The index parses workspace Python modules without executing them and
     extracts the exported classes, functions, variables, and class members
-    needed by LSP definition, diagnostics, and completion features. Resolving
-    installed modules uses ``importlib`` and may execute parent package
-    initialization code. Failures are treated as unresolved modules.
+    needed by LSP definition, diagnostics, and completion features. Modules
+    are keyed by the source path they were found under (see
+    ``ImportResolver.module_path()``); the imports inside a module resolve
+    through the given ``ImportResolver`` like those of ORD documents.
     """
-    def __init__(self, workspace_root: Optional[str] = None):
+    def __init__(self, resolver: ImportResolver):
         """Initialize the Python source index."""
-        self.workspace_root = workspace_root
+        self.resolver = resolver
         self.python_modules = dict()
 
-    def clear(self):
-        """Clear cached Python module analysis and importlib state."""
+    def invalidate_module_path(self, path: Path, created_or_deleted: bool = True):
+        """Invalidate cached Python analysis for the modules backed by a path.
+
+        Args:
+            path: Symlink-resolved path of the changed file.
+            created_or_deleted: False for a content change.
+        """
         importlib.invalidate_caches()
-        self.python_modules.clear()
+        if created_or_deleted and path.stem == "__init__":
+            # The cached module names derive from the __init__ files above.
+            self.python_modules.clear()
+            return
 
-    def find_spec(self, module_name: str):
-        """Return an importlib spec without letting package failures escape."""
-        try:
-            return importlib.util.find_spec(module_name)
-        except KeyboardInterrupt:
-            raise
-        except BaseException:
-            return None
+        for module_path in list(self.python_modules):
+            if module_path.resolve() == path:
+                del self.python_modules[module_path]
 
-    def resolve_module_path(self, module_name: str):
-        """Resolve a Python module name to a source file path."""
-        if self.workspace_root:
-            workspace_root = Path(self.workspace_root).resolve()
-            workspace_path = workspace_root.joinpath(*module_name.split("."))
-            candidate = find_module_source(workspace_path, MODULE_SOURCE_SUFFIXES)
-            if candidate is not None:
-                return candidate.resolve()
+    def import_path(self, module_info, module_name: str):
+        """Return the source file an import inside an indexed module names."""
+        return self.resolver.module_path(module_info["uri"], module_name, script=False)
 
-        spec = self.find_spec(module_name)
-
-        if spec is None or spec.origin in (None, "built-in", "frozen"):
-            # Installed .ord modules are invisible to importlib unless ordec's
-            # import hook is active. Resolve them via the parent package.
-            if "." in module_name:
-                parent_name, leaf_name = module_name.rsplit(".", 1)
-                parent_path = self.resolve_module_path(parent_name)
-                if parent_path is not None and parent_path.stem == "__init__":
-                    candidate = parent_path.parent / (leaf_name + ".ord")
-                    if candidate.exists():
-                        return candidate.resolve()
-            return None
-
-        path = Path(spec.origin)
-        if not path.exists():
-            return None
-
-        return path.resolve()
-
-    def resolve_import_name(self, uri: str, module_name: str):
-        """Resolve a possibly relative Python import name for a document."""
-        if not module_name:
-            return module_name
-
-        if not module_name.startswith("."):
-            doc_path = file_uri_to_path(uri)
-            if doc_path is not None and self.workspace_root:
-                workspace_root = Path(self.workspace_root).resolve()
-                import_path = doc_path.parent.joinpath(*module_name.split("."))
-                candidate = find_module_source(import_path, MODULE_SOURCE_SUFFIXES)
-                relative_path = None
-                if candidate is not None:
-                    try:
-                        relative_path = candidate.resolve().relative_to(workspace_root)
-                    except ValueError:
-                        relative_path = None
-
-                if relative_path is not None:
-                    if relative_path.stem == "__init__":
-                        module_parts = relative_path.parent.parts
-                    else:
-                        module_parts = relative_path.with_suffix("").parts
-
-                    if module_parts:
-                        return ".".join(module_parts)
-
-            return module_name
-
-        doc_path = file_uri_to_path(uri)
-        if doc_path is None or not self.workspace_root:
-            return None
-
-        workspace_root = Path(self.workspace_root).resolve()
-        try:
-            relative_path = doc_path.relative_to(workspace_root)
-        except ValueError:
-            return None
-
-        package_name = ".".join(relative_path.parent.parts)
-        if not package_name:
-            return None
-
-        try:
-            return importlib.util.resolve_name(module_name, package_name)
-        except (ImportError, ValueError):
-            return None
-
-    def module_exists(self, module_name: str):
-        """Return whether a Python module can be imported or found locally."""
-        if not module_name:
-            return False
-
-        if self.resolve_module_path(module_name) is not None:
-            return True
-
-        return self.find_spec(module_name) is not None
-
-    def module_names_for_path(self, path: Path):
-        """Return cached or workspace module names that may map to a path."""
-        names = []
-
-        for module_name, module_info in self.python_modules.items():
-            if module_info is None:
-                continue
-            if module_info.get("path") == path:
-                names.append(module_name)
-
-        if self.workspace_root:
-            try:
-                relative_path = path.relative_to(Path(self.workspace_root).resolve())
-            except ValueError:
-                relative_path = None
-
-            if relative_path is not None:
-                if relative_path.stem == "__init__":
-                    module_parts = relative_path.parent.parts
-                else:
-                    module_parts = relative_path.with_suffix("").parts
-
-                if module_parts:
-                    names.append(".".join(module_parts))
-
-        return sorted(set(names))
-
-    def invalidate_module_path(self, path: Path):
-        """Invalidate cached Python analysis for modules backed by a path."""
-        importlib.invalidate_caches()
-        for module_name in self.module_names_for_path(path):
-            self.python_modules.pop(module_name, None)
-
-    def module_info(self, module_name: str):
+    def module_info(self, module_path: Optional[Path]):
         """Analyze a Python module enough for ORD import and member lookup."""
-        if module_name in self.python_modules:
-            return self.python_modules[module_name]
-
-        module_path = self.resolve_module_path(module_name)
         if module_path is None:
-            self.python_modules[module_name] = None
             return None
+
+        if module_path in self.python_modules:
+            return self.python_modules[module_path]
 
         try:
             source_data = module_path.read_text(encoding="utf-8")
@@ -238,7 +123,7 @@ class PythonModuleIndex:
             else:
                 syntax_tree = ast.parse(source_data, filename=str(module_path))
         except (OSError, SyntaxError, UnicodeDecodeError, ValueError, LarkError):
-            self.python_modules[module_name] = None
+            self.python_modules[module_path] = None
             return None
 
         source_lines = split_source_lines(source_data)
@@ -311,7 +196,7 @@ class PythonModuleIndex:
             if kind == "class" and module_path.suffix != ".ord":
                 # Cells from .ord modules resolve members through the ORD
                 # analysis of their uri, not the Python class machinery.
-                exports[name]["python_module"] = module_name
+                exports[name]["python_module"] = module_path
                 exports[name]["python_class"] = name
 
         def add_public_call_exports(node):
@@ -357,22 +242,9 @@ class PythonModuleIndex:
             if default is not None and "default" not in member:
                 member["default"] = default
 
-        def resolve_imported_module(node):
-            import_name = "." * node.level
-            if node.module:
-                import_name += node.module
-
-            package_name = module_name
-            if node.level:
-                if module_path.stem == "__init__":
-                    package_name = module_name
-                else:
-                    package_name = module_name.rsplit(".", 1)[0]
-
-            try:
-                return importlib.util.resolve_name(import_name, package_name)
-            except (ImportError, ValueError):
-                return None
+        def imported_module_name(node):
+            # Kept relative: the resolver resolves it from this module's path.
+            return "." * node.level + (node.module or "")
 
         for node in syntax_tree.body:
             add_public_call_exports(node)
@@ -384,17 +256,13 @@ class PythonModuleIndex:
                 continue
 
             if isinstance(node, ast.ImportFrom):
-                resolved_module = resolve_imported_module(node)
-                if resolved_module is None:
-                    continue
-
                 for alias in node.names:
                     if alias.name == "*":
-                        star_modules.append(resolved_module)
+                        star_modules.append(imported_module_name(node))
                         continue
 
                     import_members[alias.asname or alias.name] = {
-                        "module": resolved_module,
+                        "module": imported_module_name(node),
                         "export_name": alias.name,
                     }
                 # Keep parsing the same node for top-level reexports below.
@@ -563,23 +431,21 @@ class PythonModuleIndex:
             if not isinstance(node, ast.ImportFrom):
                 continue
 
-            resolved_module = resolve_imported_module(node)
-            if resolved_module is None:
-                continue
-
             for alias in node.names:
                 if alias.name == "*":
                     continue
 
                 reexports.append({
                     "local_name": alias.asname or alias.name,
-                    "module": resolved_module,
+                    "module": imported_module_name(node),
                     "export_name": alias.name,
                 })
 
+        import_root, _ = package_context(module_path.parent)
         module_info = {
             "uri": module_path.as_uri(),
             "path": module_path,
+            "name": module_name_in(module_path, import_root),
             "exports": exports,
             "reexports": reexports,
             "star_modules": star_modules,
@@ -587,32 +453,35 @@ class PythonModuleIndex:
             "import_members": import_members,
             "classes": classes,
         }
-        self.python_modules[module_name] = module_info
+        self.python_modules[module_path] = module_info
         return module_info
 
-    def definition(self, module_name: str, export_name: Optional[str] = None, seen=None):
+    def definition(
+        self,
+        module_path: Optional[Path],
+        export_name: Optional[str] = None,
+        seen=None,
+    ):
         """Resolve a Python module or exported member definition."""
-        if not module_name:
-            return None
-
         if seen is None:
             seen = set()
 
         # Keyed by module and export so a re-export chain may revisit a
         # module under a different export name.
-        key = (module_name, export_name)
+        key = (module_path, export_name)
         if key in seen:
             return None
         seen.add(key)
 
-        module_info = self.module_info(module_name)
+        module_info = self.module_info(module_path)
         if module_info is None:
             return None
 
         if export_name is None:
+            name = module_path.parent.name if module_path.stem == "__init__" else module_path.stem
             return {
                 "uri": module_info["uri"],
-                "name": module_name.split(".")[-1],
+                "name": name,
                 "kind": "module",
                 "range": AnalysisRange(
                     start=AnalysisPosition(1, 1),
@@ -634,21 +503,25 @@ class PythonModuleIndex:
                 continue
 
             match = self.definition(
-                reexport["module"],
+                self.import_path(module_info, reexport["module"]),
                 export_name=reexport["export_name"],
                 seen=seen,
             )
             if match is not None:
                 return match
 
-        submodule_name = "{}.{}".format(module_name, export_name)
-        match = self.definition(submodule_name, seen=seen)
-        if match is not None:
-            return match
+        if module_info["name"] is not None:
+            submodule_path = self.import_path(
+                module_info,
+                "{}.{}".format(module_info["name"], export_name),
+            )
+            match = self.definition(submodule_path, seen=seen)
+            if match is not None:
+                return match
 
         for star_module in module_info["star_modules"]:
             match = self.definition(
-                star_module,
+                self.import_path(module_info, star_module),
                 export_name=export_name,
                 seen=seen,
             )
@@ -657,18 +530,22 @@ class PythonModuleIndex:
 
         return None
 
-    def base_class_refs(self, module_name: str, module_info, base_name: str):
+    def base_class_refs(self, module_path: Path, module_info, base_name: str):
         """Resolve a base class name from a parsed Python module."""
         if base_name in module_info["classes"]:
-            return [(module_name, base_name)]
+            return [(module_path, base_name)]
 
         if base_name in module_info["import_members"]:
             imported = module_info["import_members"][base_name]
-            return [(imported["module"], imported["export_name"])]
+            imported_path = self.import_path(module_info, imported["module"])
+            return [(imported_path, imported["export_name"])]
 
         refs = []
         for star_module in module_info["star_modules"]:
-            match = self.definition(star_module, export_name=base_name)
+            match = self.definition(
+                self.import_path(module_info, star_module),
+                export_name=base_name,
+            )
             if match is None:
                 continue
             if "python_module" in match and "python_class" in match:
@@ -684,30 +561,33 @@ class PythonModuleIndex:
 
         imported_module = module_info["imports"].get(local_name)
         if imported_module is not None:
-            refs.append((imported_module, member_name))
+            refs.append((self.import_path(module_info, imported_module), member_name))
 
         imported_member = module_info["import_members"].get(local_name)
         if imported_member is not None:
-            module_candidate = "{}.{}".format(
-                imported_member["module"],
-                imported_member["export_name"],
+            submodule_path = self.import_path(
+                module_info,
+                from_import_module_name(
+                    imported_member["module"],
+                    imported_member["export_name"],
+                ),
             )
-            if self.module_exists(module_candidate):
-                refs.append((module_candidate, member_name))
+            if submodule_path is not None:
+                refs.append((submodule_path, member_name))
 
         return refs
 
-    def class_members(self, module_name: str, class_name: str, seen=None):
+    def class_members(self, module_path: Optional[Path], class_name: str, seen=None):
         """Collect Python class members, including inherited members."""
         if seen is None:
             seen = set()
 
-        key = (module_name, class_name)
+        key = (module_path, class_name)
         if key in seen:
             return dict()
         seen.add(key)
 
-        module_info = self.module_info(module_name)
+        module_info = self.module_info(module_path)
         if module_info is None:
             return dict()
 
@@ -715,7 +595,7 @@ class PythonModuleIndex:
         if class_info is None:
             # The class may only be re-exported here (e.g. a package
             # __init__.py). Follow the export to its defining module.
-            resolved = self.definition(module_name, export_name=class_name)
+            resolved = self.definition(module_path, export_name=class_name)
             if resolved is None or "python_module" not in resolved:
                 return dict()
             return self.class_members(
@@ -726,13 +606,13 @@ class PythonModuleIndex:
 
         members = dict()
         for source_name in class_info["member_sources"]:
-            for source_module_name, source_class_name in self.base_class_refs(
-                module_name,
+            for source_module_path, source_class_name in self.base_class_refs(
+                module_path,
                 module_info,
                 source_name,
             ):
                 members.update(self.class_members(
-                    source_module_name,
+                    source_module_path,
                     source_class_name,
                     seen=seen,
                 ))
@@ -740,19 +620,19 @@ class PythonModuleIndex:
         for base_name in class_info["bases"]:
             if base_name in module_info["classes"]:
                 members.update(self.class_members(
-                    module_name,
+                    module_path,
                     base_name,
                     seen=seen,
                 ))
                 continue
 
-            for base_module_name, base_class_name in self.base_class_refs(
-                module_name,
+            for base_module_path, base_class_name in self.base_class_refs(
+                module_path,
                 module_info,
                 base_name,
             ):
                 members.update(self.class_members(
-                    base_module_name,
+                    base_module_path,
                     base_class_name,
                     seen=seen,
                 ))

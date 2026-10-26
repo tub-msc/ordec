@@ -87,7 +87,7 @@ SHOW_MESSAGE_SEVERITY_MAP = {
     "info": 3,
     "log": 4,
 }
-FILE_CHANGE_TYPE_DELETED = 3
+FILE_CHANGE_TYPE_CHANGED = 2
 
 
 def line_in_range(value_range, line: int):
@@ -402,17 +402,10 @@ class OrdLanguageServer:
             if self.session.is_ord_uri(change["uri"])
         }
 
-        # An import graph built only after a deletion has no edges to the
-        # missing file, so its dependents cannot be looked up. Deletions
-        # are rare: refresh every open ORD document instead.
-        if self.session.workspace_index is None and any(
-            change.get("type") == FILE_CHANGE_TYPE_DELETED
-            and self.session.is_ord_uri(change["uri"])
-            for change in changes
-        ):
-            affected_uris.update(
-                uri for uri in open_uris if self.session.is_ord_uri(uri)
-            )
+        # A file that comes or goes can change any import, and the import
+        # graph has no edges to deleted files: refresh every open document.
+        if any(change.get("type") != FILE_CHANGE_TYPE_CHANGED for change in changes):
+            affected_uris.update(open_uris)
 
         for uri in ord_uris:
             if uri in open_uris:
@@ -424,7 +417,10 @@ class OrdLanguageServer:
         for change in changes:
             uri = self.file_change_uri(change)
 
-            canonical_invalidated_uri = self.session.invalidate_uri(uri)
+            canonical_invalidated_uri = self.session.invalidate_uri(
+                uri,
+                created_or_deleted=change.get("type") != FILE_CHANGE_TYPE_CHANGED,
+            )
             if canonical_invalidated_uri is not None:
                 if canonical_invalidated_uri in open_uris:
                     affected_uris.add(canonical_invalidated_uri)
