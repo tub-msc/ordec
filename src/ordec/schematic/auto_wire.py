@@ -18,6 +18,9 @@ Heuristics:
 - Optional congestion/history penalties discourage reuse of busy routed cells.
 - Shortcut mode connects new branches to existing net paths via reverse A* and
   disables congestion cost for that shortcut search.
+- Bidirectional failure detection: a flood from the end runs alongside the
+  forward A*, so a boxed-in end fails early and rip-up tries the routes
+  around it.
 - On failure, one-route rip-up/reroute tries routes that blocked the search.
   A reroute must keep its net connected: paths that anchor the net's terminal
   are rerouted in full (no shortcut), and rearrangements that strand a branch

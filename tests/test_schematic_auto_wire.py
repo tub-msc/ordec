@@ -13,7 +13,7 @@ from ordec.core.schema.schematic import SchemInstanceSubcursor
 from ordec.lib.generic_mos import Nmos
 from ordec.schematic.auto_wire import (
     RoutingPort, GridConn, BlockedMoves, place_cells_and_ports,
-    draw_connections, reverse_a_star,
+    draw_connections, a_star, reverse_a_star,
     GRID_EMPTY, GRID_ROUTED, GRID_DIR, GRID_BLOCKED, GRID_PIN, GRID_PORT,
 )
 from ordec.schematic import _auto_wire
@@ -327,6 +327,29 @@ def test_ripup_rejected_when_reroute_rides_own_net():
     vertices, net_y, net_a = route_ripup_overlap_maze()
     assert not vertices[net_a]
     assert_anchor_hosts_branch(vertices[net_y], ends={(5, 1), (7, 7)})
+
+
+def test_boxed_in_end_fails_early():
+    """The end's neighbors are corners of net box. The search must stop when
+    the flood from the end runs out, reporting only the blocked moves around
+    the end, not those of net far."""
+    width = height = 30
+    cells = bytearray(width * height)
+    scratch = bytearray(width * height * _auto_wire.SCRATCH_PER_NODE)
+    s = Schematic()
+    s.y, s.box, s.far = Net(), Net(), Net()
+    blocked = BlockedMoves(width, height)
+    box = [((19, 20), (19, 23)), ((20, 21), (23, 21)),
+        ((21, 20), (21, 17)), ((20, 19), (17, 19))]
+    blocked.add(s.box, box, len(box))
+    far = [((5, 2), (5, 28)), ((5, 28), (28, 28))]
+    blocked.add(s.far, far, len(far))
+
+    hits = set()
+    path = a_star(cells, scratch, (2, 2), (20, 20), width, height, blocked,
+        s.y, North, blocked_move_hits=hits)
+    assert path == []
+    assert hits and hits <= blocked.move_keys(s.box)
 
 
 def test_shortcut_without_branch_point():

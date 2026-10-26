@@ -154,6 +154,16 @@ static int contains(PyObject *container, long key) {
     return ret;
 }
 
+// Adds move_key to hits (set or None). Returns -1 on error.
+static int add_hit(PyObject *hits, long move_key) {
+    if (hits == Py_None)
+        return 0;
+    PyObject *k = PyLong_FromLong(move_key);
+    int ret = k ? PySet_Add(hits, k) : -1;
+    Py_XDECREF(k);
+    return ret;
+}
+
 // Blocked directions at node key for the routed net. Moves blocked by
 // other nets (any_mask) block, except where only the routed net itself
 // blocks them as corner moves (counts: number of nets per move). The
@@ -220,7 +230,7 @@ static PyObject *trace(const long *came_from, long key, long height, int with_or
 // use_congestion, from usage (dict of node key to use count) or, if usage
 // is None, from GRID_ROUTED cells. Blocked moves encountered are added to
 // hits (set or None) as move keys.
-#define SCRATCH_PER_NODE (sizeof(double) + sizeof(long) + 1)
+#define SCRATCH_PER_NODE (sizeof(double) + sizeof(long) + 2)
 
 typedef struct {
     Py_buffer cells, scratch;
@@ -278,6 +288,21 @@ static PyObject *run_search(const Search *s, long end_key, PyObject *targets,
     // Reverse search: lowest-cost path to a target so far.
     PyObject *best_path = NULL, *ret = NULL;
     double best_g = -1.0;
+
+    // Bidirectional failure detection, forward search only: a flood from
+    // the end, one node per search step. If it runs out before reaching the
+    // origin, there is no path. Moves into a node are blocked like the
+    // moves out of it (see add_moves).
+    char *flooded = visited + size;
+    KeyList flood = {NULL, 0, 0};
+    Py_ssize_t flood_next = 0;
+    int flooding = !reverse;
+    if (flooding) {
+        if (keys_append(&flood, end_key) < 0)
+            goto done;
+        flooded[end_key] = 1;
+    }
+
     if (keys_append(&touched, origin) < 0)
         goto done;
     visited[origin] = 1;
@@ -288,6 +313,38 @@ static PyObject *run_search(const Search *s, long end_key, PyObject *targets,
         goto done;
 
     while (heap.len > 0) {
+        if (flooding) {
+            if (flood_next == flood.len) {
+                ret = PyList_New(0);
+                goto done;
+            }
+            long fk = flood.items[flood_next++];
+            long fmask = block_mask(s->any_mask, s->own_masks, s->ride_masks, s->counts, fk);
+            if (fmask < 0)
+                goto done;
+            long fx = fk / height, fy = fk % height;
+            for (int d = 0; d < 4; d++) {
+                if (fmask & BIT[d]) {
+                    if (add_hit(s->hits, MOVE_KEY(fk, BIT[d])) < 0)
+                        goto done;
+                    continue;
+                }
+                long nx = fx + DX[d], ny = fy + DY[d];
+                if (nx < 0 || nx >= width || ny < 0 || ny >= height)
+                    continue;
+                long nk = nx * height + ny;
+                if (nk == origin) {
+                    flooding = 0;
+                    break;
+                }
+                if (cells[nk] >= GRID_BLOCKED || flooded[nk])
+                    continue;
+                if (keys_append(&flood, nk) < 0)
+                    goto done;
+                flooded[nk] = 1;
+            }
+        }
+
         Entry cur = heap_pop(&heap);
         long ck = cur.key;
         if (cur.g > g_score[ck])
@@ -341,14 +398,8 @@ static PyObject *run_search(const Search *s, long end_key, PyObject *targets,
 
         for (int d = 0; d < 4; d++) {
             if (mask & BIT[d]) {
-                if (s->hits != Py_None) {
-                    PyObject *hk = PyLong_FromLong(MOVE_KEY(ck, BIT[d]));
-                    if (!hk || PySet_Add(s->hits, hk) < 0) {
-                        Py_XDECREF(hk);
-                        goto done;
-                    }
-                    Py_DECREF(hk);
-                }
+                if (add_hit(s->hits, MOVE_KEY(ck, BIT[d])) < 0)
+                    goto done;
                 continue;
             }
             long nx = cx + DX[d], ny = cy + DY[d];
@@ -401,9 +452,12 @@ static PyObject *run_search(const Search *s, long end_key, PyObject *targets,
 done:
     for (Py_ssize_t i = 0; i < touched.len; i++)
         visited[touched.items[i]] = 0;
+    for (Py_ssize_t i = 0; i < flood.len; i++)
+        flooded[flood.items[i]] = 0;
     Py_XDECREF(best_path);
     free(heap.items);
     free(touched.items);
+    free(flood.items);
     return ret;
 }
 
