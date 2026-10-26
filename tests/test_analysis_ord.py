@@ -283,8 +283,17 @@ def test_ord_star_imports(tmp_path):
 
 
 def test_python_import_variants(tmp_path):
+    (tmp_path / "pkg" / "sub").mkdir(parents=True)
+    (tmp_path / "pkg" / "__init__.py").write_text("")
+    (tmp_path / "pkg" / "sub" / "__init__.py").write_text("")
+    (tmp_path / "pkg" / "sub" / "base.py").write_text("class Base:\n    level = Parameter(int)\n")
     (tmp_path / "counter_yosys.py").write_text(dedent("""\
+        import pkg.sub.base
+
         class ExtLib:
+            pass
+
+        class Leveled(pkg.sub.base.Base):
             pass
 
         def report_digital_design():
@@ -292,7 +301,9 @@ def test_python_import_variants(tmp_path):
         """))
     source = dedent("""\
         import math
-        from counter_yosys import ExtLib, report_digital_design
+        import ordec.core
+        import ordec.lib.base
+        from counter_yosys import ExtLib, Leveled, report_digital_design
         from ordec.layout import helpers
         from ordec.lib.generic_mos import Nmos
 
@@ -301,6 +312,8 @@ def test_python_import_variants(tmp_path):
                 value = math.log(2)
                 Nmos m:
                     .d -- net_a
+                Leveled lev:
+                    .level = 1
 
         def helper(x=ExtLib):
             return helpers, report_digital_design
@@ -314,6 +327,8 @@ def test_python_import_variants(tmp_path):
     assert session.diagnostics(uri) == []
     assert session.resolve_name(uri, "ExtLib")["kind"] == "class"
     assert session.resolve_name(uri, "helpers")["kind"] == "module"
+    # import ordec.lib.base binds the package ordec.
+    assert session.resolve_name(uri, "ordec")["name"] == "ordec"
     assert session.definition(uri, position_at(source, "Nmos m"))["name"] == "Nmos"
 
 

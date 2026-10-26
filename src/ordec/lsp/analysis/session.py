@@ -995,8 +995,11 @@ class AnalysisSession:
                     import_entry.module,
                     import_entry.export_name,
                 )
-            else:
+            elif import_entry.is_alias:
                 match = self.module_definition(uri, import_entry.module)
+            else:
+                # import a.b binds the package a, not the module a.b.
+                match = self.module_definition(uri, import_entry.local_name)
             if match is not None:
                 return match
 

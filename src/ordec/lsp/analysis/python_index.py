@@ -251,8 +251,12 @@ class PythonModuleIndex:
 
             if isinstance(node, ast.Import):
                 for alias in node.names:
-                    local_name = alias.asname or alias.name.split(".", 1)[0]
-                    imports[local_name] = alias.name
+                    if alias.asname:
+                        imports[alias.asname] = alias.name
+                    else:
+                        # import a.b binds the package a, not the module a.b.
+                        top_name = alias.name.split(".", 1)[0]
+                        imports[top_name] = top_name
                 continue
 
             if isinstance(node, ast.ImportFrom):
@@ -557,23 +561,26 @@ class PythonModuleIndex:
         if "." not in base_name:
             return []
 
-        local_name, member_name = base_name.split(".", 1)
+        # pkg.sub.S names class S of the module that local name pkg and
+        # the attribute path sub lead to.
+        module_part, class_name = base_name.rsplit(".", 1)
+        local_name, _, attribute_path = module_part.partition(".")
+        attribute_suffix = "." + attribute_path if attribute_path else ""
 
         imported_module = module_info["imports"].get(local_name)
         if imported_module is not None:
-            refs.append((self.import_path(module_info, imported_module), member_name))
+            imported_path = self.import_path(module_info, imported_module + attribute_suffix)
+            refs.append((imported_path, class_name))
 
         imported_member = module_info["import_members"].get(local_name)
         if imported_member is not None:
-            submodule_path = self.import_path(
-                module_info,
-                from_import_module_name(
-                    imported_member["module"],
-                    imported_member["export_name"],
-                ),
+            submodule_name = from_import_module_name(
+                imported_member["module"],
+                imported_member["export_name"],
             )
+            submodule_path = self.import_path(module_info, submodule_name + attribute_suffix)
             if submodule_path is not None:
-                refs.append((submodule_path, member_name))
+                refs.append((submodule_path, class_name))
 
         return refs
 
