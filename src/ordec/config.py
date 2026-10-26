@@ -10,17 +10,20 @@ preferences of the web UI, in one table per view family::
 
 Preferences that depend on the technology are in the LayoutStyle
 customization files instead (see ordec.layout.style). View generators never
-read the configuration, so that views do not depend on the user. Unknown
-settings and values of the wrong type are errors. The web UI, which applies
-the settings, knows their allowed values.
+read the configuration, so that views do not depend on the user. Settings
+unknown to this version (e.g. written by a newer one) are ignored and kept,
+values of the wrong type are errors. The web UI, which applies the settings,
+knows their allowed values and uses the default for others.
 
 The web UI edits the file through update_config, which keeps the rest of
 the file (including comments) as it is.
 """
 
+import fcntl
 import os
-import threading
 import tomllib
+from collections.abc import Callable
+from contextlib import contextmanager
 from pathlib import Path
 import tomlkit
 from public import public
@@ -37,6 +40,44 @@ def config_home() -> Path:
     return Path(config) / 'ordec'
 
 @public
+@contextmanager
+def update_toml(path: Path, check: Callable[[str], None]):
+    """
+    Changes the TOML file path in config_home(), keeping the rest of the file
+    (including comments) as it is: yields its tomlkit document (empty if
+    there is no file) for the with block to change, then writes it back.
+
+    Args:
+        check: Validates the new file content (text) and raises ValueError
+            if it is invalid. If check or the with block raises, the file is
+            left unchanged.
+
+    Updates are serialized across threads and processes by flock on
+    config_home(). It is the directory that is locked, because the file is
+    replaced on every write.
+    """
+    home = config_home()
+    home.mkdir(parents=True, exist_ok=True)
+    fd = os.open(home, os.O_RDONLY)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        try:
+            doc = tomlkit.parse(path.read_text(encoding='utf-8'))
+        except FileNotFoundError:
+            doc = tomlkit.document()
+        yield doc
+        text = tomlkit.dumps(doc)
+        check(text)
+        # Replaced atomically, so that readers see the old or the new file,
+        # never a partial one. The lock also protects the temporary file.
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(path.name + '.tmp')
+        tmp.write_text(text, encoding='utf-8')
+        os.replace(tmp, path)
+    finally:
+        os.close(fd)
+
+@public
 def config_path() -> Path:
     return config_home() / 'config.toml'
 
@@ -45,16 +86,13 @@ def _check(text: str, path: Path) -> dict:
         data = tomllib.loads(text)
     except tomllib.TOMLDecodeError as e:
         raise ValueError(f"{path}: {e}") from None
-    for table, entries in data.items():
+    for (table, name), kind in SETTINGS.items():
+        entries = data.get(table, {})
         if not isinstance(entries, dict):
             raise ValueError(f"{path}: {table!r} is not a table.")
-        for name, value in entries.items():
-            kind = SETTINGS.get((table, name))
-            if kind is None:
-                raise ValueError(f"{path}: unknown setting {table}.{name}.")
-            if not isinstance(value, kind):
-                raise ValueError(f"{path}: {table}.{name} is {value!r}, "
-                    f"expected a {kind.__name__}.")
+        if name in entries and not isinstance(entries[name], kind):
+            raise ValueError(f"{path}: {table}.{name} is {entries[name]!r}, "
+                f"expected a {kind.__name__}.")
     return data
 
 @public
@@ -68,9 +106,6 @@ def read_config() -> dict:
         return {}
     return _check(text, path)
 
-# Serializes the read-modify-write cycles of update_config.
-_update_lock = threading.Lock()
-
 @public
 def update_config(table: str, name: str, value):
     """
@@ -81,12 +116,10 @@ def update_config(table: str, name: str, value):
     Raises:
         ValueError: The changed file would be invalid; it is left unchanged.
     """
+    if (table, name) not in SETTINGS:
+        raise ValueError(f"Unknown setting {table}.{name}.")
     path = config_path()
-    with _update_lock:
-        try:
-            doc = tomlkit.parse(path.read_text(encoding='utf-8'))
-        except FileNotFoundError:
-            doc = tomlkit.document()
+    with update_toml(path, lambda text: _check(text, path)) as doc:
         if value is None:
             if table in doc:
                 doc[table].pop(name, None)
@@ -96,11 +129,3 @@ def update_config(table: str, name: str, value):
             if table not in doc:
                 doc[table] = tomlkit.table()
             doc[table][name] = value
-        text = tomlkit.dumps(doc)
-        _check(text, path)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        # Replaced atomically, so that concurrent readers see the old or the
-        # new file, never a partial one.
-        tmp = path.with_name(path.name + '.tmp')
-        tmp.write_text(text, encoding='utf-8')
-        os.replace(tmp, path)
