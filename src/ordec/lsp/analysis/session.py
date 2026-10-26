@@ -995,8 +995,16 @@ class AnalysisSession:
                     import_entry.module,
                     import_entry.export_name,
                 )
-            else:
+            elif import_entry.is_alias:
                 match = self.module_definition(uri, import_entry.module)
+            else:
+                # import a.b binds the package a, not the module a.b. A
+                # package without __init__ has no source file, so a.b
+                # stands in for it.
+                match = (
+                    self.module_definition(uri, import_entry.local_name)
+                    or self.module_definition(uri, import_entry.module)
+                )
             if match is not None:
                 return match
 
