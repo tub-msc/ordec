@@ -440,11 +440,11 @@ A daemon reader thread frames stdin onto a queue, and a single consumer
 dispatches messages in arrival order, so handlers stay synchronous and the
 analysis session is only ever touched by one thread. Draining the queue
 backlog before dispatching lets ``$/cancelRequest`` cancel still-queued
-requests (error ``-32800``) before they are computed and collapses
-consecutive ``didChange`` bursts for one document onto a newer
-full-document replacement. Incremental changes are never skipped, since
-each one builds on the document state left by its predecessor. A request
-that is already being handled is never interrupted.
+requests (error ``-32800``) before they are computed. Queued ``didChange``
+notifications for one document are applied as one, with all their changes
+in order, and requests on that document that a queued change outdates are
+answered with ``ContentModified`` (``-32801``). A request that is already
+being handled is never interrupted.
 
 Most language intelligence lives in ``ordec.lsp.analysis``:
 

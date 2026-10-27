@@ -1272,7 +1272,7 @@ def test_lsp_serve_coalesces_did_change_bursts():
     assert published[1]["params"]["diagnostics"] == []
 
 
-def test_lsp_serve_keeps_incremental_did_change_bursts():
+def test_lsp_serve_merges_did_change_bursts():
     uri = "file:///tmp/burst.ord"
 
     def did_change(version, changes):
@@ -1283,6 +1283,14 @@ def test_lsp_serve_keeps_incremental_did_change_bursts():
                 "textDocument": {"uri": uri, "version": version},
                 "contentChanges": changes,
             },
+        }
+
+    def document_symbols(message_id):
+        return {
+            "jsonrpc": "2.0",
+            "id": message_id,
+            "method": "textDocument/documentSymbol",
+            "params": {"textDocument": {"uri": uri}},
         }
 
     start_of_document = {
@@ -1302,20 +1310,25 @@ def test_lsp_serve_keeps_incremental_did_change_bursts():
                 },
             },
         },
+        document_symbols(1),
         did_change(2, [{"text": ""}]),
         did_change(3, [{"range": start_of_document, "text": "cell (\n"}]),
+        document_symbols(2),
     ])
 
     published = [
         message for message in output
         if message.get("method") == "textDocument/publishDiagnostics"
     ]
-    # The incremental change builds on the full replacement before it, so
-    # neither may be skipped: broken open, clean replacement, broken edit.
-    assert len(published) == 3
-    assert published[0]["params"]["diagnostics"] != []
-    assert published[1]["params"]["diagnostics"] == []
-    assert published[2]["params"]["diagnostics"] != []
+    # The incremental change builds on the full replacement before it;
+    # both apply in order, as one change.
+    assert len(published) == 2
+    assert published[1]["params"]["version"] == 3
+    assert published[1]["params"]["diagnostics"] != []
+    # The queued changes outdate the first request before it is computed.
+    responses = {message.get("id"): message for message in output if "id" in message}
+    assert responses[1]["error"]["code"] == -32801
+    assert "result" in responses[2]
 
 
 def test_lsp_malformed_frame_reports_parse_error_and_keeps_serving():

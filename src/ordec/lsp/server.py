@@ -1226,17 +1226,28 @@ def did_change_replaces_document(message):
     )
 
 
+def request_uri(message):
+    """Return the document URI a request names, or None for notifications."""
+    if not isinstance(message, dict) or message.get("id") is None:
+        return None
+    params = message.get("params")
+    if not isinstance(params, dict) or not isinstance(params.get("textDocument"), dict):
+        return None
+    return params["textDocument"].get("uri")
+
+
 def serve(server, message_queue, output_stream):
     """Dispatch queued messages until EOF, then return.
 
     Messages are dispatched strictly in arrival order by this single
-    consumer. Draining the queue backlog before dispatching enables two
+    consumer. Draining the queue backlog before dispatching enables three
     shortcuts that preserve observable ordering: $/cancelRequest marks
-    still-queued requests as canceled before they are computed, and a
-    consecutive run of didChange notifications for one document collapses
-    onto a newer full-document replacement, which supersedes whatever came
-    before it. Incremental changes are never skipped because each one
-    builds on the document state left by its predecessor.
+    still-queued requests as canceled before they are computed, a request
+    on a document that a queued didChange modifies is answered with
+    ContentModified, as its result would be outdated, and the didChange
+    notifications for one document that only such requests separate are
+    applied as one, with all their changes in order (a full-document
+    replacement drops the changes before it).
     """
     pending = deque()
     canceled_ids = set()
@@ -1291,13 +1302,55 @@ def serve(server, message_queue, output_stream):
             continue
 
         uri = did_change_uri(message)
+        outdated = []
         if uri is not None:
-            while (
-                pending
-                and did_change_uri(pending[0]) == uri
-                and did_change_replaces_document(pending[0])
-            ):
-                message = pending.popleft()
+            while pending:
+                if did_change_uri(pending[0]) == uri:
+                    if did_change_replaces_document(pending[0]):
+                        message = pending.popleft()
+                        continue
+                    changes = message["params"].get("contentChanges")
+                    following = pending[0]["params"]
+                    following_changes = following.get("contentChanges")
+                    if not isinstance(changes, list) or not isinstance(following_changes, list):
+                        break
+                    pending.popleft()
+                    message = {
+                        "jsonrpc": "2.0",
+                        "method": "textDocument/didChange",
+                        "params": {
+                            "textDocument": following["textDocument"],
+                            "contentChanges": changes + following_changes,
+                        },
+                    }
+                elif request_uri(pending[0]) == uri and any(
+                    did_change_uri(queued) == uri for queued in pending
+                ):
+                    # Requests between the changes, such as the editor's
+                    # semantic token requests while typing, are outdated.
+                    outdated.append(pending.popleft())
+                else:
+                    break
+        elif request_uri(message) is not None and any(
+            did_change_uri(queued) == request_uri(message) for queued in pending
+        ):
+            outdated.append(message)
+            message = None
+
+        for request in outdated:
+            request_id = request.get("id")
+            canceled = request_id in canceled_ids
+            canceled_ids.discard(request_id)
+            write_message(output_stream, {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "error": {
+                    "code": -32800 if canceled else -32801,
+                    "message": "Request canceled" if canceled else "Content modified",
+                },
+            })
+        if message is None:
+            continue
 
         message_id = message.get("id")
         if message_id is not None and message_id in canceled_ids:
