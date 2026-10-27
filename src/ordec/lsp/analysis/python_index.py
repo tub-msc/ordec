@@ -281,6 +281,117 @@ class PythonModuleIndex:
             if default is not None and member.default is None:
                 class_info["members"][name] = member._replace(default=default)
 
+        def method_view(view_class, function_node):
+            # Nodes that a method attaches to the root it returns.
+            returned = {
+                stmt.value.id for stmt in function_node.body
+                if isinstance(stmt, ast.Return) and isinstance(stmt.value, ast.Name)
+            }
+            root_name = None
+            node_classes = dict()
+            for stmt in function_node.body:
+                if (
+                    isinstance(stmt, ast.Assign)
+                    and len(stmt.targets) == 1
+                    and isinstance(stmt.targets[0], ast.Name)
+                    and stmt.targets[0].id in returned
+                    and isinstance(stmt.value, ast.Call)
+                ):
+                    callee = node_name(stmt.value.func)
+                    if callee is not None and callee[:1].isupper():
+                        root_name = stmt.targets[0].id
+                        node_classes[()] = callee
+            if root_name is None:
+                return None
+
+            helpers = {
+                stmt.name: stmt for stmt in function_node.body
+                if isinstance(stmt, ast.FunctionDef)
+            }
+            aliases = dict()
+            aliases[root_name] = [()]
+            nodes = dict()
+
+            def paths(expr):
+                if isinstance(expr, ast.Name):
+                    return aliases.get(expr.id, [])
+                if isinstance(expr, ast.Attribute):
+                    return [path + (expr.attr,) for path in paths(expr.value)]
+                if isinstance(expr, (ast.Tuple, ast.List)):
+                    return [path for element in expr.elts for path in paths(element)]
+                if isinstance(expr, ast.BinOp) and isinstance(expr.op, ast.Add):
+                    return paths(expr.left) + paths(expr.right)
+                return []
+
+            def value_class(expr, follow_helpers=True):
+                # `s % X(...)` inserts and returns a node.
+                if isinstance(expr, ast.BinOp) and isinstance(expr.op, ast.Mod):
+                    expr = expr.right
+                if not isinstance(expr, ast.Call):
+                    return None
+                callee = node_name(expr.func)
+                if follow_helpers and callee in helpers:
+                    for stmt in helpers[callee].body:
+                        if isinstance(stmt, ast.Return):
+                            return value_class(stmt.value, follow_helpers=False)
+                    return None
+                if callee is not None and callee[:1].isupper():
+                    return callee
+                return None
+
+            def visit(statements):
+                for stmt in statements:
+                    # Nested functions may never run.
+                    if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                        continue
+                    if isinstance(stmt, ast.For) and isinstance(stmt.target, ast.Name):
+                        aliases[stmt.target.id] = paths(stmt.iter)
+
+                    targets = []
+                    value = None
+                    if isinstance(stmt, ast.Assign):
+                        targets, value = stmt.targets, stmt.value
+                    elif isinstance(stmt, ast.AnnAssign):
+                        targets, value = [stmt.target], stmt.value
+                    for target in targets:
+                        if isinstance(target, ast.Name) and target.id != root_name:
+                            aliases[target.id] = paths(value)
+                        if not isinstance(target, ast.Attribute) or target.attr.startswith("_"):
+                            continue
+                        attribute_end = ast_position(target.end_lineno, target.end_col_offset)
+                        selection_range = AnalysisRange(
+                            start=AnalysisPosition(
+                                attribute_end.line,
+                                attribute_end.character - len(target.attr),
+                            ),
+                            end=attribute_end,
+                        )
+                        for parent_path in paths(target.value):
+                            path = parent_path + (target.attr,)
+                            if path in nodes:
+                                continue
+                            nodes[path] = AnalysisDefinition(
+                                uri=module_path.as_uri(),
+                                name=target.attr,
+                                kind="variable",
+                                range=node_range(target),
+                                selection_range=selection_range,
+                                python_module=module_path,
+                                python_class=".".join((view_class,) + path),
+                            )
+                            node_classes[path] = value_class(value)
+
+                    for field in ("body", "orelse", "finalbody"):
+                        visit(getattr(stmt, field, []))
+                    for handler in getattr(stmt, "handlers", []):
+                        visit(handler.body)
+
+            visit(function_node.body)
+            return {
+                "nodes": nodes,
+                "classes": node_classes,
+            }
+
         def all_expression_parts(value):
             # The forms __all__ takes in practice: literal lists,
             # concatenations, and the __all__ of an imported module.
@@ -366,6 +477,7 @@ class PythonModuleIndex:
                     "bases": [],
                     "member_sources": [],
                     "members": dict(),
+                    "views": dict(),
                 }
                 for base_node in node.bases:
                     base_name = node_name(base_node)
@@ -417,6 +529,8 @@ class PythonModuleIndex:
                     if not isinstance(class_node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                         continue
 
+                    view_class = "{}.{}".format(node.name, class_node.name)
+                    view = method_view(view_class, class_node)
                     if not class_node.name.startswith("_"):
                         method_member = class_info["members"].setdefault(
                             class_node.name,
@@ -435,62 +549,23 @@ class PythonModuleIndex:
                         if method_member.signature is None:
                             params = function_signature_params(class_node, skip_receiver=True)
                             method_member = method_member._replace(signature={"params": params})
+                        # The view's nodes are found under the class path Class.method.
+                        if view is not None and class_node.name not in class_info["views"]:
+                            class_info["views"][class_node.name] = view
+                            method_member = method_member._replace(
+                                python_module=module_path,
+                                python_class=view_class,
+                            )
                         class_info["members"][class_node.name] = method_member
 
-                    container_names = set()
-                    for stmt in ast.walk(class_node):
-                        if not isinstance(stmt, ast.Assign):
-                            continue
-                        if len(stmt.targets) != 1 or not isinstance(stmt.targets[0], ast.Name):
-                            continue
-                        if not isinstance(stmt.value, ast.Call):
-                            continue
-
-                        func_name = node_name(stmt.value.func)
-                        if func_name not in ("Symbol", "Schematic"):
-                            continue
-
-                        container_names.add(stmt.targets[0].id)
-
-                    for stmt in ast.walk(class_node):
-                        targets = []
-                        if isinstance(stmt, ast.Assign):
-                            targets = stmt.targets
-                        elif isinstance(stmt, ast.AnnAssign):
-                            targets = [stmt.target]
-
-                        for target in targets:
-                            if not isinstance(target, ast.Attribute):
-                                continue
-                            if not isinstance(target.value, ast.Name):
-                                continue
-                            if target.value.id not in container_names:
-                                continue
-                            if target.attr.startswith("_"):
-                                continue
-
-                            member_kind = "variable"
-                            value = getattr(stmt, "value", None)
-                            if isinstance(value, ast.Call) and node_name(value.func) == "Pin":
-                                member_kind = "variable"
-
-                            attribute_end = ast_position(
-                                target.end_lineno,
-                                target.end_col_offset,
-                            )
-                            class_info["members"].setdefault(target.attr, AnalysisDefinition(
-                                uri=module_path.as_uri(),
-                                name=target.attr,
-                                kind=member_kind,
-                                range=node_range(target),
-                                selection_range=AnalysisRange(
-                                    start=AnalysisPosition(
-                                        attribute_end.line,
-                                        attribute_end.character - len(target.attr),
-                                    ),
-                                    end=attribute_end,
-                                ),
-                            ))
+                    # Pins and nets are also cell members (`inst.d`).
+                    if view is not None and view["classes"][()] in ("Symbol", "Schematic"):
+                        for path, view_node in view["nodes"].items():
+                            if len(path) == 1:
+                                class_info["members"].setdefault(path[0], view_node._replace(
+                                    python_module=None,
+                                    python_class=None,
+                                ))
 
                     for stmt in ast.walk(class_node):
                         targets = []
@@ -693,7 +768,33 @@ class PythonModuleIndex:
         if module_info is None:
             return dict()
 
+        class_name, _, view_path = class_name.partition(".")
         class_info = module_info["classes"].get(class_name)
+        if view_path:
+            # The class path Class.method.node names a node of a method's view.
+            method_name, *node_path = view_path.split(".")
+            view = None if class_info is None else class_info["views"].get(method_name)
+            if view is None:
+                return dict()
+            node_path = tuple(node_path)
+            members = {
+                path[-1]: node for path, node in view["nodes"].items()
+                if path[:-1] == node_path
+            }
+            node_class = view["classes"].get(node_path)
+            if node_class is not None:
+                for node_module_path, node_class_name in self.base_class_refs(
+                    module_path,
+                    module_info,
+                    node_class,
+                ):
+                    members.update(self.class_members(
+                        node_module_path,
+                        node_class_name,
+                        seen=seen,
+                    ))
+            return members
+
         if class_info is None:
             # The class may only be re-exported here (e.g. a package
             # __init__.py). Follow the export to its defining module.

@@ -1296,6 +1296,9 @@ class AnalysisSession:
 
     def allows_dynamic_members(self, type_name: str):
         """Return whether the named type can expose runtime-defined members."""
+        # Python code can add view nodes that the index does not see.
+        if "." in type_name:
+            return True
         type_definition = self.resolve_core_type(type_name)
         if type_definition is None:
             return False
@@ -1332,16 +1335,20 @@ class AnalysisSession:
         return context_type_names_for_kind(kind_name)
 
     def resolve_completion_type(self, uri: str, type_name: str):
-        """Resolve ``type_name`` to an ORD or Python definition, or None."""
+        """Resolve ``type_name`` or a member path ``T.member`` to a definition, or None."""
+        type_name, *member_names = type_name.split(".")
         type_definition = self.resolve_name(uri, type_name)
-        if type_definition is not None:
-            return type_definition
+        if type_definition is None:
+            type_definition = self.resolve_core_type(type_name)
 
-        core_definition = self.resolve_core_type(type_name)
-        if core_definition is not None:
-            return core_definition
+        for member_name in member_names:
+            if type_definition is None:
+                return None
+            type_definition = self.type_members(type_definition).get(member_name)
+            if type_definition is not None and type_definition.python_class is None:
+                return None
 
-        return None
+        return type_definition
 
     def cell_instance_members(self):
         """Return members common to schematic and layout cell instances.
@@ -1362,7 +1369,11 @@ class AnalysisSession:
                 type_definition.python_module,
                 type_definition.python_class,
             )
-            if self.resolve_core_type(type_definition.python_class) is None:
+            # View paths are not cells, so they get no instance members.
+            if (
+                "." not in type_definition.python_class
+                and self.resolve_core_type(type_definition.python_class) is None
+            ):
                 members = dict(members)
                 members.update(self.cell_instance_members())
             return members

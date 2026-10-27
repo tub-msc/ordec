@@ -473,9 +473,9 @@ Most language intelligence lives in ``ordec.lsp.analysis``:
   directory if that is not a regular package.
 * ``python_index.py`` owns shallow Python module indexing. It parses Python
   source with ``ast``, caches module information by source path, and exposes
-  exported symbols (including a static ``__all__``), class members,
-  docstrings, function signatures, and cell parameter defaults without
-  importing or executing workspace modules.
+  exported symbols (including a static ``__all__``), class members, the
+  nodes of views that methods build, docstrings, function signatures, and
+  cell parameter defaults without importing or executing workspace modules.
 * ``completions.py``, ``diagnostics.py``, ``rename.py``, ``signatures.py``,
   and ``hierarchy.py`` implement one feature each as functions taking the
   session as first argument; ``AnalysisSession`` exposes them through

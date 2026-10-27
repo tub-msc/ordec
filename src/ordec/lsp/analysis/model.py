@@ -211,7 +211,9 @@ class AnalysisDefinition(NamedTuple):
 
     ``origin_range`` is the identifier a lookup started from. ORD bindings
     carry their ``binding_id``; Python classes carry ``python_module`` and
-    ``python_class`` for member lookup.
+    ``python_class`` for member lookup. A view that a Python method builds,
+    and each of its nodes, has a class path there instead, such as
+    ``SG13G2.layers.Metal1``.
     """
     uri: str
     name: str
