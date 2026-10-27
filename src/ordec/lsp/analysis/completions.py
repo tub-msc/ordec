@@ -248,6 +248,17 @@ def completions(session, uri: str, position: AnalysisPosition):
 
     for import_entry in reversed(analysis.import_entries):
         if import_entry.local_name == "*":
+            detail = "from {} import *".format(import_entry.module)
+            definitions = session.star_import_definitions(uri, import_entry.module)
+            for name, definition in definitions.items():
+                item = {
+                    "label": name,
+                    "kind": "variable" if definition is None else definition.kind,
+                    "detail": detail,
+                }
+                if definition is not None and definition.docstring:
+                    item["documentation"] = definition.docstring
+                items.setdefault(name, item)
             continue
 
         if import_entry.kind == "from":

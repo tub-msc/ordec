@@ -284,7 +284,19 @@ def test_ord_star_imports(tmp_path):
         cell _Hidden:
             pass
         """))
-    (tmp_path / "gates.py").write_text("class Nand:\n    pass\n\nclass _Base:\n    pass\n")
+    (tmp_path / "gates.py").write_text(dedent("""\
+        __all__ = ["Nand"]
+        __all__.extend(["Nor"])
+
+        class Nand:
+            pass
+
+        class Nor:
+            pass
+
+        class _Base:
+            pass
+        """))
     star_source = dedent("""\
         from .mux2 import *
         from .gates import *
@@ -302,10 +314,14 @@ def test_ord_star_imports(tmp_path):
 
     # Star imports bind public names only, of ORD and of Python modules.
     assert session.resolve_name(star_uri, "Nand") is not None
+    # A method call on __all__ is not evaluated, which leaves the public names.
+    assert session.resolve_name(star_uri, "Nor") is not None
     assert session.resolve_name(star_uri, "_Hidden") is None
     assert session.resolve_name(star_uri, "_Base") is None
     assert session.diagnostics(star_uri) == []
     assert session.definition(star_uri, position_at(star_source, "Mux2 child")).name == "Mux2"
+    labels = completion_labels(session, star_uri, position_at(star_source, "Mux2 child"))
+    assert {"Mux2", "Nand"} <= labels and not {"_Hidden", "_Base"} & labels
 
 
 def test_python_import_variants(tmp_path):
@@ -393,8 +409,12 @@ def test_python_members_and_completions():
     session.open_document(uri, source, version=1)
 
     assert session.diagnostics(uri) == []
-    # The star import binds public names only.
+    # The star import binds the names of ordec.core's __all__, which
+    # leaves out its submodules, both for resolution and completion.
     assert session.resolve_name(uri, "__init__") is None
+    assert session.resolve_name(uri, "rational") is None
+    labels = completion_labels(session, uri, position_at(source, "for inst"))
+    assert "Pin" in labels and "rational" not in labels
     assert session.definition(uri, position_at(source, "s --")).name == "s"
     assert session.definition(uri, position_after(source, "$")).name == "l"
     assert session.definition(uri, position_at(source, "pos")).name == "pos"
