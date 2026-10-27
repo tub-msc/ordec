@@ -27,12 +27,17 @@ class FakeLanguageClient {
 }
 
 let trustListener;
+let configListener;
 
 const vscode = {
   workspace: {
     isTrusted: true,
     onDidGrantWorkspaceTrust(listener) {
       trustListener = listener;
+      return { dispose() {} };
+    },
+    onDidChangeConfiguration(listener) {
+      configListener = listener;
       return { dispose() {} };
     },
     createFileSystemWatcher(pattern) {
@@ -53,6 +58,9 @@ const vscode = {
     },
   },
   window: {
+    createOutputChannel(name) {
+      return { name, dispose() {} };
+    },
     showWarningMessage() {
       throw new Error("unexpected warning");
     },
@@ -95,8 +103,16 @@ test("launches ORD-LSP for ORD documents", async () => {
     checkOnSave: true,
   });
 
-  await extension.deactivate();
+  // A changed setting restarts the server, which keeps its output channel.
+  const channel = createdClient.clientOptions.outputChannel;
+  assert.equal(channel.name, "ORD Language Server");
+  createdClient = undefined;
+  configListener({ affectsConfiguration: (section) => section === "ord.languageServer" });
+  await new Promise((resolve) => setImmediate(resolve));
   assert.equal(stopped, true);
+  assert.equal(createdClient.clientOptions.outputChannel, channel);
+
+  await extension.deactivate();
 });
 
 test("defers ORD-LSP start until workspace trust is granted", async () => {
@@ -106,7 +122,7 @@ test("defers ORD-LSP start until workspace trust is granted", async () => {
 
   await extension.activate(context);
   assert.equal(createdClient, undefined);
-  assert.equal(context.subscriptions.length, 1);
+  assert.equal(context.subscriptions.length, 3);
 
   vscode.workspace.isTrusted = true;
   await trustListener();
