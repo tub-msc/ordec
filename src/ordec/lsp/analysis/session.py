@@ -867,6 +867,14 @@ class AnalysisSession:
 
         return candidates
 
+    def is_local_definition(self, definition):
+        """Return whether only the document of a definition can refer to it."""
+        return (
+            definition.binding_id is not None
+            and not definition.exported
+            and not self.member_reachable_definition(definition)
+        )
+
     def definition_key(self, definition):
         """Return a stable key used to compare resolved definitions."""
         if definition.binding_id is not None and not definition.exported:
@@ -1712,11 +1720,7 @@ class AnalysisSession:
     def reference_search_uris(self, uri: str, definition):
         """Return the documents that may contain references to a definition."""
         uri = self.canonical_uri(uri)
-        if (
-            definition.binding_id is not None
-            and not definition.exported
-            and not self.member_reachable_definition(definition)
-        ):
+        if self.is_local_definition(definition):
             return [uri]
 
         target_uri = definition.uri

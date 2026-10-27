@@ -61,13 +61,8 @@ def python_may_reference(session, definition):
     Rename does not rewrite Python source, so renaming a symbol that a
     Python module may use would break it. Local bindings stay renamable.
     """
-    local = (
-        definition.binding_id is not None
-        and not definition.exported
-        and not session.member_reachable_definition(definition)
-    )
     return (
-        not local
+        not session.is_local_definition(definition)
         and session.is_ord_uri(definition.uri)
         and session.imported_by_python(definition.uri)
     )

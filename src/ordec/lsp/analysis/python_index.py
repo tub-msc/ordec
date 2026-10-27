@@ -87,12 +87,12 @@ class PythonModuleIndex:
         self.star_name_lists = dict()
 
     def imported_paths(self, module_path: Path):
-        """Return the source files that the from-imports of a module name."""
+        """Return the source files that the imports of a module name."""
         module_info = self.module_info(module_path)
         if module_info is None:
             return []
 
-        module_names = list(module_info["star_modules"])
+        module_names = module_info["star_modules"] + module_info["import_names"]
         for member in module_info["import_members"].values():
             # The imported name may also be a submodule.
             module_names.append(member["module"])
@@ -167,6 +167,7 @@ class PythonModuleIndex:
         reexports = []
         star_modules = []
         imports = dict()
+        import_names = []
         import_members = dict()
         classes = dict()
         ast_columns_are_bytes = module_path.suffix == ".py"
@@ -339,6 +340,7 @@ class PythonModuleIndex:
 
             if isinstance(node, ast.Import):
                 for alias in node.names:
+                    import_names.append(alias.name)
                     if alias.asname:
                         imports[alias.asname] = alias.name
                     else:
@@ -545,6 +547,7 @@ class PythonModuleIndex:
             "reexports": reexports,
             "star_modules": star_modules,
             "imports": imports,
+            "import_names": import_names,
             "import_members": import_members,
             "classes": classes,
             "all": None if all_unknown else all_parts,

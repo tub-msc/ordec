@@ -789,6 +789,8 @@ def test_rename_refuses_python_symbols(tmp_path):
     cells_source = "cell Inv:\n    pass\n"
     (tmp_path / "cells.ord").write_text(cells_source)
     (tmp_path / "wrapper.py").write_text("from cells import Inv\n")
+    (tmp_path / "gates.ord").write_text(cells_source)
+    (tmp_path / "gate_wrapper.py").write_text("import gates\n")
     source = dedent("""\
         from extlib import Stage
 
@@ -812,6 +814,8 @@ def test_rename_refuses_python_symbols(tmp_path):
     inv_position = position_at(cells_source, "Inv")
     assert session.prepare_rename(cells_uri, inv_position) is None
     assert session.rename(cells_uri, inv_position, "Buf") is None
+    gates_uri = session.open_path(str(tmp_path / "gates.ord"))
+    assert session.prepare_rename(gates_uri, inv_position) is None
 
 
 def test_symlinked_workspace_uris(tmp_path):

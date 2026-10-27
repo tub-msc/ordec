@@ -495,9 +495,8 @@ information, and completion and diagnostics may be conservative for complex
 Python control flow or dynamic imports. Rename is deliberately restricted
 to identifiers. A rename started at an ORD cell-member declaration updates
 matching ``x.member`` accesses, but cannot be started at a member access or
-at a parameter access such as ``x.$param``. It also refuses symbols whose
-definition lives in Python source, because rewriting the ORD
-references without the Python definition would break the import (renaming
-a local import alias remains possible). Workspace-wide
+at a parameter access such as ``x.$param``. It also refuses symbols that
+Python source defines or imports, because rename does not rewrite Python
+source (renaming a local import alias remains possible). Workspace-wide
 features depend on the editor passing the correct workspace root and on
 file watching notifications for changed files.
