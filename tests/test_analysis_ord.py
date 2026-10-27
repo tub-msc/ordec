@@ -127,8 +127,25 @@ def test_document_versions():
     analysis = session.analyze(uri)
     assert analysis.version == 2
     assert analysis.diagnostics[0].code == "unexpected-token"
-    assert [symbol.name for symbol in analysis.symbols] == ["Inv", "symbol", "a"]
+    # The broken line stands in as pass, so the analysis matches the
+    # current lines rather than the last error-free text.
+    assert [symbol.name for symbol in analysis.symbols] == ["Inv"]
     assert session.definition(uri, position_at("cell Inv:\n", "Inv")).name == "Inv"
+
+    # A broken line inserted above keeps the ranges below it right.
+    source = "cell Inv:\n    pass\n\ncell Buf:\n    pass\n"
+    session.update_document(uri, source, version=3)
+    session.analyze(uri)
+    broken = source.replace("\ncell Buf", "\nx.\ncell Buf")
+    session.update_document(uri, broken, version=4)
+    assert session.definition(uri, position_at(broken, "Buf")).selection_range.start.line == 5
+    # So does a deleted line with a broken one added below, at the same
+    # line count.
+    session.update_document(uri, source, version=5)
+    session.analyze(uri)
+    broken = source.replace("\n\ncell Buf", "\ncell Buf") + "x.\n"
+    session.update_document(uri, broken, version=6)
+    assert session.definition(uri, position_at(broken, "Buf")).selection_range.start.line == 3
 
     session.close_document(uri)
     assert session.documents == {}

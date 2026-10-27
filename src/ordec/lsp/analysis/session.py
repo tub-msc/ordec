@@ -24,7 +24,7 @@ from .model import (
     split_source_lines,
 )
 from .model import normalize_type_names as normalize_type_name_list
-from .parser_pass import analyze_ord
+from .parser_pass import analyze_ord, edited_line_numbers, stand_in_source
 from .python_index import PythonModuleIndex
 from .revisions import Revisions
 
@@ -184,15 +184,15 @@ class AnalysisSession:
             self.diagnostics_cache.pop(uri, None)
 
     def last_good_analysis(self, doc):
-        """Return the latest error-free analysis for a document record."""
+        """Return the latest error-free analysis of a document record and its text."""
         if doc is None:
-            return None
+            return None, None
 
         analysis = doc.get("analysis")
         if analysis is not None and not analysis.has_errors():
-            return analysis
+            return analysis, doc["text"]
 
-        return doc.get("last_good_analysis")
+        return doc.get("last_good_analysis"), doc.get("last_good_text")
 
     def invalidate_workspace_index(self):
         """Clear cached workspace dependency information."""
@@ -250,11 +250,14 @@ class AnalysisSession:
         # A document evicted while closed has no previous record.
         if previous is None or previous["text"] != text:
             self.revisions.bump(("doc", uri))
+        last_good_analysis, last_good_text = self.last_good_analysis(previous)
         self.documents[uri] = {
             "text": text,
             "version": version,
             "analysis": None,
-            "last_good_analysis": self.last_good_analysis(previous),
+            "last_good_analysis": last_good_analysis,
+            "last_good_text": last_good_text,
+            "stand_in": None if previous is None else previous.get("stand_in"),
             "is_open": is_open,
             "last_access": 0,
         }
@@ -452,17 +455,55 @@ class AnalysisSession:
         if doc["analysis"] is None:
             analysis = analyze_ord(doc["text"], uri=uri, version=doc["version"])
             if analysis.has_errors():
-                last_good = doc.get("last_good_analysis")
-                if last_good is not None:
-                    analysis = last_good.with_diagnostics(
+                # The last good analysis fits while just one line changed;
+                # otherwise its ranges can be off below the edit.
+                fallback = doc.get("last_good_analysis")
+                good_text = doc.get("last_good_text")
+                same_lines = good_text is not None and (
+                    len(split_source_lines(good_text)) == len(split_source_lines(doc["text"]))
+                    and len(edited_line_numbers(doc["text"], good_text)) <= 1
+                )
+                if not same_lines:
+                    fallback = self.stand_in_analysis(doc, analysis) or fallback
+                if fallback is not None:
+                    analysis = fallback.with_diagnostics(
                         analysis.diagnostics,
                         uri=uri,
                         version=doc["version"],
                     )
             else:
                 doc["last_good_analysis"] = analysis
+                doc["last_good_text"] = doc["text"]
             doc["analysis"] = analysis
         return doc["analysis"]
+
+    def stand_in_analysis(self, doc, analysis):
+        """Return an analysis of a broken document with stand-ins, or None.
+
+        The lines being edited are replaced by ``pass``: first the line of
+        the syntax error, then the lines changed since the last error-free
+        text, then both. The result keeps the current line numbers.
+        """
+        error_lines = {analysis.diagnostics[0].range.start.line}
+        attempts = [error_lines]
+        good_text = doc.get("last_good_text")
+        if good_text is not None:
+            edited_lines = edited_line_numbers(doc["text"], good_text)
+            attempts += [edited_lines, edited_lines | error_lines]
+
+        for line_numbers in attempts:
+            source = stand_in_source(doc["text"], line_numbers)
+            # Typing on a broken line keeps its stand-in, and with it the
+            # analysis, unchanged from one keystroke to the next.
+            previous = doc.get("stand_in")
+            if previous is not None and previous[0] == source:
+                return previous[1]
+
+            candidate = analyze_ord(source, uri=analysis.uri, version=doc["version"])
+            if not candidate.has_errors():
+                doc["stand_in"] = (source, candidate)
+                return candidate
+        return None
 
     def analysis_cache(self, uri: str, analysis):
         """Return a cache dict scoped to one analysis result of a document.
