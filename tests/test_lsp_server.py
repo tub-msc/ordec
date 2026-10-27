@@ -568,6 +568,43 @@ def test_lsp_completion_and_code_actions(tmp_path):
     assert [action["title"] for action in actions] == ["Declare `y` in symbol view"]
     assert actions[0]["edit"]["changes"][broken_uri][0]["newText"] == "    input y\n"
 
+    # Unresolved names get imports from workspace and ordec modules; an
+    # existing one-line import of the same module is extended.
+    (tmp_path / "cells.ord").write_text(dedent("""\
+        cell Buf:
+            viewgen symbol(self) -> Symbol:
+                input a
+
+        cell Other:
+            viewgen symbol(self) -> Symbol:
+                input a
+        """))
+    top_source = dedent("""\
+        from ordec.core import *
+        from cells import Other
+
+        cell Top:
+            viewgen schematic(self) -> Schematic:
+                Nmos pd
+                Nmos pd2
+                Buf b
+        """)
+    top_uri = (tmp_path / "top.ord").resolve().as_uri()
+    diagnostics = open_document(server, top_uri, top_source)
+    actions = request(server, "textDocument/codeAction", {
+        "textDocument": text_document(top_uri),
+        "context": {"diagnostics": diagnostics},
+    })
+    edits = {
+        action["title"]: action["edit"]["changes"][top_uri][0]
+        for action in actions
+    }
+    assert len(edits) == len(actions)
+    nmos_edit = edits["Import `Nmos` from `ordec.lib.generic_mos`"]
+    assert nmos_edit["range"]["start"] == {"line": 2, "character": 0}
+    assert nmos_edit["newText"] == "from ordec.lib.generic_mos import Nmos\n"
+    assert edits["Import `Buf` from `cells`"]["newText"] == ", Buf"
+
 
 def test_lsp_applies_incremental_did_change(tmp_path):
     server = initialize_server(tmp_path)

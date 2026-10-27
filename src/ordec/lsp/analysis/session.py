@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Optional
 
 # ordec imports
-from . import completions, diagnostics, hierarchy, rename, signatures
+from . import auto_import, completions, diagnostics, hierarchy, rename, signatures
 from .import_resolver import ImportResolver, from_import_module_name
 from .model import (
     AnalysisDefinition,
@@ -66,11 +66,13 @@ class AnalysisSession:
       ``call_hierarchy_item()``, ``incoming_calls()``, ``outgoing_calls()``
     - editing and assists: ``completions()``, ``signature_help()``,
       ``inlay_hints()``, ``prepare_rename()``, ``rename()``,
-      ``folding_ranges()``, ``selection_ranges()``, ``semantic_tokens()``
+      ``folding_ranges()``, ``selection_ranges()``, ``semantic_tokens()``,
+      ``import_choices()``
 
-    Completions, diagnostics, rename, signature help and call hierarchy are
-    implemented as functions taking the session as first argument in their
-    own modules; the corresponding methods here delegate to them.
+    Completions, diagnostics, rename, signature help, call hierarchy and
+    import quick fixes are implemented as functions taking the session as
+    first argument in their own modules; the corresponding methods here
+    delegate to them.
     """
     def __init__(
         self,
@@ -434,26 +436,48 @@ class AnalysisSession:
         Python files are scanned, parsing only those naming the module.
         """
         path = self.file_uri_path(uri)
-        if path is None or not self.workspace_root:
+        if path is None:
             return False
 
         target = path.resolve()
         module_name = target.parent.name if target.stem == "__init__" else target.stem
         module_name_re = re.compile(r"\b{}\b".format(re.escape(module_name)))
-        for python_path in self.workspace_source_paths(Path(self.workspace_root), ".py"):
-            try:
-                if not module_name_re.search(python_path.read_text(encoding="utf-8")):
-                    continue
-            except (OSError, UnicodeDecodeError):
-                continue
+        for python_path in self.workspace_sources_matching(module_name_re, (".py",)):
             imported = self.python_index.imported_paths(python_path)
             if any(imported_path.resolve() == target for imported_path in imported):
                 return True
         return False
 
+    def workspace_sources_matching(self, pattern, suffixes=(".ord", ".py")):
+        """Yield the workspace source files whose text matches ``pattern``.
+
+        The pattern preselects the few files worth parsing.
+        """
+        if not self.workspace_root:
+            return
+        for suffix in suffixes:
+            for path in self.workspace_source_paths(Path(self.workspace_root), suffix):
+                try:
+                    if pattern.search(path.read_text(encoding="utf-8")):
+                        yield path
+                except (OSError, UnicodeDecodeError):
+                    continue
+
     def python_module_info(self, module_path: Optional[Path]):
         """Analyze a Python module enough for ORD import and member lookup."""
         return self.python_index.module_info(module_path)
+
+    def python_star_names(self, module_path: Optional[Path]):
+        """Return the names that ``from module import *`` binds."""
+        return self.python_index.star_names(module_path)
+
+    def python_module_name(self, module_path: Path):
+        """Return the dotted name of a module source file below its import root."""
+        return self.resolver.module_name(module_path)
+
+    def installed_module_path(self, module_name: str):
+        """Return the source file of an installed module, or None."""
+        return self.resolver.installed_module_path(module_name)
 
     def python_definition(
         self,
@@ -1927,6 +1951,9 @@ class AnalysisSession:
 
     def signature_help(self, uri: str, position: AnalysisPosition):
         return signatures.signature_help(self, uri, position)
+
+    def import_choices(self, uri: str, name: str):
+        return auto_import.import_choices(self, uri, name)
 
     def prepare_rename(self, uri: str, position: AnalysisPosition):
         return rename.prepare_rename(self, uri, position)

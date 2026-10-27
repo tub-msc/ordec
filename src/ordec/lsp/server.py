@@ -689,8 +689,41 @@ class OrdLanguageServer:
                 action = self.missing_symbol_port_action(uri, diagnostic)
                 if action is not None:
                     actions.append(action)
+            elif code in ("unresolved-name", "unresolved-node-type"):
+                actions.extend(self.import_actions(uri, diagnostic))
 
-        return actions
+        # Several diagnostics can ask for the same fix.
+        unique_actions = dict()
+        for action in actions:
+            unique_actions.setdefault(action["title"], action)
+        return list(unique_actions.values())
+
+    def import_actions(self, uri: str, diagnostic):
+        """Build quick-fix actions that import an unresolved name."""
+        start = self.analysis_position(uri, diagnostic["range"]["start"])
+        end = self.analysis_position(uri, diagnostic["range"]["end"])
+        line = self.document_line(uri, start.line)
+        if line is None or start.line != end.line:
+            return []
+        name = line[start.character - 1:end.character - 1]
+        if not name.isidentifier():
+            return []
+
+        choices = self.session.import_choices(uri, name)
+        return [{
+            "title": "Import `{}` from `{}`".format(name, choice.module),
+            "kind": "quickfix",
+            "diagnostics": [diagnostic],
+            "isPreferred": len(choices) == 1,
+            "edit": {
+                "changes": {
+                    uri: [{
+                        "range": self.lsp_range(uri, choice.range),
+                        "newText": choice.text,
+                    }],
+                },
+            },
+        } for choice in choices]
 
     def missing_symbol_port_action(self, uri: str, diagnostic):
         """Build a quick-fix action that declares a missing port in the symbol view."""
