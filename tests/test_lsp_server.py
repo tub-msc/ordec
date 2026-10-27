@@ -997,6 +997,34 @@ def test_lsp_workspace_folding_selection_and_semantic_tokens(tmp_path):
     workspace_symbols = request(server, "workspace/symbol", {"query": "mux"})
     assert [symbol["name"] for symbol in workspace_symbols] == ["Mux4"]
 
+    # Deltas against the previous result reproduce the full token data.
+    delta = request(server, "textDocument/semanticTokens/full/delta", {
+        "textDocument": text_document(uri),
+        "previousResultId": semantic_tokens["resultId"],
+    })
+    assert delta["edits"] == []
+    # An outdated previous result is answered with the full data.
+    full = request(server, "textDocument/semanticTokens/full/delta", {
+        "textDocument": text_document(uri),
+        "previousResultId": semantic_tokens["resultId"],
+    })
+    assert full["data"] == semantic_tokens["data"]
+    # An edit in the middle keeps the token data before and after it.
+    extended_source = new_source.replace("def helper", "def extra():\n    pass\n\ndef helper")
+    change_document(server, uri, extended_source, version=3)
+    delta = request(server, "textDocument/semanticTokens/full/delta", {
+        "textDocument": text_document(uri),
+        "previousResultId": full["resultId"],
+    })
+    full = request(server, "textDocument/semanticTokens/full", {
+        "textDocument": text_document(uri),
+    })
+    data = list(semantic_tokens["data"])
+    [edit] = delta["edits"]
+    assert 0 < edit["start"] and edit["start"] + edit["deleteCount"] < len(data)
+    data[edit["start"]:edit["start"] + edit["deleteCount"]] = edit["data"]
+    assert data == full["data"]
+
 
 def test_lsp_workspace_scan_skips_hidden_and_dependency_dirs(tmp_path):
     def cell_source(name):

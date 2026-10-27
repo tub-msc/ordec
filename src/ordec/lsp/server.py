@@ -111,6 +111,9 @@ class OrdLanguageServer:
         self.hover_markdown_support = False
         self.hierarchical_symbol_support = False
         self.session = AnalysisSession()
+        # The last semantic token data sent per document, for deltas.
+        self.semantic_token_results = dict()
+        self.semantic_token_result_count = 0
         self.handlers = {
             "initialize": self.handle_initialize,
             "initialized": self.handle_noop,
@@ -134,6 +137,7 @@ class OrdLanguageServer:
             "textDocument/foldingRange": self.handle_folding_range,
             "textDocument/selectionRange": self.handle_selection_range,
             "textDocument/semanticTokens/full": self.handle_semantic_tokens_full,
+            "textDocument/semanticTokens/full/delta": self.handle_semantic_tokens_delta,
             "textDocument/inlayHint": self.handle_inlay_hint,
             "textDocument/prepareCallHierarchy": self.handle_prepare_call_hierarchy,
             "callHierarchy/incomingCalls": self.handle_incoming_calls,
@@ -270,7 +274,7 @@ class OrdLanguageServer:
                         "tokenTypes": list(SEMANTIC_TOKEN_TYPES),
                         "tokenModifiers": list(SEMANTIC_TOKEN_MODIFIERS),
                     },
-                    "full": True,
+                    "full": {"delta": True},
                 },
                 "inlayHintProvider": True,
                 "callHierarchyProvider": True,
@@ -357,6 +361,7 @@ class OrdLanguageServer:
     def handle_did_close(self, message):
         uri = self.message_text_document_uri(message)
         self.session.close_document(uri)
+        self.semantic_token_results.pop(uri, None)
         return [{
             "jsonrpc": "2.0",
             "method": "textDocument/publishDiagnostics",
@@ -819,6 +824,48 @@ class OrdLanguageServer:
 
     def handle_semantic_tokens_full(self, message):
         uri = self.message_text_document_uri(message)
+        result_id, data = self.semantic_token_result(uri)
+        return self.result_response(message, {
+            "resultId": result_id,
+            "data": data,
+        })
+
+    def handle_semantic_tokens_delta(self, message):
+        uri = self.message_text_document_uri(message)
+        previous = self.semantic_token_results.get(uri)
+        previous_id = message.get("params", {}).get("previousResultId")
+        result_id, data = self.semantic_token_result(uri)
+        if previous is None or previous[0] != previous_id:
+            return self.result_response(message, {
+                "resultId": result_id,
+                "data": data,
+            })
+
+        # One edit replaces the part between the common prefix and suffix.
+        old_data = previous[1]
+        prefix = 0
+        while prefix < min(len(old_data), len(data)) and old_data[prefix] == data[prefix]:
+            prefix += 1
+        suffix = 0
+        while (
+            suffix < min(len(old_data), len(data)) - prefix
+            and old_data[-1 - suffix] == data[-1 - suffix]
+        ):
+            suffix += 1
+        edits = []
+        if old_data != data:
+            edits.append({
+                "start": prefix,
+                "deleteCount": len(old_data) - prefix - suffix,
+                "data": data[prefix:len(data) - suffix],
+            })
+        return self.result_response(message, {
+            "resultId": result_id,
+            "edits": edits,
+        })
+
+    def semantic_token_result(self, uri: str):
+        """Encode a document's semantic tokens and remember them under a new result id."""
         tokens = self.session.semantic_tokens(uri)
         data = []
         prev_line = 0
@@ -842,9 +889,10 @@ class OrdLanguageServer:
             prev_line = line
             prev_char = char
 
-        return self.result_response(message, {
-            "data": data,
-        })
+        self.semantic_token_result_count += 1
+        result_id = str(self.semantic_token_result_count)
+        self.semantic_token_results[uri] = (result_id, data)
+        return result_id, data
 
     def handle_workspace_symbol(self, message):
         params = message.get("params", {})
