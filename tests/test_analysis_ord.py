@@ -457,6 +457,31 @@ def test_reused_symbol_members():
     assert session.definition(uri, position_at(source, "g --")).name == "g"
 
 
+def test_layer_stack_members():
+    source = dedent("""\
+        from ordec.core import *
+        from ordec.lib.ihp130 import SG13G2
+
+        cell Top:
+            viewgen layout(self) -> Layout:
+                .ref_layers = SG13G2().layers
+                layers = .ref_layers
+                r = LayoutRect(layer=layers.Metal1)
+                t = layers.Metal1.text
+        """)
+    session = AnalysisSession()
+    uri = "file:///tmp/layer_stack.ord"
+    session.open_document(uri, source)
+
+    # `text` is attached in a loop over the metals.
+    metal1 = session.definition(uri, position_at(source, "Metal1)"))
+    assert (metal1.name, Path(metal1.uri).name) == ("Metal1", "ihp130.py")
+    assert session.definition(uri, position_at(source, "text")).name == "text"
+    layer_labels = completion_labels(session, uri, position_after(source, "layers."))
+    assert {"Metal1", "TopMetal2"} <= layer_labels
+    assert {"text", "pin"} <= completion_labels(session, uri, position_after(source, "Metal1."))
+
+
 def test_net_path_statement_bodies():
     source = dedent("""\
         from ordec.core import *
@@ -526,7 +551,10 @@ def test_relative_python_cells(tmp_path):
         class DFF(Cell):
             @generate
             def symbol(self) -> Symbol:
-                s = Symbol(cell=self)
+                if self.wide:
+                    s = Symbol(cell=self, outline=Rect4R(0, 0, 8, 4))
+                else:
+                    s = Symbol(cell=self)
                 s.d = Pin()
                 s.q = Pin()
                 return s
@@ -1621,6 +1649,7 @@ def test_python_index_unicode_attribute_ranges(tmp_path, suffix):
             def build(self):
                 root = Symbol()
                 root.élé = Pin()
+                return root
         """)
     path = tmp_path / ("device" + suffix)
     path.write_text(source)

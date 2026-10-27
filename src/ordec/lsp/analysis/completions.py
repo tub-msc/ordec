@@ -137,18 +137,19 @@ def completion_type_names(session, uri: str, position: AnalysisPosition, context
     if base_name.startswith("."):
         return []
 
+    member_path = ""
     identifier = leading_identifier(base_name)
     if identifier is not None:
-        # A member result type is unknown without deeper inference.
-        # Reusing the root type for `pd.d.` offers `pd` members in the
-        # wrong context, while subscripts such as `I[0].` stay valid.
-        if "." in base_name[len(identifier):]:
-            return []
+        # `I[0].` keeps the root type, `a.b.` makes a member path.
+        member_path = re.sub(r"\[[^\]]+\]", "", base_name[len(identifier):])
         base_name = identifier
 
     for binding in session.visible_bindings(uri, position):
         if binding.name == base_name:
-            return session.normalize_type_names(binding.type_names)
+            return [
+                type_name + member_path
+                for type_name in session.normalize_type_names(binding.type_names)
+            ]
 
     return []
 

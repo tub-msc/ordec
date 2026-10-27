@@ -131,6 +131,8 @@ class OrdAnalysisBuilder:
         self.node_statements = []
         self.constraint_ranges = []
         self.type_hints = []
+        # Types assigned to `.name`, for later reads of it.
+        self.context_member_types = dict()
 
     def simple_name_node(self, node):
         """Return the simple name node represented by a parse-tree node."""
@@ -489,10 +491,46 @@ class OrdAnalysisBuilder:
             # dynamic containers must remain unknown without annotations.
             return []
 
+        if node.data == "getattr" and len(node.children) == 2:
+            # A member path, resolved by the session.
+            member_name = tree_text(node.children[1])
+            return [
+                "{}.{}".format(type_name, member_name)
+                for type_name in self.member_base_type_names(
+                    node.children[0],
+                    scope_id,
+                    context_type_names=context_type_names,
+                )
+            ]
+
         if node.data == "dotted_atom":
-            return normalize_type_names(context_type_names)
+            context_type_names = normalize_type_names(context_type_names)
+            if not node.children:
+                return context_type_names
+            member_name = tree_text(node.children[0])
+            key = (scope_id, tuple(context_type_names), member_name)
+            if key in self.context_member_types:
+                return self.context_member_types[key]
+            return ["{}.{}".format(type_name, member_name) for type_name in context_type_names]
 
         return []
+
+    def member_base_type_names(self, base_node, scope_id, context_type_names=None):
+        """Infer candidate type names for the base of a member access."""
+        type_names = self.expression_type_names(
+            base_node,
+            scope_id,
+            context_type_names=context_type_names,
+        )
+        if not type_names and isinstance(base_node, Tree) and base_node.data == "getitem":
+            # ORD node arrays are homogeneous, so `I[i].q` keeps the
+            # root binding's type.
+            type_names = self.expression_root_type_names(
+                base_node,
+                scope_id,
+                context_type_names=context_type_names,
+            )
+        return type_names
 
     def expression_root_type_names(self, node, scope_id, context_type_names=None):
         """Infer candidate type names for the root of a chained expression."""
@@ -1226,6 +1264,13 @@ class OrdAnalysisBuilder:
                         self.add_type_hint(target_node, target_type_names)
                         continue
 
+                    if target_node.data == "dotted_atom" and target_node.children:
+                        key = (
+                            scope_id,
+                            tuple(normalize_type_names(context_type_names)),
+                            tree_text(target_node.children[0]),
+                        )
+                        self.context_member_types[key] = target_type_names
                     self.visit(target_node, scope_id, context_type_names=context_type_names)
 
                 self.visit(value_node, scope_id, context_type_names=context_type_names)
@@ -1413,20 +1458,11 @@ class OrdAnalysisBuilder:
             base_name_node = self.simple_name_node(base_node)
             if base_name_node is not None:
                 binding_id = self.resolve_binding(scope_id, tree_text(base_name_node))
-            type_names = self.expression_type_names(
+            type_names = self.member_base_type_names(
                 base_node,
                 scope_id,
                 context_type_names=context_type_names,
             )
-            if not type_names and isinstance(base_node, Tree) and base_node.data == "getitem":
-                # ORD node arrays are homogeneous, so `I[i].q` keeps the
-                # root binding's type. Attribute chains change type and
-                # stay unknown without deeper inference.
-                type_names = self.expression_root_type_names(
-                    base_node,
-                    scope_id,
-                    context_type_names=context_type_names,
-                )
 
             self.member_occurrences.append(AnalysisMemberOccurrence(
                 name=tree_text(name_node),
