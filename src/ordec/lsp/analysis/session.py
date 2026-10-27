@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Optional
 
 # ordec imports
-from . import completions, diagnostics, hierarchy, rename, signatures
+from . import auto_import, completions, diagnostics, hierarchy, rename, signatures
 from .import_resolver import ImportResolver, from_import_module_name
 from .model import (
     AnalysisDefinition,
@@ -50,6 +50,12 @@ KIND_TOKEN_TYPES = {
     "module": "namespace",
 }
 
+# Names that a line of source may define at the top level of a module.
+DEFINITION_NAME_RE = re.compile(
+    r"^(?:(?:cell|class|def)\s+(\w+)|(\w+)\s*[:=])",
+    re.MULTILINE,
+)
+
 
 class AnalysisSession:
     """Stateful ORD analysis facade for open documents and workspace files.
@@ -66,11 +72,13 @@ class AnalysisSession:
       ``call_hierarchy_item()``, ``incoming_calls()``, ``outgoing_calls()``
     - editing and assists: ``completions()``, ``signature_help()``,
       ``inlay_hints()``, ``prepare_rename()``, ``rename()``,
-      ``folding_ranges()``, ``selection_ranges()``, ``semantic_tokens()``
+      ``folding_ranges()``, ``selection_ranges()``, ``semantic_tokens()``,
+      ``import_choices()``
 
-    Completions, diagnostics, rename, signature help and call hierarchy are
-    implemented as functions taking the session as first argument in their
-    own modules; the corresponding methods here delegate to them.
+    Completions, diagnostics, rename, signature help, call hierarchy and
+    import quick fixes are implemented as functions taking the session as
+    first argument in their own modules; the corresponding methods here
+    delegate to them.
     """
     def __init__(
         self,
@@ -92,6 +100,7 @@ class AnalysisSession:
         self.python_index = PythonModuleIndex(self.resolver)
         self.workspace_uri_cache = None
         self.workspace_index = None
+        self.definition_names = None
 
     def canonical_uri(self, uri: str):
         """Return the canonical session key for a URI.
@@ -453,9 +462,57 @@ class AnalysisSession:
                 return True
         return False
 
+    def workspace_sources_defining(self, name: str):
+        """Yield the workspace source files that may define ``name`` at top level.
+
+        A pattern finds the names, which preselects the few files worth
+        parsing. The files are listed again when files came or went, and
+        the names of a file are reused while its revision is unchanged.
+        """
+        if not self.workspace_root:
+            return
+
+        files = self.revisions.read("files")
+        if self.definition_names is None or self.definition_names[0] != files:
+            previous = dict() if self.definition_names is None else self.definition_names[1]
+            root_path = Path(self.workspace_root)
+            self.definition_names = (files, {
+                path: previous.get(path)
+                for path in self.workspace_source_paths(root_path, (".ord", ".py"))
+            })
+
+        entries = self.definition_names[1]
+        for path, entry in entries.items():
+            if entry is None or not self.revisions.current(entry[0]):
+                # A symlinked file changes with its link and with its target.
+                keys = (("file", path), ("file", path.resolve()))
+                reads = {key: self.revisions.read(key) for key in keys}
+                try:
+                    text = path.read_text(encoding="utf-8")
+                except (OSError, UnicodeDecodeError):
+                    text = ""
+                names = frozenset(
+                    match[1] or match[2] for match in DEFINITION_NAME_RE.finditer(text)
+                )
+                entry = entries[path] = (reads, names)
+            if name in entry[1]:
+                yield path
+
     def python_module_info(self, module_path: Optional[Path]):
         """Analyze a Python module enough for ORD import and member lookup."""
         return self.python_index.module_info(module_path)
+
+    def python_star_names(self, module_path: Optional[Path]):
+        """Return the names that ``from module import *`` binds."""
+        return self.python_index.star_names(module_path)
+
+    def python_module_name(self, module_path: Path):
+        """Return the dotted name of a module source file below its import root."""
+        return self.resolver.module_name(module_path)
+
+    def installed_module_path(self, module_name: str):
+        """Return the source file of an installed module, or None."""
+        return self.resolver.installed_module_path(module_name)
 
     def python_definition(
         self,
@@ -608,7 +665,7 @@ class AnalysisSession:
         self.update_document(uri, text, version=version, is_open=False)
         return uri
 
-    def workspace_source_paths(self, root_path: Path, suffix: str = ".ord"):
+    def workspace_source_paths(self, root_path: Path, suffix: str | tuple = ".ord"):
         """Yield workspace source files, pruning hidden and dependency directories.
 
         A blind recursive glob crawls .git, virtualenvs, and node_modules,
@@ -1936,6 +1993,9 @@ class AnalysisSession:
 
     def signature_help(self, uri: str, position: AnalysisPosition):
         return signatures.signature_help(self, uri, position)
+
+    def import_choices(self, uri: str, name: str):
+        return auto_import.import_choices(self, uri, name)
 
     def prepare_rename(self, uri: str, position: AnalysisPosition):
         return rename.prepare_rename(self, uri, position)

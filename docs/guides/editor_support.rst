@@ -308,7 +308,7 @@ Supported features
      - Folding ranges, selection ranges, and a call hierarchy over the cell
        instantiation graph.
    * - Code actions
-     - Quick fixes for selected diagnostics.
+     - Quick fixes for selected diagnostics, such as importing an unresolved name.
    * - Document updates
      - Incremental synchronization with full-document replacement as a
        fallback.
@@ -477,9 +477,9 @@ Most language intelligence lives in ``ordec.lsp.analysis``:
   nodes of views that methods build, docstrings, function signatures, and
   cell parameter defaults without importing or executing workspace modules.
 * ``completions.py``, ``diagnostics.py``, ``rename.py``, ``signatures.py``,
-  and ``hierarchy.py`` implement one feature each as functions taking the
-  session as first argument; ``AnalysisSession`` exposes them through
-  delegating methods.
+  ``hierarchy.py``, and ``auto_import.py`` implement one feature each as
+  functions taking the session as first argument; ``AnalysisSession``
+  exposes them through delegating methods.
 
 ``AnalysisSession`` intentionally remains the API boundary used by the LSP
 server and tests. The smaller analysis modules keep implementation details

@@ -551,6 +551,13 @@ def test_lsp_completion_and_code_actions(tmp_path):
           viewgen schematic(self) -> Schematic:
             port a
             port y
+
+        cell Buf:
+          viewgen symbol(self) -> Symbol:
+            input a
+          viewgen schematic(self) -> Schematic:
+            port a
+            port y
         """)
     broken_uri = (tmp_path / "missing_symbol_port.ord").resolve().as_uri()
     diagnostics = open_document(server, broken_uri, broken_symbol)
@@ -565,8 +572,95 @@ def test_lsp_completion_and_code_actions(tmp_path):
             },
         },
     )
-    assert [action["title"] for action in actions] == ["Declare `y` in symbol view"]
-    assert actions[0]["edit"]["changes"][broken_uri][0]["newText"] == "    input y\n"
+    # Each cell keeps its fix, although both fixes have the same title.
+    assert [action["title"] for action in actions] == ["Declare `y` in symbol view"] * 2
+    edits = [action["edit"]["changes"][broken_uri][0] for action in actions]
+    assert [edit["newText"] for edit in edits] == ["    input y\n"] * 2
+    assert edits[0]["range"] != edits[1]["range"]
+
+    # Unresolved names get imports from workspace and ordec modules; an
+    # existing one-line import of the same module is extended.
+    (tmp_path / "cells.ord").write_text(dedent("""\
+        cell Buf:
+            viewgen symbol(self) -> Symbol:
+                input a
+
+        cell Other:
+            viewgen symbol(self) -> Symbol:
+                input a
+        """))
+    top_source = dedent("""\
+        from ordec.core import *
+        from cells import Other
+
+        cell Top:
+            viewgen schematic(self) -> Schematic:
+                Nmos pd
+                Nmos pd2
+                Buf b
+        """)
+    top_uri = (tmp_path / "top.ord").resolve().as_uri()
+    diagnostics = open_document(server, top_uri, top_source)
+    actions = request(server, "textDocument/codeAction", {
+        "textDocument": text_document(top_uri),
+        "context": {"diagnostics": diagnostics},
+    })
+    edits = {
+        action["title"]: action["edit"]["changes"][top_uri][0]
+        for action in actions
+    }
+    assert len(edits) == len(actions)
+    nmos_edit = edits["Import `Nmos` from `ordec.lib.generic_mos`"]
+    assert nmos_edit["range"]["start"] == {"line": 2, "character": 0}
+    assert nmos_edit["newText"] == "from ordec.lib.generic_mos import Nmos\n"
+    assert edits["Import `Buf` from `cells`"]["newText"] == ", Buf"
+
+    # Without imports, the new one goes below the module docstring, whose
+    # lines are not imports.
+    plain_source = dedent("""\
+        # Top level.
+
+        \"\"\"Top.
+
+        from the cell library.
+        \"\"\"
+        cell Top:
+            viewgen schematic(self) -> Schematic:
+                Buf b
+        """)
+    plain_uri = (tmp_path / "plain.ord").resolve().as_uri()
+    [action] = request(server, "textDocument/codeAction", {
+        "textDocument": text_document(plain_uri),
+        "context": {"diagnostics": open_document(server, plain_uri, plain_source)},
+    })
+    assert action["edit"]["changes"][plain_uri][0]["range"]["start"] == {"line": 6, "character": 0}
+
+    # Below an import in the last line, which has no line break, the new
+    # import is appended with the line break first.
+    late_uri = (tmp_path / "late.ord").resolve().as_uri()
+    [action] = request(server, "textDocument/codeAction", {
+        "textDocument": text_document(late_uri),
+        "context": {"diagnostics": open_document(server, late_uri, plain_source + "import os")},
+    })
+    late_edit = action["edit"]["changes"][late_uri][0]
+    assert late_edit["range"]["start"] == {"line": 9, "character": 9}
+    assert late_edit["newText"] == "\nfrom cells import Buf"
+
+    # The names that a changed file defines are read again.
+    (tmp_path / "cells.ord").write_text(dedent("""\
+        cell Buf2:
+            viewgen symbol(self) -> Symbol:
+                input a
+        """))
+    notify(server, "workspace/didChangeWatchedFiles", {
+        "changes": [{"uri": (tmp_path / "cells.ord").resolve().as_uri(), "type": 2}],
+    })
+    plain_source = plain_source.replace("Buf", "Buf2")
+    [action] = request(server, "textDocument/codeAction", {
+        "textDocument": text_document(plain_uri),
+        "context": {"diagnostics": change_document(server, plain_uri, plain_source, version=2)},
+    })
+    assert action["title"] == "Import `Buf2` from `cells`"
 
 
 def test_lsp_applies_incremental_did_change(tmp_path):
