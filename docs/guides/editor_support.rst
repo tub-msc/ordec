@@ -449,10 +449,10 @@ that is already being handled is never interrupted.
 Most language intelligence lives in ``ordec.lsp.analysis``:
 
 * ``model.py`` defines shared positions, ranges, diagnostics, symbols, import
-  records, resolved definitions, and ``DocumentAnalysis``.
+  records, resolved definitions, parser pass records, and ``DocumentAnalysis``.
 * ``parser_pass.py`` parses ORD source and uses an ``OrdAnalysisBuilder`` to
   walk the parse tree and collect scopes, bindings, occurrences, imports, ORD
-  node statement records, view generator return records, constraint records, and
+  node statement records, view generator return records, constraint ranges, and
   inferred-type records for assignment targets.
 * ``session.py`` is the public analysis facade. It owns open document snapshots,
   last-good and stand-in analyses of broken documents, file invalidation,

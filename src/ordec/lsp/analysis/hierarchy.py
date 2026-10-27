@@ -37,7 +37,7 @@ def module_hierarchy_item(session, uri: str):
     """Return a file-level hierarchy item for module-scope references."""
     analysis = session.analyze(uri)
     if 0 in analysis.scopes:
-        full_range = analysis.scopes[0]["range"]
+        full_range = analysis.scopes[0].range
     else:
         full_range = AnalysisRange(
             start=AnalysisPosition(1, 1),
@@ -135,7 +135,7 @@ def outgoing_calls(session, uri: str, position: AnalysisPosition):
     container_range = definition.range
     analysis = session.analyze(target_uri)
     return_type_ranges = {
-        viewgen["selection_range"]
+        viewgen.selection_range
         for viewgen in analysis.viewgen_returns
     }
 

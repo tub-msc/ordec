@@ -111,35 +111,35 @@ def semantic_diagnostics(session, uri: str):
         )
 
     for statement in analysis.node_statements:
-        kind_name = statement["kind_name"]
+        kind_name = statement.kind_name
         if kind_name in NODE_KINDS:
             continue
-        if statement.get("kind_binding_id") is not None:
+        if statement.kind_binding_id is not None:
             continue
         if not is_identifier(kind_name):
             continue
         if session.resolve_completion_type(uri, kind_name) is None:
             add_diagnostic(
-                statement["kind_range"],
+                statement.kind_range,
                 "error",
                 "Cannot resolve ORD node type `{}`.".format(kind_name),
                 "unresolved-node-type",
             )
 
     for viewgen in analysis.viewgen_returns:
-        type_name = viewgen["return_type"]
-        if viewgen.get("return_binding_id") is not None:
+        type_name = viewgen.return_type
+        if viewgen.return_binding_id is not None:
             continue
-        if viewgen.get("return_base") not in (None, type_name):
+        if viewgen.return_base not in (None, type_name):
             # Qualified return types such as core.Schematic resolve
             # through their module, which the bare-name lookup below
             # cannot see. Only the base name is validated here.
-            if not name_resolves(viewgen["return_base"]):
+            if not name_resolves(viewgen.return_base):
                 add_diagnostic(
-                    viewgen["selection_range"],
+                    viewgen.selection_range,
                     "error",
                     "Cannot resolve `{}` in viewgen return type.".format(
-                        viewgen["return_base"]
+                        viewgen.return_base
                     ),
                     "unresolved-viewgen-return",
                 )
@@ -147,7 +147,7 @@ def semantic_diagnostics(session, uri: str):
         type_definition = session.resolve_completion_type(uri, type_name)
         if type_definition is None:
             add_diagnostic(
-                viewgen["selection_range"],
+                viewgen.selection_range,
                 "error",
                 "Cannot resolve viewgen return type `{}`.".format(type_name),
                 "unresolved-viewgen-return",
@@ -157,32 +157,32 @@ def semantic_diagnostics(session, uri: str):
         members = session.type_members(type_definition)
         if "view_builder" not in members:
             add_diagnostic(
-                viewgen["selection_range"],
+                viewgen.selection_range,
                 "error",
                 "`{}` cannot be used as an ORD viewgen return type.".format(type_name),
                 "invalid-viewgen-return",
             )
 
     for occurrence in analysis.occurrences:
-        if occurrence.get("binding_id") is not None:
+        if occurrence.binding_id is not None:
             continue
-        if not occurrence.get("diagnose_unresolved"):
+        if not occurrence.diagnose_unresolved:
             continue
-        if name_resolves(occurrence["name"]):
+        if name_resolves(occurrence.name):
             continue
 
         add_diagnostic(
-            occurrence["range"],
+            occurrence.range,
             "error",
-            "Cannot resolve name `{}`.".format(occurrence["name"]),
+            "Cannot resolve name `{}`.".format(occurrence.name),
             "unresolved-name",
         )
 
     for oldform in analysis.viewgen_oldforms:
         # Mirrors the compiler's fix-it for the removed parenless form.
-        name = oldform["name"]
+        name = oldform.name
         add_diagnostic(
-            oldform["selection_range"],
+            oldform.selection_range,
             "error",
             "viewgen {} declares no parameter list. Write `viewgen {}(self) "
             "-> T:` inside a cell, or `viewgen {}() -> T:` at module "
@@ -190,10 +190,10 @@ def semantic_diagnostics(session, uri: str):
             "viewgen-parameter-list",
         )
 
-    for constraint in analysis.constraints:
+    for constraint_range in analysis.constraint_ranges:
         containing_viewgen = None
         for viewgen in analysis.viewgen_ranges:
-            if not range_contains(viewgen["range"], constraint["range"].start):
+            if not range_contains(viewgen.range, constraint_range.start):
                 continue
             containing_viewgen = viewgen
             break
@@ -203,31 +203,31 @@ def semantic_diagnostics(session, uri: str):
         # its body are given the benefit of the doubt.
         if (
             containing_viewgen is None
-            or containing_viewgen["return_type"] not in (None, "Schematic", "Layout")
+            or containing_viewgen.return_type not in (None, "Schematic", "Layout")
         ):
             add_diagnostic(
-                constraint["range"],
+                constraint_range,
                 "error",
                 "Constraints are only supported inside schematic or layout view generators.",
                 "invalid-constraint-context",
             )
 
     for occurrence in analysis.member_occurrences:
-        type_names = list(occurrence.get("type_names", []))
-        binding_id = occurrence.get("binding_id")
+        type_names = list(occurrence.type_names)
+        binding_id = occurrence.binding_id
         if binding_id is not None:
             binding = analysis.binding_map.get(binding_id)
             if binding is not None:
-                type_names = list(binding.get("type_names", [])) + type_names
+                type_names = list(binding.type_names) + type_names
         type_names = session.normalize_type_names(type_names)
         if not type_names:
             continue
 
-        parameter_only = occurrence.get("mode") == "parameter"
+        parameter_only = occurrence.mode == "parameter"
         if not parameter_only and any(
-            viewgen["return_type"] == "Layout"
-            and range_contains(viewgen["viewgen_range"], occurrence["range"].start)
-            for viewgen in analysis.viewgen_returns
+            viewgen.return_type == "Layout"
+            and range_contains(viewgen.range, occurrence.range.start)
+            for viewgen in analysis.viewgen_ranges
         ):
             # Layout generators commonly delegate to helper functions that
             # attach runtime-defined shapes to cell instances. Keep member
@@ -251,7 +251,7 @@ def semantic_diagnostics(session, uri: str):
                 matched = True
                 break
 
-            member = session.type_members(type_definition).get(occurrence["name"])
+            member = session.type_members(type_definition).get(occurrence.name)
             if member is None:
                 continue
             if parameter_only and member.kind != "parameter":
@@ -264,11 +264,11 @@ def semantic_diagnostics(session, uri: str):
 
         diagnostic_type = "parameter" if parameter_only else "member"
         add_diagnostic(
-            occurrence["range"],
+            occurrence.range,
             "error",
             "Unknown {} `{}` for `{}`.".format(
                 diagnostic_type,
-                occurrence["name"],
+                occurrence.name,
                 " | ".join(type_names),
             ),
             "unknown-{}".format(diagnostic_type),
@@ -291,22 +291,22 @@ def semantic_diagnostics(session, uri: str):
         symbol_pins = set()
         schematic_ports = []
         for statement in analysis.node_statements:
-            target_name = statement["target_name"]
+            target_name = statement.target_name
             if not is_identifier(target_name):
                 continue
 
-            kind_name = statement["kind_name"]
-            target_start = statement["target_range"].start
+            kind_name = statement.kind_name
+            target_start = statement.target_range.start
             if kind_name in PIN_KINDS and range_contains(symbol_view.range, target_start):
                 symbol_pins.add(target_name)
             elif kind_name == "port" and range_contains(schematic_view.range, target_start):
                 schematic_ports.append(statement)
 
         for port_statement in schematic_ports:
-            port_name = port_statement["target_name"]
+            port_name = port_statement.target_name
             if port_name not in symbol_pins:
                 add_diagnostic(
-                    port_statement["target_range"],
+                    port_statement.target_range,
                     "error",
                     "Schematic port `{}` is not declared in the symbol view.".format(port_name),
                     "unknown-symbol-port",

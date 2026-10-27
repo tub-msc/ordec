@@ -103,17 +103,17 @@ def ord_function_parameters(session, definition):
     """Return parameter records for a function defined in ORD source."""
     analysis = session.analyze(definition.uri)
     for scope in analysis.scopes.values():
-        if scope["selection_range"] != definition.selection_range:
+        if scope.selection_range != definition.selection_range:
             continue
 
         parameters = []
-        for binding_id in scope["bindings"]:
+        for binding_id in scope.bindings:
             binding = analysis.binding_map.get(binding_id)
-            if binding is None or binding["kind"] != "parameter":
+            if binding is None or binding.kind != "parameter":
                 continue
             parameters.append({
-                "label": binding["name"],
-                "name": binding["name"],
+                "label": binding.name,
+                "name": binding.name,
             })
         return parameters
 
