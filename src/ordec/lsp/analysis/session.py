@@ -3,14 +3,17 @@
 
 # standard imports
 from bisect import bisect_right
+import importlib
 import os
+import re
 from pathlib import Path
 from typing import Optional
 
 # ordec imports
-from . import completions, diagnostics, hierarchy, rename, signatures
+from . import auto_import, completions, diagnostics, hierarchy, rename, signatures
 from .import_resolver import ImportResolver, from_import_module_name
 from .model import (
+    AnalysisDefinition,
     AnalysisPosition,
     AnalysisRange,
     DocumentAnalysis,
@@ -21,8 +24,9 @@ from .model import (
     split_source_lines,
 )
 from .model import normalize_type_names as normalize_type_name_list
-from .parser_pass import analyze_ord
+from .parser_pass import analyze_ord, edited_line_numbers, stand_in_source
 from .python_index import PythonModuleIndex
+from .revisions import Revisions
 
 # Dependency and build-output directories that never hold workspace design
 # sources (build outputs would surface stale duplicates). Hidden directories
@@ -36,6 +40,14 @@ WORKSPACE_SCAN_EXCLUDED_DIRS = frozenset({
 
 CORE_TYPE_ALIASES = {
     "Simulation": "SimHierarchy",
+}
+
+# Semantic token types of definition kinds; other kinds read as variables.
+KIND_TOKEN_TYPES = {
+    "class": "class",
+    "function": "function",
+    "parameter": "parameter",
+    "module": "namespace",
 }
 
 
@@ -54,11 +66,13 @@ class AnalysisSession:
       ``call_hierarchy_item()``, ``incoming_calls()``, ``outgoing_calls()``
     - editing and assists: ``completions()``, ``signature_help()``,
       ``inlay_hints()``, ``prepare_rename()``, ``rename()``,
-      ``folding_ranges()``, ``selection_ranges()``, ``semantic_tokens()``
+      ``folding_ranges()``, ``selection_ranges()``, ``semantic_tokens()``,
+      ``import_choices()``
 
-    Completions, diagnostics, rename, signature help and call hierarchy are
-    implemented as functions taking the session as first argument in their
-    own modules; the corresponding methods here delegate to them.
+    Completions, diagnostics, rename, signature help, call hierarchy and
+    import quick fixes are implemented as functions taking the session as
+    first argument in their own modules; the corresponding methods here
+    delegate to them.
     """
     def __init__(
         self,
@@ -74,11 +88,12 @@ class AnalysisSession:
         self.documents = dict()
         self.document_access_counter = 0
         self.canonical_uri_cache = dict()
-        self.resolver = ImportResolver(self.workspace_root)
+        self.revisions = Revisions()
+        self.diagnostics_cache = dict()
+        self.resolver = ImportResolver(self.workspace_root, self.revisions)
         self.python_index = PythonModuleIndex(self.resolver)
         self.workspace_uri_cache = None
         self.workspace_index = None
-        self.workspace_dirty_uris = set()
 
     def canonical_uri(self, uri: str):
         """Return the canonical session key for a URI.
@@ -168,43 +183,22 @@ class AnalysisSession:
 
         for _, uri in sorted(closed)[:overflow]:
             self.documents.pop(uri, None)
+            self.diagnostics_cache.pop(uri, None)
 
     def last_good_analysis(self, doc):
-        """Return the latest error-free analysis for a document record."""
+        """Return the latest error-free analysis of a document record and its text."""
         if doc is None:
-            return None
+            return None, None
 
         analysis = doc.get("analysis")
         if analysis is not None and not analysis.has_errors():
-            return analysis
+            return analysis, doc["text"]
 
-        return doc.get("last_good_analysis")
+        return doc.get("last_good_analysis"), doc.get("last_good_text")
 
     def invalidate_workspace_index(self):
         """Clear cached workspace dependency information."""
         self.workspace_index = None
-        self.workspace_dirty_uris.clear()
-
-    def mark_workspace_uri_dirty(self, uri: str):
-        """Mark one ORD document's workspace-import row as stale."""
-        uri = self.canonical_uri(uri)
-        if not self.is_ord_uri(uri):
-            return
-
-        if not self.workspace_index_may_track(uri):
-            return
-
-        self.workspace_dirty_uris.add(uri)
-
-    def workspace_index_may_track(self, uri: str):
-        """Return whether a URI could affect the workspace import graph."""
-        if self.workspace_index is None:
-            return False
-
-        if uri in self.workspace_index["uris"]:
-            return True
-
-        return self.uri_in_workspace(uri)
 
     def uri_in_workspace(self, uri: str):
         """Return whether a file URI is inside the configured workspace."""
@@ -252,19 +246,33 @@ class AnalysisSession:
         version: Optional[int] = None,
         is_open: bool = True,
     ):
-        """Store a document snapshot and mark related workspace state dirty."""
+        """Store a document snapshot, bumping its revision when the text changed."""
         uri = self.canonical_uri(uri)
         previous = self.documents.get(uri)
+        # A document evicted while closed has no previous record.
+        if previous is None or previous["text"] != text:
+            self.revisions.bump(("doc", uri))
+        last_good_analysis, last_good_text = self.last_good_analysis(previous)
         self.documents[uri] = {
             "text": text,
             "version": version,
             "analysis": None,
-            "last_good_analysis": self.last_good_analysis(previous),
+            "last_good_analysis": last_good_analysis,
+            "last_good_text": last_good_text,
+            "stand_in": None if previous is None else previous.get("stand_in"),
             "is_open": is_open,
             "last_access": 0,
         }
         self.record_document_access(uri)
-        self.mark_workspace_uri_dirty(uri)
+        # The import index covers the documents it was built from.
+        index = self.workspace_index
+        if (
+            index is not None
+            and uri not in index["uris"]
+            and self.is_ord_uri(uri)
+            and self.uri_in_workspace(uri)
+        ):
+            self.invalidate_workspace_index()
         return uri
 
     def close_document(self, uri: str):
@@ -274,19 +282,25 @@ class AnalysisSession:
         if document is None:
             return
 
+        # The file on disk replaces the editor text.
+        self.revisions.bump(("doc", uri))
+
         path = self.file_uri_path(uri)
         if path is None or not path.is_file():
-            self.mark_workspace_uri_dirty(uri)
             return
 
         try:
             self.open_path(str(path))
         except (OSError, UnicodeDecodeError):
-            self.mark_workspace_uri_dirty(uri)
+            # Unreadable files are loaded again on their next use.
+            return
 
     def ensure_document(self, uri: str):
         """Load a file-backed document when it is not already tracked."""
         uri = self.canonical_uri(uri)
+        # Read before loading, so that a file that cannot be read yet is an
+        # input of the results that depend on it.
+        self.revisions.read(("doc", uri))
         if uri not in self.documents and uri.startswith("file:"):
             path = self.file_uri_path(uri)
             try:
@@ -309,23 +323,19 @@ class AnalysisSession:
         change the file an import names.
         """
         path = Path(os.path.abspath(path))
+        # The Python index reads files under their path and their
+        # symlink-resolved path.
+        self.revisions.bump(("file", path))
+        self.revisions.bump(("file", path.resolve()))
         if created_or_deleted:
             # foo.py shadows foo.ord and __init__ files set the package
             # context, so a file that comes or goes can change any import.
-            self.resolver.clear()
-            self.invalidate_workspace_index()
-
-        if path.suffix == ".py":
-            # The Python index matches modules by symlink-resolved path.
-            self.invalidate_python_module_path(path.resolve(), created_or_deleted)
-            return None
+            importlib.invalidate_caches()
+            self.revisions.bump("files")
 
         if path.suffix != ".ord":
             return None
 
-        # The Python index also caches installed `.ord` modules resolved
-        # through their parent Python package.
-        self.invalidate_python_module_path(path.resolve(), created_or_deleted)
         uri = path.as_uri()
         if self.workspace_uri_cache is not None and self.uri_in_workspace(uri):
             if path.is_file():
@@ -336,14 +346,13 @@ class AnalysisSession:
         doc = self.documents.get(uri)
         if doc is not None and doc.get("is_open"):
             doc["analysis"] = None
-            self.mark_workspace_uri_dirty(uri)
             return uri
 
+        self.revisions.bump(("doc", uri))
         if path.exists():
             return self.update_path(str(path))
 
         self.documents.pop(uri, None)
-        self.mark_workspace_uri_dirty(uri)
         return uri
 
     def invalidate_uri(self, uri: str, created_or_deleted: bool = True):
@@ -383,6 +392,35 @@ class AnalysisSession:
             return self.python_definition(self.resolve_python_module_path(uri, submodule_name))
         return self.python_definition(module_path, export_name=export_name)
 
+    def star_import_definitions(self, uri: str, module_name: str):
+        """Return the definitions that ``from module import *`` binds, by name."""
+        module_uri = self.resolve_module_uri(uri, module_name)
+        if module_uri is not None:
+            # Most exports are symbols of the module itself; find_export
+            # would search all related documents for each of them.
+            analysis = self.analyze(module_uri)
+            symbols = {symbol.name: symbol for symbol in reversed(analysis.symbols)}
+            definitions = dict()
+            for name in analysis.exports:
+                symbol = symbols.get(name)
+                if symbol is None:
+                    definitions[name] = self.find_export(module_uri, name)
+                    continue
+                definitions[name] = AnalysisDefinition(
+                    uri=module_uri,
+                    name=name,
+                    kind=symbol.kind,
+                    range=symbol.range,
+                    selection_range=symbol.selection_range,
+                )
+            return definitions
+
+        module_path = self.resolve_python_module_path(uri, module_name)
+        return {
+            name: self.python_definition(module_path, export_name=name)
+            for name in self.python_index.star_names(module_path)
+        }
+
     def resolve_python_module_path(self, uri: str, module_name: str):
         """Resolve a possibly relative import name to a module source path."""
         return self.resolver.module_path(uri, module_name)
@@ -391,13 +429,55 @@ class AnalysisSession:
         """Return whether an import name resolves to an ORD or Python module."""
         return self.resolver.module_exists(uri, module_name)
 
-    def invalidate_python_module_path(self, path: Path, created_or_deleted: bool = True):
-        """Invalidate cached Python analysis for modules backed by a path."""
-        self.python_index.invalidate_module_path(path, created_or_deleted)
+    def imported_by_python(self, uri: str):
+        """Return whether a workspace Python module imports from an ORD document.
+
+        The workspace import graph has no edges from Python modules, so the
+        Python files are scanned, parsing only those naming the module.
+        """
+        path = self.file_uri_path(uri)
+        if path is None:
+            return False
+
+        target = path.resolve()
+        module_name = target.parent.name if target.stem == "__init__" else target.stem
+        module_name_re = re.compile(r"\b{}\b".format(re.escape(module_name)))
+        for python_path in self.workspace_sources_matching(module_name_re, (".py",)):
+            imported = self.python_index.imported_paths(python_path)
+            if any(imported_path.resolve() == target for imported_path in imported):
+                return True
+        return False
+
+    def workspace_sources_matching(self, pattern, suffixes=(".ord", ".py")):
+        """Yield the workspace source files whose text matches ``pattern``.
+
+        The pattern preselects the few files worth parsing.
+        """
+        if not self.workspace_root:
+            return
+        for suffix in suffixes:
+            for path in self.workspace_source_paths(Path(self.workspace_root), suffix):
+                try:
+                    if pattern.search(path.read_text(encoding="utf-8")):
+                        yield path
+                except (OSError, UnicodeDecodeError):
+                    continue
 
     def python_module_info(self, module_path: Optional[Path]):
         """Analyze a Python module enough for ORD import and member lookup."""
         return self.python_index.module_info(module_path)
+
+    def python_star_names(self, module_path: Optional[Path]):
+        """Return the names that ``from module import *`` binds."""
+        return self.python_index.star_names(module_path)
+
+    def python_module_name(self, module_path: Path):
+        """Return the dotted name of a module source file below its import root."""
+        return self.resolver.module_name(module_path)
+
+    def installed_module_path(self, module_name: str):
+        """Return the source file of an installed module, or None."""
+        return self.resolver.installed_module_path(module_name)
 
     def python_definition(
         self,
@@ -423,21 +503,60 @@ class AnalysisSession:
         if not self.ensure_document(uri):
             return DocumentAnalysis(uri=uri, version=None, diagnostics=[], symbols=[])
 
+        self.revisions.read(("doc", uri))
         doc = self.documents[uri]
         if doc["analysis"] is None:
             analysis = analyze_ord(doc["text"], uri=uri, version=doc["version"])
             if analysis.has_errors():
-                last_good = doc.get("last_good_analysis")
-                if last_good is not None:
-                    analysis = last_good.with_diagnostics(
+                # The last good analysis fits while just one line changed;
+                # otherwise its ranges can be off below the edit.
+                fallback = doc.get("last_good_analysis")
+                good_text = doc.get("last_good_text")
+                same_lines = good_text is not None and (
+                    len(split_source_lines(good_text)) == len(split_source_lines(doc["text"]))
+                    and len(edited_line_numbers(doc["text"], good_text)) <= 1
+                )
+                if not same_lines:
+                    fallback = self.stand_in_analysis(doc, analysis) or fallback
+                if fallback is not None:
+                    analysis = fallback.with_diagnostics(
                         analysis.diagnostics,
                         uri=uri,
                         version=doc["version"],
                     )
             else:
                 doc["last_good_analysis"] = analysis
+                doc["last_good_text"] = doc["text"]
             doc["analysis"] = analysis
         return doc["analysis"]
+
+    def stand_in_analysis(self, doc, analysis):
+        """Return an analysis of a broken document with stand-ins, or None.
+
+        The lines being edited are replaced by ``pass``: first the line of
+        the syntax error, then the lines changed since the last error-free
+        text, then both. The result keeps the current line numbers.
+        """
+        error_lines = {analysis.diagnostics[0].range.start.line}
+        attempts = [error_lines]
+        good_text = doc.get("last_good_text")
+        if good_text is not None:
+            edited_lines = edited_line_numbers(doc["text"], good_text)
+            attempts += [edited_lines, edited_lines | error_lines]
+
+        for line_numbers in attempts:
+            source = stand_in_source(doc["text"], line_numbers)
+            # Typing on a broken line keeps its stand-in, and with it the
+            # analysis, unchanged from one keystroke to the next.
+            previous = doc.get("stand_in")
+            if previous is not None and previous[0] == source:
+                return previous[1]
+
+            candidate = analyze_ord(source, uri=analysis.uri, version=doc["version"])
+            if not candidate.has_errors():
+                doc["stand_in"] = (source, candidate)
+                return candidate
+        return None
 
     def analysis_cache(self, uri: str, analysis):
         """Return a cache dict scoped to one analysis result of a document.
@@ -454,16 +573,30 @@ class AnalysisSession:
         return cache
 
     def diagnostics(self, uri: str):
-        """Return parser and semantic diagnostics for a document."""
+        """Return parser and semantic diagnostics for a document.
+
+        The result is reused while the revisions it read are unchanged.
+        """
         uri = self.canonical_uri(uri)
         if not self.ensure_document(uri):
             return []
 
-        analysis = self.analyze(uri)
-        if analysis.has_errors():
-            return analysis.diagnostics
+        cached = self.diagnostics_cache.get(uri)
+        if cached is not None and self.revisions.current(cached[1]):
+            return cached[0]
 
-        return analysis.diagnostics + diagnostics.semantic_diagnostics(self, uri)
+        with self.revisions.track() as reads:
+            analysis = self.analyze(uri)
+            result = analysis.diagnostics
+            if not analysis.has_errors():
+                result = result + diagnostics.semantic_diagnostics(self, uri)
+        self.diagnostics_cache[uri] = (result, reads)
+        return result
+
+    def diagnostics_outdated(self, uri: str):
+        """Return whether a document's diagnostics changed since last computed."""
+        cached = self.diagnostics_cache.get(self.canonical_uri(uri))
+        return cached is None or not self.revisions.current(cached[1])
 
     def open_path(self, path: str, version: Optional[int] = None):
         """Open a filesystem ORD file as a closed session document."""
@@ -482,7 +615,6 @@ class AnalysisSession:
         uri = path.as_uri()
         if uri in self.documents and self.documents[uri].get("is_open"):
             self.documents[uri]["analysis"] = None
-            self.mark_workspace_uri_dirty(uri)
             return uri
 
         try:
@@ -491,13 +623,12 @@ class AnalysisSession:
             # Watched-file races and non-UTF-8 files must not abort
             # invalidation: drop the cached copy instead.
             self.documents.pop(uri, None)
-            self.mark_workspace_uri_dirty(uri)
             return uri
         self.update_document(uri, text, version=version, is_open=False)
         return uri
 
-    def workspace_ord_paths(self, root_path: Path):
-        """Yield workspace ORD files, pruning hidden and dependency directories.
+    def workspace_source_paths(self, root_path: Path, suffix: str = ".ord"):
+        """Yield workspace source files, pruning hidden and dependency directories.
 
         A blind recursive glob crawls .git, virtualenvs, and node_modules,
         which dominates cold workspace scans on real projects. Design
@@ -511,7 +642,7 @@ class AnalysisSession:
                 and name not in WORKSPACE_SCAN_EXCLUDED_DIRS
             )
             for filename in sorted(filenames):
-                if filename.endswith(".ord"):
+                if filename.endswith(suffix):
                     yield Path(dirpath) / filename
 
     def workspace_uris(self):
@@ -523,7 +654,7 @@ class AnalysisSession:
                 if root_path.exists():
                     self.workspace_uri_cache.update(
                         path.as_uri()
-                        for path in self.workspace_ord_paths(root_path)
+                        for path in self.workspace_source_paths(root_path)
                         if path.is_file()
                     )
 
@@ -544,85 +675,42 @@ class AnalysisSession:
         return uris
 
     def workspace_import_index(self):
-        """Build or return cached ORD import dependency indexes."""
-        if self.workspace_index is not None:
-            self.refresh_workspace_import_rows()
-            self.evict_closed_documents()
-            if self.workspace_index is not None:
-                return self.workspace_index
+        """Build or return cached ORD import dependency indexes.
 
-        uris = set(self.workspace_uris())
-        imports_by_uri = dict()
-        dependents_by_uri = dict()
+        A document's row is recomputed when the revisions its imports were
+        resolved from changed. Files that come or go rebuild the index.
+        """
+        files = self.revisions.read("files")
+        index = self.workspace_index
+        if index is None or index["files"] != files:
+            index = {
+                "files": files,
+                "uris": set(self.workspace_uris()),
+                "imports": dict(),
+                "reads": dict(),
+                "dependents": dict(),
+            }
+            self.workspace_index = index
 
-        for uri in sorted(uris):
-            import_uris = set(self.resolve_import_uris(uri))
-            imports_by_uri[uri] = import_uris
-            for import_uri in import_uris:
-                dependents_by_uri.setdefault(import_uri, set()).add(uri)
+        changed = False
+        for uri in sorted(index["uris"]):
+            reads = index["reads"].get(uri)
+            if reads is not None and self.revisions.current(reads):
+                continue
+            with self.revisions.track() as reads:
+                index["imports"][uri] = set(self.resolve_import_uris(uri))
+            index["reads"][uri] = reads
+            changed = True
 
-        self.workspace_index = {
-            "uris": uris,
-            "imports": imports_by_uri,
-            "dependents": dependents_by_uri,
-        }
+        if changed:
+            dependents = dict()
+            for uri, import_uris in index["imports"].items():
+                for import_uri in import_uris:
+                    dependents.setdefault(import_uri, set()).add(uri)
+            index["dependents"] = dependents
+
         self.evict_closed_documents()
-        return self.workspace_index
-
-    def refresh_workspace_import_rows(self):
-        """Refresh stale rows in the cached workspace import graph."""
-        if self.workspace_index is None or not self.workspace_dirty_uris:
-            return
-
-        dirty_uris = set(self.workspace_dirty_uris)
-        self.workspace_dirty_uris.clear()
-
-        for uri in sorted(dirty_uris):
-            if not self.is_ord_uri(uri):
-                continue
-
-            path = self.file_uri_path(uri)
-            if not path.exists() and uri not in self.documents:
-                self.remove_workspace_import_row(uri)
-                continue
-
-            if uri not in self.workspace_index["uris"]:
-                # A newly created file can change how unchanged documents
-                # resolve their imports, so refreshing only dirty rows
-                # would leave the dependents graph stale. Rebuild instead.
-                self.invalidate_workspace_index()
-                return
-
-            old_imports = self.workspace_index["imports"].get(uri, set())
-            import_uris = set(self.resolve_import_uris(uri))
-            self.workspace_index["imports"][uri] = import_uris
-
-            for import_uri in old_imports - import_uris:
-                dependents = self.workspace_index["dependents"].get(import_uri)
-                if dependents is None:
-                    continue
-                dependents.discard(uri)
-                if not dependents:
-                    self.workspace_index["dependents"].pop(import_uri, None)
-
-            for import_uri in import_uris - old_imports:
-                self.workspace_index["dependents"].setdefault(import_uri, set()).add(uri)
-        self.evict_closed_documents()
-
-    def remove_workspace_import_row(self, uri: str):
-        """Remove one URI from the cached workspace import graph."""
-        if self.workspace_index is None:
-            return
-
-        self.workspace_index["uris"].discard(uri)
-        old_imports = self.workspace_index["imports"].pop(uri, set())
-        for import_uri in old_imports:
-            dependents = self.workspace_index["dependents"].get(import_uri)
-            if dependents is None:
-                continue
-            dependents.discard(uri)
-            if not dependents:
-                self.workspace_index["dependents"].pop(import_uri, None)
+        return index
 
     def workspace_dependents(self, uri: str):
         """Return workspace URIs that directly or indirectly import a URI."""
@@ -682,40 +770,38 @@ class AnalysisSession:
         analysis = self.analyze(uri)
 
         for binding in analysis.bindings:
-            if not range_contains(binding["selection_range"], position):
+            if not range_contains(binding.selection_range, position):
                 continue
 
-            return {
-                "uri": uri,
-                "name": binding["name"],
-                "kind": binding["kind"],
-                "range": binding["range"],
-                "selection_range": binding["selection_range"],
-                "origin_range": binding["selection_range"],
-                "binding_id": binding["id"],
-                "scope_id": binding["scope_id"],
-                "exported": binding["exported"],
-            }
+            return AnalysisDefinition(
+                uri=uri,
+                name=binding.name,
+                kind=binding.kind,
+                range=binding.range,
+                selection_range=binding.selection_range,
+                origin_range=binding.selection_range,
+                binding_id=binding.id,
+                exported=binding.exported,
+            )
 
         for occurrence in analysis.occurrences:
-            if not range_contains(occurrence["range"], position):
+            if not range_contains(occurrence.range, position):
                 continue
 
-            binding = analysis.binding_map.get(occurrence["binding_id"])
+            binding = analysis.binding_map.get(occurrence.binding_id)
             if binding is None:
                 continue
 
-            return {
-                "uri": uri,
-                "name": binding["name"],
-                "kind": binding["kind"],
-                "range": binding["range"],
-                "selection_range": binding["selection_range"],
-                "origin_range": occurrence["range"],
-                "binding_id": binding["id"],
-                "scope_id": binding["scope_id"],
-                "exported": binding["exported"],
-            }
+            return AnalysisDefinition(
+                uri=uri,
+                name=binding.name,
+                kind=binding.kind,
+                range=binding.range,
+                selection_range=binding.selection_range,
+                origin_range=occurrence.range,
+                binding_id=binding.id,
+                exported=binding.exported,
+            )
 
         return None
 
@@ -732,10 +818,10 @@ class AnalysisSession:
         scope = analysis.scopes[0]
 
         for current_scope in analysis.scopes.values():
-            if not range_contains(current_scope["range"], position):
+            if not range_contains(current_scope.range, position):
                 continue
 
-            if current_scope["depth"] <= scope["depth"]:
+            if current_scope.depth <= scope.depth:
                 continue
 
             scope = current_scope
@@ -744,18 +830,18 @@ class AnalysisSession:
         visible_names = set()
 
         while scope is not None:
-            for binding_id in reversed(scope["bindings"]):
+            for binding_id in reversed(scope.bindings):
                 binding = analysis.binding_map[binding_id]
-                if binding["name"] in visible_names:
+                if binding.name in visible_names:
                     continue
 
-                if not position_before_or_equal(binding["selection_range"].start, position):
+                if not position_before_or_equal(binding.selection_range.start, position):
                     continue
 
                 visible_bindings.append(binding)
-                visible_names.add(binding["name"])
+                visible_names.add(binding.name)
 
-            parent_id = scope["parent_id"]
+            parent_id = scope.parent_id
             if parent_id is None:
                 scope = None
             else:
@@ -790,38 +876,39 @@ class AnalysisSession:
 
         for occurrence in analysis.occurrences:
             candidates.append({
-                "name": occurrence["name"],
-                "range": occurrence["range"],
-                "binding_id": occurrence.get("binding_id"),
+                "name": occurrence.name,
+                "range": occurrence.range,
+                "binding_id": occurrence.binding_id,
             })
 
         for occurrence in analysis.member_occurrences:
             candidates.append({
-                "name": occurrence["name"],
-                "range": occurrence["range"],
+                "name": occurrence.name,
+                "range": occurrence.range,
             })
 
         return candidates
 
+    def is_local_definition(self, definition):
+        """Return whether only the document of a definition can refer to it."""
+        return (
+            definition.binding_id is not None
+            and not definition.exported
+            and not self.member_reachable_definition(definition)
+        )
+
     def definition_key(self, definition):
         """Return a stable key used to compare resolved definitions."""
-        if definition.get("binding_id") is not None and not definition.get("exported"):
-            return (definition["uri"], definition["binding_id"])
+        if definition.binding_id is not None and not definition.exported:
+            return (definition.uri, definition.binding_id)
 
-        selection_range = definition.get("selection_range")
-        if selection_range is not None:
-            return (
-                definition["uri"],
-                selection_range.start.line,
-                selection_range.start.character,
-                selection_range.end.line,
-                selection_range.end.character,
-            )
-
+        selection_range = definition.selection_range
         return (
-            definition["uri"],
-            definition["name"],
-            definition["kind"],
+            definition.uri,
+            selection_range.start.line,
+            selection_range.start.character,
+            selection_range.end.line,
+            selection_range.end.character,
         )
 
     def member_reachable_definition(self, definition):
@@ -832,27 +919,27 @@ class AnalysisSession:
         Both spellings must compare and search alike for references and
         rename to see one symbol.
         """
-        if definition.get("cell_member"):
+        if definition.cell_member:
             return True
-        if definition.get("binding_id") is None:
+        if definition.binding_id is None:
             return False
 
-        uri = definition["uri"]
+        uri = definition.uri
         if not self.is_ord_uri(uri):
             return False
 
         analysis = self.analyze(uri)
-        start = definition["selection_range"].start
+        start = definition.selection_range.start
         for symbol in analysis.symbols:
             if symbol.kind != "class":
                 continue
             if not range_contains(symbol.range, start):
                 continue
 
-            member = self.ord_cell_members(uri, symbol.name).get(definition["name"])
+            member = self.ord_cell_members(uri, symbol.name).get(definition.name)
             return (
                 member is not None
-                and member["selection_range"] == definition["selection_range"]
+                and member.selection_range == definition.selection_range
             )
         return False
 
@@ -861,9 +948,7 @@ class AnalysisSession:
         if definition is None:
             return None
 
-        result = dict(definition)
-        result["origin_range"] = origin_range
-        return result
+        return definition._replace(origin_range=origin_range)
 
     def find_export(self, uri: str, name: str):
         """Find an exported ORD symbol in a document and its imports."""
@@ -873,13 +958,13 @@ class AnalysisSession:
 
             for symbol in analysis.symbols:
                 if symbol.name == name:
-                    return {
-                        "uri": analysis_uri,
-                        "name": symbol.name,
-                        "kind": symbol.kind,
-                        "range": symbol.range,
-                        "selection_range": symbol.selection_range,
-                    }
+                    return AnalysisDefinition(
+                        uri=analysis_uri,
+                        name=symbol.name,
+                        kind=symbol.kind,
+                        range=symbol.range,
+                        selection_range=symbol.selection_range,
+                    )
 
         return None
 
@@ -891,19 +976,19 @@ class AnalysisSession:
             return self.python_definition(self.resolve_python_module_path(uri, module_name))
 
         module_base = module_name.split(".")[-1]
-        return {
-            "uri": module_uri,
-            "name": module_base,
-            "kind": "module",
-            "range": AnalysisRange(
+        return AnalysisDefinition(
+            uri=module_uri,
+            name=module_base,
+            kind="module",
+            range=AnalysisRange(
                 start=AnalysisPosition(1, 1),
                 end=AnalysisPosition(1, 1),
             ),
-            "selection_range": AnalysisRange(
+            selection_range=AnalysisRange(
                 start=AnalysisPosition(1, 1),
                 end=AnalysisPosition(1, 1),
             ),
-        }
+        )
 
     def import_entry_at_position(self, uri: str, position: AnalysisPosition):
         """Return the import entry whose selected name contains a position."""
@@ -995,11 +1080,16 @@ class AnalysisSession:
                     import_entry.module,
                     import_entry.export_name,
                 )
-            else:
+            elif import_entry.is_alias:
                 match = self.module_definition(uri, import_entry.module)
+            else:
+                # import a.b binds the package a, not the module a.b.
+                match = self.module_definition(uri, import_entry.local_name)
             if match is not None:
                 return match
 
+        # A star import binds the names of the module's __all__, or else
+        # its public names.
         for import_entry in reversed(analysis.import_entries):
             if import_entry.kind != "from" or import_entry.export_name != "*":
                 continue
@@ -1008,7 +1098,11 @@ class AnalysisSession:
             import_uri = self.resolve_module_uri(uri, module_name)
             if import_uri is None:
                 module_path = self.resolve_python_module_path(uri, module_name)
+                if name not in self.python_index.star_names(module_path):
+                    continue
                 match = self.python_definition(module_path, export_name=name)
+            elif name.startswith("_"):
+                continue
             else:
                 match = self.find_export(import_uri, name)
             if match is not None:
@@ -1016,20 +1110,21 @@ class AnalysisSession:
 
         # Module-scope assignments below the use site still resolve:
         # viewgens execute deferred, like Python globals read at call time.
-        for binding_id in analysis.scopes.get(0, {}).get("bindings", []):
+        module_scope = analysis.scopes.get(0)
+        for binding_id in module_scope.bindings if module_scope is not None else []:
             binding = analysis.binding_map.get(binding_id)
-            if binding is None or binding["name"] != name:
+            if binding is None or binding.name != name:
                 continue
 
-            return {
-                "uri": uri,
-                "name": binding["name"],
-                "kind": binding["kind"],
-                "range": binding["range"],
-                "selection_range": binding["selection_range"],
-                "binding_id": binding["id"],
-                "exported": binding.get("exported"),
-            }
+            return AnalysisDefinition(
+                uri=uri,
+                name=binding.name,
+                kind=binding.kind,
+                range=binding.range,
+                selection_range=binding.selection_range,
+                binding_id=binding.id,
+                exported=binding.exported,
+            )
 
         return None
 
@@ -1041,13 +1136,13 @@ class AnalysisSession:
             return None
 
         name_info = self.name_at_position(uri, position)
-        hover_range = definition["selection_range"]
+        hover_range = definition.selection_range
         if name_info is not None:
             hover_range = name_info["range"]
 
-        contents = "{} {}".format(definition["kind"], definition["name"])
-        if definition["uri"] != uri:
-            contents += "\n{}".format(self.display_uri(definition["uri"]))
+        contents = "{} {}".format(definition.kind, definition.name)
+        if definition.uri != uri:
+            contents += "\n{}".format(self.display_uri(definition.uri))
 
         return {
             "contents": contents,
@@ -1060,10 +1155,10 @@ class AnalysisSession:
         parts = [
             "```ord\n{}\n```".format(self.definition_header(uri, definition)),
         ]
-        if definition["uri"] != uri:
-            parts.append("*{}*".format(self.display_uri(definition["uri"])))
+        if definition.uri != uri:
+            parts.append("*{}*".format(self.display_uri(definition.uri)))
 
-        docstring = definition.get("docstring")
+        docstring = definition.docstring
         if docstring:
             parts.append(docstring)
 
@@ -1071,8 +1166,8 @@ class AnalysisSession:
 
     def definition_header(self, uri: str, definition):
         """Return the signature-style header line for a definition."""
-        kind = definition["kind"]
-        name = definition["name"]
+        kind = definition.kind
+        name = definition.name
 
         if kind == "class":
             signature = signatures.callable_signature(self, uri, definition)
@@ -1080,7 +1175,7 @@ class AnalysisSession:
             # Classes that declare cell parameters, and everything defined in
             # ORD source, read as cells to ORD users.
             keyword = "class"
-            if parameters or self.is_ord_uri(definition["uri"]):
+            if parameters or self.is_ord_uri(definition.uri):
                 keyword = "cell"
             if parameters:
                 return "{} {}({})".format(
@@ -1096,8 +1191,8 @@ class AnalysisSession:
                 return "def {}".format(signature["label"])
             return "function {}".format(name)
 
-        if kind == "parameter" and definition.get("default"):
-            return "parameter {} = {}".format(name, definition["default"])
+        if kind == "parameter" and definition.default:
+            return "parameter {} = {}".format(name, definition.default)
 
         return "{} {}".format(kind, name)
 
@@ -1116,17 +1211,17 @@ class AnalysisSession:
             return binding_ids
 
         target_ranges = sorted(
-            (statement["target_range"] for statement in analysis.node_statements),
+            (statement.target_range for statement in analysis.node_statements),
             key=lambda target_range: target_range.start,
         )
         target_starts = [target_range.start for target_range in target_ranges]
 
         binding_ids = set()
         for binding in analysis.bindings:
-            position = binding["selection_range"].start
+            position = binding.selection_range.start
             index = bisect_right(target_starts, position) - 1
             if index >= 0 and range_contains(target_ranges[index], position):
-                binding_ids.add(binding["id"])
+                binding_ids.add(binding.id)
 
         cache["node_target_binding_ids"] = binding_ids
         return binding_ids
@@ -1167,34 +1262,34 @@ class AnalysisSession:
         members = dict()
 
         def add_binding_member(binding):
-            kind = binding["kind"]
+            kind = binding.kind
             # ORD cell parameters are `name = Parameter(...)` assignments in
             # the cell body. The inferred value type identifies them.
-            if "Parameter" in (binding.get("type_names") or []):
+            if "Parameter" in (binding.type_names or []):
                 kind = "parameter"
 
-            members.setdefault(binding["name"], {
-                "uri": cell_uri,
-                "name": binding["name"],
-                "kind": kind,
-                "range": binding["range"],
-                "selection_range": binding["selection_range"],
-                "binding_id": binding["id"],
-                "cell_member": True,
-            })
+            members.setdefault(binding.name, AnalysisDefinition(
+                uri=cell_uri,
+                name=binding.name,
+                kind=kind,
+                range=binding.range,
+                selection_range=binding.selection_range,
+                binding_id=binding.id,
+                cell_member=True,
+            ))
 
         # Include directly declared cell members and view generators. This
         # covers self.schematic/self.layout and compact tests that declare pins
         # directly in the cell body.
         for scope in analysis.scopes.values():
-            if scope["depth"] != 1:
+            if scope.depth != 1:
                 continue
-            if not range_contains(scope["range"], cell_symbol.selection_range.start):
+            if not range_contains(scope.range, cell_symbol.selection_range.start):
                 continue
 
-            for binding_id in scope["bindings"]:
+            for binding_id in scope.bindings:
                 binding = analysis.binding_map.get(binding_id)
-                if binding is None or binding["name"] == "self":
+                if binding is None or binding.name == "self":
                     continue
                 add_binding_member(binding)
 
@@ -1215,9 +1310,9 @@ class AnalysisSession:
 
             for binding_id in node_binding_ids:
                 binding = analysis.binding_map.get(binding_id)
-                if binding is None or binding["kind"] != "variable":
+                if binding is None or binding.kind != "variable":
                     continue
-                if not range_contains(symbol.range, binding["selection_range"].start):
+                if not range_contains(symbol.range, binding.selection_range.start):
                     continue
                 add_binding_member(binding)
 
@@ -1225,6 +1320,9 @@ class AnalysisSession:
 
     def allows_dynamic_members(self, type_name: str):
         """Return whether the named type can expose runtime-defined members."""
+        # Python code can add view nodes that the index does not see.
+        if "." in type_name:
+            return True
         type_definition = self.resolve_core_type(type_name)
         if type_definition is None:
             return False
@@ -1237,7 +1335,7 @@ class AnalysisSession:
             self.resolver.installed_module_path("ordec.core"),
             export_name=core_type_name,
         )
-        if type_definition is None or type_definition.get("kind") != "class":
+        if type_definition is None or type_definition.kind != "class":
             return None
         return type_definition
 
@@ -1261,16 +1359,20 @@ class AnalysisSession:
         return context_type_names_for_kind(kind_name)
 
     def resolve_completion_type(self, uri: str, type_name: str):
-        """Resolve ``type_name`` to an ORD or Python definition, or None."""
+        """Resolve ``type_name`` or a member path ``T.member`` to a definition, or None."""
+        type_name, *member_names = type_name.split(".")
         type_definition = self.resolve_name(uri, type_name)
-        if type_definition is not None:
-            return type_definition
+        if type_definition is None:
+            type_definition = self.resolve_core_type(type_name)
 
-        core_definition = self.resolve_core_type(type_name)
-        if core_definition is not None:
-            return core_definition
+        for member_name in member_names:
+            if type_definition is None:
+                return None
+            type_definition = self.type_members(type_definition).get(member_name)
+            if type_definition is not None and type_definition.python_class is None:
+                return None
 
-        return None
+        return type_definition
 
     def cell_instance_members(self):
         """Return members common to schematic and layout cell instances.
@@ -1286,20 +1388,24 @@ class AnalysisSession:
 
     def type_members(self, type_definition):
         """Return a name→metadata mapping for members of a resolved type."""
-        if "python_module" in type_definition and "python_class" in type_definition:
+        if type_definition.python_class is not None:
             members = self.python_class_members(
-                type_definition["python_module"],
-                type_definition["python_class"],
+                type_definition.python_module,
+                type_definition.python_class,
             )
-            if self.resolve_core_type(type_definition["python_class"]) is None:
+            # View paths are not cells, so they get no instance members.
+            if (
+                "." not in type_definition.python_class
+                and self.resolve_core_type(type_definition.python_class) is None
+            ):
                 members = dict(members)
                 members.update(self.cell_instance_members())
             return members
 
-        if type_definition.get("kind") == "class" and "uri" in type_definition:
+        if type_definition.kind == "class":
             members = self.ord_cell_members(
-                type_definition["uri"],
-                type_definition["name"],
+                type_definition.uri,
+                type_definition.name,
             )
             members = dict(members)
             members.update(self.cell_instance_members())
@@ -1316,14 +1422,14 @@ class AnalysisSession:
         analysis = self.analyze(uri)
 
         for occurrence in analysis.member_occurrences:
-            if not range_contains(occurrence["range"], position):
+            if not range_contains(occurrence.range, position):
                 continue
 
-            type_names = list(occurrence["type_names"])
-            if occurrence["binding_id"] is not None:
-                binding = analysis.binding_map.get(occurrence["binding_id"])
+            type_names = list(occurrence.type_names)
+            if occurrence.binding_id is not None:
+                binding = analysis.binding_map.get(occurrence.binding_id)
                 if binding is not None:
-                    type_names = list(binding.get("type_names", [])) + type_names
+                    type_names = list(binding.type_names) + type_names
 
             seen_type_names = set()
             for type_name in type_names:
@@ -1335,9 +1441,9 @@ class AnalysisSession:
                 if type_definition is None:
                     continue
 
-                match = self.type_members(type_definition).get(occurrence["name"])
+                match = self.type_members(type_definition).get(occurrence.name)
                 if match is not None:
-                    return self.definition_with_origin(match, occurrence["range"])
+                    return self.definition_with_origin(match, occurrence.range)
 
         return None
 
@@ -1348,7 +1454,7 @@ class AnalysisSession:
             return None
 
         for occurrence in self.analyze(uri).member_occurrences:
-            if range_contains(occurrence["range"], position):
+            if range_contains(occurrence.range, position):
                 return occurrence
 
         return None
@@ -1419,13 +1525,13 @@ class AnalysisSession:
         # Build a sorted list of candidate containers from scopes and symbols.
         containers = []
         for scope in analysis.scopes.values():
-            containers.append(scope["range"])
+            containers.append(scope.range)
         for symbol in analysis.symbols:
             containers.append(symbol.range)
             containers.append(symbol.selection_range)
         for binding in analysis.bindings:
-            containers.append(binding["range"])
-            containers.append(binding["selection_range"])
+            containers.append(binding.range)
+            containers.append(binding.selection_range)
 
         # Deduplicate and sort by size descending (outermost first).
         unique_containers = sorted(
@@ -1495,35 +1601,36 @@ class AnalysisSession:
         analysis = self.analyze(uri)
         tokens = []
 
-        # Classify occurrences by their resolved binding kind.
+        # Classify occurrences by their resolved binding kind. Names bound
+        # outside the document, such as imported cells, take the kind of
+        # the definition they resolve to.
+        resolved_kinds = dict()
         for occurrence in analysis.occurrences:
-            binding = analysis.binding_map.get(occurrence["binding_id"])
-            if binding is None:
-                continue
-
-            kind = binding["kind"]
-            token_type = "variable"
-            if kind == "class":
-                token_type = "class"
-            elif kind == "function":
-                token_type = "function"
-            elif kind == "parameter":
-                token_type = "parameter"
-
+            binding = analysis.binding_map.get(occurrence.binding_id)
             modifiers = []
-            if occurrence["range"] == binding["selection_range"]:
-                modifiers.append("definition")
+            if binding is not None:
+                kind = binding.kind
+                if occurrence.range == binding.selection_range:
+                    modifiers.append("definition")
+            else:
+                name = occurrence.name
+                if name not in resolved_kinds:
+                    definition = self.resolve_name(uri, name)
+                    resolved_kinds[name] = None if definition is None else definition.kind
+                kind = resolved_kinds[name]
+                if kind is None:
+                    continue
 
             tokens.append({
-                "range": occurrence["range"],
-                "type": token_type,
+                "range": occurrence.range,
+                "type": KIND_TOKEN_TYPES.get(kind, "variable"),
                 "modifiers": modifiers,
             })
 
         # Classify member occurrences as properties.
         for occurrence in analysis.member_occurrences:
             tokens.append({
-                "range": occurrence["range"],
+                "range": occurrence.range,
                 "type": "property",
                 "modifiers": [],
             })
@@ -1533,10 +1640,13 @@ class AnalysisSession:
             if entry.export_name == "*":
                 continue
 
-            token_type = "namespace" if entry.kind == "import" else "variable"
+            kind = "module"
+            if entry.kind == "from":
+                definition = self.resolve_from_import(uri, entry.module, entry.export_name)
+                kind = None if definition is None else definition.kind
             tokens.append({
                 "range": entry.selection_range,
-                "type": token_type,
+                "type": KIND_TOKEN_TYPES.get(kind, "variable"),
                 "modifiers": [],
             })
 
@@ -1574,13 +1684,13 @@ class AnalysisSession:
                 if query and query not in symbol.name.lower():
                     continue
 
-                result.append({
-                    "uri": uri,
-                    "name": symbol.name,
-                    "kind": symbol.kind,
-                    "range": symbol.range,
-                    "selection_range": symbol.selection_range,
-                })
+                result.append(AnalysisDefinition(
+                    uri=uri,
+                    name=symbol.name,
+                    kind=symbol.kind,
+                    range=symbol.range,
+                    selection_range=symbol.selection_range,
+                ))
 
         self.evict_closed_documents()
         return result
@@ -1644,14 +1754,10 @@ class AnalysisSession:
     def reference_search_uris(self, uri: str, definition):
         """Return the documents that may contain references to a definition."""
         uri = self.canonical_uri(uri)
-        if (
-            definition.get("binding_id") is not None
-            and not definition.get("exported")
-            and not self.member_reachable_definition(definition)
-        ):
+        if self.is_local_definition(definition):
             return [uri]
 
-        target_uri = definition["uri"]
+        target_uri = definition.uri
         if self.is_ord_uri(target_uri):
             uris = [uri, target_uri]
             uris.extend(sorted(self.workspace_dependents(target_uri)))
@@ -1683,8 +1789,8 @@ class AnalysisSession:
             return []
 
         definition_range = None
-        if definition["uri"] == uri:
-            definition_range = definition["selection_range"]
+        if definition.uri == uri:
+            definition_range = definition.selection_range
 
         name_info = self.name_at_position(uri, position)
         if name_info is not None:
@@ -1719,20 +1825,20 @@ class AnalysisSession:
         origin_range = None
 
         local = self.local_definition(uri, position)
-        if local is not None and local.get("binding_id") is not None:
-            binding = analysis.binding_map.get(local["binding_id"])
+        if local is not None and local.binding_id is not None:
+            binding = analysis.binding_map.get(local.binding_id)
             if binding is not None:
-                type_names = list(binding.get("type_names", []))
-                origin_range = local.get("origin_range")
+                type_names = list(binding.type_names)
+                origin_range = local.origin_range
 
         for type_name in self.normalize_type_names(type_names):
             resolved = self.resolve_completion_type(uri, type_name)
-            if resolved is not None and resolved.get("kind") == "class":
+            if resolved is not None and resolved.kind == "class":
                 return self.definition_with_origin(resolved, origin_range)
 
         # On a type name itself, the type definition is the definition.
         definition = self.definition(uri, position)
-        if definition is not None and definition.get("kind") == "class":
+        if definition is not None and definition.kind == "class":
             return definition
 
         return None
@@ -1746,7 +1852,7 @@ class AnalysisSession:
         analysis = self.analyze(uri)
         hints = []
         for record in analysis.type_hints:
-            position = record["range"].end
+            position = record.range.end
             if value_range is not None:
                 if not position_before_or_equal(value_range.start, position):
                     continue
@@ -1755,9 +1861,9 @@ class AnalysisSession:
 
             # Only show hints whose type name resolves to a real cell or
             # class, so heuristic guesses do not turn into noise.
-            for type_name in record["type_names"]:
+            for type_name in record.type_names:
                 resolved = self.resolve_completion_type(uri, type_name)
-                if resolved is None or resolved.get("kind") != "class":
+                if resolved is None or resolved.kind != "class":
                     continue
 
                 hints.append({
@@ -1791,14 +1897,14 @@ class AnalysisSession:
         analysis = self.analyze(uri)
         for symbol in analysis.symbols:
             if range_contains(symbol.selection_range, lookup_position):
-                return {
-                    "uri": uri,
-                    "name": symbol.name,
-                    "kind": symbol.kind,
-                    "range": symbol.range,
-                    "selection_range": symbol.selection_range,
-                    "origin_range": symbol.selection_range,
-                }
+                return AnalysisDefinition(
+                    uri=uri,
+                    name=symbol.name,
+                    kind=symbol.kind,
+                    range=symbol.range,
+                    selection_range=symbol.selection_range,
+                    origin_range=symbol.selection_range,
+                )
 
         import_entry = self.import_entry_at_position(uri, lookup_position)
         if import_entry is not None:
@@ -1845,6 +1951,9 @@ class AnalysisSession:
 
     def signature_help(self, uri: str, position: AnalysisPosition):
         return signatures.signature_help(self, uri, position)
+
+    def import_choices(self, uri: str, name: str):
+        return auto_import.import_choices(self, uri, name)
 
     def prepare_rename(self, uri: str, position: AnalysisPosition):
         return rename.prepare_rename(self, uri, position)

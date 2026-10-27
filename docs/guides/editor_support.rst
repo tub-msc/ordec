@@ -259,8 +259,9 @@ Language server
 
 ORDeC installs ``ordec-lsp``, a stdio language server providing diagnostics,
 completion, navigation, rename, symbols, and other semantic editor features.
-It does not execute ORD code: source files are parsed and analyzed
-statically, so opening a project in an editor cannot run its designs.
+It does not execute ORD code unless the ``checkOnSave`` option is enabled:
+source files are parsed and analyzed statically, so opening a project in an
+editor cannot run its designs.
 
 The server ships with the ``ordec`` Python package. Install it in the Python
 environment that should run the server:
@@ -288,7 +289,9 @@ Supported features
    * - Diagnostics
      - ORD syntax errors and semantic issues involving imports, node types,
        view generator return types, constraint contexts, members, parameters,
-       and schematic ports missing from the symbol view.
+       and schematic ports missing from the symbol view. With the
+       ``checkOnSave`` initialization option, saving a file also generates its
+       symbol, schematic and layout views and reports their errors.
    * - Completion
      - Local names, members, and parameters with documentation.
    * - Navigation
@@ -308,7 +311,7 @@ Supported features
      - Folding ranges, selection ranges, and a call hierarchy over the cell
        instantiation graph.
    * - Code actions
-     - Quick fixes for selected diagnostics.
+     - Quick fixes for selected diagnostics, such as importing an unresolved name.
    * - Document updates
      - Incremental synchronization with full-document replacement as a
        fallback.
@@ -325,9 +328,10 @@ For an editor with generic LSP support that is not covered, configure:
 The workspace root matters: workspace-wide references and rename follow the
 workspace's ORD import graph, so reverse dependencies are only found when
 the project directory is the root. While typing incomplete code, the server
-keeps the last successful structural analysis and reports syntax errors on
-top, so navigation, symbols, and completions stay useful. Saving a file
-refreshes diagnostics and cached import data.
+keeps the last successful structural analysis, or analyzes the edited lines
+as ``pass``, and reports syntax errors on top, so navigation, symbols, and
+completions stay useful. Every edit, saved or not, refreshes the diagnostics
+of the open documents that depend on it.
 
 Sublime Text
 ~~~~~~~~~~~~
@@ -389,7 +393,8 @@ by default. To use a full path, open ``settings.json`` with
     }
 
 No arguments are required. Disable the server with
-``ord.languageServer.enabled``. For troubleshooting, set
+``ord.languageServer.enabled``; ``ord.languageServer.checkOnSave`` turns on
+the view check on save. For troubleshooting, set
 ``"ordec-lsp.trace.server": "verbose"`` and open the ORD Language Server output
 channel.
 
@@ -439,23 +444,26 @@ A daemon reader thread frames stdin onto a queue, and a single consumer
 dispatches messages in arrival order, so handlers stay synchronous and the
 analysis session is only ever touched by one thread. Draining the queue
 backlog before dispatching lets ``$/cancelRequest`` cancel still-queued
-requests (error ``-32800``) before they are computed and collapses
-consecutive ``didChange`` bursts for one document onto a newer
-full-document replacement. Incremental changes are never skipped, since
-each one builds on the document state left by its predecessor. A request
-that is already being handled is never interrupted.
+requests (error ``-32800``) before they are computed. Queued ``didChange``
+notifications for one document are applied as one, with all their changes
+in order, and requests on that document that a queued change outdates are
+answered with ``ContentModified`` (``-32801``). A request that is already
+being handled is never interrupted.
 
 Most language intelligence lives in ``ordec.lsp.analysis``:
 
 * ``model.py`` defines shared positions, ranges, diagnostics, symbols, import
-  records, and ``DocumentAnalysis``.
+  records, resolved definitions, parser pass records, and ``DocumentAnalysis``.
 * ``parser_pass.py`` parses ORD source and uses an ``OrdAnalysisBuilder`` to
   walk the parse tree and collect scopes, bindings, occurrences, imports, ORD
-  node statement records, view generator return records, constraint records, and
+  node statement records, view generator return records, constraint ranges, and
   inferred-type records for assignment targets.
 * ``session.py`` is the public analysis facade. It owns open document snapshots,
-  last-good analysis caching, file invalidation, workspace dependency
-  indexing, lightweight type resolution, and navigation/reference features.
+  last-good and stand-in analyses of broken documents, file invalidation,
+  workspace dependency indexing, lightweight type resolution, and
+  navigation/reference features.
+* ``revisions.py`` tracks revisions of the analysis inputs, so that cached
+  results are reused until an input they read changes.
 * ``import_resolver.py`` resolves the imports of ORD documents and Python
   modules to module source files. It follows the runtime rules of
   ``ordec.importer``, where ``.ord`` files are ordinary Python modules:
@@ -469,12 +477,13 @@ Most language intelligence lives in ``ordec.lsp.analysis``:
   directory if that is not a regular package.
 * ``python_index.py`` owns shallow Python module indexing. It parses Python
   source with ``ast``, caches module information by source path, and exposes
-  exported symbols, class members, docstrings, function signatures, and cell
-  parameter defaults without importing or executing workspace modules.
+  exported symbols (including a static ``__all__``), class members, the
+  nodes of views that methods build, docstrings, function signatures, and
+  cell parameter defaults without importing or executing workspace modules.
 * ``completions.py``, ``diagnostics.py``, ``rename.py``, ``signatures.py``,
-  and ``hierarchy.py`` implement one feature each as functions taking the
-  session as first argument; ``AnalysisSession`` exposes them through
-  delegating methods.
+  ``hierarchy.py``, and ``auto_import.py`` implement one feature each as
+  functions taking the session as first argument; ``AnalysisSession``
+  exposes them through delegating methods.
 
 ``AnalysisSession`` intentionally remains the API boundary used by the LSP
 server and tests. The smaller analysis modules keep implementation details
@@ -490,9 +499,8 @@ information, and completion and diagnostics may be conservative for complex
 Python control flow or dynamic imports. Rename is deliberately restricted
 to identifiers. A rename started at an ORD cell-member declaration updates
 matching ``x.member`` accesses, but cannot be started at a member access or
-at a parameter access such as ``x.$param``. It also refuses symbols whose
-definition lives in Python source, because rewriting the ORD
-references without the Python definition would break the import (renaming
-a local import alias remains possible). Workspace-wide
+at a parameter access such as ``x.$param``. It also refuses symbols that
+Python source defines or imports, because rename does not rewrite Python
+source (renaming a local import alias remains possible). Workspace-wide
 features depend on the editor passing the correct workspace root and on
 file watching notifications for changed files.

@@ -6,6 +6,7 @@ const { LanguageClient } = require("vscode-languageclient/node");
 
 let client;
 let startPromise;
+let outputChannel;
 
 async function startLanguageServer() {
   if (client) {
@@ -38,6 +39,12 @@ async function startLanguageServer() {
     args,
   };
   const clientOptions = {
+    // A client that fails to start keeps its own channel, so restarts
+    // share this one.
+    outputChannel,
+    initializationOptions: {
+      checkOnSave: config.get("checkOnSave", false) === true,
+    },
     documentSelector: [
       { scheme: "file", language: "ord" },
       { scheme: "untitled", language: "ord" },
@@ -72,7 +79,24 @@ function startLanguageServerWithGuidance() {
   });
 }
 
+async function restartLanguageServer() {
+  await deactivate();
+  await startLanguageServerWithGuidance();
+}
+
 async function activate(context) {
+  outputChannel = vscode.window.createOutputChannel("ORD Language Server");
+  context.subscriptions.push(outputChannel);
+
+  // Changed settings take effect when the server restarts.
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (vscode.workspace.isTrusted && event.affectsConfiguration("ord.languageServer")) {
+        void restartLanguageServer();
+      }
+    })
+  );
+
   // In Restricted Mode only the declarative features (grammar and
   // language configuration) stay active. The server spawns a workspace
   // configured executable, so it starts only once trust is granted.

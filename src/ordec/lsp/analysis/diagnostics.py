@@ -5,6 +5,7 @@
 
 # standard imports
 import builtins
+import sysconfig
 
 # ordec imports
 from .model import (
@@ -14,6 +15,7 @@ from .model import (
     is_identifier,
     range_contains,
 )
+from .signatures import cell_parameters
 
 
 def semantic_diagnostics(session, uri: str):
@@ -52,6 +54,8 @@ def semantic_diagnostics(session, uri: str):
         if hasattr(builtins, name):
             return True
         return session.resolve_name(uri, name) is not None
+
+    paths = sysconfig.get_paths()
 
     for import_entry in analysis.import_entries:
         if import_entry.kind == "import":
@@ -92,6 +96,13 @@ def semantic_diagnostics(session, uri: str):
         module_path = session.resolve_python_module_path(uri, module_name)
         if module_uri is None and session.python_module_info(module_path) is None:
             continue
+        # Standard library modules often bind names through C modules,
+        # which the index cannot read, as in `from posix import *`.
+        if module_uri is None and (
+            any(module_path.is_relative_to(paths[key]) for key in ("stdlib", "platstdlib"))
+            and not any(module_path.is_relative_to(paths[key]) for key in ("purelib", "platlib"))
+        ):
+            continue
 
         add_diagnostic(
             import_entry.selection_range,
@@ -101,35 +112,35 @@ def semantic_diagnostics(session, uri: str):
         )
 
     for statement in analysis.node_statements:
-        kind_name = statement["kind_name"]
+        kind_name = statement.kind_name
         if kind_name in NODE_KINDS:
             continue
-        if statement.get("kind_binding_id") is not None:
+        if statement.kind_binding_id is not None:
             continue
         if not is_identifier(kind_name):
             continue
         if session.resolve_completion_type(uri, kind_name) is None:
             add_diagnostic(
-                statement["kind_range"],
+                statement.kind_range,
                 "error",
                 "Cannot resolve ORD node type `{}`.".format(kind_name),
                 "unresolved-node-type",
             )
 
     for viewgen in analysis.viewgen_returns:
-        type_name = viewgen["return_type"]
-        if viewgen.get("return_binding_id") is not None:
+        type_name = viewgen.return_type
+        if viewgen.return_binding_id is not None:
             continue
-        if viewgen.get("return_base") not in (None, type_name):
+        if viewgen.return_base not in (None, type_name):
             # Qualified return types such as core.Schematic resolve
             # through their module, which the bare-name lookup below
             # cannot see. Only the base name is validated here.
-            if not name_resolves(viewgen["return_base"]):
+            if not name_resolves(viewgen.return_base):
                 add_diagnostic(
-                    viewgen["selection_range"],
+                    viewgen.selection_range,
                     "error",
                     "Cannot resolve `{}` in viewgen return type.".format(
-                        viewgen["return_base"]
+                        viewgen.return_base
                     ),
                     "unresolved-viewgen-return",
                 )
@@ -137,7 +148,7 @@ def semantic_diagnostics(session, uri: str):
         type_definition = session.resolve_completion_type(uri, type_name)
         if type_definition is None:
             add_diagnostic(
-                viewgen["selection_range"],
+                viewgen.selection_range,
                 "error",
                 "Cannot resolve viewgen return type `{}`.".format(type_name),
                 "unresolved-viewgen-return",
@@ -147,32 +158,32 @@ def semantic_diagnostics(session, uri: str):
         members = session.type_members(type_definition)
         if "view_builder" not in members:
             add_diagnostic(
-                viewgen["selection_range"],
+                viewgen.selection_range,
                 "error",
                 "`{}` cannot be used as an ORD viewgen return type.".format(type_name),
                 "invalid-viewgen-return",
             )
 
     for occurrence in analysis.occurrences:
-        if occurrence.get("binding_id") is not None:
+        if occurrence.binding_id is not None:
             continue
-        if not occurrence.get("diagnose_unresolved"):
+        if not occurrence.diagnose_unresolved:
             continue
-        if name_resolves(occurrence["name"]):
+        if name_resolves(occurrence.name):
             continue
 
         add_diagnostic(
-            occurrence["range"],
+            occurrence.range,
             "error",
-            "Cannot resolve name `{}`.".format(occurrence["name"]),
+            "Cannot resolve name `{}`.".format(occurrence.name),
             "unresolved-name",
         )
 
     for oldform in analysis.viewgen_oldforms:
         # Mirrors the compiler's fix-it for the removed parenless form.
-        name = oldform["name"]
+        name = oldform.name
         add_diagnostic(
-            oldform["selection_range"],
+            oldform.selection_range,
             "error",
             "viewgen {} declares no parameter list. Write `viewgen {}(self) "
             "-> T:` inside a cell, or `viewgen {}() -> T:` at module "
@@ -180,10 +191,10 @@ def semantic_diagnostics(session, uri: str):
             "viewgen-parameter-list",
         )
 
-    for constraint in analysis.constraints:
+    for constraint_range in analysis.constraint_ranges:
         containing_viewgen = None
         for viewgen in analysis.viewgen_ranges:
-            if not range_contains(viewgen["range"], constraint["range"].start):
+            if not range_contains(viewgen.range, constraint_range.start):
                 continue
             containing_viewgen = viewgen
             break
@@ -193,31 +204,31 @@ def semantic_diagnostics(session, uri: str):
         # its body are given the benefit of the doubt.
         if (
             containing_viewgen is None
-            or containing_viewgen["return_type"] not in (None, "Schematic", "Layout")
+            or containing_viewgen.return_type not in (None, "Schematic", "Layout")
         ):
             add_diagnostic(
-                constraint["range"],
+                constraint_range,
                 "error",
                 "Constraints are only supported inside schematic or layout view generators.",
                 "invalid-constraint-context",
             )
 
     for occurrence in analysis.member_occurrences:
-        type_names = list(occurrence.get("type_names", []))
-        binding_id = occurrence.get("binding_id")
+        type_names = list(occurrence.type_names)
+        binding_id = occurrence.binding_id
         if binding_id is not None:
             binding = analysis.binding_map.get(binding_id)
             if binding is not None:
-                type_names = list(binding.get("type_names", [])) + type_names
+                type_names = list(binding.type_names) + type_names
         type_names = session.normalize_type_names(type_names)
         if not type_names:
             continue
 
-        parameter_only = occurrence.get("mode") == "parameter"
+        parameter_only = occurrence.mode == "parameter"
         if not parameter_only and any(
-            viewgen["return_type"] == "Layout"
-            and range_contains(viewgen["viewgen_range"], occurrence["range"].start)
-            for viewgen in analysis.viewgen_returns
+            viewgen.return_type == "Layout"
+            and range_contains(viewgen.range, occurrence.range.start)
+            for viewgen in analysis.viewgen_ranges
         ):
             # Layout generators commonly delegate to helper functions that
             # attach runtime-defined shapes to cell instances. Keep member
@@ -232,7 +243,7 @@ def semantic_diagnostics(session, uri: str):
             if type_definition is None:
                 continue
 
-            if type_definition.get("kind") != "class" and "python_class" not in type_definition:
+            if type_definition.kind != "class" and type_definition.python_class is None:
                 continue
 
             resolved_any = True
@@ -241,10 +252,10 @@ def semantic_diagnostics(session, uri: str):
                 matched = True
                 break
 
-            member = session.type_members(type_definition).get(occurrence["name"])
+            member = session.type_members(type_definition).get(occurrence.name)
             if member is None:
                 continue
-            if parameter_only and member["kind"] != "parameter":
+            if parameter_only and member.kind != "parameter":
                 continue
             matched = True
             break
@@ -254,15 +265,55 @@ def semantic_diagnostics(session, uri: str):
 
         diagnostic_type = "parameter" if parameter_only else "member"
         add_diagnostic(
-            occurrence["range"],
+            occurrence.range,
             "error",
             "Unknown {} `{}` for `{}`.".format(
                 diagnostic_type,
-                occurrence["name"],
+                occurrence.name,
                 " | ".join(type_names),
             ),
             "unknown-{}".format(diagnostic_type),
         )
+
+    # Keyword arguments of cell instantiations must name declared parameters.
+    # Only cells whose parameters are all known are checked: not ORDB nodes,
+    # which have none, nor cells whose params_preprocess may accept other
+    # keywords or whose bases the index does not follow.
+    cell_module = session.installed_module_path("ordec.core.cell")
+    cell_module_uri = None if cell_module is None else cell_module.as_uri()
+    call_parameters = dict()
+    for call in analysis.calls:
+        key = (call.name, call.binding_id)
+        if key not in call_parameters:
+            call_parameters[key] = None
+            definition = session.definition(uri, call.range.start)
+            if definition is not None and definition.kind == "class":
+                preprocess = session.type_members(definition).get("params_preprocess")
+                parameters = {
+                    parameter["name"] for parameter in cell_parameters(session, definition)
+                }
+                if session.is_ord_uri(definition.uri):
+                    # ORD cells have no bases, but ORD classes can have.
+                    end = definition.selection_range.end
+                    header = session.document_lines(definition.uri)[end.line - 1]
+                    known = not header[end.character - 1:].lstrip().startswith("(")
+                    known = known and (preprocess is None or preprocess.uri == cell_module_uri)
+                else:
+                    # The bases of a Python cell lead to Cell itself.
+                    known = preprocess is not None and preprocess.uri == cell_module_uri
+                if parameters and known:
+                    call_parameters[key] = (definition.name, parameters)
+        if call_parameters[key] is None:
+            continue
+        cell_name, parameters = call_parameters[key]
+        for keyword in call.keywords:
+            if keyword.name not in parameters:
+                add_diagnostic(
+                    keyword.range,
+                    "error",
+                    "Unknown parameter `{}` for `{}`.".format(keyword.name, cell_name),
+                    "unknown-parameter",
+                )
 
     for cell in [symbol for symbol in analysis.symbols if symbol.kind == "class"]:
         cell_viewgens = [
@@ -281,22 +332,22 @@ def semantic_diagnostics(session, uri: str):
         symbol_pins = set()
         schematic_ports = []
         for statement in analysis.node_statements:
-            target_name = statement["target_name"]
+            target_name = statement.target_name
             if not is_identifier(target_name):
                 continue
 
-            kind_name = statement["kind_name"]
-            target_start = statement["target_range"].start
+            kind_name = statement.kind_name
+            target_start = statement.target_range.start
             if kind_name in PIN_KINDS and range_contains(symbol_view.range, target_start):
                 symbol_pins.add(target_name)
             elif kind_name == "port" and range_contains(schematic_view.range, target_start):
                 schematic_ports.append(statement)
 
         for port_statement in schematic_ports:
-            port_name = port_statement["target_name"]
+            port_name = port_statement.target_name
             if port_name not in symbol_pins:
                 add_diagnostic(
-                    port_statement["target_range"],
+                    port_statement.target_range,
                     "error",
                     "Schematic port `{}` is not declared in the symbol view.".format(port_name),
                     "unknown-symbol-port",

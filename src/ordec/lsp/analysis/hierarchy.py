@@ -10,21 +10,21 @@ inside a definition's body.
 """
 
 # ordec imports
-from .model import AnalysisPosition, AnalysisRange, range_contains
+from .model import AnalysisDefinition, AnalysisPosition, AnalysisRange, range_contains
 
 
 def hierarchy_item_from_definition(definition):
     """Convert a resolved definition to a call hierarchy item, or None."""
-    if definition is None or definition.get("kind") not in ("class", "function"):
+    if definition is None or definition.kind not in ("class", "function"):
         return None
 
-    return {
-        "name": definition["name"],
-        "kind": definition["kind"],
-        "uri": definition["uri"],
-        "range": definition["range"],
-        "selection_range": definition["selection_range"],
-    }
+    return AnalysisDefinition(
+        uri=definition.uri,
+        name=definition.name,
+        kind=definition.kind,
+        range=definition.range,
+        selection_range=definition.selection_range,
+    )
 
 
 def call_hierarchy_item(session, uri: str, position: AnalysisPosition):
@@ -37,7 +37,7 @@ def module_hierarchy_item(session, uri: str):
     """Return a file-level hierarchy item for module-scope references."""
     analysis = session.analyze(uri)
     if 0 in analysis.scopes:
-        full_range = analysis.scopes[0]["range"]
+        full_range = analysis.scopes[0].range
     else:
         full_range = AnalysisRange(
             start=AnalysisPosition(1, 1),
@@ -46,16 +46,16 @@ def module_hierarchy_item(session, uri: str):
 
     path = session.file_uri_path(uri)
     name = path.stem if path is not None else uri
-    return {
-        "name": name,
-        "kind": "module",
-        "uri": uri,
-        "range": full_range,
-        "selection_range": AnalysisRange(
+    return AnalysisDefinition(
+        uri=uri,
+        name=name,
+        kind="module",
+        range=full_range,
+        selection_range=AnalysisRange(
             start=full_range.start,
             end=full_range.start,
         ),
-    }
+    )
 
 
 def enclosing_hierarchy_item(session, uri: str, position: AnalysisPosition):
@@ -77,22 +77,22 @@ def enclosing_hierarchy_item(session, uri: str, position: AnalysisPosition):
     if best is None:
         return module_hierarchy_item(session, uri)
 
-    return {
-        "name": best.name,
-        "kind": best.kind,
-        "uri": uri,
-        "range": best.range,
-        "selection_range": best.selection_range,
-    }
+    return AnalysisDefinition(
+        uri=uri,
+        name=best.name,
+        kind=best.kind,
+        range=best.range,
+        selection_range=best.selection_range,
+    )
 
 
 def hierarchy_group_key(item):
     """Return a stable sort and grouping key for a hierarchy item."""
     return (
-        item["uri"],
-        item["selection_range"].start.line,
-        item["selection_range"].start.character,
-        item["name"],
+        item.uri,
+        item.selection_range.start.line,
+        item.selection_range.start.character,
+        item.name,
     )
 
 
@@ -107,7 +107,7 @@ def incoming_calls(session, uri: str, position: AnalysisPosition):
     for reference in session.references(uri, position):
         ref_uri = reference["uri"]
         ref_range = reference["range"]
-        if ref_uri == definition["uri"] and ref_range == definition["selection_range"]:
+        if ref_uri == definition.uri and ref_range == definition.selection_range:
             continue
 
         item = enclosing_hierarchy_item(session, ref_uri, ref_range.start)
@@ -128,14 +128,14 @@ def outgoing_calls(session, uri: str, position: AnalysisPosition):
     if hierarchy_item_from_definition(definition) is None:
         return []
 
-    target_uri = definition["uri"]
+    target_uri = definition.uri
     if not session.is_ord_uri(target_uri):
         return []
 
-    container_range = definition["range"]
+    container_range = definition.range
     analysis = session.analyze(target_uri)
     return_type_ranges = {
-        viewgen["selection_range"]
+        viewgen.selection_range
         for viewgen in analysis.viewgen_returns
     }
 
@@ -157,7 +157,7 @@ def outgoing_calls(session, uri: str, position: AnalysisPosition):
 
         # Definition-site occurrences (the container's own name and any
         # nested cell or function headers) are declarations, not calls.
-        if callee["uri"] == target_uri and callee["selection_range"] == candidate_range:
+        if callee.uri == target_uri and callee.selection_range == candidate_range:
             continue
 
         key = hierarchy_group_key(callee)

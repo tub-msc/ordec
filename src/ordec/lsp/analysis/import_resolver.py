@@ -35,6 +35,7 @@ from typing import NamedTuple, Optional
 
 # ordec imports
 from .model import file_uri_to_path, find_module_source
+from .revisions import Revisions
 
 # Suffix precedence within one directory, as registered by ordec.importer.
 MODULE_SOURCE_SUFFIXES = (".py", ".ord")
@@ -100,20 +101,31 @@ class ImportResolver:
     Resolving installed Python modules uses ``importlib`` and may execute
     parent package initialization code. Failures are treated as unresolved
     modules.
+
+    Results are memoized with the ``"files"`` revision of ``revisions``
+    and reused while no files came or went.
     """
-    def __init__(self, workspace_root: Optional[str] = None):
+    def __init__(
+        self,
+        workspace_root: Optional[str] = None,
+        revisions: Optional[Revisions] = None,
+    ):
         """Initialize the resolver for the optional workspace root."""
         self.workspace_root = workspace_root
-        # Memoized until clear(): the same imports are resolved over and over.
+        self.revisions = revisions if revisions is not None else Revisions()
+        self.memo_files = None
         self.targets = dict()
         self.module_paths = dict()
         self.installed_paths = dict()
+        self.module_names = dict()
 
-    def clear(self):
-        """Forget memoized results, as module files may have come or gone."""
-        self.targets.clear()
-        self.module_paths.clear()
-        self.installed_paths.clear()
+    def clear_outdated_memos(self):
+        """Clear the memos once the ``"files"`` revision changed."""
+        files = self.revisions.read("files")
+        if files != self.memo_files:
+            self.memo_files = files
+            for memo in (self.targets, self.module_paths, self.installed_paths, self.module_names):
+                memo.clear()
 
     def import_candidates(self, doc_path: Optional[Path], module_name: str, script: bool):
         """Return the (directory, module name, package only) triples to probe.
@@ -162,6 +174,7 @@ class ImportResolver:
         with its directory on ``sys.path``. Modules imported by others are
         not, and Python has no implicit relative imports.
         """
+        self.clear_outdated_memos()
         key = (uri, module_name, script)
         if key in self.targets:
             return self.targets[key]
@@ -200,6 +213,7 @@ class ImportResolver:
         included. Symlinks are not resolved: as at runtime, the package of a
         module follows the path it was found under.
         """
+        self.clear_outdated_memos()
         key = (uri, module_name, script)
         if key in self.module_paths:
             return self.module_paths[key]
@@ -213,6 +227,14 @@ class ImportResolver:
             path = None
         self.module_paths[key] = path
         return path
+
+    def module_name(self, path: Path):
+        """Return the dotted name of a module source file below its import root."""
+        self.clear_outdated_memos()
+        if path not in self.module_names:
+            import_root, _ = package_context(path.parent)
+            self.module_names[path] = module_name_in(path, import_root)
+        return self.module_names[path]
 
     def module_exists(self, uri: str, module_name: str):
         """Return whether an import names a module source or installed module."""
@@ -270,12 +292,18 @@ class ImportResolver:
 
     def installed_module_path(self, module_name: str):
         """Resolve an absolute module name to a source file of the installed packages."""
+        self.clear_outdated_memos()
         if module_name in self.installed_paths:
             return self.installed_paths[module_name]
 
         path = None
         spec = self.find_spec(module_name)
-        if spec is None or spec.origin in (None, "built-in", "frozen"):
+        origin = None if spec is None else spec.origin
+        if origin == "frozen":
+            # Frozen stdlib modules such as os keep their source file name
+            # in the loader state.
+            origin = getattr(spec.loader_state, "filename", None)
+        if origin in (None, "built-in", "frozen"):
             # Installed .ord modules are invisible to importlib unless ordec's
             # import hook is active. Resolve them via the parent package.
             if "." in module_name:
@@ -285,8 +313,8 @@ class ImportResolver:
                     candidate = parent_path.parent / (leaf_name + ".ord")
                     if candidate.exists():
                         path = candidate
-        elif Path(spec.origin).exists():
-            path = Path(spec.origin).absolute()
+        elif Path(origin).exists():
+            path = Path(origin).absolute()
 
         self.installed_paths[module_name] = path
         return path

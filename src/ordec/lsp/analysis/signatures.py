@@ -101,19 +101,19 @@ def call_context(session, uri: str, position: AnalysisPosition):
 
 def ord_function_parameters(session, definition):
     """Return parameter records for a function defined in ORD source."""
-    analysis = session.analyze(definition["uri"])
+    analysis = session.analyze(definition.uri)
     for scope in analysis.scopes.values():
-        if scope["selection_range"] != definition["selection_range"]:
+        if scope.selection_range != definition.selection_range:
             continue
 
         parameters = []
-        for binding_id in scope["bindings"]:
+        for binding_id in scope.bindings:
             binding = analysis.binding_map.get(binding_id)
-            if binding is None or binding["kind"] != "parameter":
+            if binding is None or binding.kind != "parameter":
                 continue
             parameters.append({
-                "label": binding["name"],
-                "name": binding["name"],
+                "label": binding.name,
+                "name": binding.name,
             })
         return parameters
 
@@ -124,12 +124,12 @@ def cell_parameters(session, definition):
     """Return declared cell parameters of a class definition."""
     parameters = []
     for name, member in session.type_members(definition).items():
-        if member.get("kind") != "parameter":
+        if member.kind != "parameter":
             continue
 
         label = name
-        if member.get("default"):
-            label = "{}={}".format(name, member["default"])
+        if member.default:
+            label = "{}={}".format(name, member.default)
         parameters.append({
             "label": label,
             "name": name,
@@ -142,11 +142,11 @@ def callable_signature(session, uri: str, definition):
     if definition is None:
         return None
 
-    kind = definition.get("kind")
+    kind = definition.kind
     if kind == "class":
         parameters = cell_parameters(session, definition)
     elif kind == "function":
-        signature = definition.get("signature")
+        signature = definition.signature
         if signature is not None:
             parameters = [
                 {
@@ -155,7 +155,7 @@ def callable_signature(session, uri: str, definition):
                 }
                 for param in signature["params"]
             ]
-        elif session.is_ord_uri(definition["uri"]):
+        elif session.is_ord_uri(definition.uri):
             parameters = ord_function_parameters(session, definition)
             if parameters is None:
                 return None
@@ -165,13 +165,13 @@ def callable_signature(session, uri: str, definition):
         return None
 
     return {
-        "name": definition["name"],
+        "name": definition.name,
         "label": "{}({})".format(
-            definition["name"],
+            definition.name,
             ", ".join(parameter["label"] for parameter in parameters),
         ),
         "parameters": parameters,
-        "documentation": definition.get("docstring"),
+        "documentation": definition.docstring,
     }
 
 

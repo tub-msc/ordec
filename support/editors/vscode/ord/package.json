@@ -82,6 +82,11 @@
           "default": true,
           "description": "Start ORD-LSP for ORD files."
         },
+        "ord.languageServer.checkOnSave": {
+          "type": "boolean",
+          "default": false,
+          "description": "On save, generate the symbol, schematic and layout views of the ORD file and report their errors."
+        },
         "ord.languageServer.command": {
           "type": "string",
           "default": "ordec-lsp",
