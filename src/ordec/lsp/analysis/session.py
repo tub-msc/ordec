@@ -390,6 +390,35 @@ class AnalysisSession:
             return self.python_definition(self.resolve_python_module_path(uri, submodule_name))
         return self.python_definition(module_path, export_name=export_name)
 
+    def star_import_definitions(self, uri: str, module_name: str):
+        """Return the definitions that ``from module import *`` binds, by name."""
+        module_uri = self.resolve_module_uri(uri, module_name)
+        if module_uri is not None:
+            # Most exports are symbols of the module itself; find_export
+            # would search all related documents for each of them.
+            analysis = self.analyze(module_uri)
+            symbols = {symbol.name: symbol for symbol in reversed(analysis.symbols)}
+            definitions = dict()
+            for name in analysis.exports:
+                symbol = symbols.get(name)
+                if symbol is None:
+                    definitions[name] = self.find_export(module_uri, name)
+                    continue
+                definitions[name] = AnalysisDefinition(
+                    uri=module_uri,
+                    name=name,
+                    kind=symbol.kind,
+                    range=symbol.range,
+                    selection_range=symbol.selection_range,
+                )
+            return definitions
+
+        module_path = self.resolve_python_module_path(uri, module_name)
+        return {
+            name: self.python_definition(module_path, export_name=name)
+            for name in self.python_index.star_names(module_path)
+        }
+
     def resolve_python_module_path(self, uri: str, module_name: str):
         """Resolve a possibly relative import name to a module source path."""
         return self.resolver.module_path(uri, module_name)
@@ -1029,9 +1058,9 @@ class AnalysisSession:
             if match is not None:
                 return match
 
-        # Star imports bind public names only (__all__ is not supported).
-        star_entries = [] if name.startswith("_") else analysis.import_entries
-        for import_entry in reversed(star_entries):
+        # A star import binds the names of the module's __all__, or else
+        # its public names.
+        for import_entry in reversed(analysis.import_entries):
             if import_entry.kind != "from" or import_entry.export_name != "*":
                 continue
 
@@ -1039,7 +1068,11 @@ class AnalysisSession:
             import_uri = self.resolve_module_uri(uri, module_name)
             if import_uri is None:
                 module_path = self.resolve_python_module_path(uri, module_name)
+                if name not in self.python_index.star_names(module_path):
+                    continue
                 match = self.python_definition(module_path, export_name=name)
+            elif name.startswith("_"):
+                continue
             else:
                 match = self.find_export(import_uri, name)
             if match is not None:

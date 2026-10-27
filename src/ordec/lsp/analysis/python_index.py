@@ -84,6 +84,7 @@ class PythonModuleIndex:
         self.resolver = resolver
         self.revisions = resolver.revisions
         self.python_modules = dict()
+        self.star_name_lists = dict()
 
     def imported_paths(self, module_path: Path):
         """Return the source files that the from-imports of a module name."""
@@ -98,6 +99,42 @@ class PythonModuleIndex:
             module_names.append(from_import_module_name(member["module"], member["export_name"]))
         paths = [self.import_path(module_info, module_name) for module_name in module_names]
         return [path for path in paths if path is not None]
+
+    def star_names(self, module_path: Optional[Path], seen=None):
+        """Return the names that ``from module import *`` binds, in module order.
+
+        These are the names of ``__all__`` where it can be evaluated
+        statically, otherwise the public names of the module.
+        """
+        if seen is None:
+            # Name resolution asks for these over and over.
+            entry = self.star_name_lists.get(module_path)
+            if entry is not None and self.revisions.current(entry[0]):
+                return entry[1]
+            with self.revisions.track() as reads:
+                names = self.star_names(module_path, seen=set())
+            self.star_name_lists[module_path] = (reads, names)
+            return names
+        module_info = self.module_info(module_path)
+        if module_info is None or module_path in seen:
+            return []
+        seen.add(module_path)
+
+        names = []
+        if module_info["all"] is not None:
+            for kind, value in module_info["all"]:
+                if kind == "names":
+                    names.extend(value)
+                else:
+                    names.extend(self.star_names(self.import_path(module_info, value), seen))
+        else:
+            public_names = list(module_info["exports"]) + list(module_info["imports"]) + [
+                reexport["local_name"] for reexport in module_info["reexports"]
+            ]
+            names.extend(name for name in public_names if not name.startswith("_"))
+            for star_module in module_info["star_modules"]:
+                names.extend(self.star_names(self.import_path(module_info, star_module), seen))
+        return list(dict.fromkeys(names))
 
     def import_path(self, module_info, module_name: str):
         """Return the source file an import inside an indexed module names."""
@@ -174,7 +211,7 @@ class PythonModuleIndex:
             )
 
         def add_export(name, kind, node):
-            if name.startswith("_") or name in exports:
+            if name in exports:
                 return
 
             docstring = None
@@ -243,12 +280,62 @@ class PythonModuleIndex:
             if default is not None and member.default is None:
                 class_info["members"][name] = member._replace(default=default)
 
+        def all_expression_parts(value):
+            # The forms __all__ takes in practice: literal lists,
+            # concatenations, and the __all__ of an imported module.
+            if isinstance(value, (ast.List, ast.Tuple)):
+                names = [
+                    element.value for element in value.elts
+                    if isinstance(element, ast.Constant) and isinstance(element.value, str)
+                ]
+                return [("names", names)] if len(names) == len(value.elts) else None
+            if isinstance(value, ast.BinOp) and isinstance(value.op, ast.Add):
+                left = all_expression_parts(value.left)
+                right = all_expression_parts(value.right)
+                return None if left is None or right is None else left + right
+            if isinstance(value, ast.Attribute) and value.attr == "__all__":
+                local_name = node_name(value.value)
+                if local_name in import_members:
+                    member = import_members[local_name]
+                    module = from_import_module_name(member["module"], member["export_name"])
+                    return [("module", module)]
+                if local_name in imports:
+                    return [("module", imports[local_name])]
+            return None
+
         def imported_module_name(node):
             # Kept relative: the resolver resolves it from this module's path.
             return "." * node.level + (node.module or "")
 
+        # Parts of __all__ in statement order, None without __all__, or
+        # unknown when an assignment cannot be evaluated statically.
+        all_parts = None
+        all_unknown = False
         for node in syntax_tree.body:
             add_public_call_exports(node)
+
+            # @public and public(...) append to __all__ (see the public package).
+            if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                if any(node_name(decorator) == "public" for decorator in node.decorator_list):
+                    all_parts = (all_parts or []) + [("names", [node.name])]
+            elif isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
+                if node_name(node.value.func) == "public":
+                    names = [keyword.arg for keyword in node.value.keywords if keyword.arg]
+                    all_parts = (all_parts or []) + [("names", names)]
+            elif isinstance(node, ast.Assign):
+                target_ids = [target.id for target in node.targets if isinstance(target, ast.Name)]
+                if "__all__" in target_ids:
+                    all_parts = all_expression_parts(node.value)
+                    all_unknown = all_parts is None
+            elif isinstance(node, ast.AugAssign) and isinstance(node.op, ast.Add):
+                if isinstance(node.target, ast.Name) and node.target.id == "__all__":
+                    parts = all_expression_parts(node.value)
+                    all_unknown = all_unknown or parts is None
+                    all_parts = (all_parts or []) + (parts or [])
+            elif isinstance(node, ast.ImportFrom):
+                if any(alias.name == "__all__" for alias in node.names):
+                    all_parts = [("module", imported_module_name(node))]
+                    all_unknown = False
 
             if isinstance(node, ast.Import):
                 for alias in node.names:
@@ -460,6 +547,7 @@ class PythonModuleIndex:
             "imports": imports,
             "import_members": import_members,
             "classes": classes,
+            "all": None if all_unknown else all_parts,
         }
         self.python_modules[module_path] = (reads, module_info)
         return module_info
@@ -528,16 +616,11 @@ class PythonModuleIndex:
             if match is not None:
                 return match
 
-        # Star imports bind public names only (__all__ is not supported).
-        if export_name.startswith("_"):
-            return None
-
         for star_module in module_info["star_modules"]:
-            match = self.definition(
-                self.import_path(module_info, star_module),
-                export_name=export_name,
-                seen=seen,
-            )
+            star_path = self.import_path(module_info, star_module)
+            if export_name not in self.star_names(star_path):
+                continue
+            match = self.definition(star_path, export_name=export_name, seen=seen)
             if match is not None:
                 return match
 
@@ -554,12 +637,11 @@ class PythonModuleIndex:
             return [(imported_path, imported["export_name"])]
 
         refs = []
-        star_modules = [] if base_name.startswith("_") else module_info["star_modules"]
-        for star_module in star_modules:
-            match = self.definition(
-                self.import_path(module_info, star_module),
-                export_name=base_name,
-            )
+        for star_module in module_info["star_modules"]:
+            star_path = self.import_path(module_info, star_module)
+            if base_name not in self.star_names(star_path):
+                continue
+            match = self.definition(star_path, export_name=base_name)
             if match is None:
                 continue
             if match.python_class is not None:
