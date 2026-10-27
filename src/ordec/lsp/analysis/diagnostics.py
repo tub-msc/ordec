@@ -5,6 +5,7 @@
 
 # standard imports
 import builtins
+import sysconfig
 
 # ordec imports
 from .model import (
@@ -53,6 +54,8 @@ def semantic_diagnostics(session, uri: str):
             return True
         return session.resolve_name(uri, name) is not None
 
+    paths = sysconfig.get_paths()
+
     for import_entry in analysis.import_entries:
         if import_entry.kind == "import":
             if not module_exists(import_entry.module):
@@ -91,6 +94,13 @@ def semantic_diagnostics(session, uri: str):
 
         module_path = session.resolve_python_module_path(uri, module_name)
         if module_uri is None and session.python_module_info(module_path) is None:
+            continue
+        # Standard library modules often bind names through C modules,
+        # which the index cannot read, as in `from posix import *`.
+        if module_uri is None and (
+            any(module_path.is_relative_to(paths[key]) for key in ("stdlib", "platstdlib"))
+            and not any(module_path.is_relative_to(paths[key]) for key in ("purelib", "platlib"))
+        ):
             continue
 
         add_diagnostic(

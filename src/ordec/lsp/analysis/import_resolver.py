@@ -298,7 +298,12 @@ class ImportResolver:
 
         path = None
         spec = self.find_spec(module_name)
-        if spec is None or spec.origin in (None, "built-in", "frozen"):
+        origin = None if spec is None else spec.origin
+        if origin == "frozen":
+            # Frozen stdlib modules such as os keep their source file name
+            # in the loader state.
+            origin = getattr(spec.loader_state, "filename", None)
+        if origin in (None, "built-in", "frozen"):
             # Installed .ord modules are invisible to importlib unless ordec's
             # import hook is active. Resolve them via the parent package.
             if "." in module_name:
@@ -308,8 +313,8 @@ class ImportResolver:
                     candidate = parent_path.parent / (leaf_name + ".ord")
                     if candidate.exists():
                         path = candidate
-        elif Path(spec.origin).exists():
-            path = Path(spec.origin).absolute()
+        elif Path(origin).exists():
+            path = Path(origin).absolute()
 
         self.installed_paths[module_name] = path
         return path
