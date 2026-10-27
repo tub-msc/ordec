@@ -1003,7 +1003,8 @@ def test_lsp_workspace_folding_selection_and_semantic_tokens(tmp_path):
         "previousResultId": semantic_tokens["resultId"],
     })
     assert delta["edits"] == []
-    change_document(server, uri, new_source + "\ndef extra():\n    pass\n", version=3)
+    extended_source = new_source + "\ndef extra():\n    pass\n"
+    change_document(server, uri, extended_source, version=3)
     delta = request(server, "textDocument/semanticTokens/full/delta", {
         "textDocument": text_document(uri),
         "previousResultId": delta["resultId"],
@@ -1015,6 +1016,14 @@ def test_lsp_workspace_folding_selection_and_semantic_tokens(tmp_path):
     for edit in delta["edits"]:
         data[edit["start"]:edit["start"] + edit["deleteCount"]] = edit["data"]
     assert delta["edits"] and data == full["data"]
+
+    # A broken edit keeps the last good analysis; its tokens past the
+    # shortened line end are dropped instead of encoding no length.
+    change_document(server, uri, extended_source.replace(".orient = East", "("), version=4)
+    full = request(server, "textDocument/semanticTokens/full", {
+        "textDocument": text_document(uri),
+    })
+    assert all(length > 0 for length in full["data"][2::5])
 
 
 def test_lsp_workspace_scan_skips_hidden_and_dependency_dirs(tmp_path):
