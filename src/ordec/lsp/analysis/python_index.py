@@ -87,17 +87,15 @@ class PythonModuleIndex:
         self.star_name_lists = dict()
 
     def imported_paths(self, module_path: Path):
-        """Return the source files that the from-imports of a module name."""
+        """Return the source files that the imports of a module name."""
         module_info = self.module_info(module_path)
         if module_info is None:
             return []
 
-        module_names = list(module_info["star_modules"])
-        for member in module_info["import_members"].values():
-            # The imported name may also be a submodule.
-            module_names.append(member["module"])
-            module_names.append(from_import_module_name(member["module"], member["export_name"]))
-        paths = [self.import_path(module_info, module_name) for module_name in module_names]
+        paths = [
+            self.import_path(module_info, module_name)
+            for module_name in module_info["import_names"]
+        ]
         return [path for path in paths if path is not None]
 
     def star_names(self, module_path: Optional[Path], seen=None):
@@ -306,6 +304,20 @@ class PythonModuleIndex:
         def imported_module_name(node):
             # Kept relative: the resolver resolves it from this module's path.
             return "." * node.level + (node.module or "")
+
+        # The modules that the imports name, also below the top level.
+        import_names = []
+        for node in ast.walk(syntax_tree):
+            if isinstance(node, ast.Import):
+                import_names.extend(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                module_name = imported_module_name(node)
+                import_names.append(module_name)
+                # An imported name may also be a submodule.
+                import_names.extend(
+                    from_import_module_name(module_name, alias.name)
+                    for alias in node.names if alias.name != "*"
+                )
 
         # Parts of __all__ in statement order, None without __all__, or
         # unknown when an assignment cannot be evaluated statically.
@@ -549,6 +561,7 @@ class PythonModuleIndex:
             "reexports": reexports,
             "star_modules": star_modules,
             "imports": imports,
+            "import_names": import_names,
             "import_members": import_members,
             "classes": classes,
             "all": None if all_unknown else all_parts,

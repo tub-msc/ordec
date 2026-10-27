@@ -819,6 +819,8 @@ def test_rename_refuses_python_symbols(tmp_path):
     cells_source = "cell Inv:\n    pass\n"
     (tmp_path / "cells.ord").write_text(cells_source)
     (tmp_path / "wrapper.py").write_text("from cells import Inv\n")
+    (tmp_path / "gates.ord").write_text(cells_source)
+    (tmp_path / "gate_wrapper.py").write_text("def build():\n    import gates\n")
     source = dedent("""\
         from extlib import Stage
 
@@ -836,12 +838,14 @@ def test_rename_refuses_python_symbols(tmp_path):
     assert session.prepare_rename(uri, position) is None
     assert session.rename(uri, position, "Driver") is None
 
-    # ORD symbols that a Python module imports, whose use rename would
-    # not rewrite either.
+    # ORD symbols that a Python module imports, also below its top level,
+    # whose use rename would not rewrite either.
     cells_uri = session.open_path(str(tmp_path / "cells.ord"))
     inv_position = position_at(cells_source, "Inv")
     assert session.prepare_rename(cells_uri, inv_position) is None
     assert session.rename(cells_uri, inv_position, "Buf") is None
+    gates_uri = session.open_path(str(tmp_path / "gates.ord"))
+    assert session.prepare_rename(gates_uri, inv_position) is None
 
 
 def test_symlinked_workspace_uris(tmp_path):
