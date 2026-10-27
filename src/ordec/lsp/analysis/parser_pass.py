@@ -1518,6 +1518,38 @@ class OrdAnalysisBuilder:
         )
 
 
+def edited_line_numbers(text: str, good_text: str):
+    """Return the 1-based lines of ``text`` that differ from ``good_text``.
+
+    Lines in the common prefix and suffix of both texts count as unchanged.
+    """
+    lines = normalize_line_breaks(text).split("\n")
+    good_lines = normalize_line_breaks(good_text).split("\n")
+    shorter = min(len(lines), len(good_lines))
+    prefix = 0
+    while prefix < shorter and lines[prefix] == good_lines[prefix]:
+        prefix += 1
+    suffix = 0
+    while suffix < shorter - prefix and lines[-1 - suffix] == good_lines[-1 - suffix]:
+        suffix += 1
+    return set(range(prefix + 1, len(lines) - suffix + 1))
+
+
+def stand_in_source(text: str, line_numbers):
+    """Return ``text`` with the given 1-based lines replaced by ``pass``.
+
+    Each replacement keeps the indentation of its line, so blocks stay
+    non-empty and the line count stays the same: the analysis ranges of
+    all other lines match ``text``.
+    """
+    lines = normalize_line_breaks(text).split("\n")
+    for number in line_numbers:
+        line = lines[number - 1] if number <= len(lines) else ""
+        if line.strip():
+            lines[number - 1] = line[:len(line) - len(line.lstrip())] + "pass"
+    return "\n".join(lines)
+
+
 def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
     """Parse ORD source and collect syntax-aware analysis data.
 
