@@ -27,9 +27,9 @@ def prepare_rename(session, uri: str, position: AnalysisPosition):
     if definition.kind == "module":
         if not import_alias_binds(session, uri, name_info["name"]):
             return None
-    elif (
-        name_info["name"] == definition.name
-        and session.file_uri_suffix(definition.uri) == ".py"
+    elif name_info["name"] == definition.name and (
+        session.file_uri_suffix(definition.uri) == ".py"
+        or python_may_reference(session, definition)
     ):
         return None
 
@@ -53,6 +53,24 @@ def import_alias_binds(session, uri: str, name: str):
         if entry.is_alias:
             return True
     return False
+
+
+def python_may_reference(session, definition):
+    """Return whether Python modules may reference an ORD definition.
+
+    Rename does not rewrite Python source, so renaming a symbol that a
+    Python module may use would break it. Local bindings stay renamable.
+    """
+    local = (
+        definition.binding_id is not None
+        and not definition.exported
+        and not session.member_reachable_definition(definition)
+    )
+    return (
+        not local
+        and session.is_ord_uri(definition.uri)
+        and session.imported_by_python(definition.uri)
+    )
 
 
 def rename_conflict(session, definition, new_name: str):
@@ -145,6 +163,10 @@ def rename(session, uri: str, position: AnalysisPosition, new_name: str):
     # but cannot touch its Python definition, breaking the import.
     # Aliased usages take the local branch above and stay valid.
     if session.file_uri_suffix(definition.uri) == ".py":
+        return None
+
+    # Likewise for ORD symbols that Python modules import.
+    if python_may_reference(session, definition):
         return None
 
     changes = dict()
