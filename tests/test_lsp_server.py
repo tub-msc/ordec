@@ -997,6 +997,25 @@ def test_lsp_workspace_folding_selection_and_semantic_tokens(tmp_path):
     workspace_symbols = request(server, "workspace/symbol", {"query": "mux"})
     assert [symbol["name"] for symbol in workspace_symbols] == ["Mux4"]
 
+    # Deltas against the previous result reproduce the full token data.
+    delta = request(server, "textDocument/semanticTokens/full/delta", {
+        "textDocument": text_document(uri),
+        "previousResultId": semantic_tokens["resultId"],
+    })
+    assert delta["edits"] == []
+    change_document(server, uri, new_source + "\ndef extra():\n    pass\n", version=3)
+    delta = request(server, "textDocument/semanticTokens/full/delta", {
+        "textDocument": text_document(uri),
+        "previousResultId": delta["resultId"],
+    })
+    full = request(server, "textDocument/semanticTokens/full", {
+        "textDocument": text_document(uri),
+    })
+    data = list(semantic_tokens["data"])
+    for edit in delta["edits"]:
+        data[edit["start"]:edit["start"] + edit["deleteCount"]] = edit["data"]
+    assert delta["edits"] and data == full["data"]
+
 
 def test_lsp_workspace_scan_skips_hidden_and_dependency_dirs(tmp_path):
     def cell_source(name):
