@@ -750,6 +750,9 @@ def test_rename_refuses_python_symbols(tmp_path):
         class Stage:
             pass
         """))
+    cells_source = "cell Inv:\n    pass\n"
+    (tmp_path / "cells.ord").write_text(cells_source)
+    (tmp_path / "wrapper.py").write_text("from cells import Inv\n")
     source = dedent("""\
         from extlib import Stage
 
@@ -766,6 +769,13 @@ def test_rename_refuses_python_symbols(tmp_path):
     assert session.definition(uri, position).uri.endswith("extlib.py")
     assert session.prepare_rename(uri, position) is None
     assert session.rename(uri, position, "Driver") is None
+
+    # ORD symbols that a Python module imports, whose use rename would
+    # not rewrite either.
+    cells_uri = session.open_path(str(tmp_path / "cells.ord"))
+    inv_position = position_at(cells_source, "Inv")
+    assert session.prepare_rename(cells_uri, inv_position) is None
+    assert session.rename(cells_uri, inv_position, "Buf") is None
 
 
 def test_symlinked_workspace_uris(tmp_path):
@@ -1567,14 +1577,14 @@ def test_workspace_symbols_reuse_scan(tmp_path, monkeypatch):
             pass
         """))
     session = AnalysisSession(workspace_root=str(tmp_path))
-    original = session.workspace_ord_paths
+    original = session.workspace_source_paths
     calls = []
 
     def counted_paths(root_path):
         calls.append(root_path)
         yield from original(root_path)
 
-    monkeypatch.setattr(session, "workspace_ord_paths", counted_paths)
+    monkeypatch.setattr(session, "workspace_source_paths", counted_paths)
     assert [item.name for item in session.workspace_symbols()] == ["First"]
     assert [item.name for item in session.workspace_symbols()] == ["First"]
     assert len(calls) == 1

@@ -4,6 +4,7 @@
 # standard imports
 from bisect import bisect_right
 import os
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -401,6 +402,30 @@ class AnalysisSession:
         path = self.file_uri_path(uri)
         return path is not None and self.python_index.has_module_path(path.resolve())
 
+    def imported_by_python(self, uri: str):
+        """Return whether a workspace Python module imports from an ORD document.
+
+        The workspace import graph has no edges from Python modules, so the
+        Python files are scanned, parsing only those naming the module.
+        """
+        path = self.file_uri_path(uri)
+        if path is None or not self.workspace_root:
+            return False
+
+        target = path.resolve()
+        module_name = target.parent.name if target.stem == "__init__" else target.stem
+        module_name_re = re.compile(r"\b{}\b".format(re.escape(module_name)))
+        for python_path in self.workspace_source_paths(Path(self.workspace_root), ".py"):
+            try:
+                if not module_name_re.search(python_path.read_text(encoding="utf-8")):
+                    continue
+            except (OSError, UnicodeDecodeError):
+                continue
+            imported = self.python_index.imported_paths(python_path)
+            if any(imported_path.resolve() == target for imported_path in imported):
+                return True
+        return False
+
     def invalidate_python_module_path(self, path: Path, created_or_deleted: bool = True):
         """Invalidate cached Python analysis for modules backed by a path."""
         self.python_index.invalidate_module_path(path, created_or_deleted)
@@ -506,8 +531,8 @@ class AnalysisSession:
         self.update_document(uri, text, version=version, is_open=False)
         return uri
 
-    def workspace_ord_paths(self, root_path: Path):
-        """Yield workspace ORD files, pruning hidden and dependency directories.
+    def workspace_source_paths(self, root_path: Path, suffix: str = ".ord"):
+        """Yield workspace source files, pruning hidden and dependency directories.
 
         A blind recursive glob crawls .git, virtualenvs, and node_modules,
         which dominates cold workspace scans on real projects. Design
@@ -521,7 +546,7 @@ class AnalysisSession:
                 and name not in WORKSPACE_SCAN_EXCLUDED_DIRS
             )
             for filename in sorted(filenames):
-                if filename.endswith(".ord"):
+                if filename.endswith(suffix):
                     yield Path(dirpath) / filename
 
     def workspace_uris(self):
@@ -533,7 +558,7 @@ class AnalysisSession:
                 if root_path.exists():
                     self.workspace_uri_cache.update(
                         path.as_uri()
-                        for path in self.workspace_ord_paths(root_path)
+                        for path in self.workspace_source_paths(root_path)
                         if path.is_file()
                     )
 

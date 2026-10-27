@@ -109,6 +109,20 @@ class PythonModuleIndex:
         """Return whether analysis of the module at a symlink-resolved path is cached."""
         return any(module_path.resolve() == path for module_path in self.python_modules)
 
+    def imported_paths(self, module_path: Path):
+        """Return the source files that the from-imports of a module name."""
+        module_info = self.module_info(module_path)
+        if module_info is None:
+            return []
+
+        module_names = list(module_info["star_modules"])
+        for member in module_info["import_members"].values():
+            # The imported name may also be a submodule.
+            module_names.append(member["module"])
+            module_names.append(from_import_module_name(member["module"], member["export_name"]))
+        paths = [self.import_path(module_info, module_name) for module_name in module_names]
+        return [path for path in paths if path is not None]
+
     def import_path(self, module_info, module_name: str):
         """Return the source file an import inside an indexed module names."""
         return self.resolver.module_path(module_info["uri"], module_name, script=False)
