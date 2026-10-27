@@ -214,13 +214,36 @@ def test_semantic_diagnostics(tmp_path):
                 Nmos pd:
                     .missing -- b
                     .$bogus = 1u
+                Nmos(w=1u, nf=2) pd2
+                Flexible(width=1) f
+                Wide(w=1u, extra=2) wide
             viewgen bad(self) -> Nmos:
                 pass
+
+        class Wide(Nmos):
+            extra = Parameter(R)
+
+        cell Flexible:
+            w = Parameter(R)
+
+            @classmethod
+            def params_preprocess(cls, args, kwargs):
+                return args, {"w": kwargs.get("width")}
+
+            viewgen symbol(self) -> Symbol:
+                input a
         """)
 
     session = AnalysisSession(workspace_root=str(tmp_path))
     uri = (tmp_path / "broken.ord").resolve().as_uri()
     session.open_document(uri, source)
+    messages = [diagnostic.message for diagnostic in session.diagnostics(uri)]
+    assert "Unknown parameter `nf` for `Nmos`." in messages
+    assert "Unknown parameter `w` for `Nmos`." not in messages
+    # A cell with its own params_preprocess may accept other keywords, and a
+    # class with bases may inherit parameters.
+    assert "Unknown parameter `width` for `Flexible`." not in messages
+    assert "Unknown parameter `w` for `Wide`." not in messages
 
     assert set(diagnostic_codes(session, uri)) == {
         "unresolved-import",

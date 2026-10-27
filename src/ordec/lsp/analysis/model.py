@@ -337,6 +337,22 @@ class AnalysisNodeStatement(NamedTuple):
 
 
 
+class AnalysisKeyword(NamedTuple):
+    """Keyword argument of a call."""
+    name: str
+    range: AnalysisRange
+
+
+
+class AnalysisCall(NamedTuple):
+    """Call of a plain name with keyword arguments."""
+    name: str
+    range: AnalysisRange
+    binding_id: Optional[int]
+    keywords: tuple
+
+
+
 class DocumentAnalysis:
     """Analysis result for one ORD document.
 
@@ -362,6 +378,7 @@ class DocumentAnalysis:
         node_statements=None,
         constraint_ranges=None,
         type_hints=None,
+        calls=None,
     ):
         """Initialize a document analysis result.
 
@@ -385,6 +402,7 @@ class DocumentAnalysis:
             node_statements: ORD node statement records.
             constraint_ranges: Ranges of the constraint statements.
             type_hints: Inferred-type records for assignment targets.
+            calls: Calls with keyword arguments.
         """
         self.uri = uri
         self.version = version
@@ -411,6 +429,7 @@ class DocumentAnalysis:
         self.node_statements = list(node_statements if node_statements is not None else [])
         self.constraint_ranges = list(constraint_ranges if constraint_ranges is not None else [])
         self.type_hints = list(type_hints if type_hints is not None else [])
+        self.calls = list(calls if calls is not None else [])
 
     def has_errors(self):
         """Return whether this analysis contains an error diagnostic."""
@@ -439,6 +458,7 @@ class DocumentAnalysis:
             node_statements=self.node_statements,
             constraint_ranges=self.constraint_ranges,
             type_hints=self.type_hints,
+            calls=self.calls,
         )
 
 

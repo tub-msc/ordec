@@ -11,8 +11,10 @@ from lark.indenter import DedentError
 # ordec imports
 from .model import (
     AnalysisBinding,
+    AnalysisCall,
     AnalysisDiagnostic,
     AnalysisImport,
+    AnalysisKeyword,
     AnalysisMemberOccurrence,
     AnalysisNodeStatement,
     AnalysisOccurrence,
@@ -131,6 +133,7 @@ class OrdAnalysisBuilder:
         self.node_statements = []
         self.constraint_ranges = []
         self.type_hints = []
+        self.calls = []
         # Types assigned to `.name`, for later reads of it.
         self.context_member_types = dict()
 
@@ -198,6 +201,7 @@ class OrdAnalysisBuilder:
             return
 
         if isinstance(kind_node, Tree) and kind_node.data == "funccall" and kind_node.children:
+            self.add_call(kind_node, scope_id)
             callee_node = kind_node.children[0]
             if self.simple_name_node(callee_node) is None:
                 self.visit(callee_node, scope_id)
@@ -207,6 +211,33 @@ class OrdAnalysisBuilder:
             return
 
         self.visit(kind_node, scope_id)
+
+    def add_call(self, node, scope_id):
+        """Record the keyword arguments of a call of a plain name."""
+        name_node = self.simple_name_node(node.children[0])
+        arguments = node.children[1] if len(node.children) > 1 else None
+        if name_node is None or not isinstance(arguments, Tree):
+            return
+
+        keywords = []
+        for argument in arguments.children:
+            if not isinstance(argument, Tree):
+                continue
+            # **kwargs can pass any parameter.
+            if argument.data == "kwargs":
+                return
+            if argument.data == "argvalue":
+                keywords.append(AnalysisKeyword(
+                    name=tree_text(argument.children[0]),
+                    range=tree_range(argument.children[0]),
+                ))
+        if keywords:
+            self.calls.append(AnalysisCall(
+                name=tree_text(name_node),
+                range=tree_range(name_node),
+                binding_id=self.resolve_binding(scope_id, tree_text(name_node)),
+                keywords=tuple(keywords),
+            ))
 
     def add_scope(self, node, parent_id, name_node=None):
         """Create and register a child lexical scope."""
@@ -1513,6 +1544,9 @@ class OrdAnalysisBuilder:
             ))
             return
 
+        if node.data == "funccall" and node.children:
+            self.add_call(node, scope_id)
+
         if node.data == "var":
             name_node = self.simple_name_node(node)
             if name_node is not None:
@@ -1553,6 +1587,7 @@ class OrdAnalysisBuilder:
             node_statements=self.node_statements,
             constraint_ranges=self.constraint_ranges,
             type_hints=self.type_hints,
+            calls=self.calls,
         )
 
 

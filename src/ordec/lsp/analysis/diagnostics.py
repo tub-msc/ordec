@@ -15,6 +15,7 @@ from .model import (
     is_identifier,
     range_contains,
 )
+from .signatures import cell_parameters
 
 
 def semantic_diagnostics(session, uri: str):
@@ -273,6 +274,46 @@ def semantic_diagnostics(session, uri: str):
             ),
             "unknown-{}".format(diagnostic_type),
         )
+
+    # Keyword arguments of cell instantiations must name declared parameters.
+    # Only cells whose parameters are all known are checked: not ORDB nodes,
+    # which have none, nor cells whose params_preprocess may accept other
+    # keywords or whose bases the index does not follow.
+    cell_module = session.installed_module_path("ordec.core.cell")
+    cell_module_uri = None if cell_module is None else cell_module.as_uri()
+    call_parameters = dict()
+    for call in analysis.calls:
+        key = (call.name, call.binding_id)
+        if key not in call_parameters:
+            call_parameters[key] = None
+            definition = session.definition(uri, call.range.start)
+            if definition is not None and definition.kind == "class":
+                preprocess = session.type_members(definition).get("params_preprocess")
+                parameters = {
+                    parameter["name"] for parameter in cell_parameters(session, definition)
+                }
+                if session.is_ord_uri(definition.uri):
+                    # ORD cells have no bases, but ORD classes can have.
+                    end = definition.selection_range.end
+                    header = session.document_lines(definition.uri)[end.line - 1]
+                    known = not header[end.character - 1:].lstrip().startswith("(")
+                    known = known and (preprocess is None or preprocess.uri == cell_module_uri)
+                else:
+                    # The bases of a Python cell lead to Cell itself.
+                    known = preprocess is not None and preprocess.uri == cell_module_uri
+                if parameters and known:
+                    call_parameters[key] = (definition.name, parameters)
+        if call_parameters[key] is None:
+            continue
+        cell_name, parameters = call_parameters[key]
+        for keyword in call.keywords:
+            if keyword.name not in parameters:
+                add_diagnostic(
+                    keyword.range,
+                    "error",
+                    "Unknown parameter `{}` for `{}`.".format(keyword.name, cell_name),
+                    "unknown-parameter",
+                )
 
     for cell in [symbol for symbol in analysis.symbols if symbol.kind == "class"]:
         cell_viewgens = [
