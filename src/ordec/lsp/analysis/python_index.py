@@ -3,7 +3,6 @@
 
 # standard imports
 import ast
-import importlib
 import re
 from pathlib import Path
 from typing import Optional
@@ -12,12 +11,7 @@ from lark.exceptions import LarkError
 
 # ordec imports
 from ...ord.parser import ord_to_py
-from .import_resolver import (
-    ImportResolver,
-    from_import_module_name,
-    module_name_in,
-    package_context,
-)
+from .import_resolver import ImportResolver, from_import_module_name
 from .model import AnalysisDefinition
 from .model import AnalysisPosition
 from .model import AnalysisRange
@@ -81,33 +75,15 @@ class PythonModuleIndex:
     needed by LSP definition, diagnostics, and completion features. Modules
     are keyed by the source path they were found under (see
     ``ImportResolver.module_path()``); the imports inside a module resolve
-    through the given ``ImportResolver`` like those of ORD documents.
+    through the given ``ImportResolver`` like those of ORD documents. A
+    cached module stays valid while the revision of its file contents in
+    the resolver's ``revisions`` is unchanged.
     """
     def __init__(self, resolver: ImportResolver):
         """Initialize the Python source index."""
         self.resolver = resolver
+        self.revisions = resolver.revisions
         self.python_modules = dict()
-
-    def invalidate_module_path(self, path: Path, created_or_deleted: bool = True):
-        """Invalidate cached Python analysis for the modules backed by a path.
-
-        Args:
-            path: Symlink-resolved path of the changed file.
-            created_or_deleted: False for a content change.
-        """
-        importlib.invalidate_caches()
-        if created_or_deleted and path.stem == "__init__":
-            # The cached module names derive from the __init__ files above.
-            self.python_modules.clear()
-            return
-
-        for module_path in list(self.python_modules):
-            if module_path.resolve() == path:
-                del self.python_modules[module_path]
-
-    def has_module_path(self, path: Path):
-        """Return whether analysis of the module at a symlink-resolved path is cached."""
-        return any(module_path.resolve() == path for module_path in self.python_modules)
 
     def imported_paths(self, module_path: Path):
         """Return the source files that the from-imports of a module name."""
@@ -132,9 +108,13 @@ class PythonModuleIndex:
         if module_path is None:
             return None
 
-        if module_path in self.python_modules:
-            return self.python_modules[module_path]
+        entry = self.python_modules.get(module_path)
+        if entry is not None and self.revisions.current(entry[0]):
+            return entry[1]
 
+        # A symlinked module changes with its link and with its target.
+        keys = (("file", module_path), ("file", module_path.resolve()))
+        reads = {key: self.revisions.read(key) for key in keys}
         try:
             source_data = module_path.read_text(encoding="utf-8")
             if module_path.suffix == ".ord":
@@ -142,7 +122,7 @@ class PythonModuleIndex:
             else:
                 syntax_tree = ast.parse(source_data, filename=str(module_path))
         except (OSError, SyntaxError, UnicodeDecodeError, ValueError, LarkError):
-            self.python_modules[module_path] = None
+            self.python_modules[module_path] = (reads, None)
             return None
 
         source_lines = split_source_lines(source_data)
@@ -471,11 +451,9 @@ class PythonModuleIndex:
                     "export_name": alias.name,
                 })
 
-        import_root, _ = package_context(module_path.parent)
         module_info = {
             "uri": module_path.as_uri(),
             "path": module_path,
-            "name": module_name_in(module_path, import_root),
             "exports": exports,
             "reexports": reexports,
             "star_modules": star_modules,
@@ -483,7 +461,7 @@ class PythonModuleIndex:
             "import_members": import_members,
             "classes": classes,
         }
-        self.python_modules[module_path] = module_info
+        self.python_modules[module_path] = (reads, module_info)
         return module_info
 
     def definition(
@@ -540,10 +518,11 @@ class PythonModuleIndex:
             if match is not None:
                 return match
 
-        if module_info["name"] is not None:
+        module_name = self.resolver.module_name(module_path)
+        if module_name is not None:
             submodule_path = self.import_path(
                 module_info,
-                "{}.{}".format(module_info["name"], export_name),
+                "{}.{}".format(module_name, export_name),
             )
             match = self.definition(submodule_path, seen=seen)
             if match is not None:
