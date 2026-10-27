@@ -329,6 +329,16 @@ def test_python_import_variants(tmp_path):
     assert session.resolve_name(uri, "helpers").kind == "module"
     # import ordec.lib.base binds the package ordec.
     assert session.resolve_name(uri, "ordec").name == "ordec"
+    # Imported names and their uses are tokens of the kind they resolve to.
+    lines = source.splitlines()
+    token_types = dict()
+    for token in session.semantic_tokens(uri):
+        start, end = token["range"]
+        token_types[lines[start.line - 1][start.character - 1:end.character - 1]] = token["type"]
+    assert token_types["Nmos"] == "class"
+    assert token_types["Leveled"] == "class"
+    assert token_types["report_digital_design"] == "function"
+    assert token_types["helpers"] == "namespace"
     assert session.definition(uri, position_at(source, "Nmos m")).name == "Nmos"
 
 

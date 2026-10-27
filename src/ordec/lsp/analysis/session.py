@@ -42,6 +42,14 @@ CORE_TYPE_ALIASES = {
     "Simulation": "SimHierarchy",
 }
 
+# Semantic token types of definition kinds; other kinds read as variables.
+KIND_TOKEN_TYPES = {
+    "class": "class",
+    "function": "function",
+    "parameter": "parameter",
+    "module": "namespace",
+}
+
 
 class AnalysisSession:
     """Stateful ORD analysis facade for open documents and workspace files.
@@ -1477,28 +1485,29 @@ class AnalysisSession:
         analysis = self.analyze(uri)
         tokens = []
 
-        # Classify occurrences by their resolved binding kind.
+        # Classify occurrences by their resolved binding kind. Names bound
+        # outside the document, such as imported cells, take the kind of
+        # the definition they resolve to.
+        resolved_kinds = dict()
         for occurrence in analysis.occurrences:
             binding = analysis.binding_map.get(occurrence["binding_id"])
-            if binding is None:
-                continue
-
-            kind = binding["kind"]
-            token_type = "variable"
-            if kind == "class":
-                token_type = "class"
-            elif kind == "function":
-                token_type = "function"
-            elif kind == "parameter":
-                token_type = "parameter"
-
             modifiers = []
-            if occurrence["range"] == binding["selection_range"]:
-                modifiers.append("definition")
+            if binding is not None:
+                kind = binding["kind"]
+                if occurrence["range"] == binding["selection_range"]:
+                    modifiers.append("definition")
+            else:
+                name = occurrence["name"]
+                if name not in resolved_kinds:
+                    definition = self.resolve_name(uri, name)
+                    resolved_kinds[name] = None if definition is None else definition.kind
+                kind = resolved_kinds[name]
+                if kind is None:
+                    continue
 
             tokens.append({
                 "range": occurrence["range"],
-                "type": token_type,
+                "type": KIND_TOKEN_TYPES.get(kind, "variable"),
                 "modifiers": modifiers,
             })
 
@@ -1515,10 +1524,13 @@ class AnalysisSession:
             if entry.export_name == "*":
                 continue
 
-            token_type = "namespace" if entry.kind == "import" else "variable"
+            kind = "module"
+            if entry.kind == "from":
+                definition = self.resolve_from_import(uri, entry.module, entry.export_name)
+                kind = None if definition is None else definition.kind
             tokens.append({
                 "range": entry.selection_range,
-                "type": token_type,
+                "type": KIND_TOKEN_TYPES.get(kind, "variable"),
                 "modifiers": [],
             })
 
