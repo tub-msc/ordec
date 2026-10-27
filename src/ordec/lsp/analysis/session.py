@@ -528,9 +528,20 @@ class AnalysisSession:
         )
 
 
-    def python_class_members(self, module_path: Optional[Path], class_name: str, seen=None):
+    def python_class_members(
+        self,
+        module_path: Optional[Path],
+        class_name: str,
+        seen=None,
+        missing=None,
+    ):
         """Collect Python class members, including inherited members."""
-        return self.python_index.class_members(module_path, class_name, seen=seen)
+        return self.python_index.class_members(
+            module_path,
+            class_name,
+            seen=seen,
+            missing=missing,
+        )
 
     def analyze(self, uri: str):
         """Return cached document analysis, parsing the document when needed."""

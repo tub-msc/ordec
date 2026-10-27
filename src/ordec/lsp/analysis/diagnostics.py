@@ -15,6 +15,7 @@ from .model import (
     is_identifier,
     range_contains,
 )
+from .signatures import cell_parameters
 
 
 def semantic_diagnostics(session, uri: str):
@@ -273,6 +274,62 @@ def semantic_diagnostics(session, uri: str):
             ),
             "unknown-{}".format(diagnostic_type),
         )
+
+    # Keyword arguments are checked only for cells whose parameters are all
+    # known: not ORDB nodes, which have none, nor cells whose
+    # params_preprocess may accept other keywords or whose bases the index
+    # does not follow.
+    cell_module = session.installed_module_path("ordec.core.cell")
+    cell_module_uri = None if cell_module is None else cell_module.as_uri()
+    call_parameters = dict()
+    for call in analysis.calls:
+        key = (call.name, call.binding_id)
+        if key not in call_parameters:
+            call_parameters[key] = None
+            definition = session.definition(uri, call.range.start)
+            if definition is not None and definition.kind == "class":
+                members = session.type_members(definition)
+                preprocess = members.get("params_preprocess")
+                parameters = {
+                    parameter["name"] for parameter in cell_parameters(session, definition)
+                }
+                if session.is_ord_uri(definition.uri):
+                    # ORD cells have no bases, but ORD classes can have.
+                    known = not any(
+                        symbol.has_bases
+                        for symbol in session.analyze(definition.uri).symbols
+                        if symbol.selection_range == definition.selection_range
+                    )
+                    known = known and (preprocess is None or preprocess.uri == cell_module_uri)
+                else:
+                    # The bases of a Python cell lead to Cell itself, unless
+                    # the index cannot read one that may declare parameters.
+                    missing = []
+                    session.python_class_members(
+                        definition.python_module,
+                        definition.python_class,
+                        missing=missing,
+                    )
+                    known = (
+                        not missing
+                        and preprocess is not None
+                        and preprocess.uri == cell_module_uri
+                    )
+                if parameters and known:
+                    # A member that the index does not recognize as a
+                    # parameter may still be one.
+                    call_parameters[key] = (definition.name, set(members))
+        if call_parameters[key] is None:
+            continue
+        cell_name, member_names = call_parameters[key]
+        for keyword in call.keywords:
+            if keyword.name not in member_names:
+                add_diagnostic(
+                    keyword.range,
+                    "error",
+                    "Unknown parameter `{}` for `{}`.".format(keyword.name, cell_name),
+                    "unknown-parameter",
+                )
 
     for cell in [symbol for symbol in analysis.symbols if symbol.kind == "class"]:
         cell_viewgens = [

@@ -497,7 +497,8 @@ class PythonModuleIndex:
                         member_default = None
                         if isinstance(class_node.value, ast.Call):
                             func_name = node_name(class_node.value.func)
-                            if func_name == "Parameter":
+                            # The name may be qualified by its module.
+                            if func_name is not None and func_name.split(".")[-1] == "Parameter":
                                 member_kind = "parameter"
                                 for keyword in class_node.value.keywords:
                                     if keyword.arg == "default":
@@ -779,10 +780,22 @@ class PythonModuleIndex:
 
         return refs
 
-    def class_members(self, module_path: Optional[Path], class_name: str, seen=None):
-        """Collect Python class members, including inherited members."""
+    def class_members(
+        self,
+        module_path: Optional[Path],
+        class_name: str,
+        seen=None,
+        missing=None,
+    ):
+        """Collect Python class members, including inherited members.
+
+        ``missing`` collects the names of the classes, among the class and
+        its bases, that the index cannot read.
+        """
         if seen is None:
             seen = set()
+        if missing is None:
+            missing = []
 
         key = (module_path, class_name)
         if key in seen:
@@ -791,6 +804,7 @@ class PythonModuleIndex:
 
         module_info = self.module_info(module_path)
         if module_info is None:
+            missing.append(class_name)
             return dict()
 
         class_name, _, view_path = class_name.partition(".")
@@ -817,6 +831,7 @@ class PythonModuleIndex:
                         node_module_path,
                         node_class_name,
                         seen=seen,
+                        missing=missing,
                     ))
             return members
 
@@ -825,11 +840,13 @@ class PythonModuleIndex:
             # __init__.py). Follow the export to its defining module.
             resolved = self.definition(module_path, export_name=class_name)
             if resolved is None or resolved.python_class is None:
+                missing.append(class_name)
                 return dict()
             return self.class_members(
                 resolved.python_module,
                 resolved.python_class,
                 seen=seen,
+                missing=missing,
             )
 
         members = dict()
@@ -843,6 +860,7 @@ class PythonModuleIndex:
                     source_module_path,
                     source_class_name,
                     seen=seen,
+                    missing=missing,
                 ))
 
         for base_name in class_info["bases"]:
@@ -851,18 +869,19 @@ class PythonModuleIndex:
                     module_path,
                     base_name,
                     seen=seen,
+                    missing=missing,
                 ))
                 continue
 
-            for base_module_path, base_class_name in self.base_class_refs(
-                module_path,
-                module_info,
-                base_name,
-            ):
+            base_refs = self.base_class_refs(module_path, module_info, base_name)
+            if not base_refs:
+                missing.append(base_name)
+            for base_module_path, base_class_name in base_refs:
                 members.update(self.class_members(
                     base_module_path,
                     base_class_name,
                     seen=seen,
+                    missing=missing,
                 ))
 
         members.update(class_info["members"])

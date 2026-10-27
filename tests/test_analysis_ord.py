@@ -197,10 +197,30 @@ def test_semantic_diagnostics(tmp_path):
         cell Other:
             viewgen symbol(self) -> Symbol:
                 input a
+
+        cell Late:
+            n = Parameter(int)
+            q = core.Parameter(int)
+        """))
+    (tmp_path / "pycells.py").write_text(dedent("""\
+        from ordec import core
+        from ordec.core import Cell, Parameter
+        from ordec.core import Parameter as P
+        from elsewhere import Mixin
+
+        class Qualified(Cell):
+            a = Parameter(int)
+            b = core.Parameter(int)
+            d: int = Parameter(int)
+            e = P(int)
+
+        class Mixed(Mixin, Cell):
+            a = Parameter(int)
         """))
     source = dedent("""\
         from .missing import Foo
-        from .helper import Missing
+        from .helper import Missing, Late
+        from .pycells import Qualified, Mixed
         from ordec.lib.generic_mos import Nmos
 
         cell Inv:
@@ -214,13 +234,48 @@ def test_semantic_diagnostics(tmp_path):
                 Nmos pd:
                     .missing -- b
                     .$bogus = 1u
+                Nmos(w=1u, nf=2) pd2
+                Flexible(width=1) f
+                Wide(w=1u, extra=2) wide
+                Late(n=1, k=2, q=3) late
+                Qualified(a=1, b=2, c=3, d=4, e=5) qualified
+                Mixed(a=1, m=2) mixed
             viewgen bad(self) -> Nmos:
                 pass
+
+        class Wide(Nmos):
+            extra = Parameter(R)
+
+        cell Flexible:
+            w = Parameter(R)
+
+            @classmethod
+            def params_preprocess(cls, args, kwargs):
+                return args, {"w": kwargs.get("width")}
+
+            viewgen symbol(self) -> Symbol:
+                input a
         """)
 
     session = AnalysisSession(workspace_root=str(tmp_path))
     uri = (tmp_path / "broken.ord").resolve().as_uri()
     session.open_document(uri, source)
+    messages = [diagnostic.message for diagnostic in session.diagnostics(uri)]
+    assert "Unknown parameter `nf` for `Nmos`." in messages
+    assert "Unknown parameter `w` for `Nmos`." not in messages
+    # A cell with its own params_preprocess may accept other keywords, and a
+    # class with bases may inherit parameters.
+    assert "Unknown parameter `width` for `Flexible`." not in messages
+    assert "Unknown parameter `w` for `Wide`." not in messages
+    # Parameters count under a qualified name too, and a base that the index
+    # cannot read may declare more.
+    assert "Unknown parameter `c` for `Qualified`." in messages
+    assert "Unknown parameter `b` for `Qualified`." not in messages
+    # A member that the index does not recognize as a parameter may be one.
+    assert "Unknown parameter `d` for `Qualified`." not in messages
+    assert "Unknown parameter `e` for `Qualified`." not in messages
+    assert "Unknown parameter `q` for `Late`." not in messages
+    assert "Unknown parameter `m` for `Mixed`." not in messages
 
     assert set(diagnostic_codes(session, uri)) == {
         "unresolved-import",
@@ -231,6 +286,14 @@ def test_semantic_diagnostics(tmp_path):
         "unknown-parameter",
         "unknown-symbol-port",
     }
+
+    # A broken imported document keeps its last good analysis, whose
+    # ranges can lie past the end of its shortened text.
+    assert "Unknown parameter `k` for `Late`." in messages
+    helper_uri = (tmp_path / "helper.ord").resolve().as_uri()
+    session.open_document(helper_uri, "cell Late\n    n = Parameter(int)\n")
+    messages = [diagnostic.message for diagnostic in session.diagnostics(uri)]
+    assert "Unknown parameter `k` for `Late`." in messages
 
 
 def test_ord_imports(tmp_path):
