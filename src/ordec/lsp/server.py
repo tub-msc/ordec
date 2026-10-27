@@ -876,6 +876,9 @@ class OrdLanguageServer:
             line = start["line"]
             char = start["character"]
             length = end["character"] - char
+            # A stale analysis of a broken document can point past a line end.
+            if length <= 0 or end["line"] != line:
+                continue
             token_type = SEMANTIC_TOKEN_TYPE_MAP.get(token["type"], 0)
             modifier_bits = 0
             for modifier in token["modifiers"]:
