@@ -220,7 +220,6 @@ class AnalysisDefinition(NamedTuple):
     selection_range: AnalysisRange
     origin_range: Optional[AnalysisRange] = None
     binding_id: Optional[int] = None
-    scope_id: Optional[int] = None
     exported: Optional[bool] = None
     cell_member: bool = False
     docstring: Optional[str] = None
@@ -248,6 +247,94 @@ class AnalysisImport(NamedTuple):
 
 
 
+class AnalysisScope(NamedTuple):
+    """Lexical scope; ``bindings`` lists the ids of its bindings in order."""
+    id: int
+    parent_id: Optional[int]
+    range: AnalysisRange
+    selection_range: AnalysisRange
+    depth: int
+    bindings: list
+
+
+
+class AnalysisBinding(NamedTuple):
+    """Name bound in a scope, with the type names inferred for it."""
+    id: int
+    name: str
+    kind: str
+    scope_id: int
+    range: AnalysisRange
+    selection_range: AnalysisRange
+    exported: bool
+    type_names: list
+
+
+
+class AnalysisOccurrence(NamedTuple):
+    """Use of a name and the local binding it refers to, if any.
+
+    ``diagnose_unresolved`` marks names reported when they do not resolve.
+    """
+    name: str
+    range: AnalysisRange
+    scope_id: int
+    binding_id: Optional[int]
+    diagnose_unresolved: bool = False
+
+
+
+class AnalysisMemberOccurrence(NamedTuple):
+    """Member access ``x.name`` (mode ``member``) or ``x.$name`` (mode ``parameter``)."""
+    name: str
+    range: AnalysisRange
+    scope_id: int
+    binding_id: Optional[int]
+    type_names: list
+    mode: str
+
+
+
+class AnalysisTypeHint(NamedTuple):
+    """Type names inferred for an assignment target."""
+    range: AnalysisRange
+    type_names: list
+
+
+
+class AnalysisViewgenReturn(NamedTuple):
+    """Dotted return type of a view generator, such as ``core.Schematic``."""
+    return_type: str
+    return_base: str
+    return_binding_id: Optional[int]
+    selection_range: AnalysisRange
+
+
+
+class AnalysisViewgenRange(NamedTuple):
+    """Body range of a view generator; ``return_type`` is None without annotation."""
+    range: AnalysisRange
+    return_type: Optional[str]
+
+
+
+class AnalysisViewgenOldform(NamedTuple):
+    """Legacy parenless viewgen statement, diagnosed as an error."""
+    name: str
+    selection_range: AnalysisRange
+
+
+
+class AnalysisNodeStatement(NamedTuple):
+    """ORD node statement such as ``Inv i1:``."""
+    kind_name: str
+    kind_range: AnalysisRange
+    kind_binding_id: Optional[int]
+    target_name: str
+    target_range: AnalysisRange
+
+
+
 class DocumentAnalysis:
     """Analysis result for one ORD document.
 
@@ -271,7 +358,7 @@ class DocumentAnalysis:
         viewgen_ranges=None,
         viewgen_oldforms=None,
         node_statements=None,
-        constraints=None,
+        constraint_ranges=None,
         type_hints=None,
     ):
         """Initialize a document analysis result.
@@ -294,7 +381,7 @@ class DocumentAnalysis:
             viewgen_oldforms: Records of legacy parenless viewgen
                 statements, diagnosed as errors.
             node_statements: ORD node statement records.
-            constraints: Constraint syntax records.
+            constraint_ranges: Ranges of the constraint statements.
             type_hints: Inferred-type records for assignment targets.
         """
         self.uri = uri
@@ -304,44 +391,24 @@ class DocumentAnalysis:
         self.imports = list(imports) if imports is not None else []
         self.import_entries = list(import_entries) if import_entries is not None else []
         self.exports = list(exports) if exports is not None else []
-        self.scopes = self.copy_scopes(scopes if scopes is not None else dict())
-        self.bindings = self.copy_records(bindings if bindings is not None else [])
-        self.binding_map = dict((binding["id"], binding) for binding in self.bindings)
-        self.occurrences = self.copy_records(occurrences if occurrences is not None else [])
-        self.member_occurrences = self.copy_records(
+        # Records are immutable; copying the containers and the scopes'
+        # binding lists keeps analysis snapshots from aliasing.
+        self.scopes = {
+            scope_id: scope._replace(bindings=list(scope.bindings))
+            for scope_id, scope in (scopes if scopes is not None else dict()).items()
+        }
+        self.bindings = list(bindings if bindings is not None else [])
+        self.binding_map = dict((binding.id, binding) for binding in self.bindings)
+        self.occurrences = list(occurrences if occurrences is not None else [])
+        self.member_occurrences = list(
             member_occurrences if member_occurrences is not None else []
         )
-        self.viewgen_returns = self.copy_records(viewgen_returns if viewgen_returns is not None else [])
-        self.viewgen_ranges = self.copy_records(viewgen_ranges if viewgen_ranges is not None else [])
-        self.viewgen_oldforms = self.copy_records(viewgen_oldforms if viewgen_oldforms is not None else [])
-        self.node_statements = self.copy_records(node_statements if node_statements is not None else [])
-        self.constraints = self.copy_records(constraints if constraints is not None else [])
-        self.type_hints = self.copy_records(type_hints if type_hints is not None else [])
-
-    def copy_scopes(self, scopes):
-        """Return copied scope records so analysis snapshots do not alias."""
-        result = dict()
-        for scope_id, scope in scopes.items():
-            copied = dict(scope)
-            if "bindings" in copied:
-                copied["bindings"] = list(copied["bindings"])
-            result[scope_id] = copied
-        return result
-
-    def copy_records(self, records):
-        """Return copied analysis record dictionaries."""
-        result = []
-        for record in records:
-            copied = dict(record)
-            for key, value in list(copied.items()):
-                if isinstance(value, list):
-                    copied[key] = list(value)
-                elif isinstance(value, set):
-                    copied[key] = set(value)
-                elif isinstance(value, dict):
-                    copied[key] = dict(value)
-            result.append(copied)
-        return result
+        self.viewgen_returns = list(viewgen_returns if viewgen_returns is not None else [])
+        self.viewgen_ranges = list(viewgen_ranges if viewgen_ranges is not None else [])
+        self.viewgen_oldforms = list(viewgen_oldforms if viewgen_oldforms is not None else [])
+        self.node_statements = list(node_statements if node_statements is not None else [])
+        self.constraint_ranges = list(constraint_ranges if constraint_ranges is not None else [])
+        self.type_hints = list(type_hints if type_hints is not None else [])
 
     def has_errors(self):
         """Return whether this analysis contains an error diagnostic."""
@@ -368,7 +435,7 @@ class DocumentAnalysis:
             viewgen_ranges=self.viewgen_ranges,
             viewgen_oldforms=self.viewgen_oldforms,
             node_statements=self.node_statements,
-            constraints=self.constraints,
+            constraint_ranges=self.constraint_ranges,
             type_hints=self.type_hints,
         )
 

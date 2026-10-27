@@ -10,11 +10,20 @@ from lark.indenter import DedentError
 
 # ordec imports
 from .model import (
+    AnalysisBinding,
     AnalysisDiagnostic,
     AnalysisImport,
+    AnalysisMemberOccurrence,
+    AnalysisNodeStatement,
+    AnalysisOccurrence,
     AnalysisPosition,
     AnalysisRange,
+    AnalysisScope,
     AnalysisSymbol,
+    AnalysisTypeHint,
+    AnalysisViewgenOldform,
+    AnalysisViewgenRange,
+    AnalysisViewgenReturn,
     DocumentAnalysis,
     context_type_names_for_kind,
     normalize_line_breaks,
@@ -101,14 +110,14 @@ class OrdAnalysisBuilder:
         self.import_entries = []
         self.exports = []
         self.scopes = {
-            0: {
-                "id": 0,
-                "parent_id": None,
-                "range": tree_range(syntax_tree),
-                "selection_range": tree_range(syntax_tree),
-                "depth": 0,
-                "bindings": [],
-            },
+            0: AnalysisScope(
+                id=0,
+                parent_id=None,
+                range=tree_range(syntax_tree),
+                selection_range=tree_range(syntax_tree),
+                depth=0,
+                bindings=[],
+            ),
         }
         self.scope_bindings = {
             0: dict(),
@@ -120,7 +129,7 @@ class OrdAnalysisBuilder:
         self.viewgen_ranges = []
         self.viewgen_oldforms = []
         self.node_statements = []
-        self.constraints = []
+        self.constraint_ranges = []
         self.type_hints = []
 
     def simple_name_node(self, node):
@@ -200,14 +209,14 @@ class OrdAnalysisBuilder:
     def add_scope(self, node, parent_id, name_node=None):
         """Create and register a child lexical scope."""
         scope_id = len(self.scopes)
-        self.scopes[scope_id] = {
-            "id": scope_id,
-            "parent_id": parent_id,
-            "range": tree_range(node),
-            "selection_range": tree_range(name_node if name_node is not None else node),
-            "depth": self.scopes[parent_id]["depth"] + 1,
-            "bindings": [],
-        }
+        self.scopes[scope_id] = AnalysisScope(
+            id=scope_id,
+            parent_id=parent_id,
+            range=tree_range(node),
+            selection_range=tree_range(name_node if name_node is not None else node),
+            depth=self.scopes[parent_id].depth + 1,
+            bindings=[],
+        )
         self.scope_bindings[scope_id] = dict()
         return scope_id
 
@@ -235,8 +244,8 @@ class OrdAnalysisBuilder:
         """Visit an expression whose unresolved names should be diagnosed."""
         occurrence_start = len(self.occurrences)
         self.visit(node, scope_id, context_type_names=context_type_names)
-        for occurrence in self.occurrences[occurrence_start:]:
-            occurrence["diagnose_unresolved"] = True
+        for index in range(occurrence_start, len(self.occurrences)):
+            self.occurrences[index] = self.occurrences[index]._replace(diagnose_unresolved=True)
 
     def resolve_binding(self, scope_id, name):
         """Resolve a name from a scope through its parent scopes."""
@@ -244,7 +253,7 @@ class OrdAnalysisBuilder:
             binding_id = self.scope_bindings[scope_id].get(name)
             if binding_id is not None:
                 return binding_id
-            scope_id = self.scopes[scope_id]["parent_id"]
+            scope_id = self.scopes[scope_id].parent_id
         return None
 
     def add_binding(
@@ -264,28 +273,27 @@ class OrdAnalysisBuilder:
 
         if binding_id is None:
             binding_id = len(self.bindings) + 1
-            self.bindings.append({
-                "id": binding_id,
-                "name": name,
-                "kind": kind,
-                "scope_id": scope_id,
-                "range": node_range if node_range is not None else tree_range(name_node),
-                "selection_range": tree_range(name_node),
-                "exported": exported,
-                "type_names": type_names,
-            })
-            self.scopes[scope_id]["bindings"].append(binding_id)
+            self.bindings.append(AnalysisBinding(
+                id=binding_id,
+                name=name,
+                kind=kind,
+                scope_id=scope_id,
+                range=node_range if node_range is not None else tree_range(name_node),
+                selection_range=tree_range(name_node),
+                exported=exported,
+                type_names=type_names,
+            ))
+            self.scopes[scope_id].bindings.append(binding_id)
             self.scope_bindings[scope_id][name] = binding_id
         elif type_names:
-            existing_type_names = normalize_type_names(self.bindings[binding_id - 1].get("type_names"))
-            self.bindings[binding_id - 1]["type_names"] = normalize_type_names(existing_type_names + type_names)
+            self.extend_binding_type_names(binding_id, type_names)
 
-        self.occurrences.append({
-            "name": name,
-            "range": tree_range(name_node),
-            "scope_id": scope_id,
-            "binding_id": binding_id,
-        })
+        self.occurrences.append(AnalysisOccurrence(
+            name=name,
+            range=tree_range(name_node),
+            scope_id=scope_id,
+            binding_id=binding_id,
+        ))
 
         return binding_id
 
@@ -296,30 +304,36 @@ class OrdAnalysisBuilder:
 
         if binding_id is not None:
             if type_names:
-                existing_type_names = normalize_type_names(self.bindings[binding_id - 1].get("type_names"))
-                self.bindings[binding_id - 1]["type_names"] = normalize_type_names(existing_type_names + type_names)
+                self.extend_binding_type_names(binding_id, type_names)
             return binding_id
 
         binding_id = len(self.bindings) + 1
-        self.bindings.append({
-            "id": binding_id,
-            "name": name,
-            "kind": kind,
-            "scope_id": scope_id,
-            "range": value_range,
-            "selection_range": value_range,
-            "exported": False,
-            "type_names": type_names,
-        })
-        self.scopes[scope_id]["bindings"].append(binding_id)
+        self.bindings.append(AnalysisBinding(
+            id=binding_id,
+            name=name,
+            kind=kind,
+            scope_id=scope_id,
+            range=value_range,
+            selection_range=value_range,
+            exported=False,
+            type_names=type_names,
+        ))
+        self.scopes[scope_id].bindings.append(binding_id)
         self.scope_bindings[scope_id][name] = binding_id
         return binding_id
+
+    def extend_binding_type_names(self, binding_id, type_names):
+        """Add inferred type names to an existing binding."""
+        binding = self.bindings[binding_id - 1]
+        self.bindings[binding_id - 1] = binding._replace(
+            type_names=normalize_type_names(normalize_type_names(binding.type_names) + type_names),
+        )
 
     def binding_type_names(self, binding_id):
         """Return candidate type names attached to a binding."""
         if binding_id is None:
             return []
-        return normalize_type_names(self.bindings[binding_id - 1].get("type_names"))
+        return normalize_type_names(self.bindings[binding_id - 1].type_names)
 
     def bind_target(
         self,
@@ -507,22 +521,22 @@ class OrdAnalysisBuilder:
         if self.simple_name_node(target_node) is None:
             return
 
-        self.type_hints.append({
-            "range": tree_range(target_node),
-            "type_names": type_names,
-        })
+        self.type_hints.append(AnalysisTypeHint(
+            range=tree_range(target_node),
+            type_names=type_names,
+        ))
 
     def add_reference(self, scope_id, name_node):
         """Register a name reference occurrence."""
         name = tree_text(name_node)
         binding_id = self.resolve_binding(scope_id, name)
 
-        self.occurrences.append({
-            "name": name,
-            "range": tree_range(name_node),
-            "scope_id": scope_id,
-            "binding_id": binding_id,
-        })
+        self.occurrences.append(AnalysisOccurrence(
+            name=name,
+            range=tree_range(name_node),
+            scope_id=scope_id,
+            binding_id=binding_id,
+        ))
 
     def bind_parameters(self, node, outer_scope_id, function_scope_id):
         """Bind parameters while visiting defaults and annotations outside."""
@@ -594,10 +608,7 @@ class OrdAnalysisBuilder:
         binding_id = self.scope_bindings[viewgen_scope_id].get(tree_text(name_node))
         if binding_id is None:
             return
-        existing_type_names = normalize_type_names(self.bindings[binding_id - 1].get("type_names"))
-        self.bindings[binding_id - 1]["type_names"] = normalize_type_names(
-            existing_type_names + receiver_type_names
-        )
+        self.extend_binding_type_names(binding_id, receiver_type_names)
 
     def first_parameter_name_node(self, parameters_node):
         """Return the name node of the first positional parameter, or None."""
@@ -794,11 +805,10 @@ class OrdAnalysisBuilder:
             # the body is not analyzed.
             for child in node.children:
                 if isinstance(child, Tree) and child.data == "name":
-                    self.viewgen_oldforms.append({
-                        "name": tree_text(child),
-                        "range": tree_range(node),
-                        "selection_range": tree_range(child),
-                    })
+                    self.viewgen_oldforms.append(AnalysisViewgenOldform(
+                        name=tree_text(child),
+                        selection_range=tree_range(child),
+                    ))
                     break
             return
 
@@ -843,26 +853,23 @@ class OrdAnalysisBuilder:
                         if return_nodes is not None:
                             base_node, type_node = return_nodes
                             return_type = tree_text(type_node)
-                            self.viewgen_returns.append({
-                                "name": name,
-                                "return_type": return_type,
-                                "return_base": tree_text(base_node),
-                                "return_binding_id": self.resolve_binding(
+                            self.viewgen_returns.append(AnalysisViewgenReturn(
+                                return_type=return_type,
+                                return_base=tree_text(base_node),
+                                return_binding_id=self.resolve_binding(
                                     scope_id,
                                     tree_text(base_node),
                                 ),
-                                "range": tree_range(node),
-                                "selection_range": tree_range(child),
-                                "viewgen_range": tree_range(node),
-                            })
+                                selection_range=tree_range(child),
+                            ))
                         break
                     # Recorded for every viewgen, annotated or not: the
                     # constraint diagnostic needs the body range even when
                     # the return annotation is omitted (`. = ...` adoption).
-                    self.viewgen_ranges.append({
-                        "range": tree_range(node),
-                        "return_type": return_type,
-                    })
+                    self.viewgen_ranges.append(AnalysisViewgenRange(
+                        range=tree_range(node),
+                        return_type=return_type,
+                    ))
                 child_scope_id = self.add_scope(node, scope_id, name_node=name_node)
                 if node.data == "celldef":
                     self.add_synthetic_binding(
@@ -901,26 +908,25 @@ class OrdAnalysisBuilder:
                 kind_binding_id = None
                 if kind_name_node is not None:
                     kind_binding_id = self.resolve_binding(scope_id, tree_text(kind_name_node))
-                self.node_statements.append({
-                    "kind_name": kind_name,
-                    "kind_range": tree_range(
+                self.node_statements.append(AnalysisNodeStatement(
+                    kind_name=kind_name,
+                    kind_range=tree_range(
                         kind_name_node if kind_name_node is not None else kind_node
                     ),
-                    "kind_binding_id": kind_binding_id,
-                    "target_name": tree_text(target_node),
-                    "target_range": tree_range(target_node),
-                    "range": tree_range(node),
-                })
+                    kind_binding_id=kind_binding_id,
+                    target_name=tree_text(target_node),
+                    target_range=tree_range(target_node),
+                ))
                 if kind_name_node is not None:
                     # Record the node kind as a reference occurrence so that
                     # references, rename, and call hierarchy see cell
                     # instantiation sites.
-                    self.occurrences.append({
-                        "name": kind_name,
-                        "range": tree_range(kind_name_node),
-                        "scope_id": scope_id,
-                        "binding_id": kind_binding_id,
-                    })
+                    self.occurrences.append(AnalysisOccurrence(
+                        name=kind_name,
+                        range=tree_range(kind_name_node),
+                        scope_id=scope_id,
+                        binding_id=kind_binding_id,
+                    ))
 
                 self.symbols.append(AnalysisSymbol(
                     name="{} {}".format(kind_name, tree_text(target_node)),
@@ -966,12 +972,12 @@ class OrdAnalysisBuilder:
                     kind_binding_id = self.resolve_binding(scope_id, tree_text(kind_name_node))
                     # Same as node_stmt: expose the node kind as a reference
                     # occurrence for references, rename, and call hierarchy.
-                    self.occurrences.append({
-                        "name": kind_name,
-                        "range": tree_range(kind_name_node),
-                        "scope_id": scope_id,
-                        "binding_id": kind_binding_id,
-                    })
+                    self.occurrences.append(AnalysisOccurrence(
+                        name=kind_name,
+                        range=tree_range(kind_name_node),
+                        scope_id=scope_id,
+                        binding_id=kind_binding_id,
+                    ))
                 self.visit_kind_expression(kind_node, scope_id)
 
                 target_names = []
@@ -983,16 +989,15 @@ class OrdAnalysisBuilder:
                     if selection_node is None:
                         selection_node = target_node
                     target_names.append(tree_text(target_node))
-                    self.node_statements.append({
-                        "kind_name": kind_name,
-                        "kind_range": tree_range(
+                    self.node_statements.append(AnalysisNodeStatement(
+                        kind_name=kind_name,
+                        kind_range=tree_range(
                             kind_name_node if kind_name_node is not None else kind_node
                         ),
-                        "kind_binding_id": kind_binding_id,
-                        "target_name": tree_text(target_node),
-                        "target_range": tree_range(target_node),
-                        "range": tree_range(node),
-                    })
+                        kind_binding_id=kind_binding_id,
+                        target_name=tree_text(target_node),
+                        target_range=tree_range(target_node),
+                    ))
 
                     name_node = self.simple_name_node(target_node)
                     if name_node is not None:
@@ -1042,14 +1047,13 @@ class OrdAnalysisBuilder:
                 names.append(tree_text(child))
                 # Each declared name is its own node statement record, so cell
                 # member collection sees multi-name declarations too.
-                self.node_statements.append({
-                    "kind_name": kind_name,
-                    "kind_range": tree_range(node),
-                    "kind_binding_id": None,
-                    "target_name": tree_text(child),
-                    "target_range": tree_range(child),
-                    "range": tree_range(node),
-                })
+                self.node_statements.append(AnalysisNodeStatement(
+                    kind_name=kind_name,
+                    kind_range=tree_range(node),
+                    kind_binding_id=None,
+                    target_name=tree_text(child),
+                    target_range=tree_range(child),
+                ))
 
                 name_node = self.simple_name_node(child)
                 if name_node is not None:
@@ -1392,9 +1396,7 @@ class OrdAnalysisBuilder:
             return
 
         if node.data == "constrain_stmt":
-            self.constraints.append({
-                "range": tree_range(node),
-            })
+            self.constraint_ranges.append(tree_range(node))
             for child in node.children:
                 if isinstance(child, Tree):
                     self.visit(child, scope_id, context_type_names=context_type_names)
@@ -1426,14 +1428,14 @@ class OrdAnalysisBuilder:
                     context_type_names=context_type_names,
                 )
 
-            self.member_occurrences.append({
-                "name": tree_text(name_node),
-                "range": tree_range(name_node),
-                "scope_id": scope_id,
-                "binding_id": binding_id,
-                "type_names": normalize_type_names(type_names),
-                "mode": "member",
-            })
+            self.member_occurrences.append(AnalysisMemberOccurrence(
+                name=tree_text(name_node),
+                range=tree_range(name_node),
+                scope_id=scope_id,
+                binding_id=binding_id,
+                type_names=normalize_type_names(type_names),
+                mode="member",
+            ))
             self.visit(base_node, scope_id, context_type_names=context_type_names)
             return
 
@@ -1453,26 +1455,26 @@ class OrdAnalysisBuilder:
                 ))
                 self.visit(base_node, scope_id, context_type_names=context_type_names)
 
-            self.member_occurrences.append({
-                "name": tree_text(name_node),
-                "range": tree_range(name_node),
-                "scope_id": scope_id,
-                "binding_id": binding_id,
-                "type_names": normalize_type_names(type_names),
-                "mode": "parameter",
-            })
+            self.member_occurrences.append(AnalysisMemberOccurrence(
+                name=tree_text(name_node),
+                range=tree_range(name_node),
+                scope_id=scope_id,
+                binding_id=binding_id,
+                type_names=normalize_type_names(type_names),
+                mode="parameter",
+            ))
             return
 
         if node.data == "dotted_atom" and len(node.children) == 1:
             name_node = node.children[0]
-            self.member_occurrences.append({
-                "name": tree_text(name_node),
-                "range": tree_range(name_node),
-                "scope_id": scope_id,
-                "binding_id": None,
-                "type_names": normalize_type_names(context_type_names),
-                "mode": "member",
-            })
+            self.member_occurrences.append(AnalysisMemberOccurrence(
+                name=tree_text(name_node),
+                range=tree_range(name_node),
+                scope_id=scope_id,
+                binding_id=None,
+                type_names=normalize_type_names(context_type_names),
+                mode="member",
+            ))
             return
 
         if node.data == "var":
@@ -1513,7 +1515,7 @@ class OrdAnalysisBuilder:
             viewgen_ranges=self.viewgen_ranges,
             viewgen_oldforms=self.viewgen_oldforms,
             node_statements=self.node_statements,
-            constraints=self.constraints,
+            constraint_ranges=self.constraint_ranges,
             type_hints=self.type_hints,
         )
 

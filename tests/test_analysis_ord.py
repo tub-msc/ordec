@@ -1161,7 +1161,7 @@ def test_dotted_viewgen_returns(tmp_path):
 
     # The rightmost name is the return type, so the constraint inside
     # the schematic viewgen is valid and no false error is reported.
-    assert [record["return_type"] for record in analysis.viewgen_returns] == [
+    assert [record.return_type for record in analysis.viewgen_returns] == [
         "Schematic",
         "CustomView",
     ]
@@ -1267,9 +1267,9 @@ def test_subtree_bindings():
     assert session.definition(uri, position_at(source, "lib", occurrence=2)).name == "lib"
     item_definition = session.definition(uri, position_at(source, "item for"))
     assert item_definition.selection_range.start == position_at(source, "item in")
-    i1_binding = next(binding for binding in analysis.bindings if binding["name"] == "i1")
-    assert i1_binding["type_names"] == ["Inv"]
-    assert any(member["name"] == "Inv" for member in analysis.member_occurrences)
+    i1_binding = next(binding for binding in analysis.bindings if binding.name == "i1")
+    assert i1_binding.type_names == ["Inv"]
+    assert any(member.name == "Inv" for member in analysis.member_occurrences)
 
 
 def test_relative_from_imports(tmp_path):
@@ -1694,7 +1694,7 @@ def test_multi_target_node_statements():
         ("context", "port b"),
     ]
     assert [
-        statement["target_name"] for statement in analysis.node_statements
+        statement.target_name for statement in analysis.node_statements
     ] == ["a", "b", "a", "b"]
 
     # Pin extraction reads the per-target node statements, so both names

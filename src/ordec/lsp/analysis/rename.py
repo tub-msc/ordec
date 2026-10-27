@@ -80,20 +80,20 @@ def rename_conflict(session, definition, new_name: str):
     binding = analysis.binding_map.get(definition.binding_id)
     if binding is None:
         for candidate in analysis.bindings:
-            if candidate["selection_range"] == definition.selection_range:
+            if candidate.selection_range == definition.selection_range:
                 binding = candidate
                 break
     if binding is None:
         return None
 
-    scope = analysis.scopes.get(binding["scope_id"])
+    scope = analysis.scopes.get(binding.scope_id)
     if scope is None:
         return None
-    for binding_id in scope["bindings"]:
+    for binding_id in scope.bindings:
         candidate = analysis.binding_map.get(binding_id)
-        if candidate is None or candidate["id"] == binding["id"]:
+        if candidate is None or candidate.id == binding.id:
             continue
-        if candidate["name"] == new_name:
+        if candidate.name == new_name:
             return candidate
     return None
 

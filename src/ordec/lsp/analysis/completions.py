@@ -147,8 +147,8 @@ def completion_type_names(session, uri: str, position: AnalysisPosition, context
         base_name = identifier
 
     for binding in session.visible_bindings(uri, position):
-        if binding["name"] == base_name:
-            return session.normalize_type_names(binding.get("type_names"))
+        if binding.name == base_name:
+            return session.normalize_type_names(binding.type_names)
 
     return []
 
@@ -227,13 +227,13 @@ def completions(session, uri: str, position: AnalysisPosition):
         ]
 
     for binding in session.visible_bindings(uri, position):
-        if not is_identifier(binding["name"]):
+        if not is_identifier(binding.name):
             continue
 
-        items.setdefault(binding["name"], {
-            "label": binding["name"],
-            "kind": binding["kind"],
-            "detail": binding["kind"],
+        items.setdefault(binding.name, {
+            "label": binding.name,
+            "kind": binding.kind,
+            "detail": binding.kind,
         })
 
     for symbol in analysis.symbols:

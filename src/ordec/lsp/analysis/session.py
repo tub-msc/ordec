@@ -746,39 +746,37 @@ class AnalysisSession:
         analysis = self.analyze(uri)
 
         for binding in analysis.bindings:
-            if not range_contains(binding["selection_range"], position):
+            if not range_contains(binding.selection_range, position):
                 continue
 
             return AnalysisDefinition(
                 uri=uri,
-                name=binding["name"],
-                kind=binding["kind"],
-                range=binding["range"],
-                selection_range=binding["selection_range"],
-                origin_range=binding["selection_range"],
-                binding_id=binding["id"],
-                scope_id=binding["scope_id"],
-                exported=binding["exported"],
+                name=binding.name,
+                kind=binding.kind,
+                range=binding.range,
+                selection_range=binding.selection_range,
+                origin_range=binding.selection_range,
+                binding_id=binding.id,
+                exported=binding.exported,
             )
 
         for occurrence in analysis.occurrences:
-            if not range_contains(occurrence["range"], position):
+            if not range_contains(occurrence.range, position):
                 continue
 
-            binding = analysis.binding_map.get(occurrence["binding_id"])
+            binding = analysis.binding_map.get(occurrence.binding_id)
             if binding is None:
                 continue
 
             return AnalysisDefinition(
                 uri=uri,
-                name=binding["name"],
-                kind=binding["kind"],
-                range=binding["range"],
-                selection_range=binding["selection_range"],
-                origin_range=occurrence["range"],
-                binding_id=binding["id"],
-                scope_id=binding["scope_id"],
-                exported=binding["exported"],
+                name=binding.name,
+                kind=binding.kind,
+                range=binding.range,
+                selection_range=binding.selection_range,
+                origin_range=occurrence.range,
+                binding_id=binding.id,
+                exported=binding.exported,
             )
 
         return None
@@ -796,10 +794,10 @@ class AnalysisSession:
         scope = analysis.scopes[0]
 
         for current_scope in analysis.scopes.values():
-            if not range_contains(current_scope["range"], position):
+            if not range_contains(current_scope.range, position):
                 continue
 
-            if current_scope["depth"] <= scope["depth"]:
+            if current_scope.depth <= scope.depth:
                 continue
 
             scope = current_scope
@@ -808,18 +806,18 @@ class AnalysisSession:
         visible_names = set()
 
         while scope is not None:
-            for binding_id in reversed(scope["bindings"]):
+            for binding_id in reversed(scope.bindings):
                 binding = analysis.binding_map[binding_id]
-                if binding["name"] in visible_names:
+                if binding.name in visible_names:
                     continue
 
-                if not position_before_or_equal(binding["selection_range"].start, position):
+                if not position_before_or_equal(binding.selection_range.start, position):
                     continue
 
                 visible_bindings.append(binding)
-                visible_names.add(binding["name"])
+                visible_names.add(binding.name)
 
-            parent_id = scope["parent_id"]
+            parent_id = scope.parent_id
             if parent_id is None:
                 scope = None
             else:
@@ -854,15 +852,15 @@ class AnalysisSession:
 
         for occurrence in analysis.occurrences:
             candidates.append({
-                "name": occurrence["name"],
-                "range": occurrence["range"],
-                "binding_id": occurrence.get("binding_id"),
+                "name": occurrence.name,
+                "range": occurrence.range,
+                "binding_id": occurrence.binding_id,
             })
 
         for occurrence in analysis.member_occurrences:
             candidates.append({
-                "name": occurrence["name"],
-                "range": occurrence["range"],
+                "name": occurrence.name,
+                "range": occurrence.range,
             })
 
         return candidates
@@ -1088,19 +1086,20 @@ class AnalysisSession:
 
         # Module-scope assignments below the use site still resolve:
         # viewgens execute deferred, like Python globals read at call time.
-        for binding_id in analysis.scopes.get(0, {}).get("bindings", []):
+        module_scope = analysis.scopes.get(0)
+        for binding_id in module_scope.bindings if module_scope is not None else []:
             binding = analysis.binding_map.get(binding_id)
-            if binding is None or binding["name"] != name:
+            if binding is None or binding.name != name:
                 continue
 
             return AnalysisDefinition(
                 uri=uri,
-                name=binding["name"],
-                kind=binding["kind"],
-                range=binding["range"],
-                selection_range=binding["selection_range"],
-                binding_id=binding["id"],
-                exported=binding.get("exported"),
+                name=binding.name,
+                kind=binding.kind,
+                range=binding.range,
+                selection_range=binding.selection_range,
+                binding_id=binding.id,
+                exported=binding.exported,
             )
 
         return None
@@ -1188,17 +1187,17 @@ class AnalysisSession:
             return binding_ids
 
         target_ranges = sorted(
-            (statement["target_range"] for statement in analysis.node_statements),
+            (statement.target_range for statement in analysis.node_statements),
             key=lambda target_range: target_range.start,
         )
         target_starts = [target_range.start for target_range in target_ranges]
 
         binding_ids = set()
         for binding in analysis.bindings:
-            position = binding["selection_range"].start
+            position = binding.selection_range.start
             index = bisect_right(target_starts, position) - 1
             if index >= 0 and range_contains(target_ranges[index], position):
-                binding_ids.add(binding["id"])
+                binding_ids.add(binding.id)
 
         cache["node_target_binding_ids"] = binding_ids
         return binding_ids
@@ -1239,19 +1238,19 @@ class AnalysisSession:
         members = dict()
 
         def add_binding_member(binding):
-            kind = binding["kind"]
+            kind = binding.kind
             # ORD cell parameters are `name = Parameter(...)` assignments in
             # the cell body. The inferred value type identifies them.
-            if "Parameter" in (binding.get("type_names") or []):
+            if "Parameter" in (binding.type_names or []):
                 kind = "parameter"
 
-            members.setdefault(binding["name"], AnalysisDefinition(
+            members.setdefault(binding.name, AnalysisDefinition(
                 uri=cell_uri,
-                name=binding["name"],
+                name=binding.name,
                 kind=kind,
-                range=binding["range"],
-                selection_range=binding["selection_range"],
-                binding_id=binding["id"],
+                range=binding.range,
+                selection_range=binding.selection_range,
+                binding_id=binding.id,
                 cell_member=True,
             ))
 
@@ -1259,14 +1258,14 @@ class AnalysisSession:
         # covers self.schematic/self.layout and compact tests that declare pins
         # directly in the cell body.
         for scope in analysis.scopes.values():
-            if scope["depth"] != 1:
+            if scope.depth != 1:
                 continue
-            if not range_contains(scope["range"], cell_symbol.selection_range.start):
+            if not range_contains(scope.range, cell_symbol.selection_range.start):
                 continue
 
-            for binding_id in scope["bindings"]:
+            for binding_id in scope.bindings:
                 binding = analysis.binding_map.get(binding_id)
-                if binding is None or binding["name"] == "self":
+                if binding is None or binding.name == "self":
                     continue
                 add_binding_member(binding)
 
@@ -1287,9 +1286,9 @@ class AnalysisSession:
 
             for binding_id in node_binding_ids:
                 binding = analysis.binding_map.get(binding_id)
-                if binding is None or binding["kind"] != "variable":
+                if binding is None or binding.kind != "variable":
                     continue
-                if not range_contains(symbol.range, binding["selection_range"].start):
+                if not range_contains(symbol.range, binding.selection_range.start):
                     continue
                 add_binding_member(binding)
 
@@ -1388,14 +1387,14 @@ class AnalysisSession:
         analysis = self.analyze(uri)
 
         for occurrence in analysis.member_occurrences:
-            if not range_contains(occurrence["range"], position):
+            if not range_contains(occurrence.range, position):
                 continue
 
-            type_names = list(occurrence["type_names"])
-            if occurrence["binding_id"] is not None:
-                binding = analysis.binding_map.get(occurrence["binding_id"])
+            type_names = list(occurrence.type_names)
+            if occurrence.binding_id is not None:
+                binding = analysis.binding_map.get(occurrence.binding_id)
                 if binding is not None:
-                    type_names = list(binding.get("type_names", [])) + type_names
+                    type_names = list(binding.type_names) + type_names
 
             seen_type_names = set()
             for type_name in type_names:
@@ -1407,9 +1406,9 @@ class AnalysisSession:
                 if type_definition is None:
                     continue
 
-                match = self.type_members(type_definition).get(occurrence["name"])
+                match = self.type_members(type_definition).get(occurrence.name)
                 if match is not None:
-                    return self.definition_with_origin(match, occurrence["range"])
+                    return self.definition_with_origin(match, occurrence.range)
 
         return None
 
@@ -1420,7 +1419,7 @@ class AnalysisSession:
             return None
 
         for occurrence in self.analyze(uri).member_occurrences:
-            if range_contains(occurrence["range"], position):
+            if range_contains(occurrence.range, position):
                 return occurrence
 
         return None
@@ -1491,13 +1490,13 @@ class AnalysisSession:
         # Build a sorted list of candidate containers from scopes and symbols.
         containers = []
         for scope in analysis.scopes.values():
-            containers.append(scope["range"])
+            containers.append(scope.range)
         for symbol in analysis.symbols:
             containers.append(symbol.range)
             containers.append(symbol.selection_range)
         for binding in analysis.bindings:
-            containers.append(binding["range"])
-            containers.append(binding["selection_range"])
+            containers.append(binding.range)
+            containers.append(binding.selection_range)
 
         # Deduplicate and sort by size descending (outermost first).
         unique_containers = sorted(
@@ -1572,14 +1571,14 @@ class AnalysisSession:
         # the definition they resolve to.
         resolved_kinds = dict()
         for occurrence in analysis.occurrences:
-            binding = analysis.binding_map.get(occurrence["binding_id"])
+            binding = analysis.binding_map.get(occurrence.binding_id)
             modifiers = []
             if binding is not None:
-                kind = binding["kind"]
-                if occurrence["range"] == binding["selection_range"]:
+                kind = binding.kind
+                if occurrence.range == binding.selection_range:
                     modifiers.append("definition")
             else:
-                name = occurrence["name"]
+                name = occurrence.name
                 if name not in resolved_kinds:
                     definition = self.resolve_name(uri, name)
                     resolved_kinds[name] = None if definition is None else definition.kind
@@ -1588,7 +1587,7 @@ class AnalysisSession:
                     continue
 
             tokens.append({
-                "range": occurrence["range"],
+                "range": occurrence.range,
                 "type": KIND_TOKEN_TYPES.get(kind, "variable"),
                 "modifiers": modifiers,
             })
@@ -1596,7 +1595,7 @@ class AnalysisSession:
         # Classify member occurrences as properties.
         for occurrence in analysis.member_occurrences:
             tokens.append({
-                "range": occurrence["range"],
+                "range": occurrence.range,
                 "type": "property",
                 "modifiers": [],
             })
@@ -1794,7 +1793,7 @@ class AnalysisSession:
         if local is not None and local.binding_id is not None:
             binding = analysis.binding_map.get(local.binding_id)
             if binding is not None:
-                type_names = list(binding.get("type_names", []))
+                type_names = list(binding.type_names)
                 origin_range = local.origin_range
 
         for type_name in self.normalize_type_names(type_names):
@@ -1818,7 +1817,7 @@ class AnalysisSession:
         analysis = self.analyze(uri)
         hints = []
         for record in analysis.type_hints:
-            position = record["range"].end
+            position = record.range.end
             if value_range is not None:
                 if not position_before_or_equal(value_range.start, position):
                     continue
@@ -1827,7 +1826,7 @@ class AnalysisSession:
 
             # Only show hints whose type name resolves to a real cell or
             # class, so heuristic guesses do not turn into noise.
-            for type_name in record["type_names"]:
+            for type_name in record.type_names:
                 resolved = self.resolve_completion_type(uri, type_name)
                 if resolved is None or resolved.kind != "class":
                     continue
