@@ -31,6 +31,7 @@ import queue
 import sys
 import threading
 import traceback
+from typing import Optional
 
 # ordec imports
 from .analysis import AnalysisPosition, AnalysisRange, AnalysisSession, file_uri_to_path, source_line_table, split_source_lines
@@ -292,7 +293,7 @@ class OrdLanguageServer:
             text_document["text"],
             version=text_document.get("version"),
         )
-        return [self.publish_diagnostics(uri)]
+        return self.publish_outdated_diagnostics(uri)
 
     def handle_did_change(self, message):
         params = message.get("params", {})
@@ -320,7 +321,7 @@ class OrdLanguageServer:
             text,
             version=text_document.get("version"),
         )
-        return [self.publish_diagnostics(uri)]
+        return self.publish_outdated_diagnostics(uri)
 
     def apply_incremental_change(self, text: str, change):
         """Apply one range-based LSP content change to document text."""
@@ -363,7 +364,7 @@ class OrdLanguageServer:
                 "uri": uri,
                 "diagnostics": [],
             },
-        }]
+        }] + self.publish_outdated_diagnostics()
 
     def handle_did_save(self, message):
         params = message.get("params", {})
@@ -378,7 +379,7 @@ class OrdLanguageServer:
             self.session.update_document(uri, params["text"], version=version)
         else:
             self.session.invalidate_uri(uri)
-        return [self.publish_diagnostics(uri)]
+        return self.publish_outdated_diagnostics(uri)
 
     def open_document_uris(self):
         """Return open document URIs currently tracked by the analysis session."""
@@ -388,61 +389,13 @@ class OrdLanguageServer:
             if doc.get("is_open")
         }
 
-    def is_python_uri(self, uri: str):
-        """Return whether a URI points to a Python source file."""
-        return self.session.file_uri_suffix(uri) == ".py"
-
     def handle_did_change_watched_files(self, message):
-        affected_uris = set()
-        open_uris = self.open_document_uris()
-        changes = message.get("params", {}).get("changes", [])
-        ord_uris = {
-            self.file_change_uri(change)
-            for change in changes
-            if self.session.is_ord_uri(change["uri"])
-        }
-
-        # A file that comes or goes can change any import, and the import
-        # graph has no edges to deleted files: refresh every open document.
-        if any(change.get("type") != FILE_CHANGE_TYPE_CHANGED for change in changes):
-            affected_uris.update(open_uris)
-
-        for uri in ord_uris:
-            if uri in open_uris:
-                affected_uris.add(uri)
-            affected_uris.update(self.session.workspace_dependents(uri))
-
-        python_changed = False
-        canonical_ord_uris = set()
-        for change in changes:
-            uri = self.file_change_uri(change)
-            # Documents can reach an .ord file through Python modules, which
-            # the import graph misses. Check before invalidation forgets it.
-            if self.session.is_ord_uri(uri) and self.session.read_by_python_index(uri):
-                python_changed = True
-
-            canonical_invalidated_uri = self.session.invalidate_uri(
-                uri,
+        for change in message.get("params", {}).get("changes", []):
+            self.session.invalidate_uri(
+                self.file_change_uri(change),
                 created_or_deleted=change.get("type") != FILE_CHANGE_TYPE_CHANGED,
             )
-            if canonical_invalidated_uri is not None:
-                if canonical_invalidated_uri in open_uris:
-                    affected_uris.add(canonical_invalidated_uri)
-                if self.session.is_ord_uri(canonical_invalidated_uri):
-                    canonical_ord_uris.add(canonical_invalidated_uri)
-            elif self.is_python_uri(uri):
-                python_changed = True
-
-        for uri in canonical_ord_uris:
-            affected_uris.update(self.session.workspace_dependents(uri))
-
-        if python_changed:
-            affected_uris.update(open_uris)
-
-        return [
-            self.publish_diagnostics(uri)
-            for uri in sorted(affected_uris & open_uris)
-        ]
+        return self.publish_outdated_diagnostics()
 
     def handle_document_symbol(self, message):
         uri = self.message_text_document_uri(message)
@@ -943,6 +896,16 @@ class OrdLanguageServer:
                 ),
             }
         return self.result_response(message, result)
+
+    def publish_outdated_diagnostics(self, uri: Optional[str] = None):
+        """Publish ``uri`` first, then open documents whose diagnostics changed."""
+        uris = [] if uri is None else [uri]
+        uris.extend(
+            open_uri
+            for open_uri in sorted(self.open_document_uris())
+            if open_uri != uri and self.session.diagnostics_outdated(open_uri)
+        )
+        return [self.publish_diagnostics(publish_uri) for publish_uri in uris]
 
     def publish_diagnostics(self, uri: str):
         """Build a publishDiagnostics notification for a document URI."""

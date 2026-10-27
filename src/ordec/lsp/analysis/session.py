@@ -3,6 +3,7 @@
 
 # standard imports
 from bisect import bisect_right
+import importlib
 import os
 import re
 from pathlib import Path
@@ -25,6 +26,7 @@ from .model import (
 from .model import normalize_type_names as normalize_type_name_list
 from .parser_pass import analyze_ord
 from .python_index import PythonModuleIndex
+from .revisions import Revisions
 
 # Dependency and build-output directories that never hold workspace design
 # sources (build outputs would surface stale duplicates). Hidden directories
@@ -76,11 +78,12 @@ class AnalysisSession:
         self.documents = dict()
         self.document_access_counter = 0
         self.canonical_uri_cache = dict()
-        self.resolver = ImportResolver(self.workspace_root)
+        self.revisions = Revisions()
+        self.diagnostics_cache = dict()
+        self.resolver = ImportResolver(self.workspace_root, self.revisions)
         self.python_index = PythonModuleIndex(self.resolver)
         self.workspace_uri_cache = None
         self.workspace_index = None
-        self.workspace_dirty_uris = set()
 
     def canonical_uri(self, uri: str):
         """Return the canonical session key for a URI.
@@ -170,6 +173,7 @@ class AnalysisSession:
 
         for _, uri in sorted(closed)[:overflow]:
             self.documents.pop(uri, None)
+            self.diagnostics_cache.pop(uri, None)
 
     def last_good_analysis(self, doc):
         """Return the latest error-free analysis for a document record."""
@@ -185,28 +189,6 @@ class AnalysisSession:
     def invalidate_workspace_index(self):
         """Clear cached workspace dependency information."""
         self.workspace_index = None
-        self.workspace_dirty_uris.clear()
-
-    def mark_workspace_uri_dirty(self, uri: str):
-        """Mark one ORD document's workspace-import row as stale."""
-        uri = self.canonical_uri(uri)
-        if not self.is_ord_uri(uri):
-            return
-
-        if not self.workspace_index_may_track(uri):
-            return
-
-        self.workspace_dirty_uris.add(uri)
-
-    def workspace_index_may_track(self, uri: str):
-        """Return whether a URI could affect the workspace import graph."""
-        if self.workspace_index is None:
-            return False
-
-        if uri in self.workspace_index["uris"]:
-            return True
-
-        return self.uri_in_workspace(uri)
 
     def uri_in_workspace(self, uri: str):
         """Return whether a file URI is inside the configured workspace."""
@@ -254,9 +236,12 @@ class AnalysisSession:
         version: Optional[int] = None,
         is_open: bool = True,
     ):
-        """Store a document snapshot and mark related workspace state dirty."""
+        """Store a document snapshot, bumping its revision when the text changed."""
         uri = self.canonical_uri(uri)
         previous = self.documents.get(uri)
+        # A document evicted while closed has no previous record.
+        if previous is None or previous["text"] != text:
+            self.revisions.bump(("doc", uri))
         self.documents[uri] = {
             "text": text,
             "version": version,
@@ -266,7 +251,15 @@ class AnalysisSession:
             "last_access": 0,
         }
         self.record_document_access(uri)
-        self.mark_workspace_uri_dirty(uri)
+        # The import index covers the documents it was built from.
+        index = self.workspace_index
+        if (
+            index is not None
+            and uri not in index["uris"]
+            and self.is_ord_uri(uri)
+            and self.uri_in_workspace(uri)
+        ):
+            self.invalidate_workspace_index()
         return uri
 
     def close_document(self, uri: str):
@@ -276,19 +269,25 @@ class AnalysisSession:
         if document is None:
             return
 
+        # The file on disk replaces the editor text.
+        self.revisions.bump(("doc", uri))
+
         path = self.file_uri_path(uri)
         if path is None or not path.is_file():
-            self.mark_workspace_uri_dirty(uri)
             return
 
         try:
             self.open_path(str(path))
         except (OSError, UnicodeDecodeError):
-            self.mark_workspace_uri_dirty(uri)
+            # Unreadable files are loaded again on their next use.
+            return
 
     def ensure_document(self, uri: str):
         """Load a file-backed document when it is not already tracked."""
         uri = self.canonical_uri(uri)
+        # Read before loading, so that a file that cannot be read yet is an
+        # input of the results that depend on it.
+        self.revisions.read(("doc", uri))
         if uri not in self.documents and uri.startswith("file:"):
             path = self.file_uri_path(uri)
             try:
@@ -311,23 +310,19 @@ class AnalysisSession:
         change the file an import names.
         """
         path = Path(os.path.abspath(path))
+        # The Python index reads files under their path and their
+        # symlink-resolved path.
+        self.revisions.bump(("file", path))
+        self.revisions.bump(("file", path.resolve()))
         if created_or_deleted:
             # foo.py shadows foo.ord and __init__ files set the package
             # context, so a file that comes or goes can change any import.
-            self.resolver.clear()
-            self.invalidate_workspace_index()
-
-        if path.suffix == ".py":
-            # The Python index matches modules by symlink-resolved path.
-            self.invalidate_python_module_path(path.resolve(), created_or_deleted)
-            return None
+            importlib.invalidate_caches()
+            self.revisions.bump("files")
 
         if path.suffix != ".ord":
             return None
 
-        # The Python index also caches installed `.ord` modules resolved
-        # through their parent Python package.
-        self.invalidate_python_module_path(path.resolve(), created_or_deleted)
         uri = path.as_uri()
         if self.workspace_uri_cache is not None and self.uri_in_workspace(uri):
             if path.is_file():
@@ -338,14 +333,13 @@ class AnalysisSession:
         doc = self.documents.get(uri)
         if doc is not None and doc.get("is_open"):
             doc["analysis"] = None
-            self.mark_workspace_uri_dirty(uri)
             return uri
 
+        self.revisions.bump(("doc", uri))
         if path.exists():
             return self.update_path(str(path))
 
         self.documents.pop(uri, None)
-        self.mark_workspace_uri_dirty(uri)
         return uri
 
     def invalidate_uri(self, uri: str, created_or_deleted: bool = True):
@@ -393,15 +387,6 @@ class AnalysisSession:
         """Return whether an import name resolves to an ORD or Python module."""
         return self.resolver.module_exists(uri, module_name)
 
-    def read_by_python_index(self, uri: str):
-        """Return whether the Python index has read the file at a URI.
-
-        ORD documents may then depend on the file through Python modules,
-        which the workspace import graph does not track.
-        """
-        path = self.file_uri_path(uri)
-        return path is not None and self.python_index.has_module_path(path.resolve())
-
     def imported_by_python(self, uri: str):
         """Return whether a workspace Python module imports from an ORD document.
 
@@ -425,10 +410,6 @@ class AnalysisSession:
             if any(imported_path.resolve() == target for imported_path in imported):
                 return True
         return False
-
-    def invalidate_python_module_path(self, path: Path, created_or_deleted: bool = True):
-        """Invalidate cached Python analysis for modules backed by a path."""
-        self.python_index.invalidate_module_path(path, created_or_deleted)
 
     def python_module_info(self, module_path: Optional[Path]):
         """Analyze a Python module enough for ORD import and member lookup."""
@@ -458,6 +439,7 @@ class AnalysisSession:
         if not self.ensure_document(uri):
             return DocumentAnalysis(uri=uri, version=None, diagnostics=[], symbols=[])
 
+        self.revisions.read(("doc", uri))
         doc = self.documents[uri]
         if doc["analysis"] is None:
             analysis = analyze_ord(doc["text"], uri=uri, version=doc["version"])
@@ -489,16 +471,30 @@ class AnalysisSession:
         return cache
 
     def diagnostics(self, uri: str):
-        """Return parser and semantic diagnostics for a document."""
+        """Return parser and semantic diagnostics for a document.
+
+        The result is reused while the revisions it read are unchanged.
+        """
         uri = self.canonical_uri(uri)
         if not self.ensure_document(uri):
             return []
 
-        analysis = self.analyze(uri)
-        if analysis.has_errors():
-            return analysis.diagnostics
+        cached = self.diagnostics_cache.get(uri)
+        if cached is not None and self.revisions.current(cached[1]):
+            return cached[0]
 
-        return analysis.diagnostics + diagnostics.semantic_diagnostics(self, uri)
+        with self.revisions.track() as reads:
+            analysis = self.analyze(uri)
+            result = analysis.diagnostics
+            if not analysis.has_errors():
+                result = result + diagnostics.semantic_diagnostics(self, uri)
+        self.diagnostics_cache[uri] = (result, reads)
+        return result
+
+    def diagnostics_outdated(self, uri: str):
+        """Return whether a document's diagnostics changed since last computed."""
+        cached = self.diagnostics_cache.get(self.canonical_uri(uri))
+        return cached is None or not self.revisions.current(cached[1])
 
     def open_path(self, path: str, version: Optional[int] = None):
         """Open a filesystem ORD file as a closed session document."""
@@ -517,7 +513,6 @@ class AnalysisSession:
         uri = path.as_uri()
         if uri in self.documents and self.documents[uri].get("is_open"):
             self.documents[uri]["analysis"] = None
-            self.mark_workspace_uri_dirty(uri)
             return uri
 
         try:
@@ -526,7 +521,6 @@ class AnalysisSession:
             # Watched-file races and non-UTF-8 files must not abort
             # invalidation: drop the cached copy instead.
             self.documents.pop(uri, None)
-            self.mark_workspace_uri_dirty(uri)
             return uri
         self.update_document(uri, text, version=version, is_open=False)
         return uri
@@ -579,85 +573,42 @@ class AnalysisSession:
         return uris
 
     def workspace_import_index(self):
-        """Build or return cached ORD import dependency indexes."""
-        if self.workspace_index is not None:
-            self.refresh_workspace_import_rows()
-            self.evict_closed_documents()
-            if self.workspace_index is not None:
-                return self.workspace_index
+        """Build or return cached ORD import dependency indexes.
 
-        uris = set(self.workspace_uris())
-        imports_by_uri = dict()
-        dependents_by_uri = dict()
+        A document's row is recomputed when the revisions its imports were
+        resolved from changed. Files that come or go rebuild the index.
+        """
+        files = self.revisions.read("files")
+        index = self.workspace_index
+        if index is None or index["files"] != files:
+            index = {
+                "files": files,
+                "uris": set(self.workspace_uris()),
+                "imports": dict(),
+                "reads": dict(),
+                "dependents": dict(),
+            }
+            self.workspace_index = index
 
-        for uri in sorted(uris):
-            import_uris = set(self.resolve_import_uris(uri))
-            imports_by_uri[uri] = import_uris
-            for import_uri in import_uris:
-                dependents_by_uri.setdefault(import_uri, set()).add(uri)
+        changed = False
+        for uri in sorted(index["uris"]):
+            reads = index["reads"].get(uri)
+            if reads is not None and self.revisions.current(reads):
+                continue
+            with self.revisions.track() as reads:
+                index["imports"][uri] = set(self.resolve_import_uris(uri))
+            index["reads"][uri] = reads
+            changed = True
 
-        self.workspace_index = {
-            "uris": uris,
-            "imports": imports_by_uri,
-            "dependents": dependents_by_uri,
-        }
+        if changed:
+            dependents = dict()
+            for uri, import_uris in index["imports"].items():
+                for import_uri in import_uris:
+                    dependents.setdefault(import_uri, set()).add(uri)
+            index["dependents"] = dependents
+
         self.evict_closed_documents()
-        return self.workspace_index
-
-    def refresh_workspace_import_rows(self):
-        """Refresh stale rows in the cached workspace import graph."""
-        if self.workspace_index is None or not self.workspace_dirty_uris:
-            return
-
-        dirty_uris = set(self.workspace_dirty_uris)
-        self.workspace_dirty_uris.clear()
-
-        for uri in sorted(dirty_uris):
-            if not self.is_ord_uri(uri):
-                continue
-
-            path = self.file_uri_path(uri)
-            if not path.exists() and uri not in self.documents:
-                self.remove_workspace_import_row(uri)
-                continue
-
-            if uri not in self.workspace_index["uris"]:
-                # A newly created file can change how unchanged documents
-                # resolve their imports, so refreshing only dirty rows
-                # would leave the dependents graph stale. Rebuild instead.
-                self.invalidate_workspace_index()
-                return
-
-            old_imports = self.workspace_index["imports"].get(uri, set())
-            import_uris = set(self.resolve_import_uris(uri))
-            self.workspace_index["imports"][uri] = import_uris
-
-            for import_uri in old_imports - import_uris:
-                dependents = self.workspace_index["dependents"].get(import_uri)
-                if dependents is None:
-                    continue
-                dependents.discard(uri)
-                if not dependents:
-                    self.workspace_index["dependents"].pop(import_uri, None)
-
-            for import_uri in import_uris - old_imports:
-                self.workspace_index["dependents"].setdefault(import_uri, set()).add(uri)
-        self.evict_closed_documents()
-
-    def remove_workspace_import_row(self, uri: str):
-        """Remove one URI from the cached workspace import graph."""
-        if self.workspace_index is None:
-            return
-
-        self.workspace_index["uris"].discard(uri)
-        old_imports = self.workspace_index["imports"].pop(uri, set())
-        for import_uri in old_imports:
-            dependents = self.workspace_index["dependents"].get(import_uri)
-            if dependents is None:
-                continue
-            dependents.discard(uri)
-            if not dependents:
-                self.workspace_index["dependents"].pop(import_uri, None)
+        return index
 
     def workspace_dependents(self, uri: str):
         """Return workspace URIs that directly or indirectly import a URI."""

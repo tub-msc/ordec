@@ -251,6 +251,20 @@ def test_lsp_watched_file_changes_republish_dependent_diagnostics(tmp_path):
             for diagnostic in response["params"]["diagnostics"]
         }
 
+    # An unsaved edit of the imported document refreshes its open importer.
+    # Python modules read the file on disk, which keeps the old cell.
+    open_document(server, device_uri, device_path.read_text())
+    responses = notify(
+        server,
+        "textDocument/didChange",
+        {
+            "textDocument": {"uri": device_uri, "version": 2},
+            "contentChanges": [{"text": device_path.read_text().replace("Other", "Device")}],
+        },
+    )
+    assert [response["params"]["uri"] for response in responses] == [device_uri, top_uri]
+    assert responses[1]["params"]["diagnostics"] == []
+
 
 def test_lsp_deleted_file_with_cold_index_refreshes_open_documents(tmp_path):
     device_path = tmp_path / "device.ord"

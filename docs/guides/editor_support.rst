@@ -326,8 +326,8 @@ The workspace root matters: workspace-wide references and rename follow the
 workspace's ORD import graph, so reverse dependencies are only found when
 the project directory is the root. While typing incomplete code, the server
 keeps the last successful structural analysis and reports syntax errors on
-top, so navigation, symbols, and completions stay useful. Saving a file
-refreshes diagnostics and cached import data.
+top, so navigation, symbols, and completions stay useful. Every edit, saved
+or not, refreshes the diagnostics of the open documents that depend on it.
 
 Sublime Text
 ~~~~~~~~~~~~
@@ -456,6 +456,8 @@ Most language intelligence lives in ``ordec.lsp.analysis``:
 * ``session.py`` is the public analysis facade. It owns open document snapshots,
   last-good analysis caching, file invalidation, workspace dependency
   indexing, lightweight type resolution, and navigation/reference features.
+* ``revisions.py`` tracks revisions of the analysis inputs, so that cached
+  results are reused until an input they read changes.
 * ``import_resolver.py`` resolves the imports of ORD documents and Python
   modules to module source files. It follows the runtime rules of
   ``ordec.importer``, where ``.ord`` files are ordinary Python modules:

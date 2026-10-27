@@ -617,7 +617,7 @@ def test_workspace_cache(tmp_path):
     assert [symbol.name for symbol in session.workspace_symbols("mux")] == ["Mux4"]
 
 
-def test_dirty_rows_refresh_without_rescan(tmp_path, monkeypatch):
+def test_import_rows_refresh_without_rescan(tmp_path, monkeypatch):
     (tmp_path / "a.ord").write_text(dedent("""\
         cell A:
             viewgen symbol(self) -> Symbol:
@@ -645,7 +645,7 @@ def test_dirty_rows_refresh_without_rescan(tmp_path, monkeypatch):
     assert (tmp_path / "a.ord").resolve().as_uri() in first_index["imports"][uri]
 
     def fail_workspace_uris():
-        raise AssertionError("workspace_uris should not run for dirty-row refresh")
+        raise AssertionError("workspace_uris should not run for a row refresh")
 
     monkeypatch.setattr(session, "workspace_uris", fail_workspace_uris)
     edited = source.replace("from .a import A", "from .b import B").replace("A inst", "B inst")
@@ -805,6 +805,13 @@ def test_symlinked_workspace_uris(tmp_path):
     (real_root / "user.ord").write_text("from pkg.lib import A\n")
     user_uri = session.open_path(str(linked_root / "user.ord"))
     assert diagnostic_codes(session, user_uri) == []
+
+    # Retargeting the symlink changes the module.
+    (tmp_path / "lib2.py").write_text("class B:\n    pass\n")
+    (real_root / "pkg" / "lib.py").unlink()
+    (real_root / "pkg" / "lib.py").symlink_to(tmp_path / "lib2.py")
+    session.invalidate_path(str(linked_root / "pkg" / "lib.py"))
+    assert diagnostic_codes(session, user_uri) == ["unresolved-import-member"]
 
 
 def test_imports_follow_runtime_rules(tmp_path):
