@@ -345,9 +345,12 @@ def test_python_import_variants(tmp_path):
         """))
     source = dedent("""\
         import math
+        import os
         import ordec.core
         import ordec.lib.base
         import plain.values
+        from collections import deque
+        from os import listdir
         from counter_yosys import ExtLib, Leveled, report_digital_design
         from ordec.layout import helpers
         from ordec.lib.generic_mos import Nmos
@@ -376,6 +379,8 @@ def test_python_import_variants(tmp_path):
     assert session.resolve_name(uri, "ordec").name == "ordec"
     # A package without __init__ has no source file of its own.
     assert session.resolve_name(uri, "plain").kind == "module"
+    # Frozen stdlib modules resolve to their source file.
+    assert session.resolve_name(uri, "os").uri.endswith("/os.py")
     # Imported names and their uses are tokens of the kind they resolve to.
     lines = source.splitlines()
     token_types = dict()
