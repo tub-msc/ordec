@@ -259,8 +259,9 @@ Language server
 
 ORDeC installs ``ordec-lsp``, a stdio language server providing diagnostics,
 completion, navigation, rename, symbols, and other semantic editor features.
-It does not execute ORD code: source files are parsed and analyzed
-statically, so opening a project in an editor cannot run its designs.
+It does not execute ORD code unless the ``checkOnSave`` option is enabled:
+source files are parsed and analyzed statically, so opening a project in an
+editor cannot run its designs.
 
 The server ships with the ``ordec`` Python package. Install it in the Python
 environment that should run the server:
@@ -288,7 +289,9 @@ Supported features
    * - Diagnostics
      - ORD syntax errors and semantic issues involving imports, node types,
        view generator return types, constraint contexts, members, parameters,
-       and schematic ports missing from the symbol view.
+       and schematic ports missing from the symbol view. With the
+       ``checkOnSave`` initialization option, saving a file also generates its
+       symbol, schematic and layout views and reports their errors.
    * - Completion
      - Local names, members, and parameters with documentation.
    * - Navigation
@@ -390,7 +393,8 @@ by default. To use a full path, open ``settings.json`` with
     }
 
 No arguments are required. Disable the server with
-``ord.languageServer.enabled``. For troubleshooting, set
+``ord.languageServer.enabled``; ``ord.languageServer.checkOnSave`` turns on
+the view check on save. For troubleshooting, set
 ``"ordec-lsp.trace.server": "verbose"`` and open the ORD Language Server output
 channel.
 

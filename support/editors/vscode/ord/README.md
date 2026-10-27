@@ -20,7 +20,9 @@ The extension starts the `ordec-lsp` language server automatically for ORD
 files. Install ORDeC in an environment visible to VS Code and verify that
 `ordec-lsp` runs from a terminal. If VS Code uses a different environment, set
 `ord.languageServer.command` to the executable's absolute path. The server can
-be disabled with `ord.languageServer.enabled`.
+be disabled with `ord.languageServer.enabled`. With
+`ord.languageServer.checkOnSave`, saving an ORD file also generates its symbol,
+schematic and layout views and reports their errors.
 
 Visit the [ORDeC documentation](https://ordec.readthedocs.io) to get started,
 or find the project on [GitHub](https://github.com/tub-msc/ordec).

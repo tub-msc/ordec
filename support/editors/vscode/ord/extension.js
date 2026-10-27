@@ -38,6 +38,9 @@ async function startLanguageServer() {
     args,
   };
   const clientOptions = {
+    initializationOptions: {
+      checkOnSave: config.get("checkOnSave", false) === true,
+    },
     documentSelector: [
       { scheme: "file", language: "ord" },
       { scheme: "untitled", language: "ord" },

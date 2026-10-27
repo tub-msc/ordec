@@ -46,6 +46,7 @@ const vscode = {
             enabled: true,
             command: "/opt/ordec/bin/ordec-lsp",
             arguments: ["--example"],
+            checkOnSave: true,
           }[key] ?? fallback;
         },
       };
@@ -90,6 +91,9 @@ test("launches ORD-LSP for ORD documents", async () => {
     createdClient.clientOptions.synchronize.fileEvents.pattern,
     "**/*.{ord,py}"
   );
+  assert.deepEqual(createdClient.clientOptions.initializationOptions, {
+    checkOnSave: true,
+  });
 
   await extension.deactivate();
   assert.equal(stopped, true);

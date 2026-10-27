@@ -28,13 +28,23 @@ from collections import deque
 import json
 import os.path
 import queue
+import signal
+import subprocess
 import sys
 import threading
 import traceback
-from typing import Optional
+from typing import NamedTuple, Optional
 
 # ordec imports
-from .analysis import AnalysisPosition, AnalysisRange, AnalysisSession, file_uri_to_path, source_line_table, split_source_lines
+from .analysis import (
+    AnalysisDiagnostic,
+    AnalysisPosition,
+    AnalysisRange,
+    AnalysisSession,
+    file_uri_to_path,
+    source_line_table,
+    split_source_lines,
+)
 
 
 SEMANTIC_TOKEN_TYPES = [
@@ -89,6 +99,26 @@ SHOW_MESSAGE_SEVERITY_MAP = {
     "log": 4,
 }
 FILE_CHANGE_TYPE_CHANGED = 2
+CHECK_TIMEOUT = 60
+
+
+class CheckResult(NamedTuple):
+    """Output of a finished view check, queued for the serving thread."""
+    uri: str
+    process: subprocess.Popen
+    text: str
+    output: str
+
+
+def kill_check(process):
+    """Kill a view check together with the processes it started."""
+    if not hasattr(os, "killpg"):
+        process.kill()
+        return
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
 
 
 def line_in_range(value_range, line: int):
@@ -114,6 +144,12 @@ class OrdLanguageServer:
         # The last semantic token data sent per document, for deltas.
         self.semantic_token_results = dict()
         self.semantic_token_result_count = 0
+        # View checks on save: running processes and found errors per document.
+        self.check_on_save = False
+        self.checks = dict()
+        self.check_diagnostics = dict()
+        # Set by serve(), which receives the results of the checks.
+        self.message_queue = None
         self.handlers = {
             "initialize": self.handle_initialize,
             "initialized": self.handle_noop,
@@ -236,6 +272,8 @@ class OrdLanguageServer:
             symbol_capabilities.get("hierarchicalDocumentSymbolSupport")
         )
         self.session = AnalysisSession(workspace_root=self.initialize_root_path(params))
+        options = params.get("initializationOptions")
+        self.check_on_save = isinstance(options, dict) and bool(options.get("checkOnSave"))
         return self.result_response(message, {
             "serverInfo": {
                 "name": "ordec-lsp",
@@ -283,9 +321,11 @@ class OrdLanguageServer:
 
     def handle_shutdown(self, message):
         self.shutdown_requested = True
+        self.stop_checks()
         return self.result_response(message, None)
 
     def handle_exit(self, message):
+        self.stop_checks()
         raise SystemExit(0 if self.shutdown_requested else 1)
 
     def handle_did_open(self, message):
@@ -362,6 +402,8 @@ class OrdLanguageServer:
         uri = self.message_text_document_uri(message)
         self.session.close_document(uri)
         self.semantic_token_results.pop(uri, None)
+        self.stop_check(uri)
+        self.check_diagnostics.pop(uri, None)
         return [{
             "jsonrpc": "2.0",
             "method": "textDocument/publishDiagnostics",
@@ -384,7 +426,90 @@ class OrdLanguageServer:
             self.session.update_document(uri, params["text"], version=version)
         else:
             self.session.invalidate_uri(uri)
+        if self.check_on_save:
+            self.start_check(uri)
         return self.publish_outdated_diagnostics(uri)
+
+    def start_check(self, uri: str):
+        """Generate the views of a saved ORD document in a subprocess."""
+        path = file_uri_to_path(uri)
+        doc = self.session.documents.get(uri)
+        if path is None or path.suffix != ".ord" or doc is None or self.message_queue is None:
+            return
+        self.stop_check(uri)
+        try:
+            process = subprocess.Popen(
+                [sys.executable, "-m", "ordec.lsp.check", str(path)],
+                cwd=self.session.workspace_root or str(path.parent),
+                # The check ends when this pipe closes, also if the server dies.
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                text=True,
+                errors="replace",
+                # A process group, so that kill_check reaches what the code starts.
+                start_new_session=True,
+            )
+        except OSError:
+            traceback.print_exc(file=sys.stderr)
+            return
+        self.checks[uri] = process
+        message_queue = self.message_queue
+        text = doc["text"]
+
+        def wait():
+            # The errors found before the timeout still count.
+            timer = threading.Timer(CHECK_TIMEOUT, kill_check, (process,))
+            timer.start()
+            output = ""
+            try:
+                output = process.stdout.read()
+                process.wait()
+            finally:
+                timer.cancel()
+                process.stdin.close()
+                message_queue.put(CheckResult(uri, process, text, output))
+
+        threading.Thread(target=wait, daemon=True).start()
+
+    def stop_check(self, uri: str):
+        """Stop the running view check of a document, if any."""
+        process = self.checks.pop(uri, None)
+        if process is not None:
+            kill_check(process)
+
+    def stop_checks(self):
+        """Stop all running view checks."""
+        for uri in list(self.checks):
+            self.stop_check(uri)
+
+    def handle_check_result(self, result: CheckResult):
+        """Publish the errors of a finished view check."""
+        # A newer save or a close replaced the check.
+        if self.checks.get(result.uri) is not result.process:
+            return []
+        del self.checks[result.uri]
+
+        lines = split_source_lines(result.text)
+        diagnostics = []
+        for output_line in result.output.splitlines():
+            try:
+                error = json.loads(output_line)
+                line_number = int(error["line"])
+                message = str(error["message"])
+            except (ValueError, KeyError, TypeError, OverflowError):
+                continue
+            line = lines[line_number - 1] if 0 < line_number <= len(lines) else ""
+            diagnostics.append(AnalysisDiagnostic(
+                range=AnalysisRange(
+                    start=AnalysisPosition(line_number, len(leading_indent(line)) + 1),
+                    end=AnalysisPosition(line_number, len(line) + 1),
+                ),
+                severity="error",
+                message=message,
+                code="view-error",
+            ))
+        self.check_diagnostics[result.uri] = (result.text, diagnostics)
+        return [self.publish_diagnostics(result.uri)]
 
     def open_document_uris(self):
         """Return open document URIs currently tracked by the analysis session."""
@@ -994,8 +1119,14 @@ class OrdLanguageServer:
     def publish_diagnostics(self, uri: str):
         """Build a publishDiagnostics notification for a document URI."""
         analysis = self.session.analyze(uri)
+        # View errors belong to the text that was checked, until it changes.
+        view_errors = []
+        doc = self.session.documents.get(uri)
+        checked = self.check_diagnostics.get(uri)
+        if checked is not None and doc is not None and doc["text"] == checked[0]:
+            view_errors = checked[1]
         diagnostics = []
-        for diagnostic in self.session.diagnostics(uri):
+        for diagnostic in self.session.diagnostics(uri) + view_errors:
             lsp_diagnostic = {
                 "range": self.lsp_range(uri, diagnostic.range),
                 "severity": self.diagnostic_severity(diagnostic.severity),
@@ -1251,6 +1382,7 @@ def serve(server, message_queue, output_stream):
     """
     pending = deque()
     canceled_ids = set()
+    server.message_queue = message_queue
 
     while True:
         if not pending:
@@ -1286,6 +1418,7 @@ def serve(server, message_queue, output_stream):
 
         message = pending.popleft()
         if message is None:
+            server.stop_checks()
             return
         if message is PARSE_ERROR:
             # JSON-RPC prescribes id null when the request id is unknown.
@@ -1297,6 +1430,16 @@ def serve(server, message_queue, output_stream):
                     "message": "Parse error",
                 },
             })
+            continue
+        if isinstance(message, CheckResult):
+            # The same safety net as for messages below.
+            try:
+                responses = server.handle_check_result(message)
+            except Exception:
+                traceback.print_exc(file=sys.stderr)
+                responses = []
+            for response in responses:
+                write_message(output_stream, response)
             continue
         if not isinstance(message, dict):
             continue

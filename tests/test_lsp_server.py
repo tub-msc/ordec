@@ -53,7 +53,7 @@ def utf16_source_offset(source, needle, occurrence=1):
     }
 
 
-def initialize_server(tmp_path, capabilities=None):
+def initialize_server(tmp_path, capabilities=None, options=None):
     """Create and initialize an ORD language server for a temporary workspace."""
     server = OrdLanguageServer()
     params = {
@@ -61,6 +61,8 @@ def initialize_server(tmp_path, capabilities=None):
     }
     if capabilities is not None:
         params["capabilities"] = capabilities
+    if options is not None:
+        params["initializationOptions"] = options
 
     result = request(
         server,
@@ -604,6 +606,33 @@ def test_lsp_completion_and_code_actions(tmp_path):
     assert nmos_edit["range"]["start"] == {"line": 2, "character": 0}
     assert nmos_edit["newText"] == "from ordec.lib.generic_mos import Nmos\n"
     assert edits["Import `Buf` from `cells`"]["newText"] == ", Buf"
+
+
+def test_lsp_check_on_save(tmp_path):
+    source = dedent("""\
+        from ordec.core import *
+
+        cell Bad:
+            viewgen symbol(self) -> Symbol:
+                input a
+                x = 1 / 0
+        """)
+    path = tmp_path / "bad.ord"
+    path.write_text(source)
+    server = initialize_server(tmp_path, options={"checkOnSave": True})
+    server.message_queue = queue.SimpleQueue()
+    uri = path.resolve().as_uri()
+    assert open_document(server, uri, source) == []
+    notify(server, "textDocument/didSave", {"textDocument": {"uri": uri}, "text": source})
+
+    # Generating the views on save finds the error the static analysis cannot.
+    published = server.handle_check_result(server.message_queue.get(timeout=60))
+    [diagnostic] = published[0]["params"]["diagnostics"]
+    assert diagnostic["code"] == "view-error"
+    assert diagnostic["range"]["start"] == {"line": 5, "character": 8}
+    assert "Bad().symbol failed: ZeroDivisionError" in diagnostic["message"]
+    # They belong to the checked text, so its next change drops them.
+    assert change_document(server, uri, "\n" + source, version=3) == []
 
 
 def test_lsp_applies_incremental_did_change(tmp_path):
