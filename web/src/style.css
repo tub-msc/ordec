@@ -393,15 +393,32 @@ body.theme-dark .toolbar-btn option {
 }
 
 /* -- Status indicator -------------------------------------------- */
+/* All status labels (dot and text) are stacked in one grid cell, only the
+   current one visible and centered. The indicator is thus always as wide as
+   the widest label: otherwise, the status changes after every edit (ready,
+   busy, ready) can make the toolbar wrap and unwrap at certain window
+   widths, shifting the whole workspace. */
 #status {
+    display: grid;
+    align-items: center;
+    font-size: var(--font-size-sm);
+}
+#status > span {
+    grid-area: 1 / 1;
+    justify-self: center;
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: var(--font-size-sm);
+    visibility: hidden;
 }
-#status::before {
+#status.status-busy > .busy,
+#status.status-ready > .ready,
+#status.status-exception > .exception,
+#status.status-disconnected > .disconnected {
+    visibility: visible;
+}
+#status > span::before {
     content: '';
-    display: inline-block;
     width: 7px;
     height: 7px;
     border-radius: 50%;

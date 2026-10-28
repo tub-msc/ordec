@@ -90,9 +90,9 @@ const baseTitle = document.title;
 let busySince = null;
 let busyTitleTimer = null;
 
+// The status labels are fixed in app.html; the class selects the visible one.
 function setStatus(status) {
     let divStatus = document.querySelector("#status");
-    divStatus.innerText = status;
     divStatus.className = 'item status-' + status;
     updateBusyTitle(status == 'busy');
 }
