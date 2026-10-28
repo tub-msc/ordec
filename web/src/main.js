@@ -137,11 +137,14 @@ class Editor {
         registerAceEditor(this.editor);
         this.updateMode();
         // Font size comes from the shared --font-size-code token, which also
-        // sizes the preformatted/code text in reports.
+        // sizes the preformatted/code text in reports. The font family needs
+        // the token's monospace fallback: if the Inconsolata web font is not
+        // available, Ace would otherwise measure the browser's proportional
+        // default font, and the cursor drifts away from the typed text.
+        const rootStyle = getComputedStyle(document.documentElement);
         this.editor.setOptions({
-            fontFamily: "Inconsolata",
-            fontSize: getComputedStyle(document.documentElement)
-                .getPropertyValue('--font-size-code').trim() || "11.5pt"
+            fontFamily: rootStyle.getPropertyValue('--font-mono').trim(),
+            fontSize: rootStyle.getPropertyValue('--font-size-code').trim() || "11.5pt"
         });
 
         // Teardown when GoldenLayout releases the component, e.g. when
