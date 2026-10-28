@@ -8,6 +8,9 @@ preferences of the web UI, in one table per view family::
     [schematic]
     crossings = "bridge-h"
 
+    [report]
+    plot_hint = false
+
 Preferences that depend on the technology are in the LayoutStyle
 customization files instead (see ordec.layout.style). View generators never
 read the configuration, so that views do not depend on the user. Settings
@@ -31,6 +34,8 @@ from public import public
 #: Settings: (table, name) -> type of value.
 SETTINGS = {
     ('schematic', 'crossings'): str,
+    # The controls hint shown when clicking a plot of a report.
+    ('report', 'plot_hint'): bool,
 }
 
 @public

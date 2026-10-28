@@ -1123,6 +1123,51 @@ def test_schematic_crossings(web, tmp_path, monkeypatch):
         "return document.querySelector('.schem-crossing-select').value") == 'bridge-h'
 
 @pytest.mark.web
+def test_report_plot_controls(web, tmp_path, monkeypatch):
+    """In a scrolling report, the wheel over an inactive plot scrolls the
+    report; Shift+drag zooms the plot group to the selected range; the controls
+    hint can be turned off in the configuration file."""
+    from selenium.webdriver.common.action_chains import ActionChains
+    from selenium.webdriver.common.actions.wheel_input import ScrollOrigin
+    from selenium.webdriver.common.keys import Keys
+    monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path))
+    web.resize_viewport()
+    qs_local = web.key.query_string_local("tests.lib.report", ["report_example()"])
+    web.navigate(f'app.html#refreshall=true&{qs_local}')
+    web.wait_for_ready()
+    web.wait_until("return document.querySelector('.simplot svg path.simplot-line')")
+    # x domains of the two tran_demo plots, top of the first plot.
+    state_js = """
+        const plots = window.ordecApp.client.resultViewers[0].view.renderers
+            .filter(r => r.plot).map(r => r.plot);
+        return [plots[0].getXDomain(), plots[1].getXDomain(),
+            document.querySelector('.simplot').getBoundingClientRect().top];
+    """
+    domain0, _, top0 = web.driver.execute_script(state_js)
+    svg = web.driver.find_element(By.CSS_SELECTOR, '.simplot svg')
+    ActionChains(web.driver).scroll_from_origin(ScrollOrigin.from_element(svg), 0, 200).perform()
+    web.wait_until(f"return (() => {{ {state_js} }})()[2] < {top0 - 50}")
+    assert web.driver.execute_script(state_js)[0] == domain0
+
+    # Shift+drag over the middle quarter of the first plot.
+    web.driver.execute_script("arguments[0].scrollIntoView({block: 'center'})", svg)
+    w = svg.size['width']
+    ActionChains(web.driver).move_to_element_with_offset(svg, -w // 8, 0) \
+        .key_down(Keys.SHIFT).click_and_hold().move_by_offset(w // 4, 0) \
+        .release().key_up(Keys.SHIFT).perform()
+    domain1, domain2, _ = web.driver.execute_script(state_js)
+    assert domain1[1] - domain1[0] < 0.5 * (domain0[1] - domain0[0])
+    assert domain2 == domain1
+
+    # The drag also focused the plot, which shows the hint.
+    web.driver.find_element(By.XPATH, "//div[@class='simplot-hint']/button[text()='Never show again']").click()
+    web.wait_until("return !document.querySelector('.simplot-hint')")
+    assert 'plot_hint = false' in (tmp_path / 'ordec' / 'config.toml').read_text()
+    # A second click removes the focus.
+    svg.click()
+    assert not web.driver.find_elements(By.CSS_SELECTOR, '.simplot-focused')
+
+@pytest.mark.web
 def test_layoutgl(web):
     """Fuzzy visual testing of web layout viewer (layout-gl.js)."""
     web.resize_viewport()

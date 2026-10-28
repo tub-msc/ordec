@@ -100,6 +100,10 @@ export class ReportView extends View {
         this.renderers = [];
         this.reportContext = {
             plotGroups: new ReportPlotGroups(),
+            client: resultViewer.client,
+            // Whether the report fills its panel instead of scrolling (set
+            // by update).
+            fillHeight: false,
         };
     }
 
@@ -113,6 +117,7 @@ export class ReportView extends View {
         if (msgData.fill_height) {
             report.classList.add('report-view-fill');
         }
+        this.reportContext.fillHeight = !!msgData.fill_height;
 
         elements.forEach((elementData, i) => {
             const elementRoot = document.createElement('div');

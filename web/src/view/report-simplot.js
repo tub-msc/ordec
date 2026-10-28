@@ -210,6 +210,14 @@ function reduceColumns(xValues, values, pyramid, starts, i0, i1) {
 }
 
 export class SimPlot {
+    // The controls hint was closed in this page (see _showHint).
+    static hintClosed = false;
+    // The focused plot (see _focus), at most one.
+    static focused = null;
+    // timeStamp of the last wheel event that no plot took, i.e. that
+    // scrolled the report (see _onWheel).
+    static lastScrollWheel = -Infinity;
+
     constructor(container, options = {}) {
         this.options = {
             xlabel: options.xlabel || '',
@@ -217,6 +225,11 @@ export class SimPlot {
             xscale: options.xscale || 'linear',
             yscale: options.yscale || 'linear',
             fixedHeight: options.fixedHeight || null,
+            // In a scrolling report, the wheel zooms only the focused plot
+            // (see _focus); a plot filling its panel always zooms.
+            requireFocus: options.requireFocus || false,
+            // For the setting of the controls hint (see _showHint).
+            client: options.client,
         };
 
         // Group-sync callbacks, set only by setSyncCallbacks() (see the plot
@@ -228,8 +241,9 @@ export class SimPlot {
         this._maxZoom = 100;
         this.series = [];
         this.currentTransform = d3.zoomIdentity;
-        this._yZoomScale = 1;
-        this._yPanOffset = 0;
+        // Pointer drag in progress: {mode: 'select' | 'pan' | 'tap', x0, x}
+        // (plot area coordinates), see _onPointerDown.
+        this._drag = null;
         this._crosshairIndex = null;
         this._suppressXDomainChange = false;
         this._suppressCrosshairChange = false;
@@ -260,6 +274,8 @@ export class SimPlot {
         this.tooltipEl = document.createElement('div');
         this.tooltipEl.classList.add('simplot-tooltip');
         this.wrapper.appendChild(this.tooltipEl);
+
+        this.hintEl = null;
 
         this._setupSvg();
 
@@ -339,62 +355,39 @@ export class SimPlot {
             .on('mousemove', (event) => this._onMouseMove(event))
             .on('mouseleave', () => this._onMouseLeave());
 
+        this.selectionRect = this.plotClip.append('rect')
+            .attr('class', 'simplot-selection')
+            .style('display', 'none');
+
+        // d3-zoom holds the x zoom transform, changed by the wheel and drag
+        // handlers below; it handles touch gestures itself, on the focused
+        // plot only. On plotArea, for pointer positions in plot area
+        // coordinates.
         this.zoom = d3.zoom()
             .scaleExtent([1, this._maxZoom])
-            .filter(event => {
-                // Let shift events through to Y axis handlers instead
-                if (event.shiftKey) return false;
-                // Block double-click from D3 zoom (we handle it ourselves)
-                if (event.type === 'dblclick') return false;
-                return true;
-            })
+            // translateExtent (set by _render) stops panning at the data ends.
+            .extent(() => [[0, 0], [this._plotW, this._plotH]])
+            .filter(event => event.type.startsWith('touch') && this._wheelActive())
             .on('zoom', (event) => {
                 this.currentTransform = event.transform;
                 this._render();
                 this._emitXDomainChange();
             });
-        this.svg.call(this.zoom);
+        this.plotArea.call(this.zoom);
 
-        // Shift+scroll → Y axis zoom
-        this.svg.node().addEventListener('wheel', (event) => {
-            if (!event.shiftKey) return;
-            event.preventDefault();
-            const factor = event.deltaY < 0 ? 1.15 : 1 / 1.15;
-            this._yZoomScale = Math.max(0.01, Math.min(1000, this._yZoomScale * factor));
+        // On the wrapper, so that the wheel also acts over legend and hint.
+        this.wrapper.addEventListener('wheel', (event) => this._onWheel(event),
+            { passive: false });
+        this.hoverRect.node().addEventListener('pointerdown', (event) => this._onPointerDown(event));
+        this.hoverRect.node().addEventListener('pointermove', (event) => this._onPointerMove(event));
+        this.hoverRect.node().addEventListener('pointerup', (event) => this._onPointerUp(event));
+        this.hoverRect.node().addEventListener('pointercancel', () => this._endDrag());
 
-            // Zoom around the mouse Y position
-            if (this._yScale) {
-                const [, my] = d3.pointer(event, this.plotArea.node());
-                const yAtMouse = this._yScale.invert(my);
-                // Adjust pan so the value under the cursor stays put
-                this._yPanOffset = yAtMouse - (yAtMouse - this._yPanOffset) / factor;
-            }
-            this._render();
-        }, { passive: false });
-
-        // Shift+drag → Y axis pan
-        this._yDrag = null;
-        this.svg.node().addEventListener('mousedown', (event) => {
-            if (!event.shiftKey || event.button !== 0) return;
-            event.preventDefault();
-            this._yDrag = { startY: event.clientY, startOffset: this._yPanOffset };
+        // Double-click → reset. Its two clicks toggled the focus twice.
+        this.svg.on('dblclick', () => {
+            this.resetZoom();
+            this._focus(true);
         });
-        window.addEventListener('mousemove', this._yDragMove = (event) => {
-            if (!this._yDrag || !this._yScale) return;
-            const dy = event.clientY - this._yDrag.startY;
-            // Convert pixel delta to data units
-            const domain = this._yScale.domain();
-            const range = this._yScale.range();
-            const dataPerPx = (domain[0] - domain[1]) / (range[0] - range[1]);
-            this._yPanOffset = this._yDrag.startOffset + dy * dataPerPx;
-            this._render();
-        });
-        window.addEventListener('mouseup', this._yDragEnd = () => {
-            this._yDrag = null;
-        });
-
-        // Double-click → reset both axes
-        this.svg.on('dblclick', () => this.resetZoom());
 
         // Current scales (updated in _render, used by crosshair)
         this._xScale = null;
@@ -568,25 +561,157 @@ export class SimPlot {
     }
 
     getZoomState() {
-        return {
-            transform: this.currentTransform,
-            yZoomScale: this._yZoomScale,
-            yPanOffset: this._yPanOffset,
-        };
+        return this.currentTransform;
     }
 
-    setZoomState(state) {
-        this._yZoomScale = state.yZoomScale;
-        this._yPanOffset = state.yPanOffset;
-        this.currentTransform = state.transform;
-        this._applyTransform(state.transform);
+    setZoomState(transform) {
+        this.currentTransform = transform;
+        this._applyTransform(transform);
     }
 
     resetZoom() {
         this.currentTransform = d3.zoomIdentity;
-        this._yZoomScale = 1;
-        this._yPanOffset = 0;
         this._applyTransform(d3.zoomIdentity);
+    }
+
+    // Whether the wheel (and touch) zooms and pans the plot rather than
+    // scrolling the report.
+    _wheelActive() {
+        return !this.options.requireFocus || SimPlot.focused === this;
+    }
+
+    // Focuses the plot or removes its focus (only called on the focused
+    // plot). The focused plot shows the hint. Clicking outside the plot or
+    // Escape removes the focus (see the document listeners below the class).
+    _focus(focus) {
+        if (focus && SimPlot.focused !== this) {
+            SimPlot.focused?._focus(false);
+        }
+        SimPlot.focused = focus ? this : null;
+        this.wrapper.classList.toggle('simplot-focused', focus && this.options.requireFocus);
+        if (focus) {
+            this._showHint();
+        } else {
+            this.hintEl?.remove();
+        }
+    }
+
+    // Wheel: zoom at the pointer; Shift+wheel and horizontal wheel (touchpad
+    // swipe; macOS also turns Shift+wheel into it): pan.
+    _onWheel(event) {
+        if (!this._wheelActive() || !this._plotW) return;
+        // A wheel motion that scrolls the report keeps scrolling it when the
+        // focused plot comes under the pointer, as browsers do with nested
+        // scroll areas: only a new wheel motion zooms.
+        if (this.options.requireFocus
+            && event.timeStamp - SimPlot.lastScrollWheel < 400) {
+            return;
+        }
+        event.preventDefault();
+        const unit = [1, 25, this._plotW][event.deltaMode];
+        if (event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
+            const dx = (event.deltaX || event.deltaY) * unit;
+            this.zoom.translateBy(this.plotArea, -dx / this.currentTransform.k, 0);
+        } else {
+            // As d3-zoom's default; touchpad pinch arrives with ctrlKey.
+            const factor = 2 ** (-event.deltaY * unit * 0.002 * (event.ctrlKey ? 10 : 1));
+            const [mx] = d3.pointer(event, this.plotArea.node());
+            this.zoom.scaleBy(this.plotArea, factor, [mx, 0]);
+        }
+    }
+
+    // Left drag: pan; Shift+left drag: select an x range to zoom to. A click
+    // or tap toggles the focus, a drag focuses. Touch moves are left to
+    // d3-zoom (mode 'tap').
+    _onPointerDown(event) {
+        if (event.button !== 0) return;
+        const [mx] = d3.pointer(event, this.plotArea.node());
+        const mode = event.pointerType === 'touch' ? 'tap' : event.shiftKey ? 'select' : 'pan';
+        this._drag = { mode, x0: mx, x: mx };
+        if (mode !== 'tap') {
+            this.hoverRect.node().setPointerCapture(event.pointerId);
+        }
+        this.wrapper.classList.toggle('simplot-panning', mode === 'pan');
+    }
+
+    _onPointerMove(event) {
+        if (!this._drag) return;
+        const [mx] = d3.pointer(event, this.plotArea.node());
+        if (this._drag.mode === 'pan') {
+            this.zoom.translateBy(this.plotArea, (mx - this._drag.x) / this.currentTransform.k, 0);
+        } else if (this._drag.mode === 'select') {
+            const [x0, x1] = this._selectedRange(mx);
+            this.selectionRect.style('display', null)
+                .attr('x', x0).attr('width', x1 - x0)
+                .attr('y', 0).attr('height', this._plotH);
+        }
+        this._drag.x = mx;
+    }
+
+    _onPointerUp(event) {
+        const drag = this._drag;
+        if (!drag) return;
+        const [mx] = d3.pointer(event, this.plotArea.node());
+        const [x0, x1] = this._selectedRange(mx);
+        this._endDrag();
+        if (Math.abs(mx - drag.x0) < 3) {
+            this._focus(SimPlot.focused !== this);
+        } else if (drag.mode !== 'tap') {
+            this._focus(true);
+        }
+        if (drag.mode === 'select' && x1 - x0 >= 3) {
+            // scaleTo limits the zoom to _maxZoom.
+            const t = this.currentTransform;
+            this.zoom.scaleTo(this.plotArea, t.k * this._plotW / (x1 - x0));
+            this.zoom.translateTo(this.plotArea, t.invertX((x0 + x1) / 2), 0, [this._plotW / 2, 0]);
+        }
+    }
+
+    _endDrag() {
+        this._drag = null;
+        this.selectionRect.style('display', 'none');
+        this.wrapper.classList.remove('simplot-panning');
+    }
+
+    // The range selected by the drag up to x, within the plot area.
+    _selectedRange(x) {
+        const clamp = v => Math.max(0, Math.min(this._plotW, v));
+        const a = clamp(this._drag.x0), b = clamp(x);
+        return a < b ? [a, b] : [b, a];
+    }
+
+    // Shows how to control the plot, unless the user has closed the hint in
+    // this page, or turned it off in the configuration (report.plot_hint).
+    _showHint() {
+        const client = this.options.client;
+        if (this.hintEl?.isConnected || SimPlot.hintClosed
+            || client.config.report?.plot_hint === false) {
+            return;
+        }
+        const lines = ['Scroll: zoom', 'Shift+scroll: pan', 'Drag: pan',
+            'Shift+drag: zoom to range', 'Double-click: reset zoom'];
+        if (this.options.requireFocus) {
+            lines.push('Click again or press Escape', 'to scroll the report.');
+        }
+        this.hintEl = document.createElement('div');
+        this.hintEl.classList.add('simplot-hint');
+        this.hintEl.innerHTML = '<button type="button" class="simplot-hint-close" title="Close">×</button>'
+            + `<div>${lines.join('<br>')}</div><button type="button">Never show again</button>`;
+        const [close, text, never] = this.hintEl.children;
+        close.addEventListener('click', () => {
+            SimPlot.hintClosed = true;
+            this.hintEl.remove();
+        });
+        never.addEventListener('click', () => {
+            client.setConfig('report', 'plot_hint', false, exception => {
+                if (exception) {
+                    text.innerText = `Not saved: ${exception.message}`;
+                } else {
+                    this.hintEl.remove();
+                }
+            });
+        });
+        this.wrapper.appendChild(this.hintEl);
     }
 
     setData(xValues, series) {
@@ -611,8 +736,6 @@ export class SimPlot {
         // group, which keep their data.
         this.clearCrosshair({ suppressEvent: true });
         this.currentTransform = d3.zoomIdentity;
-        this._yZoomScale = 1;
-        this._yPanOffset = 0;
         // Render once before calling zoom.transform so Chromium doesn't try
         // to resolve relative SVG lengths during default zoom extent lookup.
         this._render();
@@ -627,7 +750,7 @@ export class SimPlot {
     // d3-zoom snaps the next gesture back. setData resets the limit.
     _applyTransform(transform) {
         this.zoom.scaleExtent([1, Math.max(this._maxZoom, transform.k)]);
-        this.svg.call(this.zoom.transform, transform);
+        this.plotArea.call(this.zoom.transform, transform);
     }
 
     getHiddenNames() {
@@ -674,10 +797,10 @@ export class SimPlot {
     // the next animation frame. Browsers may dispatch several wheel/mousemove
     // events per frame (the spec leaves coalescing to them); this way they
     // cost one reduction. Callers rely on the scales being current right
-    // after this returns (x-domain group sync, setXDomain, crosshair, Y zoom
-    // anchor). After a change of the x domain or of the visible series, the
-    // y extent is only known after the reduction, so until the frame
-    // _yScale uses the previous extent.
+    // after this returns (x-domain group sync, setXDomain, crosshair). After
+    // a change of the x domain or of the visible series, the y extent is only
+    // known after the reduction, so until the frame _yScale uses the previous
+    // extent.
     _render() {
         if (!this.xValues || !this.series.length) return;
 
@@ -691,6 +814,7 @@ export class SimPlot {
         this._yScale = this._computeYScale(...this._yExtent, h);
         this._plotW = w;
         this._plotH = h;
+        this.zoom.translateExtent([[0, -Infinity], [w, Infinity]]);
 
         if (this._drawFrame === null) {
             this._drawFrame = requestAnimationFrame(() => {
@@ -744,7 +868,7 @@ export class SimPlot {
 
     // Reduces every visible series into s.reduced (see reduceColumns) and
     // returns their y extent. Reductions are kept while the x domain and plot
-    // width are unchanged, so y-only renders (Y zoom/pan, legend) reuse them.
+    // width are unchanged, so renders for legend toggles reuse them.
     _reduceSeries(xScale) {
         const key = [...xScale.domain(), ...xScale.range()].join();
         if (key !== this._reducedKey) {
@@ -769,8 +893,8 @@ export class SimPlot {
         return [yMin, yMax];
     }
 
-    // Y scale fitted to the given y extent of the visible samples, with the
-    // Y zoom/pan applied (in log space for a log axis).
+    // Y scale fitted to the given y extent of the visible samples, with 5%
+    // padding (in log space for a log axis).
     _computeYScale(yMin, yMax, h) {
         if (!isFinite(yMin)) { yMin = -1; yMax = 1; }
 
@@ -778,17 +902,13 @@ export class SimPlot {
             const logMin = Math.log10(Math.max(yMin, 1e-30));
             const logMax = Math.log10(Math.max(yMax, 1e-29));
             const logPad = (logMax - logMin) * 0.05 || 0.5;
-            const logCenter = (logMin + logMax) / 2 + this._yPanOffset;
-            const logHalfRange = ((logMax - logMin) / 2 + logPad) / this._yZoomScale;
             return d3.scaleLog()
-                .domain([10 ** (logCenter - logHalfRange), 10 ** (logCenter + logHalfRange)])
+                .domain([10 ** (logMin - logPad), 10 ** (logMax + logPad)])
                 .range([h, 0]);
         }
         const yPad = (yMax - yMin) * 0.05 || 0.5;
-        const yCenter = (yMin + yMax) / 2 + this._yPanOffset;
-        const yHalfRange = ((yMax - yMin) / 2 + yPad) / this._yZoomScale;
         return d3.scaleLinear()
-            .domain([yCenter - yHalfRange, yCenter + yHalfRange])
+            .domain([yMin - yPad, yMax + yPad])
             .range([h, 0]);
     }
 
@@ -880,7 +1000,25 @@ export class SimPlot {
             this._themeObserver.disconnect();
             this._themeObserver = null;
         }
-        window.removeEventListener('mousemove', this._yDragMove);
-        window.removeEventListener('mouseup', this._yDragEnd);
+        if (SimPlot.focused === this) {
+            SimPlot.focused = null;
+        }
     }
 }
+
+document.addEventListener('pointerdown', (event) => {
+    if (SimPlot.focused && !SimPlot.focused.wrapper.contains(event.target)) {
+        SimPlot.focused._focus(false);
+    }
+}, true);
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+        SimPlot.focused?._focus(false);
+    }
+});
+// Bubbling, so after the plots' wheel listeners (see _onWheel).
+window.addEventListener('wheel', (event) => {
+    if (!event.defaultPrevented) {
+        SimPlot.lastScrollWheel = event.timeStamp;
+    }
+}, { passive: true });

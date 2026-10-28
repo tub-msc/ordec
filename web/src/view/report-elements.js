@@ -201,6 +201,8 @@ export class Plot2d extends ReportElement {
             xscale: msgData.xscale,
             yscale: msgData.yscale,
             fixedHeight: msgData.height,
+            requireFocus: !this.reportContext.fillHeight,
+            client: this.reportContext.client,
         });
 
         this.plot.setData(msgData.x, msgData.series);
