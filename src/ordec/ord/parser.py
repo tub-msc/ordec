@@ -6,6 +6,7 @@ from lark.exceptions import VisitError
 from pathlib import Path
 import argparse
 import os
+import threading
 from lark.indenter import PythonIndenter
 from .ord_transformer import OrdTransformer
 import ast
@@ -179,6 +180,10 @@ def expected_summary(parser, expected, limit=12):
     return shown
 
 
+# The indenter of the parser keeps state during a parse, so parses must not
+# run at the same time (e.g. for several web UI connections).
+parse_lock = threading.Lock()
+
 def parse_with_errors(parser, code):
     """
     Function which parses an ORD string, converting lark parse errors into
@@ -191,7 +196,8 @@ def parse_with_errors(parser, code):
         AST of the parsed string
     """
     try:
-        return parser.parse(code + "\n")
+        with parse_lock:
+            return parser.parse(code + "\n")
     except UnexpectedToken as e:
         if e.token.type == "$END":
             msg = "unexpected end of input"
