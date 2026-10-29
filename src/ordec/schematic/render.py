@@ -518,19 +518,23 @@ class SchematicRenderer(Renderer):
 
         for inst in s.all(SchemInstance):
             with self.subgroup(node=inst, data_nid=inst.nid):
-                # Source location for click-to-source
-                if self.include_nids and inst.src_loc is not None:
-                    self.cur_group.attrib['data-srcfile'] = str(inst.src_loc.filename)
-                    self.cur_group.attrib['data-srcline'] = str(inst.src_loc.line)
-                    self.cur_group.attrib['data-srccol'] = str(inst.src_loc.column)
+                self.mark_src_loc(inst)
                 self.draw_symbol(inst.symbol, inst.loc_transform(), inst)
 
         for port in s.all(SchemPort):
             with self.subgroup(node=port, data_nid=port.ref.nid):
+                self.mark_src_loc(port)
                 self.draw_schem_port(port)
 
         for err in s.all(SchemErrorMarker):
             self.draw_error_marker(err)
+
+    def mark_src_loc(self, node: SchemInstance|SchemPort):
+        # Source location for click-to-source and drag-and-drop.
+        if self.include_nids and node.src_loc is not None:
+            self.cur_group.attrib['data-srcfile'] = str(node.src_loc.filename)
+            self.cur_group.attrib['data-srcline'] = str(node.src_loc.line)
+            self.cur_group.attrib['data-srccol'] = str(node.src_loc.column)
 
     def draw_error_marker(self, err: SchemErrorMarker):
         cx, cy = err.pos.tofloat()

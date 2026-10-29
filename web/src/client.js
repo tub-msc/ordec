@@ -21,6 +21,9 @@ export class OrdecClient {
         // The user's configuration file (see src/ordec/config.py), as sent
         // with the view list and changed by setConfig.
         this.config = {};
+        // The files whose statements moveNode may change, as sent with the
+        // view list (see source_files in src/ordec/server.py).
+        this.srcfiles = [];
         this.reqCounter = 0;
         this.srctype = srctype;
         this.src = ""; // set by Editor from the outside
@@ -100,6 +103,7 @@ export class OrdecClient {
             this.views.clear();
             this.config = msg['config'] ?? {};
             this.app?.eventBus.emit('config:change', this.config);
+            this.srcfiles = msg['srcfiles'];
             msg['views'].forEach(view => {
                 this.views.set(view.name, view);
             });
@@ -130,10 +134,10 @@ export class OrdecClient {
             } finally {
                 this.requestViews();
             }
-        } else if (msg['msg'] == 'setlayoutstyle' || msg['msg'] == 'setconfig') {
+        } else if (['setlayoutstyle', 'setconfig', 'movenode'].includes(msg['msg'])) {
             const onReply = this.saveRequests.get(msg['req']);
             this.saveRequests.delete(msg['req']);
-            onReply?.(msg.exception ?? null);
+            onReply?.(msg.exception ?? null, msg);
         } else if (msg['msg'] == 'viewprogress') {
             this.inflight.get(msg['req'])?.updateProgress(msg);
         } else if (msg['msg'] == 'localmodule_changed') {
@@ -291,6 +295,34 @@ export class OrdecClient {
             table: table,
             name: name,
             value: value,
+        }));
+    }
+
+    // Moves the schematic instance or port whose ORD statement starts at line
+    // and column of file by (dx, dy) (see move_node in src/ordec/server.py).
+    // onReply(exception, reply) as in setLayoutStyle; the reply carries the
+    // edit of the source as start, end and text.
+    moveNode(file, line, column, dx, dy, onReply) {
+        if (this.exception || !this.sock || this.sock.readyState != WebSocket.OPEN) {
+            onReply({etype: 'Error', message: 'Not connected to the server.'});
+            return;
+        }
+        // The server would edit the source of the pending build, whose lines
+        // may differ from those of the shown views.
+        if (this.buildPending) {
+            onReply({etype: 'Error', message: 'Cannot move: the design is being rebuilt.'});
+            return;
+        }
+        const req = ++this.reqCounter;
+        this.saveRequests.set(req, onReply);
+        this.sock.send(cbor.encode({
+            msg: 'movenode',
+            req: req,
+            file: file,
+            line: line,
+            column: column,
+            dx: dx,
+            dy: dy,
         }));
     }
 

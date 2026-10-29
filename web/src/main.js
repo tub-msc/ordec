@@ -678,6 +678,31 @@ app.eventBus.on('editor:goto-source', (data) => {
     }
 });
 
+// Drag-and-drop: the server changes the .pos of the dragged node's statement.
+// In local mode it changes the file, which triggers the reload; in integrated
+// mode it returns the edit, applied here to the editor.
+app.eventBus.on('editor:move-node', (data) => {
+    app.client.moveNode(data.file, data.line, data.column, data.dx, data.dy, (exception, reply) => {
+        if (exception) {
+            data.done(exception.message);
+            return;
+        }
+        if (data.file === '<webeditor>') {
+            const editor = getEditor().editor;
+            // The edit is one of the built source.
+            if (editor.getValue() !== app.client.srcBuilt) {
+                data.done('Cannot move: the source has changed since the last refresh.');
+                return;
+            }
+            // One edit: a single undo step, and the usual rebuild on change.
+            const doc = editor.session.doc;
+            editor.session.replace(ace.Range.fromPoints(doc.indexToPosition(reply.start),
+                doc.indexToPosition(reply.end)), reply.text);
+        }
+        data.done(null);
+    });
+});
+
 // The exception's location within the integrated editor's source, to point
 // an annotation at: the syntax error position if it lies there, otherwise
 // the deepest traceback frame that does. Returns {lineno, col} (1-based,

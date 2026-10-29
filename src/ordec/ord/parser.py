@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2025 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-from lark import Lark, UnexpectedToken, UnexpectedCharacters, UnexpectedInput, Token
+from lark import Lark, UnexpectedToken, UnexpectedCharacters, UnexpectedInput, Token, Tree
 from lark.exceptions import VisitError
 from pathlib import Path
 import argparse
@@ -272,6 +272,80 @@ def ord_to_py(ord_string: str) -> ast.Module:
         raise
     ast.fix_missing_locations(transformed_ast)
     return transformed_ast
+
+def move_pos(src: str, line: int, column: int, dx: int, dy: int) -> tuple[int, int, str]:
+    """
+    Edit of the ORD source src that moves the node statement at line and
+    column (its src_loc) by (dx, dy). The statement must set .pos to a
+    tuple (x, y). Each coordinate expression is shifted by its offset, which
+    moves every instance the statement creates (e.g. in a loop) alike.
+
+    Returns:
+        (start, end, text): src[start:end] is replaced by text.
+    """
+    def integer(node):
+        # Value of an integer literal like 3 or -3, else None.
+        sign = 1
+        if isinstance(node, Tree) and node.data == 'factor' and node.children[0] == '-':
+            sign, node = -1, node.children[1]
+        if isinstance(node, Tree) and node.data == 'number' and node.children[0].isdecimal():
+            return sign * int(node.children[0])
+        return None
+
+    def shift(node, delta):
+        start, end = node.meta.start_pos, node.meta.end_pos
+        if delta == 0:
+            return src[start:end]
+        if integer(node) is not None:
+            return str(integer(node) + delta)
+        if node.data == 'arith_expr':
+            # A literal last or first term takes the offset: base + 10, 40 + 7 * i.
+            *_, op, last = node.children
+            if integer(last) is not None:
+                value = (integer(last) if op == '+' else -integer(last)) + delta
+                if value == 0:
+                    return src[start:op.start_pos].rstrip()
+                return f"{src[start:op.start_pos]}{'+' if value > 0 else '-'}" \
+                    f"{src[op.end_pos:last.meta.start_pos]}{abs(value)}"
+            first, op, second = node.children[:3]
+            if integer(first) is not None:
+                value = integer(first) + delta
+                if value == 0 and op == '+':
+                    return src[second.meta.start_pos:end]
+                return f"{value}{src[first.meta.end_pos:end]}"
+        # Expressions binding weaker than + (e.g. conditionals) get parentheses.
+        tight = ('arith_expr', 'term', 'factor', 'power', 'funccall', 'getitem',
+            'getattr', 'getparam', 'var', 'number', 'grouped_test', 'dotted_atom')
+        text = src[start:end] if node.data in tight else f"({src[start:end]})"
+        return f"{text} {'+' if delta > 0 else '-'} {abs(delta)}"
+
+    def assigns(tree):
+        # Assignments of the statement itself, not of statements nested in it.
+        for child in tree.children:
+            if isinstance(child, Tree) and child.data not in statements:
+                if child.data == 'assign':
+                    yield child
+                else:
+                    yield from assigns(child)
+
+    statements = ('node_stmt', 'node_stmt_nobody', 'anon_node_stmt', 'anon_node_stmt_nobody')
+    tree = parse_with_errors(parser, src)
+    stmt = next((t for t in tree.iter_subtrees()
+        if t.data in statements and (t.meta.line, t.meta.column) == (line, column)), None)
+    if stmt is None:
+        raise ValueError("Cannot move: the statement was not found.")
+    values = [a.children[1] for a in assigns(stmt)
+        if a.children[0] == Tree('dotted_atom', [Tree('name', ['pos'])])]
+    error = ValueError("Cannot move: the statement needs one .pos = (x, y).")
+    if len(values) != 1 or values[0].data not in ('tuple', 'parenthesized_tuple'):
+        raise error
+    coords = values[0].children
+    if len(coords) != 2 or not all(isinstance(c, Tree) for c in coords):
+        raise error
+    # The text between the coordinates stays as it is.
+    a, b = coords
+    return a.meta.start_pos, b.meta.end_pos, \
+        f"{shift(a, dx)}{src[a.meta.end_pos:b.meta.start_pos]}{shift(b, dy)}"
 
 if __name__ == "__main__":
     #Function which parses an ORD string and executes the transformed Python result.

@@ -64,6 +64,8 @@ import sys
 import os
 import select
 import errno
+import site
+import sysconfig
 
 import inotify_simple
 import numpy as np
@@ -79,6 +81,7 @@ from .core import Cell, SubgraphRoot, Layout
 from .core.cell import ViewGenerator
 from .core.wire import ExportTable
 from .language import compile_ord
+from .ord.parser import move_pos
 from .layout.style import default_style, update_customization
 from .config import read_config, update_config
 from .extlibrary import ExtLibrary
@@ -295,6 +298,18 @@ class ImportTracker:
                     self.files.append(origin)
                 return spec
         return None
+
+def source_files(watch_files: dict) -> dict:
+    """
+    The files of watch_files (with their snapshots) whose statements movenode
+    may change: those of the design, not those of ordec or of installed
+    packages.
+    """
+    installed = [Path(p).resolve() for p in (Path(__file__).parent,
+        sysconfig.get_path('purelib'), sysconfig.get_path('platlib'),
+        site.getusersitepackages())]
+    return {f: snapshot for f, snapshot in watch_files.items()
+        if not any(Path(f).resolve().is_relative_to(p) for p in installed)}
 
 def is_internal_frame(filename):
     from .ord import parser as ord_parser
@@ -517,6 +532,37 @@ class ConnectionHandler:
             return {'msg': 'setconfig', 'exception': format_user_exception(e)}
         return {'msg': 'setconfig'}
 
+    def move_node(self, msg: dict, src: str|None, srcfiles: dict) -> dict:
+        """
+        Moves a schematic instance or port by changing the .pos of its ORD
+        statement (see move_pos) and returns the reply with the edit. The
+        file must be one of srcfiles. In integrated mode (file
+        '<webeditor>'), the edit is one of the build's source src, which the
+        client applies to its editor. In local mode, the file is changed on
+        disk, unless it differs from its snapshot in srcfiles.
+        """
+        try:
+            file = msg['file']
+            args = msg['line'], msg['column'], int(msg['dx']), int(msg['dy'])
+            if file not in srcfiles:
+                raise ValueError(f"Cannot move: {Path(file).name} is not a source file of the design.")
+            if file == '<webeditor>':
+                start, end, text = move_pos(src, *args)
+            else:
+                path = Path(file)
+                st = os.stat(file)
+                if srcfiles[file] != (st.st_mtime_ns, st.st_size):
+                    raise ValueError("Cannot move: the file has changed since the last build.")
+                # Bytes, so that the line endings stay as they are.
+                src = path.read_bytes().decode('utf-8')
+                start, end, text = move_pos(src, *args)
+                path.write_bytes((src[:start] + text + src[end:]).encode('utf-8'))
+            # Offsets in the UTF-16 code units of JavaScript strings.
+            start, end = (len(src[:i].encode('utf-16-le')) // 2 for i in (start, end))
+        except Exception as e:
+            return {'msg': 'movenode', 'exception': format_user_exception(e)}
+        return {'msg': 'movenode', 'start': start, 'end': end, 'text': text}
+
     def build_cells(self, source_type: str, source_data: str,
             check_src: str=None) -> (dict, dict):
         conn_globals = {}
@@ -650,12 +696,16 @@ class ConnectionHandler:
 
         try:
             if msg_first_type == 'source':
+                src = msg_first['src']
                 conn_globals, exc = self.build_cells(
-                    msg_first['srctype'], msg_first['src'],
+                    msg_first['srctype'], src,
                     check_src=msg_first.get('check_src'))
-                watch_files = []
+                watch_files = {}
+                srcfiles = {'<webeditor>': None}
             elif msg_first_type == 'localmodule':
+                src = None
                 conn_globals, watch_files, exc = self.build_localmodule(msg_first['module'])
+                srcfiles = source_files(watch_files)
             else:
                 send_exception_info("expected 'source' or 'localmodule' message")
                 return
@@ -679,11 +729,12 @@ class ConnectionHandler:
                 'msg': 'viewlist',
                 'views': discover_views(conn_globals),
                 'config': config,
+                'srcfiles': list(srcfiles),
             }))
 
         # Create websocket send lock to prevent concurrent sends from corrupting messages
         # (e.g., main thread sending view data while inotify thread sends change notification)
-        websocket_lock = threading.Lock()
+        websocket_lock = threading.RLock()
 
         if watch_files:
             pipe_inotify_abort_r_fd, pipe_inotify_abort_w_fd = os.pipe()
@@ -765,6 +816,16 @@ class ConnectionHandler:
                     except KeyError as e:
                         raise ValueError(f"setconfig message missing key {e}")
                     send_msg(dict(self.set_config(msg), req=req))
+                elif msg_type == 'movenode':
+                    try:
+                        req = msg['req']
+                    except KeyError as e:
+                        raise ValueError(f"movenode message missing key {e}")
+                    # Held from the file change to the reply, the lock makes
+                    # the reply reach the client before the inotify thread's
+                    # localmodule_changed, upon which the client reconnects.
+                    with websocket_lock:
+                        send_msg(dict(self.move_node(msg, src, srcfiles), req=req))
                 elif msg_type == 'cancelview':
                     with jobs_lock:
                         job = jobs.get(msg.get('req'))

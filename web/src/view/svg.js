@@ -130,6 +130,10 @@ export class SvgView extends View {
         this.transform = d3.zoomIdentity;
         this.tooltip = document.createElement('div');
         this.tooltip.classList.add('schem-error-tooltip');
+        // Why a drop was refused (see drag-and-drop in update()).
+        this.dropMessage = document.createElement('div');
+        this.dropMessage.classList.add('schem-error-tooltip');
+        this.dropMessageTimeout = null;
         this.coordsDisplay = new CoordinateDisplay();
         this.highlightOverlay = null;
         // The data of the shown highlight, redrawn on crossing style changes.
@@ -373,7 +377,7 @@ export class SvgView extends View {
 
         const svgHost = document.createElement('div');
         svgHost.className = 'schem-canvas';
-        svgHost.append(this.svgNode, this.tooltip);
+        svgHost.append(this.svgNode, this.tooltip, this.dropMessage);
 
         const statusBar = document.createElement('div');
         statusBar.className = 'viewer-statusbar schem-statusbar';
@@ -483,6 +487,78 @@ export class SvgView extends View {
                     eventBus.emit('editor:goto-source', { file, line, column });
                 }
             });
+
+        // Drag-and-drop: instances and ports of the design's source files
+        // (client.srcfiles) move on the grid, and their new position is
+        // written to their statement (see editor:move-node in main.js). The
+        // datum is the offset from the rendered position, kept until the
+        // rebuilt view. It is shared by the nodes of one statement (e.g. an
+        // array made in a loop): the edit of the statement moves them all.
+        const view = this;
+        const drag = d3.drag()
+            .on('start', function() {
+                // Below the snap distance (and at most 4 px), the gesture stays
+                // a click, so a move never also jumps to the source.
+                drag.clickDistance(Math.min(4, 0.4 * this.getScreenCTM().a));
+            })
+            .on('drag', function(event, d) {
+                nodes.filter(e => e === d).attr('transform',
+                    `translate(${Math.round(event.x)} ${Math.round(event.y)})`);
+            })
+            .on('end', function(event, d) {
+                const el = d3.select(this);
+                const dx = Math.round(event.x) - d.x;
+                const dy = Math.round(event.y) - d.y;
+                if (!dx && !dy) {
+                    return;
+                }
+                const snapBack = () => nodes.filter(e => e === d)
+                    .attr('transform', `translate(${d.x} ${d.y})`);
+                // The source lines of an outdated view may have changed.
+                if (view.viewOutdated()) {
+                    snapBack();
+                    return;
+                }
+                eventBus.emit('editor:move-node', {
+                    file: el.attr('data-srcfile'),
+                    line: parseInt(el.attr('data-srcline'), 10),
+                    column: parseInt(el.attr('data-srccol'), 10),
+                    dx,
+                    dy,
+                    done: error => {
+                        if (!error) {
+                            d.x += dx;
+                            d.y += dy;
+                            return;
+                        }
+                        snapBack();
+                        // The reason, shown below the node for a while.
+                        const host = svgHost.getBoundingClientRect();
+                        const box = el.node().getBoundingClientRect();
+                        view.dropMessage.textContent = error;
+                        view.dropMessage.style.left = (box.left - host.left) + 'px';
+                        view.dropMessage.style.top = (box.bottom - host.top + 4) + 'px';
+                        view.dropMessage.style.display = 'block';
+                        clearTimeout(view.dropMessageTimeout);
+                        view.dropMessageTimeout = setTimeout(() => view.dropMessage.style.display = 'none', 3000);
+                    },
+                });
+            });
+        const offsets = new Map();
+        const srcfiles = this.resultViewer.client.srcfiles;
+        const nodes = this.g.selectAll('g[data-srcline]')
+            .filter(function() {
+                return srcfiles.includes(this.getAttribute('data-srcfile'));
+            })
+            .datum(function() {
+                const statement = ['data-srcfile', 'data-srcline', 'data-srccol']
+                    .map(name => this.getAttribute(name)).join(':');
+                if (!offsets.has(statement)) {
+                    offsets.set(statement, {x: 0, y: 0});
+                }
+                return offsets.get(statement);
+            })
+            .call(drag);
 
         const pending = this.takePendingSelection('pendingHighlight');
         if (pending) {
