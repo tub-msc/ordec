@@ -1641,7 +1641,40 @@ body.theme-dark .schem-crossing-select option {
     color: initial;
     background-color: initial;
 }
-.viewer-coordinates {
+/* Net highlighting (see setupNetHover in svg.js), in the complement of the
+   wiring color (wire_color #1a80e6 in render.py: hue 210 -> 30). The halo
+   has its opacity on the group, so that overlapping parts do not add up. */
+.schematic .netHit {
+    fill: none;
+    stroke: transparent;
+    stroke-width: 0.6;
+    stroke-linecap: round;
+    pointer-events: stroke;
+    cursor: pointer;
+}
+.schematic .netHalo {
+    opacity: 0.35;
+    pointer-events: none;
+}
+.schematic .netHalo > * {
+    fill: none;
+    stroke: #e6801a;
+    stroke-width: 0.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.schematic .schemWire.netHover, .schematic .tapPoint.netHover {
+    stroke: #e6801a;
+    stroke-width: 0.15;
+}
+.schematic .connPoint.netHover, .schematic .netHover .portArrow,
+.schematic .netHover .portLabel, .schematic .tapPointLabel.netHover {
+    fill: #e6801a;
+}
+.schematic .netHover .portLabel, .schematic .tapPointLabel.netHover {
+    font-weight: bold;
+}
+.viewer-coordinates, .schem-net {
     font-family: var(--font-mono);
     font-size: var(--font-size-md);
     color: var(--color-text);

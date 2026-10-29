@@ -1097,12 +1097,35 @@ def test_layout_style_edit(web, tmp_path, monkeypatch):
 
 @pytest.mark.web
 def test_schematic_crossings(web, tmp_path, monkeypatch):
-    """The crossing style select changes the drawing right away, is saved
-    to the user's configuration file and applies after reconnecting."""
+    """Hovering a wire highlights its net, a click pins the highlight until
+    Escape. The crossing style select changes the drawing right away, is
+    saved to the user's configuration file and applies after reconnecting."""
     monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path))
     qs_local = web.key.query_string_local("tests.lib.ord.nand", ["Nand().schematic"])
     web.navigate(f'app.html#refreshall=true&{qs_local}')
     web.wait_for_ready()
+    n_early, n_net, n_hover, n_halo, name = web.driver.execute_script("""
+        const hit = document.querySelector('.netHit');
+        hit.dispatchEvent(new MouseEvent('mouseover', {bubbles: true}));
+        const early = document.querySelectorAll('.netHover').length;
+        return new Promise(resolve => setTimeout(() => resolve([early,
+            document.querySelectorAll(`[data-nid="${hit.dataset.net}"]`).length,
+            document.querySelectorAll('.netHover').length,
+            document.querySelector('.netHalo').childElementCount,
+            document.querySelector('.schem-net').textContent]), 300));
+    """)
+    assert n_early == 0 # hover delay
+    assert n_net == n_hover > 1 and n_halo > 0
+    assert name == 'net=vdd'
+    n_pinned, n_released = web.driver.execute_script("""
+        const count = () => document.querySelectorAll('.netHover').length;
+        document.querySelector('.netHit').dispatchEvent(new MouseEvent('click', {bubbles: true}));
+        document.querySelector('.schem-svg').dispatchEvent(new MouseEvent('mouseleave'));
+        const pinned = count();
+        document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape'}));
+        return [pinned, count()];
+    """)
+    assert n_pinned == n_hover and n_released == 0
     d = web.driver.execute_script("""
         const select = document.querySelector('.schem-crossing-select');
         select.value = 'bridge-h';

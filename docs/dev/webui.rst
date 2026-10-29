@@ -73,6 +73,8 @@ A ``Plot2D`` report element arrives with its complete x column and series as flo
 
 ``SimPlot`` zooms and pans only the x axis; the y axis always fits the visible samples. Dragging pans, Shift+drag selects an x range to zoom to. In a scrolling report (not ``fill_height``), the wheel must scroll the report when the pointer passes over a plot, so the wheel zooms (Shift+wheel and horizontal wheel pan) only the focused plot under the pointer. A click toggles the focus of a plot, a drag focuses it, clicking elsewhere or Escape removes it; at most one plot is focused. A wheel motion that scrolls the report keeps scrolling it when the focused plot comes under the pointer (like the scroll latching of browsers), so that the focused plot does not capture the wheel in the middle of scrolling. Touch gestures act on the focused plot only. While a plot is focused, a hint lists these controls, unless turned off with the ``report.plot_hint`` setting of the configuration file.
 
+The schematic viewer highlights the net under the pointer after a short delay, and shows its name in the status bar (``setupNetHover`` in ``web/src/view/svg.js``; the names come with the view data as ``net_names``, by nid). It relies on ``SchematicRenderer`` marking the wires, junctions, tap points (and their labels) and ports with the nid of their net (``data-nid``); the viewer adds wide invisible copies of the wires as hit area, beneath all other elements, so that instances keep their click-to-source. Like the focus of plots, a click pins the highlight, clicking the net again, clicking elsewhere or Escape releases it; at most one net is pinned.
+
 View names are evaluated with ``eval()``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

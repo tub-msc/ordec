@@ -216,6 +216,8 @@ class Renderer:
         text is either a string drawn with svg_class, or a list of rows, each
         a list of (text, svg_class) spans that are drawn in one line,
         separated by spaces.
+
+        Returns the <text> element.
         """
 
         direction = trans.d4.unflip()
@@ -283,7 +285,7 @@ class Renderer:
         tag.attrib['text-anchor'] = {HAlign.Left: 'start', HAlign.Right: 'end', HAlign.Center: 'middle'}[halign]
         if svg_class:
             tag.attrib['class'] = svg_class
-
+        return tag
 
     def setup_canvas(self, rect: Rect4R, padding: float = 1.0, scale_viewbox: float|int = 1):
         """
@@ -454,11 +456,14 @@ class SchematicRenderer(Renderer):
         # Set by render_schematic: the web UI offers the crossing styles (see
         # web/src/view/svg.js) only for schematics, not for symbols.
         self.is_schematic = False
+        # Names of the nets by nid, for the net highlighting of the web UI.
+        self.net_names = {}
         return super().__init__(include_nids=include_nids, enable_css=enable_css)
 
     def webdata(self):
         view_type, data = super().webdata()
         data['is_schematic'] = self.is_schematic
+        data['net_names'] = self.net_names
         return view_type, data
 
     def draw_grid(self, rect: Rect4R, dot_size: float = 0.1):
@@ -486,6 +491,7 @@ class SchematicRenderer(Renderer):
 
     def render_schematic(self, s: Schematic):
         self.is_schematic = True
+        self.net_names = {net.nid: net.full_path_label() for net in s.all(Net)}
         # Annotation blocks may lie outside the outline (e.g. of instances
         # that were never placed, see annotation_anchor).
         canvas = s.outline
@@ -701,9 +707,11 @@ class SchematicRenderer(Renderer):
 
         if not (is_default_supply or is_default_ground):
             label = p.ref.full_path_label()
-            self.draw_label(label, tran,
+            text = self.draw_label(label, tran,
                 space=self.port_text_space, valign=VAlign.Middle,
                 svg_class="tapPointLabel")
+            if self.include_nids:
+                text.attrib['data-nid'] = str(p.ref.nid)
 
 def render(obj, **kwargs) -> Renderer:
     if isinstance(obj, Symbol):
