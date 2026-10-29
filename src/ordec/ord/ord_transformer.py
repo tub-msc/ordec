@@ -224,7 +224,8 @@ class OrdTransformer(PythonTransformer):
  
             args = [ast.Tuple(elts=context_name_tuple, ctx=ast.Load())]
             func = self.ast_ord_context("add_port")
-            rhs = ast.Call(func=func, args=args, keywords=[])
+            rhs = ast.Call(func=func, args=args,
+                keywords=self.ast_src_loc_keywords(meta))
 
         # Case for net/path statements
         elif context_type_name in ("net", "path"):

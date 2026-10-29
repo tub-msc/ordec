@@ -1641,11 +1641,12 @@ body.theme-dark .spotlight-buttons .spotlight-skip {
 /* Details toggle of schematics and symbols. Elements of class "detailOnly"
    (grid, pin labels hidden by the symbol) are hidden by the schematic
    stylesheet (see render.py); the toggle shows them. Its circle is filled
-   while on, like the dot of the auto-refresh toggle. */
+   while on, like the dot of the auto-refresh toggle. The Move toggle of
+   schematics (see drag-and-drop in svg.js) looks the same. */
 .schem-svg.schem-detail .detailOnly {
     display: inline;
 }
-.schem-detail-toggle {
+.schem-detail-toggle, .schem-move-toggle {
     gap: 6px;
     font-family: var(--font-sans);
     font-size: var(--font-size-sm);
@@ -1654,7 +1655,7 @@ body.theme-dark .spotlight-buttons .spotlight-skip {
     border: none;
     cursor: pointer;
 }
-.schem-detail-toggle::before {
+.schem-detail-toggle::before, .schem-move-toggle::before {
     content: '';
     width: 7px;
     height: 7px;
@@ -1662,13 +1663,13 @@ body.theme-dark .spotlight-buttons .spotlight-skip {
     border: 1px solid currentColor;
     border-radius: 50%;
 }
-.schem-detail-toggle.active::before {
+.schem-detail-toggle.active::before, .schem-move-toggle.active::before {
     background-color: currentColor;
 }
-.schem-detail-toggle:hover {
+.schem-detail-toggle:hover, .schem-move-toggle:hover {
     background-color: rgba(0, 0, 0, 0.06);
 }
-body.theme-dark .schem-detail-toggle:hover {
+body.theme-dark .schem-detail-toggle:hover, body.theme-dark .schem-move-toggle:hover {
     background-color: rgba(255, 255, 255, 0.08);
 }
 /* Crossing style select of schematics (see drawCrossings in svg.js). */

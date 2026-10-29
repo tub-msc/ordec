@@ -1164,6 +1164,66 @@ def test_schematic_viewer(web, tmp_path, monkeypatch):
         "return document.querySelector('.schem-crossing-select').value") == 'bridge-h'
 
 @pytest.mark.web
+def test_schematic_drag(web, tmp_path, monkeypatch):
+    """Dropping a dragged instance changes its .pos: in local mode in the
+    file, which reloads the view, in integrated mode in the editor."""
+    from selenium.webdriver.common.action_chains import ActionChains
+    from importlib.resources import files
+
+    src = files('ordec.examples').joinpath('voltagedivider.ord').read_text()
+    # res_1 is at (5,6).
+    line = next(i for i, text in enumerate(src.splitlines(), 1) if 'Res res_1' in text)
+    outline = f'g[data-srcline="{line}"] .symbolOutline'
+    halo = "document.querySelector('.markHalo.markHover')"
+    def drag_res_1(dx):
+        rect = web.driver.find_element(By.CSS_SELECTOR, outline)
+        unit = web.driver.execute_script("return arguments[0].getScreenCTM().a", rect)
+        # Move is off at first: a drag leaves the instance in place.
+        ActionChains(web.driver).drag_and_drop_by_offset(rect, round(dx * unit), 0).perform()
+        assert not web.driver.execute_script(
+            "return arguments[0].parentNode.hasAttribute('transform');", rect)
+        web.driver.find_element(By.CSS_SELECTOR, '.schem-move-toggle').click()
+        ActionChains(web.driver).move_to_element(rect).perform()
+        web.wait_until(f"return {halo}.childElementCount > 0;")
+        ActionChains(web.driver).click_and_hold().move_by_offset(round(dx * unit), 0).perform()
+        # The halo of the hover highlight moves with the instance.
+        assert web.driver.execute_script(f"return {halo}.firstElementChild"
+            ".getAttribute('transform');").startswith(f'translate({dx} 0)')
+        ActionChains(web.driver).release().perform()
+    outline_x = f"Number(document.querySelector('{outline}').getAttribute('x'))"
+
+    (tmp_path / 'drag_example.ord').write_text(src)
+    monkeypatch.syspath_prepend(str(tmp_path))
+    web.resize_viewport()
+    qs_local = web.key.query_string_local("drag_example", ["VoltageDivider().schematic"])
+    web.navigate(f'app.html#refreshall=true&{qs_local}')
+    web.wait_for_ready()
+    x = web.driver.execute_script(f"return {outline_x};")
+    drag_res_1(2)
+    web.wait_until(f"return Math.abs({outline_x} - {x + 2}) < 1e-6;")
+    assert '.pos = (7,6)' in (tmp_path / 'drag_example.ord').read_text()
+    # A view that is rebuilt during a drag voids the drop.
+    web.driver.execute_script("""
+        window.svgBefore = document.querySelector('.schem-svg');
+        window.ordecApp.eventBus.on('editor:move-node', () => window.moved = true);
+    """)
+    rect = web.driver.find_element(By.CSS_SELECTOR, outline)
+    ActionChains(web.driver).move_to_element(rect).click_and_hold().move_by_offset(30, 0).perform()
+    web.driver.execute_script("window.ordecApp.client.connect();")
+    web.wait_until("return document.querySelector('.schem-svg') !== window.svgBefore;")
+    ActionChains(web.driver).release().perform()
+    assert not web.driver.execute_script("return window.moved;")
+
+    web.navigate('app.html#example=voltagedivider&refreshall=true')
+    web.wait_for_ready()
+    drag_res_1(-3)
+    assert web.wait_until(f"""
+        return window.ordecApp.layout.root.getAllContentItems()
+            .find(i => i.isComponent && i.componentName === 'editor')
+            .component.editor.session.getLine({line - 1}).endsWith('.pos = (2,6)');
+    """)
+
+@pytest.mark.web
 def test_report_plot_controls(web, tmp_path, monkeypatch):
     """In a scrolling report, the wheel over an inactive plot scrolls the
     report; Shift+drag zooms the plot group to the selected range; the controls

@@ -38,12 +38,21 @@ def add(name_tuple, ref):
     return cursor
 
 
-def add_port(name_tuple):
+def add_port(name_tuple, src_line=None, src_column=None):
     """
     Add a port to the current context. If a Net of the same name was
     forward-declared (net statement), the port attaches to that net,
     allowing connections before the port statement is reached.
+
+    Args:
+        name_tuple: path components for naming the port.
+        src_line: line of the defining ORD statement.
+        src_column: column of the defining ORD statement.
     """
+    # Source location for click-to-source and drag-and-drop.
+    src_loc = SourceLocInfo(
+        sys._getframe(1).f_code.co_filename, src_line, src_column
+    ) if src_line is not None else None
     ctx = current_node_context()
     symbol = ctx.root.symbol
     if symbol is None:
@@ -77,7 +86,8 @@ def add_port(name_tuple):
     # Default orient: flipped pin orient, so e.g. a West-facing input pin
     # yields an East-facing port (same rule as the netlist importers).
     # A body `.orient=` assignment overrides via the Net.orient property.
-    port = subgraph_root % SchemPort(ref=net, orient=pin.orient * R180)
+    port = subgraph_root % SchemPort(ref=net, orient=pin.orient * R180,
+        src_loc=src_loc)
     register_in_group(port)
     return net
 

@@ -395,7 +395,7 @@ class Net(Node):
         self.port.orient = value
 
 @public
-class SchemPort(Node):
+class SchemPort(Node, MixinSourceLoc):
     """
     Port of a Schematic, corresponding to a Pin of the schematic's Symbol.
     """
