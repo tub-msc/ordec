@@ -18,8 +18,8 @@ class Collector:
         self.result = None
         self.cancelled = None
 
-    def on_progress(self, status, fraction, detail=None):
-        self.progress.append((status, fraction))
+    def on_progress(self, tree):
+        self.progress.append((tree['status'], tree['fraction']))
 
     def on_done(self, job, result, cancelled):
         assert not self.done.is_set(), "terminal delivered twice"

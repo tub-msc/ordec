@@ -40,6 +40,8 @@ def infinite_loop():
 def with_progress():
     for i in range(4):
         progress(f"phase {i}", i/4)
+    with progress_scope("inner"):
+        progress("deep", 0.5)
     return "progressed"
 
 @viewgen_noctx
@@ -126,10 +128,18 @@ def test_getview_and_progress(proto_server):
         progress_msgs, terminal = c.recv_until_terminal(1)
         assert terminal['view'] == 'with_progress()'
         assert 'type' in terminal and 'exception' not in terminal
-        # Throttling may drop some updates, but status changes always pass.
-        statuses = [m['status'] for m in progress_msgs]
-        assert statuses == [f"phase {i}" for i in range(4)]
-        assert progress_msgs[-1]['fraction'] == pytest.approx(0.75)
+        # Throttling may drop some updates, but status and scope changes
+        # always pass.
+        trees = [m['tree'] for m in progress_msgs]
+        assert [t['status'] for t in trees[:4]] == [f"phase {i}" for i in range(4)]
+        assert trees[3]['fraction'] == pytest.approx(0.75)
+        assert [t['children'] for t in trees[4:]] == [
+            [{'label': "inner", 'status': None, 'fraction': None,
+                'detail': None, 'children': []}],
+            [{'label': "inner", 'status': "deep", 'fraction': 0.5,
+                'detail': None, 'children': []}],
+            [],
+        ]
     finally:
         c.close()
 

@@ -1221,7 +1221,9 @@ import time
 def slow():
     for i in range(100):
         progress(f"step {i}", i/100)
-        time.sleep(0.05)
+        with progress_scope("inner"):
+            progress("sleeping", 0.5)
+            time.sleep(0.05)
     return "slow result"
 '''
 
@@ -1253,6 +1255,10 @@ def test_progress_and_cancel(web):
     web.wait_until(
         "return parseFloat(window.ordecApp.client.resultViewers[0]"
         ".refreshProgressFill.style.width) > 0;")
+    # The open progress scope gets its own row below.
+    web.wait_until(
+        "return window.ordecApp.client.resultViewers[0].refreshScopes"
+        ".textContent.startsWith('inner: sleeping50%');")
 
     # Cancel via the overlay's cancel button. (The transient "Cancelling…"
     # label is not asserted: the cancelled terminal may arrive faster than
