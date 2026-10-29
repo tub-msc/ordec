@@ -7,8 +7,8 @@ import sys
 import pytest
 
 from ordec.core import (
-    progress, progress_scope, checkpoint, cancelable_subprocess,
-    cancelable_wait, GenCancelled)
+    progress, progress_scope, parallel_map, checkpoint,
+    cancelable_subprocess, cancelable_wait, GenCancelled)
 from ordec.core.genrun import GenRun
 
 def test_noop_without_active_run():
@@ -82,6 +82,22 @@ def test_progress_scope_slots():
     assert labels() == [None, "b", None]
     b.__exit__(None, None, None)
     assert labels() == []  # free slots go with the last sibling
+
+def test_parallel_map():
+    trees = []
+    run = GenRun(on_progress=trees.append)
+    barrier = threading.Barrier(3)
+    def fn(i):
+        with progress_scope(f"item {i}"):
+            barrier.wait(timeout=5)  # all three scopes are open at once
+            return 2 * i
+    with run.activate():
+        assert parallel_map(fn, range(3)) == [0, 2, 4]
+        assert max(len(t['children']) for t in trees) == 3
+        # The calls see the run, and with it its cancellation.
+        run.request_cancel()
+        with pytest.raises(GenCancelled):
+            parallel_map(lambda i: progress("never"), range(3))
 
 def test_progress_without_sink():
     run = GenRun()

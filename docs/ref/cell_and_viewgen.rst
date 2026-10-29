@@ -138,6 +138,8 @@ offer safe cancellation points via :mod:`ordec.core.genrun`:
 
 .. autofunction:: ordec.core.genrun.progress_scope
 
+.. autofunction:: ordec.core.genrun.parallel_map
+
 .. autofunction:: ordec.core.genrun.checkpoint
 
 .. autofunction:: ordec.core.genrun.cancelable_subprocess
@@ -171,6 +173,22 @@ simulation:
         for corner in corners:
             with progress_scope(corner.name):
                 tb.simulate(corner=corner).tran(...)
+
+Independent simulations, such as the points of a sweep, can run in
+parallel with ``parallel_map``. The progress bars of the running calls
+then share a row, side by side:
+
+.. code-block:: python
+
+    def simulate_corner(corner):
+        with progress_scope(corner.name):
+            return tb.simulate(corner=corner).tran(...)
+
+    with progress_scope("Corners", steps=len(corners)):
+        results = parallel_map(simulate_corner, corners)
+
+Mind that the parallel calls add to the view generations that the server
+runs at once (``ordec -j``), each with its own ngspice process.
 
 These functions are exact no-ops outside the web server (pytest, plain
 scripts), so library code can call them unconditionally. Simulation runs

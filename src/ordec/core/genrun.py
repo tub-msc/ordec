@@ -18,13 +18,14 @@ on_progress callback.
 
 The active run and the current progress node are stored in ContextVars.
 Note that ContextVars do not propagate into threads spawned by the
-generator itself; use contextvars.copy_context().run(...) if that is ever
-needed.
+generator itself; :func:`parallel_map` runs its calls in copies of the
+caller's context for that reason.
 """
 
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
-from contextvars import ContextVar
+from contextvars import ContextVar, copy_context
 from public import public
 
 _run_var = ContextVar("gen_run", default=None)
@@ -301,3 +302,30 @@ def cancelable_wait(ev):
     else:
         with run.wakeup_registered(ev):
             yield
+
+@public
+def parallel_map(fn, items, max_workers: int=4) -> list:
+    """
+    Like ``list(map(fn, items))``, but runs up to ``max_workers`` calls at
+    once, each in a thread of its own, e.g. the simulations of a sweep.
+    Each call runs in a copy of the caller's context, so :func:`progress`,
+    :func:`progress_scope` and cancellation work inside fn. Returns the
+    results in item order; the first exception (in item order) propagates
+    once all calls have finished. With ``max_workers=1``, the calls run
+    one after the other in the calling thread.
+
+    fn should compute and return values; the caller writes them into its
+    view afterwards. Writing from fn into the caller's view is not
+    supported (ORDB allows one writing thread per subgraph at a time, and
+    the calls may overlap). fn must not request the view that the caller
+    is generating: unlike in the caller's own thread, this is not detected
+    as a recursion and waits until cancelled.
+    """
+    if max_workers == 1:
+        return [fn(item) for item in items]
+    with ThreadPoolExecutor(max_workers) as executor:
+        # One context copy per call: a Context cannot be entered by two
+        # threads at once.
+        futures = [executor.submit(copy_context().run, fn, item)
+            for item in items]
+    return [f.result() for f in futures]

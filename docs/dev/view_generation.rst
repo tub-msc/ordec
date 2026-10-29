@@ -32,7 +32,10 @@ is active. A second ContextVar points at the innermost open
 right node of the run's progress tree, e.g. the per-corner entry of a corner
 sweep. Every change sends a snapshot of the whole tree, which is small: closed
 scopes leave the tree, so its size is bounded by nesting depth and
-parallelism, not by the number of steps. Progress travels back out through the
+parallelism, not by the number of steps. ContextVars do not reach threads
+the generator starts itself; :func:`~ordec.core.genrun.parallel_map` runs each
+call in a copy of the generator's context, so the calls report into the tree
+and see its cancellation. Progress travels back out through the
 handler's ``websocket_lock``, which already serialises sends from other
 threads.
 
