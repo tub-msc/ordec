@@ -1641,9 +1641,30 @@ body.theme-dark .schem-crossing-select option {
     color: initial;
     background-color: initial;
 }
-/* Net highlighting (see setupNetHover in svg.js), in the complement of the
-   wiring color (wire_color #1a80e6 in render.py: hue 210 -> 30). The halo
-   has its opacity on the group, so that overlapping parts do not add up. */
+/* Net highlighting (see mark in svg.js). The marking class sets the color
+   --net-color: for hover the complement of the wiring color (wire_color
+   #1a80e6 in render.py: hue 210 -> 30), for LVS selections red at the same
+   saturation and lightness, also used by the box of LVS instance selections.
+   Where both mark the same elements, they keep the LVS color (netLvs comes
+   last) and only the hover halo is drawn, as two translucent halos would
+   mix. The halo has its opacity on the group, so that overlapping parts do
+   not add up. */
+.schematic .netHover {
+    --net-color: #e6801a;
+}
+.schematic .netLvs, .schematic .lvs-highlight-border {
+    --net-color: #e61a1a;
+}
+/* An element marked by both means the same net, as nets are disjoint. */
+.schematic:has([data-nid].netLvs.netHover) .netHalo.netLvs {
+    display: none;
+}
+/* Without pointer events, so that the instance keeps its click-to-source. */
+.schematic .lvs-highlight-border {
+    fill: var(--net-color);
+    opacity: 0.25;
+    pointer-events: none;
+}
 .schematic .netHit {
     fill: none;
     stroke: transparent;
@@ -1658,20 +1679,20 @@ body.theme-dark .schem-crossing-select option {
 }
 .schematic .netHalo > * {
     fill: none;
-    stroke: #e6801a;
+    stroke: var(--net-color);
     stroke-width: 0.5;
     stroke-linecap: round;
     stroke-linejoin: round;
 }
-.schematic .schemWire.netHover, .schematic .tapPoint.netHover {
-    stroke: #e6801a;
+.schematic :is(.schemWire, .tapPoint):is(.netHover, .netLvs) {
+    stroke: var(--net-color);
     stroke-width: 0.15;
 }
-.schematic .connPoint.netHover, .schematic .netHover .portArrow,
-.schematic .netHover .portLabel, .schematic .tapPointLabel.netHover {
-    fill: #e6801a;
+.schematic .connPoint:is(.netHover, .netLvs), .schematic .tapPointLabel:is(.netHover, .netLvs),
+.schematic :is(.netHover, .netLvs) :is(.portArrow, .portLabel) {
+    fill: var(--net-color);
 }
-.schematic .netHover .portLabel, .schematic .tapPointLabel.netHover {
+.schematic .tapPointLabel:is(.netHover, .netLvs), .schematic :is(.netHover, .netLvs) .portLabel {
     font-weight: bold;
 }
 .viewer-coordinates, .schem-net {

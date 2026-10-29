@@ -123,19 +123,23 @@ function drawCrossings(wire, style) {
 
 // Net highlighting: render.py marks the wires, junctions, tap points (with
 // their labels) and ports of a schematic with the nid of their net
-// (data-nid). Hovering one of them marks all elements of the net with class
-// "netHover", draws a halo beneath them and shows the name of the net (from
-// net_names of the view data) in the status bar. The highlight appears after
-// NET_HOVER_DELAY, so that sweeping the pointer across the schematic does
-// not flash the nets it passes; it disappears right away. A click pins the
-// highlight, like the focus of report plots: until the net is clicked again,
-// something else is clicked or Escape is pressed (see the document listeners
-// below the class), hovering does not change it. At most one net is pinned,
-// in any viewer. As the wires are thin, wide invisible copies of the wires
-// and tap points ("netHit") serve as hit area. Both lie beneath all other
-// elements, so that instances still get their clicks. The copies carry the
-// nid as data-net instead of data-nid, so that they do not show up in the
-// LVS highlight.
+// (data-nid). mark highlights a net by marking all its elements with a class
+// and drawing a halo beneath them, for two independent users: the net under
+// the pointer ("netHover") and the net or pin (port only) of an LVS
+// selection ("netLvs", see setHighlight). The class sets the color (see
+// style.css); where both mark an element, it is red with the hover halo.
+// Hovering an element of a net highlights it and shows the name of the net
+// (from net_names of the view data) in the status bar. The hover highlight
+// appears after NET_HOVER_DELAY, so that sweeping the pointer across the
+// schematic does not flash the nets it passes; it disappears right away. A
+// click pins the highlight, like the focus of report plots: until the net is
+// clicked again, something else is clicked or Escape is pressed (see the
+// document listeners below the class), hovering does not change it. At most
+// one net is pinned, in any viewer. As the wires are thin, wide invisible
+// copies of the wires and tap points ("netHit") serve as hit area. Both lie
+// beneath all other elements, so that instances still get their clicks. The
+// copies carry the nid as data-net instead of data-nid, so that they do not
+// show up in the LVS highlight.
 const NET_HOVER_DELAY = 150; // ms
 
 // SVG viewer for schematics and symbols.
@@ -165,12 +169,12 @@ export class SvgView extends View {
         this.crossingSelect = null;
         // The wires with crossings (see findCrossings).
         this.crossingWires = [];
-        // Net highlighting (see setupNetHover): the net names by nid, the
-        // group of the halo, the status bar element with the name, the nid
-        // of the highlighted net and of the net under the pointer, and the
-        // timeout of hoverNet.
+        // Net highlighting (see setupNetHighlight): the net names by nid, the
+        // halo groups by marking class (see markNet), the status bar element
+        // with the name, the nid of the hover-highlighted net and of the net
+        // under the pointer, and the timeout of hoverNet.
         this.netNames = new Map();
-        this.netHalo = null;
+        this.netHalos = new Map();
         this.netDisplay = null;
         this.netShown = null;
         this.netHovered = null;
@@ -248,117 +252,44 @@ export class SvgView extends View {
             return;
         }
 
-        const highlightGroup = innerGroup.append("g")
-            .attr("class", "lvs-highlight-group");
-
         const itemType = data.item_type;
         const schemNid = data.schem_nid;
 
         if (schemNid === undefined || schemNid === null) {
-            highlightGroup.remove();
             return;
         }
-
-        // Select all elements with matching data-nid
-        const elements = this.g.selectAll(`[data-nid="${schemNid}"]`);
-        if (elements.empty()) {
-            highlightGroup.remove();
-            return;
-        }
-
-        if (itemType === 'device' || itemType === 'subcircuit') {
+        const elements = [...this.svgNode.querySelectorAll(`[data-nid="${schemNid}"]`)];
+        if (itemType === 'net') {
+            this.mark('netLvs', elements);
+        } else if (itemType === 'pin') {
+            // Only the port: it carries the nid of its net, like the wires.
+            this.mark('netLvs', elements.filter(el => el.matches('g')));
+        } else if (itemType === 'device' || itemType === 'subcircuit') {
             // Instance highlighting: draw bounding rect around the instance group
-            const instGroup = elements.filter('g');
-            if (instGroup.empty()) {
-                highlightGroup.remove();
+            const instGroup = elements.find(el => el.matches('g'));
+            if (!instGroup) {
                 return;
             }
-            const bbox = instGroup.node().getBBox();
+            const bbox = instGroup.getBBox();
             const pad = 0.3;
-            highlightGroup.append("rect")
+            this.highlightOverlay = innerGroup.append("g")
+                .attr("class", "lvs-highlight-group");
+            this.highlightOverlay.append("rect")
                 .attr("class", "lvs-highlight-border")
                 .attr("x", bbox.x - pad)
                 .attr("y", bbox.y - pad)
                 .attr("width", bbox.width + pad * 2)
                 .attr("height", bbox.height + pad * 2)
                 .attr("rx", 0.5)
-                .attr("ry", 0.5)
-                .attr("fill", "rgba(255, 0, 0, 0.25)")
-                .attr("stroke", "none");
-        } else if (itemType === 'net') {
-            // Net highlighting: highlight wires and tap points only (not ports)
-            elements.each(function() {
-                const el = d3.select(this);
-                const tagName = this.tagName.toLowerCase();
-                if (tagName === 'path') {
-                    // Wire/tappoint: draw thicker translucent stroke along the path
-                    const pathD = el.attr('d');
-                    const transform = el.attr('transform');
-                    const pathEl = highlightGroup.append("path")
-                        .attr("d", pathD)
-                        .attr("fill", "none")
-                        .attr("stroke", "rgba(255, 0, 0, 0.4)")
-                        .attr("stroke-width", 0.4)
-                        .attr("stroke-linecap", "round");
-                    if (transform) {
-                        pathEl.attr("transform", transform);
-                    }
-                } else if (tagName === 'circle') {
-                    // Connection point: draw larger translucent circle
-                    highlightGroup.append("circle")
-                        .attr("cx", el.attr('cx'))
-                        .attr("cy", el.attr('cy'))
-                        .attr("r", 0.5)
-                        .attr("fill", "rgba(255, 0, 0, 0.25)")
-                        .attr("stroke", "none");
-                }
-                // Skip 'g' elements (ports) - only highlight wires and connection points
-            });
-        } else if (itemType === 'pin') {
-            // Pin highlighting: highlight only the port (not the connected wires)
-            const portGroup = elements.filter('g');
-            if (portGroup.empty()) {
-                highlightGroup.remove();
-                return;
-            }
-            // Find the portArrow path and extract position from its transform
-            const portArrow = portGroup.select('path.portArrow');
-            let cx, cy;
-            if (!portArrow.empty()) {
-                const transform = portArrow.attr('transform');
-                // Parse matrix(a,b,c,d,e,f) where e,f are the translation
-                const match = transform && transform.match(/matrix\(([^)]+)\)/);
-                if (match) {
-                    const vals = match[1].split(/[\s,]+/).map(parseFloat);
-                    cx = vals[4];
-                    cy = vals[5];
-                }
-            }
-            if (cx === undefined) {
-                // Fallback to bbox center
-                const bbox = portGroup.node().getBBox();
-                cx = bbox.x + bbox.width / 2;
-                cy = bbox.y + bbox.height / 2;
-            }
-            highlightGroup.append("circle")
-                .attr("cx", cx)
-                .attr("cy", cy)
-                .attr("r", 0.5)
-                .attr("fill", "rgba(255, 0, 0, 0.25)")
-                .attr("stroke", "none");
-        } else {
-            // Unknown item type, remove empty group
-            highlightGroup.remove();
-            return;
+                .attr("ry", 0.5);
         }
-
-        this.highlightOverlay = highlightGroup;
     }
     clearHighlight() {
         if (this.highlightOverlay) {
             this.highlightOverlay.remove();
             this.highlightOverlay = null;
         }
+        this.mark('netLvs', []);
         this.highlightData = null;
     }
     update(msgData, wireHash) {
@@ -425,7 +356,7 @@ export class SvgView extends View {
         this.crossingSelect = null;
         this.crossingWires = msgData.is_schematic ? findCrossings(this.svgNode) : [];
         // Before applyCrossings, so that the hit area copies the plain wires.
-        this.setupNetHover(msgData.is_schematic, msgData.net_names);
+        this.setupNetHighlight(msgData.is_schematic, msgData.net_names);
         if (msgData.is_schematic) {
             const crossingSelect = document.createElement('select');
             crossingSelect.className = 'schem-crossing-select';
@@ -540,12 +471,12 @@ export class SvgView extends View {
             this.setHighlight(pending);
         }
     }
-    // Adds the hit area and halo group of the net highlighting (see above)
+    // Adds the hit area and halo groups of the net highlighting (see above)
     // to a new SVG; symbols get none.
-    setupNetHover(isSchematic, netNames) {
+    setupNetHighlight(isSchematic, netNames) {
         this.setNetPinned(false);
         this.netNames = new Map();
-        this.netHalo = null;
+        this.netHalos = new Map();
         this.netDisplay = null;
         this.netShown = null;
         this.netHovered = null;
@@ -566,9 +497,12 @@ export class SvgView extends View {
             delete hit.dataset.nid;
             back.append(hit);
         }
-        this.netHalo = document.createElementNS(inner.namespaceURI, 'g');
-        this.netHalo.setAttribute('class', 'netHalo');
-        back.append(this.netHalo);
+        for (const cls of ['netLvs', 'netHover']) {
+            const halo = document.createElementNS(inner.namespaceURI, 'g');
+            halo.setAttribute('class', `netHalo ${cls}`);
+            back.append(halo);
+            this.netHalos.set(cls, halo);
+        }
         // Right above the grid (the first child, if drawn).
         inner.insertBefore(back, inner.querySelector(':scope > :not(.grid)'));
     }
@@ -609,7 +543,8 @@ export class SvgView extends View {
             this.netTimeout = setTimeout(() => this.showNet(nid), NET_HOVER_DELAY);
         }
     }
-    // Highlights the net of the given nid, or none for null, right away.
+    // Hover-highlights the net of the given nid, or none for null, right
+    // away.
     showNet(nid) {
         clearTimeout(this.netTimeout);
         if (nid === this.netShown) {
@@ -617,21 +552,29 @@ export class SvgView extends View {
         }
         this.netShown = nid;
         this.netDisplay.textContent = `net=${nid === null ? '-' : this.netNames.get(nid)}`;
-        this.svgNode.querySelectorAll('.netHover').forEach(el => el.classList.remove('netHover'));
-        this.netHalo?.replaceChildren();
-        if (nid === null) {
-            return;
+        this.mark('netHover', nid === null ? [] : this.svgNode.querySelectorAll(`[data-nid="${nid}"]`));
+    }
+    // Highlights the given elements (with data-nid) with marking class cls
+    // ('netHover' or 'netLvs', see above), replacing the elements it
+    // highlighted before; no elements remove the highlight.
+    mark(cls, elements) {
+        const halo = this.netHalos.get(cls);
+        if (!halo) {
+            return; // no SVG yet, or a symbol
         }
-        for (const el of this.svgNode.querySelectorAll(`[data-nid="${nid}"]`)) {
-            el.classList.add('netHover');
+        // [data-nid] leaves out the halo group, which has the class too.
+        this.svgNode.querySelectorAll(`[data-nid].${cls}`).forEach(el => el.classList.remove(cls));
+        halo.replaceChildren();
+        for (const el of elements) {
+            el.classList.add(cls);
             // The halo follows the current shape of the wires (crossings).
             const shapes = el.matches('g') ? el.querySelectorAll('.portArrow') : [el];
             for (const shape of shapes) {
                 if (shape.tagName != 'text') {
-                    const halo = shape.cloneNode();
-                    halo.removeAttribute('class');
-                    delete halo.dataset.nid;
-                    this.netHalo.append(halo);
+                    const shapeHalo = shape.cloneNode();
+                    shapeHalo.removeAttribute('class');
+                    delete shapeHalo.dataset.nid;
+                    halo.append(shapeHalo);
                 }
             }
         }

@@ -486,53 +486,32 @@ def test_lvs_select_hightlight_instance_pos(web):
 
 @pytest.mark.web
 def test_lvs_select_highlights_net(web):
-    """Verify net/pin highlighting creates overlay elements for wires and connection points."""
-    def get_net_highlight_count():
-        return web.driver.execute_script("""
-            const svg = document.querySelector('.rescontent svg');
-            if (!svg) return {paths: 0, circles: 0};
-            const group = svg.querySelector('.lvs-highlight-group');
-            if (!group) return {paths: 0, circles: 0};
-            return {
-                paths: group.querySelectorAll('path').length,
-                circles: group.querySelectorAll('circle').length
-            };
-        """)
-
+    """A net selection marks all elements of the net (class netLvs) and
+    draws their halo, like the hover highlight; lvs:clear removes both."""
     load_schematic_view(web)
 
     # Get the nid for 'vss' net
     nid = get_net_nid(web, 'vss')
     assert nid is not None, "Should find vss net"
 
+    count_js = """
+        const svg = document.querySelector('.rescontent svg');
+        return [svg.querySelectorAll(`[data-nid="${arguments[0]}"]`).length,
+            svg.querySelectorAll('[data-nid].netLvs').length,
+            svg.querySelector('.netHalo.netLvs').childElementCount];
+    """
     emit_lvs_schem_select_nid(web, nid, 'net')
-    web.wait_until(f"""
-        const g = document.querySelector('{HIGHLIGHT_GROUP}');
-        return g && g.querySelectorAll('path').length
-            + g.querySelectorAll('circle').length > 0;
-    """)
+    n_net, n_marked, n_halo = web.driver.execute_script(count_js, nid)
+    assert n_marked == n_net > 1 and n_halo > 0
 
-    counts = get_net_highlight_count()
-    total = counts['paths'] + counts['circles']
-    assert total > 0, f"Should have net highlights (paths={counts['paths']}, circles={counts['circles']})"
+    emit_lvs_clear(web)
+    assert web.driver.execute_script(count_js, nid)[1:] == [0, 0]
 
 
 @pytest.mark.web
 def test_lvs_select_highlights_pin(web):
-    """Verify pin highlighting creates a circle overlay at the port location."""
-    def get_pin_highlight_count():
-        return web.driver.execute_script("""
-            const svg = document.querySelector('.rescontent svg');
-            if (!svg) return {circles: 0, paths: 0, rects: 0};
-            const group = svg.querySelector('.lvs-highlight-group');
-            if (!group) return {circles: 0, paths: 0, rects: 0};
-            return {
-                circles: group.querySelectorAll('circle').length,
-                paths: group.querySelectorAll('path').length,
-                rects: group.querySelectorAll('rect').length
-            };
-        """)
-
+    """A pin selection marks only the port (class netLvs), not the wires of
+    its net, and draws the halo of the port arrow."""
     load_schematic_view(web)
 
     # Get the nid for 'vss' pin (same as net nid)
@@ -540,13 +519,12 @@ def test_lvs_select_highlights_pin(web):
     assert nid is not None, "Should find vss pin"
 
     emit_lvs_schem_select_nid(web, nid, 'pin')
-    web.wait_until(
-        f"return document.querySelectorAll('{HIGHLIGHT_GROUP} circle').length > 0;")
-
-    counts = get_pin_highlight_count()
-    # Pin highlighting should create exactly one circle, no paths or rects
-    assert counts['circles'] == 1, f"Pin highlight should have 1 circle, got {counts['circles']}"
-    assert counts['paths'] == 0, f"Pin highlight should have no paths (wires), got {counts['paths']}"
+    marked, n_halo = web.driver.execute_script("""
+        const svg = document.querySelector('.rescontent svg');
+        return [[...svg.querySelectorAll('[data-nid].netLvs')].map(el => el.tagName),
+            svg.querySelector('.netHalo.netLvs').childElementCount];
+    """)
+    assert marked == ['g'] and n_halo == 1
 
 
 def load_lvs_report_view(web):
