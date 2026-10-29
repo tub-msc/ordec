@@ -1098,8 +1098,10 @@ def test_layout_style_edit(web, tmp_path, monkeypatch):
 @pytest.mark.web
 def test_schematic_viewer(web, tmp_path, monkeypatch):
     """Hovering a wire highlights its net, a click pins the highlight until
-    Escape. The crossing style select changes the drawing right away, is
-    saved to the user's configuration file and applies after reconnecting."""
+    Escape. Hovering an instance highlights it; the click that pins it jumps
+    to its source, the click that releases it does not. The crossing style
+    select changes the drawing right away, is saved to the user's
+    configuration file and applies after reconnecting."""
     monkeypatch.setenv('XDG_CONFIG_HOME', str(tmp_path))
     qs_local = web.key.query_string_local("tests.lib.ord.nand", ["Nand().schematic"])
     web.navigate(f'app.html#refreshall=true&{qs_local}')
@@ -1107,18 +1109,18 @@ def test_schematic_viewer(web, tmp_path, monkeypatch):
     n_early, n_net, n_hover, n_halo, name = web.driver.execute_script("""
         const hit = document.querySelector('.netHit');
         hit.dispatchEvent(new MouseEvent('mouseover', {bubbles: true}));
-        const early = document.querySelectorAll('[data-nid].netHover').length;
+        const early = document.querySelectorAll('[data-nid].markHover').length;
         return new Promise(resolve => setTimeout(() => resolve([early,
             document.querySelectorAll(`[data-nid="${hit.dataset.net}"]`).length,
-            document.querySelectorAll('[data-nid].netHover').length,
-            document.querySelector('.netHalo.netHover').childElementCount,
-            document.querySelector('.schem-net').textContent]), 300));
+            document.querySelectorAll('[data-nid].markHover').length,
+            document.querySelector('.markHalo.markHover').childElementCount,
+            document.querySelector('.schem-selection').textContent]), 300));
     """)
     assert n_early == 0 # hover delay
     assert n_net == n_hover > 1 and n_halo > 0
-    assert name == 'net=vdd'
+    assert name == 'selection=vdd'
     n_pinned, n_released = web.driver.execute_script("""
-        const count = () => document.querySelectorAll('[data-nid].netHover').length;
+        const count = () => document.querySelectorAll('[data-nid].markHover').length;
         document.querySelector('.netHit').dispatchEvent(new MouseEvent('click', {bubbles: true}));
         document.querySelector('.schem-svg').dispatchEvent(new MouseEvent('mouseleave'));
         const pinned = count();
@@ -1126,6 +1128,22 @@ def test_schematic_viewer(web, tmp_path, monkeypatch):
         return [pinned, count()];
     """)
     assert n_pinned == n_hover and n_released == 0
+    inst_marked, inst_name, name, jumps = web.driver.execute_script("""
+        const outline = document.querySelector('.schematic g[data-srcline] > .symbolOutline');
+        const inst = outline.parentNode;
+        outline.dispatchEvent(new MouseEvent('mouseover', {bubbles: true}));
+        let jumps = 0;
+        window.ordecApp.eventBus.on('editor:goto-source', () => jumps++);
+        return new Promise(resolve => setTimeout(() => {
+            const result = [inst.classList.contains('markHover'),
+                inst.querySelector('.instanceName').textContent,
+                document.querySelector('.schem-selection').textContent];
+            outline.dispatchEvent(new MouseEvent('click', {bubbles: true})); // pins
+            outline.dispatchEvent(new MouseEvent('click', {bubbles: true})); // releases
+            resolve([...result, jumps]);
+        }, 300));
+    """)
+    assert inst_marked and name == f'selection={inst_name}' and jumps == 1
     d = web.driver.execute_script("""
         const select = document.querySelector('.schem-crossing-select');
         select.value = 'bridge-h';

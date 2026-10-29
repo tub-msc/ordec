@@ -7,11 +7,6 @@ Tests for viewEventBus communication between DRC viewer and layout-gl.
 
 import pytest
 
-# CSS selector for the schematic LVS highlight overlay group, shared by the
-# highlight-count query and the wait_until predicates below.
-HIGHLIGHT_GROUP = ".rescontent svg .lvs-highlight-group"
-
-
 def get_layout_state(web):
     """Query testState() from the layout viewer."""
     return web.driver.execute_script("""
@@ -382,111 +377,33 @@ def load_schematic_view(web):
     web.wait_until("return !!document.querySelector('.rescontent svg');")
 
 
-def get_schematic_highlight_count(web):
-    """Check if schematic has lvs highlight overlay."""
-    return web.driver.execute_script(
-        f"return document.querySelectorAll('{HIGHLIGHT_GROUP} rect').length;")
-
-
 @pytest.mark.web
 def test_lvs_select_highlights_schematic_instance(web):
-    """Emitting lvs:schem-select with schem_nid should highlight the instance in schematic."""
+    """A device selection marks only its instance (class markLvs) and draws
+    its halo; selecting another instance moves the mark, lvs:clear removes
+    it."""
     load_schematic_view(web)
-
-    count = get_schematic_highlight_count(web)
-    assert count == 0, "Should start with no highlight"
-
-    nid = get_instance_nid(web, 'pu')
-    assert nid is not None, "Should find instance 'pu'"
-
-    emit_lvs_schem_select_nid(web, nid, 'device')
-
-    web.wait_until(
-        f"return document.querySelectorAll('{HIGHLIGHT_GROUP} rect').length > 0;")
-    count = get_schematic_highlight_count(web)
-    assert count > 0, "Should have highlight after lvs:schem-select with schem_nid"
-
-
-@pytest.mark.web
-def test_lvs_clear_removes_schematic_highlight(web):
-    """Emitting lvs:clear should remove highlight from schematic."""
-    load_schematic_view(web)
-
-    nid = get_instance_nid(web, 'pd')
-    assert nid is not None, "Should find instance 'pd'"
-
-    emit_lvs_schem_select_nid(web, nid, 'device')
-    web.wait_until(
-        f"return document.querySelectorAll('{HIGHLIGHT_GROUP} rect').length > 0;")
-    count = get_schematic_highlight_count(web)
-    assert count > 0, "Precondition: should have highlight"
-
-    emit_lvs_clear(web)
-    web.wait_until(
-        f"return document.querySelectorAll('{HIGHLIGHT_GROUP} rect').length === 0;")
-
-    count = get_schematic_highlight_count(web)
-    assert count == 0, "Should have no highlight after lvs:clear"
-
-
-@pytest.mark.web
-def test_lvs_select_hightlight_instance_pos(web):
-    """Verify highlight position matches selected instance (regression test for Y-flip bug)."""
-    def get_highlight_y():
-        return web.driver.execute_script("""
-            const svg = document.querySelector('.rescontent svg');
-            if (!svg) return null;
-            const rect = svg.querySelector('.lvs-highlight-group rect');
-            if (!rect) return null;
-            return parseFloat(rect.getAttribute('y'));
-        """)
-
-    def get_instance_y_by_nid(nid):
-        return web.driver.execute_script("""
-            const svg = document.querySelector('.rescontent svg');
-            if (!svg) return null;
-            const inst = svg.querySelector(`[data-nid="${arguments[0]}"]`);
-            if (!inst) return null;
-            const rect = inst.querySelector('rect');
-            if (!rect) return null;
-            return parseFloat(rect.getAttribute('y'));
-        """, nid)
-
-    load_schematic_view(web)
-
     pd_nid = get_instance_nid(web, 'pd')
     pu_nid = get_instance_nid(web, 'pu')
-    assert pd_nid is not None, "Should find pd instance"
-    assert pu_nid is not None, "Should find pu instance"
+    assert pd_nid is not None and pu_nid is not None
 
-    # pd is at y=2, pu is at y=8 in the test schematic
-    emit_lvs_schem_select_nid(web, pd_nid, 'device')
-    web.wait_until(f"return !!document.querySelector('{HIGHLIGHT_GROUP} rect');")
+    marked_js = """
+        const svg = document.querySelector('.rescontent svg');
+        return [[...svg.querySelectorAll('[data-nid].markLvs')].map(el => Number(el.dataset.nid)),
+            svg.querySelector('.markHalo.markLvs').childElementCount];
+    """
+    for nid in [pd_nid, pu_nid]:
+        emit_lvs_schem_select_nid(web, nid, 'device')
+        marked, n_halo = web.driver.execute_script(marked_js)
+        assert marked == [nid] and n_halo > 0
 
-    highlight_y = get_highlight_y()
-    pd_y = get_instance_y_by_nid(pd_nid)
-    pu_y = get_instance_y_by_nid(pu_nid)
-
-    assert highlight_y is not None, "Should have highlight rect"
-    assert pd_y is not None, "Should find pd instance Y"
-    assert pu_y is not None, "Should find pu instance Y"
-
-    # Highlight should be near pd (y=2), not near pu (y=8)
-    # Allow 1.0 tolerance for padding
-    assert abs(highlight_y - pd_y) < 1.0, f"Highlight Y ({highlight_y}) should be near pd Y ({pd_y}), not pu Y ({pu_y})"
-
-    # Also test pu highlight
-    emit_lvs_schem_select_nid(web, pu_nid, 'device')
-    web.wait_until(f"return !!document.querySelector('{HIGHLIGHT_GROUP} rect');")
-
-    highlight_y = get_highlight_y()
-    assert highlight_y is not None, "Should have highlight rect for pu"
-    assert abs(highlight_y - pu_y) < 1.0, f"Highlight Y ({highlight_y}) should be near pu Y ({pu_y}), not pd Y ({pd_y})"
+    emit_lvs_clear(web)
+    assert web.driver.execute_script(marked_js) == [[], 0]
 
 
 @pytest.mark.web
 def test_lvs_select_highlights_net(web):
-    """A net selection marks all elements of the net (class netLvs) and
+    """A net selection marks all elements of the net (class markLvs) and
     draws their halo, like the hover highlight; lvs:clear removes both."""
     load_schematic_view(web)
 
@@ -497,8 +414,8 @@ def test_lvs_select_highlights_net(web):
     count_js = """
         const svg = document.querySelector('.rescontent svg');
         return [svg.querySelectorAll(`[data-nid="${arguments[0]}"]`).length,
-            svg.querySelectorAll('[data-nid].netLvs').length,
-            svg.querySelector('.netHalo.netLvs').childElementCount];
+            svg.querySelectorAll('[data-nid].markLvs').length,
+            svg.querySelector('.markHalo.markLvs').childElementCount];
     """
     emit_lvs_schem_select_nid(web, nid, 'net')
     n_net, n_marked, n_halo = web.driver.execute_script(count_js, nid)
@@ -510,7 +427,7 @@ def test_lvs_select_highlights_net(web):
 
 @pytest.mark.web
 def test_lvs_select_highlights_pin(web):
-    """A pin selection marks only the port (class netLvs), not the wires of
+    """A pin selection marks only the port (class markLvs), not the wires of
     its net, and draws the halo of the port arrow."""
     load_schematic_view(web)
 
@@ -521,8 +438,8 @@ def test_lvs_select_highlights_pin(web):
     emit_lvs_schem_select_nid(web, nid, 'pin')
     marked, n_halo = web.driver.execute_script("""
         const svg = document.querySelector('.rescontent svg');
-        return [[...svg.querySelectorAll('[data-nid].netLvs')].map(el => el.tagName),
-            svg.querySelector('.netHalo.netLvs').childElementCount];
+        return [[...svg.querySelectorAll('[data-nid].markLvs')].map(el => el.tagName),
+            svg.querySelector('.markHalo.markLvs').childElementCount];
     """)
     assert marked == ['g'] and n_halo == 1
 
@@ -679,7 +596,7 @@ def test_lvs_subcircuit_item_select(web):
             && rv.viewSelected.includes('cursor_at')
             && rv.viewSelected.endsWith('.ref_layout')
             && rv.view.testState().highlightNumVertices > 0)
-            && !!document.querySelector('.lvs-highlight-group');
+            && !!document.querySelector('[data-nid].markLvs');
     """)
 
     views = web.driver.execute_script(
@@ -695,7 +612,7 @@ def test_lvs_subcircuit_item_select(web):
         "Item should be highlighted in the pair's layout view"
 
     highlight_groups = web.driver.execute_script(
-        "return document.querySelectorAll('.lvs-highlight-group').length;")
+        "return document.querySelectorAll('[data-nid].markLvs').length;")
     assert highlight_groups > 0, \
         "Item should be highlighted in the pair's schematic view"
 
