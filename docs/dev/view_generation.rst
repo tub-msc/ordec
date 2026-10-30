@@ -27,8 +27,17 @@ Before calling the generator, the job thread installs a
 the run on its own — ``ngspice_batch`` calls the module-level
 :func:`~ordec.core.genrun.progress` without a handle being threaded through the
 call chain, and that same call costs nothing outside the server, where no run
-is active. Progress travels back out through the handler's ``websocket_lock``,
-which already serialises sends from other threads.
+is active. A second ContextVar points at the innermost open
+:func:`~ordec.core.genrun.progress_scope`, so the same call reports into the
+right node of the run's progress tree, e.g. the per-corner entry of a corner
+sweep. Every change sends a snapshot of the whole tree, which is small: closed
+scopes leave the tree, so its size is bounded by nesting depth and
+parallelism, not by the number of steps. ContextVars do not reach threads
+the generator starts itself; :func:`~ordec.core.genrun.parallel_map` runs each
+call in a copy of the generator's context, so the calls report into the tree
+and see its cancellation. Progress travels back out through the
+handler's ``websocket_lock``, which already serialises sends from other
+threads.
 
 Cancellation escalates (see :meth:`ordec.jobrunner.ThreadedJobRunner.cancel`).
 Setting the cancel flag makes the generator's next ``progress()`` or

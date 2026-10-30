@@ -136,6 +136,10 @@ offer safe cancellation points via :mod:`ordec.core.genrun`:
 
 .. autofunction:: ordec.core.genrun.progress
 
+.. autofunction:: ordec.core.genrun.progress_scope
+
+.. autofunction:: ordec.core.genrun.parallel_map
+
 .. autofunction:: ordec.core.genrun.checkpoint
 
 .. autofunction:: ordec.core.genrun.cancelable_subprocess
@@ -157,7 +161,36 @@ Example:
             # ...
             progress("Sweeping", 0.5, detail=f"corner {i} of {n}")
 
-All three functions are exact no-ops outside the web server (pytest, plain
+Batches, such as a sweep of simulations, nest their progress with
+``progress_scope``. The web UI then shows each open scope as a progress
+bar of its own, one row per nesting level below the main bar, here the
+overall progress of the sweep and, below it, that of the running
+simulation:
+
+.. code-block:: python
+
+    with progress_scope("Corners", steps=len(corners)):
+        for corner in corners:
+            with progress_scope(corner.name):
+                tb.simulate(corner=corner).tran(...)
+
+Independent simulations, such as the points of a sweep, can run in
+parallel with ``parallel_map``. The progress bars of the running calls
+then share a row, side by side:
+
+.. code-block:: python
+
+    def simulate_corner(corner):
+        with progress_scope(corner.name):
+            return tb.simulate(corner=corner).tran(...)
+
+    with progress_scope("Corners", steps=len(corners)):
+        results = parallel_map(simulate_corner, corners)
+
+Mind that the parallel calls add to the view generations that the server
+runs at once (``ordec -j``), each with its own ngspice process.
+
+These functions are exact no-ops outside the web server (pytest, plain
 scripts), so library code can call them unconditionally. Simulation runs
 via :class:`ordec.sim.simulator.Simulator` report progress automatically:
 transient analyses even include a progress fraction (simulated time /
@@ -166,7 +199,7 @@ rawfile — no ``progress()`` calls are needed in the view generator for that.
 
 Put anything that changes on *every* update in ``detail`` rather than in
 ``status``: progress messages are rate-limited, and only a changed
-``status`` bypasses that limit.
+``status`` (or an opened or closed scope) bypasses that limit.
 
 Cancellation (triggered from the web UI) raises :class:`GenCancelled`
 at the next ``progress()``/``checkpoint()`` call, kills subprocesses

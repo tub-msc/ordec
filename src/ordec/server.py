@@ -311,27 +311,32 @@ def is_internal_frame(filename):
 def progress_sender(send_msg, req, view_name, min_interval=0.1):
     """
     Returns an on_progress callback for a view-generation job that sends
-    viewprogress messages, rate-limited to one per min_interval. Status
-    *changes* always pass so no phase transition is lost. detail is not
-    part of that check: it is expected to change on every update, and
-    doing so must not bypass the rate limit.
+    viewprogress messages with the progress tree, rate-limited to one per
+    min_interval. Changes of the tree's shape (scopes opened or closed) and
+    of any status always pass, so no phase transition is lost. fraction and
+    detail are not part of that check: they are expected to change on every
+    update, and doing so must not bypass the rate limit. Since each message
+    carries the whole tree, a dropped update loses nothing the next one
+    does not repeat.
     """
     last_time = 0.0
-    last_status = None
-    def on_progress(status, fraction, detail=None):
-        nonlocal last_time, last_status
+    last_key = None
+    def key(node):
+        return (node['label'], node['status'],
+            tuple(c and key(c) for c in node['children']))
+    def on_progress(tree):
+        nonlocal last_time, last_key
         now = time.monotonic()
-        if status == last_status and now - last_time < min_interval:
+        k = key(tree)
+        if k == last_key and now - last_time < min_interval:
             return
         last_time = now
-        last_status = status
+        last_key = k
         send_msg({
             'msg': 'viewprogress',
             'req': req,
             'view': view_name,
-            'status': status,
-            'fraction': fraction,
-            'detail': detail,
+            'tree': tree,
         })
     return on_progress
 

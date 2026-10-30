@@ -7,20 +7,23 @@ import sys
 import pytest
 
 from ordec.core import (
-    progress, checkpoint, cancelable_subprocess, cancelable_wait, GenCancelled)
+    progress, progress_scope, parallel_map, checkpoint,
+    cancelable_subprocess, cancelable_wait, GenCancelled)
 from ordec.core.genrun import GenRun
 
 def test_noop_without_active_run():
     # Must be safe to call from pytest / plain scripts.
     progress("doing something", 0.5)
     progress("message only")
+    with progress_scope("scope", steps=2):
+        progress("in scope")
     checkpoint()
     with cancelable_subprocess(None):
         pass
 
 def test_progress_reported():
     events = []
-    run = GenRun(on_progress=lambda s, f, d: events.append((s, f)))
+    run = GenRun(on_progress=lambda t: events.append((t['status'], t['fraction'])))
     with run.activate():
         progress("step 1")
         progress("step 2", 0.5)
@@ -28,7 +31,7 @@ def test_progress_reported():
 
 def test_progress_detail_reported():
     events = []
-    run = GenRun(on_progress=lambda s, f, d: events.append((s, f, d)))
+    run = GenRun(on_progress=lambda t: events.append((t['status'], t['fraction'], t['detail'])))
     with run.activate():
         progress("Transient simulation", 0.25, detail="1.2ms / 5ms")
         progress("plain")
@@ -36,6 +39,65 @@ def test_progress_detail_reported():
         ("Transient simulation", 0.25, "1.2ms / 5ms"),
         ("plain", None, None),
     ]
+
+def test_progress_scopes():
+    trees = []
+    run = GenRun(on_progress=trees.append)
+    def sweep():
+        return trees[-1]['children'][0]
+    with run.activate():
+        progress("Sweeping")
+        with progress_scope("Sweep", steps=2):
+            with progress_scope("a"):
+                progress("Transient simulation", 0.5, detail="1ms / 2ms")
+                assert sweep()['children'] == [{'label': "a",
+                    'status': "Transient simulation", 'fraction': 0.5,
+                    'detail': "1ms / 2ms", 'children': []}]
+                assert (sweep()['fraction'], sweep()['detail']) == (0.25, "0/2")
+                # A second simulation in the same scope restarts its
+                # fraction; the derived fraction above must not drop.
+                progress("Running ngspice")
+                assert sweep()['fraction'] == 0.25
+            with progress_scope("b"):
+                progress("Transient simulation", 0.5)
+                assert (sweep()['fraction'], sweep()['detail']) == (0.75, "1/2")
+    assert trees[-1]['status'] == "Sweeping"
+    assert trees[-1]['children'] == []
+
+def test_progress_scope_slots():
+    # A new scope takes the slot of a closed sibling, so that running
+    # siblings keep their place.
+    trees = []
+    run = GenRun(on_progress=trees.append)
+    a, b, c = (run.scope(run.root, label) for label in "abc")
+    for scope in (a, b, c):
+        scope.__enter__()
+    def labels():
+        return [n and n['label'] for n in trees[-1]['children']]
+    a.__exit__(None, None, None)
+    assert labels() == [None, "b", "c"]
+    with run.scope(run.root, "d"):
+        assert labels() == ["d", "b", "c"]
+    c.__exit__(None, None, None)
+    assert labels() == [None, "b", None]
+    b.__exit__(None, None, None)
+    assert labels() == []  # free slots go with the last sibling
+
+def test_parallel_map():
+    trees = []
+    run = GenRun(on_progress=trees.append)
+    barrier = threading.Barrier(3)
+    def fn(i):
+        with progress_scope(f"item {i}"):
+            barrier.wait(timeout=5)  # all three scopes are open at once
+            return 2 * i
+    with run.activate():
+        assert parallel_map(fn, range(3)) == [0, 2, 4]
+        assert max(len(t['children']) for t in trees) == 3
+        # The calls see the run, and with it its cancellation.
+        run.request_cancel()
+        with pytest.raises(GenCancelled):
+            parallel_map(lambda i: progress("never"), range(3))
 
 def test_progress_without_sink():
     run = GenRun()
@@ -52,7 +114,7 @@ def test_checkpoint_raises_after_cancel():
 
 def test_progress_raises_after_cancel():
     events = []
-    run = GenRun(on_progress=lambda s, f, d: events.append((s, f)))
+    run = GenRun(on_progress=lambda t: events.append((t['status'], t['fraction'])))
     with run.activate():
         run.request_cancel()
         with pytest.raises(GenCancelled):
@@ -64,7 +126,7 @@ def test_cancelled_is_not_exception_subclass():
     assert not issubclass(GenCancelled, Exception)
 
 def test_contextvar_reset_after_activate():
-    run = GenRun(on_progress=lambda s, f, d: pytest.fail("run leaked"))
+    run = GenRun(on_progress=lambda t: pytest.fail("run leaked"))
     with run.activate():
         pass
     progress("outside")  # no-op again
@@ -159,7 +221,7 @@ def test_noop_wait_without_active_run():
 def test_run_is_thread_local():
     # A run activated in one thread must not leak into another thread.
     events = []
-    run = GenRun(on_progress=lambda s, f, d: events.append(s))
+    run = GenRun(on_progress=lambda t: events.append(t['status']))
     barrier = threading.Barrier(2)
     def other_thread():
         barrier.wait()
