@@ -121,17 +121,43 @@ function drawCrossings(wire, style) {
     wire.path.setAttribute('d', d.join(' '));
 }
 
+// Selection of schematics (not symbols): the nets and instances of a
+// schematic are selectable. render.py marks the wires, junctions, tap points
+// (with their labels) and ports with the nid of their net, and the instance
+// groups with the nid of the instance (data-nid). mark highlights such
+// elements by marking them with a class and drawing a halo beneath them, for
+// two independent users: the selectable under the pointer ("markHover") and
+// the net, pin (port only) or instance of an LVS selection ("markLvs", see
+// setHighlight). The class sets the color (see style.css); where both mark
+// an element, it is red with the hover halo. Hovering a selectable
+// highlights it and shows its name (from the selectable names of the view
+// data) in the status bar. The hover highlight appears after HOVER_DELAY,
+// so that sweeping the pointer across the schematic does not flash what it
+// passes; it disappears right away. A click pins the highlight, like the
+// focus of report plots: until the selectable is clicked again, something
+// else is clicked or Escape is pressed (see the document listeners below the
+// class), hovering does not change it. At most one selectable is pinned, in
+// any viewer. Pinning an instance also jumps to its source (click-to-source),
+// releasing it does not. As the wires are thin, wide invisible copies of the
+// wires and tap points ("netHit") serve as their hit area, beneath all other
+// elements, so that the instances (hit area: their outline rect) still get
+// their clicks. The copies carry the nid as data-net instead of data-nid, so
+// that they do not show up in the LVS highlight.
+const HOVER_DELAY = 80; // ms
+
 // SVG viewer for schematics and symbols.
 // Listens to lvs:schem-select and lvs:clear for LVS highlighting.
 // Also consumes pending 'lvs:select' on init if schematic opened after LVS item selected.
 export class SvgView extends View {
+    // The viewer with the pinned selectable (see setPinned), at most one.
+    static pinned = null;
+
     constructor(resContent, viewName, resultViewer, panelContainer) {
         super(resContent, viewName, resultViewer, panelContainer);
         this.transform = d3.zoomIdentity;
         this.tooltip = document.createElement('div');
         this.tooltip.classList.add('schem-error-tooltip');
         this.coordsDisplay = new CoordinateDisplay();
-        this.highlightOverlay = null;
         // The data of the shown highlight, redrawn on crossing style changes.
         this.highlightData = null;
         this.svg = null;
@@ -145,6 +171,16 @@ export class SvgView extends View {
         this.crossingSelect = null;
         // The wires with crossings (see findCrossings).
         this.crossingWires = [];
+        // Selection (see setupSelection): the names of the selectables by
+        // nid, the halo groups by marking class (see mark), the status bar
+        // element with the name, the nid of the hover-highlighted selectable
+        // and of the selectable under the pointer, and the timeout of hover.
+        this.selectable = new Map();
+        this.halos = new Map();
+        this.selectionDisplay = null;
+        this.shown = null;
+        this.hovered = null;
+        this.hoverTimeout = null;
 
         this.onLvsSelect = (data) => {
             if (data && !this.selectionApplies(data.schemView, data.schemWireHash)) {
@@ -212,123 +248,23 @@ export class SvgView extends View {
             return;
         }
 
-        // Find the inner transformed group (with Y-flip) to append highlight in same coordinate space
-        const innerGroup = this.g.select('g[transform]');
-        if (innerGroup.empty()) {
-            return;
-        }
-
-        const highlightGroup = innerGroup.append("g")
-            .attr("class", "lvs-highlight-group");
-
         const itemType = data.item_type;
         const schemNid = data.schem_nid;
 
         if (schemNid === undefined || schemNid === null) {
-            highlightGroup.remove();
             return;
         }
-
-        // Select all elements with matching data-nid
-        const elements = this.g.selectAll(`[data-nid="${schemNid}"]`);
-        if (elements.empty()) {
-            highlightGroup.remove();
-            return;
+        // The elements of the net, or the instance group.
+        const elements = [...this.svgNode.querySelectorAll(`[data-nid="${schemNid}"]`)];
+        if (itemType === 'pin') {
+            // Only the port: it carries the nid of its net, like the wires.
+            this.mark('markLvs', elements.filter(el => el.matches('g')));
+        } else if (['net', 'device', 'subcircuit'].includes(itemType)) {
+            this.mark('markLvs', elements);
         }
-
-        if (itemType === 'device' || itemType === 'subcircuit') {
-            // Instance highlighting: draw bounding rect around the instance group
-            const instGroup = elements.filter('g');
-            if (instGroup.empty()) {
-                highlightGroup.remove();
-                return;
-            }
-            const bbox = instGroup.node().getBBox();
-            const pad = 0.3;
-            highlightGroup.append("rect")
-                .attr("class", "lvs-highlight-border")
-                .attr("x", bbox.x - pad)
-                .attr("y", bbox.y - pad)
-                .attr("width", bbox.width + pad * 2)
-                .attr("height", bbox.height + pad * 2)
-                .attr("rx", 0.5)
-                .attr("ry", 0.5)
-                .attr("fill", "rgba(255, 0, 0, 0.25)")
-                .attr("stroke", "none");
-        } else if (itemType === 'net') {
-            // Net highlighting: highlight wires and tap points only (not ports)
-            elements.each(function() {
-                const el = d3.select(this);
-                const tagName = this.tagName.toLowerCase();
-                if (tagName === 'path') {
-                    // Wire/tappoint: draw thicker translucent stroke along the path
-                    const pathD = el.attr('d');
-                    const transform = el.attr('transform');
-                    const pathEl = highlightGroup.append("path")
-                        .attr("d", pathD)
-                        .attr("fill", "none")
-                        .attr("stroke", "rgba(255, 0, 0, 0.4)")
-                        .attr("stroke-width", 0.4)
-                        .attr("stroke-linecap", "round");
-                    if (transform) {
-                        pathEl.attr("transform", transform);
-                    }
-                } else if (tagName === 'circle') {
-                    // Connection point: draw larger translucent circle
-                    highlightGroup.append("circle")
-                        .attr("cx", el.attr('cx'))
-                        .attr("cy", el.attr('cy'))
-                        .attr("r", 0.5)
-                        .attr("fill", "rgba(255, 0, 0, 0.25)")
-                        .attr("stroke", "none");
-                }
-                // Skip 'g' elements (ports) - only highlight wires and connection points
-            });
-        } else if (itemType === 'pin') {
-            // Pin highlighting: highlight only the port (not the connected wires)
-            const portGroup = elements.filter('g');
-            if (portGroup.empty()) {
-                highlightGroup.remove();
-                return;
-            }
-            // Find the portArrow path and extract position from its transform
-            const portArrow = portGroup.select('path.portArrow');
-            let cx, cy;
-            if (!portArrow.empty()) {
-                const transform = portArrow.attr('transform');
-                // Parse matrix(a,b,c,d,e,f) where e,f are the translation
-                const match = transform && transform.match(/matrix\(([^)]+)\)/);
-                if (match) {
-                    const vals = match[1].split(/[\s,]+/).map(parseFloat);
-                    cx = vals[4];
-                    cy = vals[5];
-                }
-            }
-            if (cx === undefined) {
-                // Fallback to bbox center
-                const bbox = portGroup.node().getBBox();
-                cx = bbox.x + bbox.width / 2;
-                cy = bbox.y + bbox.height / 2;
-            }
-            highlightGroup.append("circle")
-                .attr("cx", cx)
-                .attr("cy", cy)
-                .attr("r", 0.5)
-                .attr("fill", "rgba(255, 0, 0, 0.25)")
-                .attr("stroke", "none");
-        } else {
-            // Unknown item type, remove empty group
-            highlightGroup.remove();
-            return;
-        }
-
-        this.highlightOverlay = highlightGroup;
     }
     clearHighlight() {
-        if (this.highlightOverlay) {
-            this.highlightOverlay.remove();
-            this.highlightOverlay = null;
-        }
+        this.mark('markLvs', []);
         this.highlightData = null;
     }
     update(msgData, wireHash) {
@@ -394,6 +330,8 @@ export class SvgView extends View {
         statusBar.append(detailToggle);
         this.crossingSelect = null;
         this.crossingWires = msgData.is_schematic ? findCrossings(this.svgNode) : [];
+        // Before applyCrossings, so that the hit area copies the plain wires.
+        this.setupSelection(msgData.is_schematic, msgData.selectable);
         if (msgData.is_schematic) {
             const crossingSelect = document.createElement('select');
             crossingSelect.className = 'schem-crossing-select';
@@ -407,7 +345,7 @@ export class SvgView extends View {
                 });
             };
             crossingSelect.title = CROSSING_TITLE;
-            statusBar.append(crossingSelect);
+            statusBar.append(crossingSelect, this.selectionDisplay);
             this.crossingSelect = crossingSelect;
         }
         this.applyCrossings();
@@ -433,7 +371,26 @@ export class SvgView extends View {
 
             this.coordsDisplay.set(Math.round(x), Math.round(y));
         });
-        svg.on('mouseleave', () => this.coordsDisplay.clear());
+        svg.on('mouseleave', () => {
+            this.coordsDisplay.clear();
+            if (SvgView.pinned !== this) {
+                this.hover(null);
+            }
+        });
+        svg.on('mouseover', (event) => {
+            if (SvgView.pinned !== this) {
+                this.hover(this.selectableAt(event.target));
+            }
+        });
+        // Capturing, as instances stop the propagation of their clicks
+        // (click-to-source below). d3-zoom suppresses the click after a pan.
+        this.svgNode.addEventListener('click', (event) => {
+            const nid = this.selectableAt(event.target);
+            const pin = nid !== null && !(SvgView.pinned === this && nid === this.shown);
+            this.hovered = nid;
+            this.show(nid);
+            this.setPinned(pin);
+        }, true);
 
         this.resContent.replaceChildren(schemRoot);
         this.coordsDisplay.clear();
@@ -469,24 +426,142 @@ export class SvgView extends View {
         // Click-to-source: emit the instance's data-srcline/data-srccol/
         // data-srcfile set in render.py. main.js owns the editor and jumps.
         // The handler is a plain function so d3 binds `this` to the clicked
-        // element; capture the bus here since `this` is not the view inside.
-        const eventBus = this.eventBus;
+        // element; capture the view here since `this` is not the view inside.
+        // Only the click that pins the instance jumps, not the one that
+        // releases it (the capturing click listener above runs first).
+        const view = this;
         this.g.selectAll('g[data-srcline]')
             .style('cursor', 'pointer')
             .on('click', function(event) {
                 event.stopPropagation();
+                if (SvgView.pinned !== view) {
+                    return;
+                }
                 const el = d3.select(this);
                 const line = parseInt(el.attr('data-srcline'), 10);
                 const column = parseInt(el.attr('data-srccol'), 10);
                 const file = el.attr('data-srcfile');
                 if (!Number.isNaN(line)) {
-                    eventBus.emit('editor:goto-source', { file, line, column });
+                    view.eventBus.emit('editor:goto-source', { file, line, column });
                 }
             });
 
         const pending = this.takePendingSelection('pendingHighlight');
         if (pending) {
             this.setHighlight(pending);
+        }
+    }
+    // Adds the hit area and halo groups of the selection (see above) to a
+    // new SVG; symbols get none.
+    setupSelection(isSchematic, selectable) {
+        this.setPinned(false);
+        this.selectable = new Map();
+        this.halos = new Map();
+        this.selectionDisplay = null;
+        this.shown = null;
+        this.hovered = null;
+        clearTimeout(this.hoverTimeout);
+        if (!isSchematic) {
+            return;
+        }
+        this.selectable = new Map(Object.entries(selectable));
+        this.selectionDisplay = document.createElement('span');
+        this.selectionDisplay.className = 'schem-selection';
+        this.selectionDisplay.textContent = 'selection=-';
+        // Makes the outline rect of all instances a hit area (see style.css).
+        this.svgNode.classList.add('schem-selectable');
+        const inner = this.svgNode.querySelector('g.schematic');
+        const back = document.createElementNS(inner.namespaceURI, 'g');
+        for (const el of inner.querySelectorAll('.schemWire, .tapPoint')) {
+            const hit = el.cloneNode();
+            hit.setAttribute('class', 'netHit');
+            hit.dataset.net = hit.dataset.nid;
+            delete hit.dataset.nid;
+            back.append(hit);
+        }
+        // The hover halo above the LVS halo, like the colors.
+        for (const cls of ['markLvs', 'markHover']) {
+            const halo = document.createElementNS(inner.namespaceURI, 'g');
+            halo.setAttribute('class', `markHalo ${cls}`);
+            back.append(halo);
+            this.halos.set(cls, halo);
+        }
+        // Right above the grid (the first child, if drawn).
+        inner.insertBefore(back, inner.querySelector(':scope > :not(.grid)'));
+    }
+    // The nid of the selectable that element el belongs to, or null.
+    selectableAt(el) {
+        const owner = el.closest('[data-nid], [data-net]');
+        const nid = owner?.dataset.net ?? owner?.dataset.nid;
+        return this.selectable.has(nid) ? nid : null;
+    }
+    // Pins the shown selectable, or releases it.
+    setPinned(pin) {
+        if (pin) {
+            if (SvgView.pinned !== this) {
+                SvgView.pinned?.release();
+            }
+            SvgView.pinned = this;
+        } else if (SvgView.pinned === this) {
+            SvgView.pinned = null;
+        }
+    }
+    // Releases the pinned selectable and removes its highlight.
+    release() {
+        this.setPinned(false);
+        this.hovered = null;
+        this.show(null);
+    }
+    // Highlights the selectable under the pointer (nid or null) after
+    // HOVER_DELAY, removes the highlight right away (see above).
+    hover(nid) {
+        if (nid === this.hovered) {
+            return;
+        }
+        this.hovered = nid;
+        clearTimeout(this.hoverTimeout);
+        if (nid === null || nid === this.shown) {
+            this.show(nid);
+        } else {
+            this.hoverTimeout = setTimeout(() => this.show(nid), HOVER_DELAY);
+        }
+    }
+    // Hover-highlights the selectable of the given nid, or none for null,
+    // right away.
+    show(nid) {
+        clearTimeout(this.hoverTimeout);
+        if (nid === this.shown) {
+            return;
+        }
+        this.shown = nid;
+        this.selectionDisplay.textContent = `selection=${nid === null ? '-' : this.selectable.get(nid)}`;
+        this.mark('markHover', nid === null ? [] : this.svgNode.querySelectorAll(`[data-nid="${nid}"]`));
+    }
+    // Highlights the given elements (with data-nid) with marking class cls
+    // ('markHover' or 'markLvs', see above), replacing the elements it
+    // highlighted before; no elements remove the highlight.
+    mark(cls, elements) {
+        const halo = this.halos.get(cls);
+        if (!halo) {
+            return; // no SVG yet, or a symbol
+        }
+        // [data-nid] leaves out the halo group, which has the class too.
+        this.svgNode.querySelectorAll(`[data-nid].${cls}`).forEach(el => el.classList.remove(cls));
+        halo.replaceChildren();
+        for (const el of elements) {
+            el.classList.add(cls);
+            // The halo follows the current shape of the wires (crossings).
+            // Ports and instances (groups) get it for their arrow and lines;
+            // junctions and labels get none, as it would only add clutter.
+            const shapes = el.matches('g') ? el.querySelectorAll('.portArrow, .symbolPoly') : [el];
+            for (const shape of shapes) {
+                if (!shape.matches('text, .connPoint')) {
+                    const shapeHalo = shape.cloneNode();
+                    shapeHalo.removeAttribute('class');
+                    delete shapeHalo.dataset.nid;
+                    halo.append(shapeHalo);
+                }
+            }
         }
     }
     // Draws the crossings in the style of the user's configuration ('plain'
@@ -503,6 +578,8 @@ export class SvgView extends View {
     }
     destroy() {
         this.busUnsubscribeAll();
+        this.setPinned(false);
+        clearTimeout(this.hoverTimeout);
         this.clearHighlight();
         if (this.resizeObserver) {
             this.resizeObserver.disconnect();
@@ -510,3 +587,14 @@ export class SvgView extends View {
         }
     }
 }
+
+document.addEventListener('pointerdown', (event) => {
+    if (SvgView.pinned && !SvgView.pinned.svgNode.contains(event.target)) {
+        SvgView.pinned.release();
+    }
+}, true);
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+        SvgView.pinned?.release();
+    }
+});

@@ -1641,7 +1641,58 @@ body.theme-dark .schem-crossing-select option {
     color: initial;
     background-color: initial;
 }
-.viewer-coordinates {
+/* Selection and LVS highlighting (see mark in svg.js). The marking class
+   sets the color --mark-color: for hover the complement of the wiring color
+   (wire_color #1a80e6 in render.py: hue 210 -> 30), for LVS selections red
+   at the same saturation and lightness. Where both mark the same elements,
+   they keep the LVS color (markLvs comes last), and the hover halo covers
+   the LVS halo. The halos are opaque (their color mixed with the
+   background), so that overlapping parts do not add up. */
+.schematic .markHover {
+    --mark-color: #e6801a;
+}
+.schematic .markLvs {
+    --mark-color: #e61a1a;
+}
+/* All instances are selectable, not only those with click-to-source (see
+   the pointer-events rule in render.py). */
+.schem-selectable .schematic g[data-nid] > .symbolOutline {
+    pointer-events: all;
+    cursor: pointer;
+}
+.schematic .netHit {
+    fill: none;
+    stroke: transparent;
+    stroke-width: 0.6;
+    stroke-linecap: round;
+    pointer-events: stroke;
+    cursor: pointer;
+}
+.schematic .markHalo {
+    pointer-events: none;
+}
+.schematic .markHalo > * {
+    fill: none;
+    stroke: color-mix(in srgb, var(--mark-color) 35%, var(--color-bg));
+    stroke-width: 0.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+.schematic :is(.schemWire, .tapPoint):is(.markHover, .markLvs) {
+    stroke: var(--mark-color);
+    stroke-width: 0.15;
+}
+.schematic .connPoint:is(.markHover, .markLvs), .schematic .tapPointLabel:is(.markHover, .markLvs),
+.schematic :is(.markHover, .markLvs) :is(.portArrow, .portLabel) {
+    fill: var(--mark-color);
+}
+.schematic .tapPointLabel:is(.markHover, .markLvs), .schematic :is(.markHover, .markLvs) .portLabel {
+    font-weight: bold;
+}
+.schematic :is(.markHover, .markLvs) .symbolPoly {
+    stroke: var(--mark-color);
+}
+.viewer-coordinates, .schem-selection {
     font-family: var(--font-mono);
     font-size: var(--font-size-md);
     color: var(--color-text);
