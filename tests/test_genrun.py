@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import threading
+import time
 import subprocess
 import sys
 import pytest
@@ -94,6 +95,16 @@ def test_parallel_map():
     with run.activate():
         assert parallel_map(fn, range(3)) == [0, 2, 4]
         assert max(len(t['children']) for t in trees) == 3
+        # A failure drops the calls that have not started yet.
+        started = []
+        def fail_first(i):
+            started.append(i)
+            if i == 0:
+                raise ValueError
+            time.sleep(0.1)
+        with pytest.raises(ValueError):
+            parallel_map(fail_first, range(10), max_workers=2)
+        assert len(started) < 10
         # The calls see the run, and with it its cancellation.
         run.request_cancel()
         with pytest.raises(GenCancelled):

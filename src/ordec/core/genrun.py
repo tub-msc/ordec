@@ -23,7 +23,7 @@ caller's context for that reason.
 """
 
 import threading
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_EXCEPTION
 from contextlib import contextmanager
 from contextvars import ContextVar, copy_context
 from public import public
@@ -310,9 +310,11 @@ def parallel_map(fn, items, max_workers: int=4) -> list:
     once, each in a thread of its own, e.g. the simulations of a sweep.
     Each call runs in a copy of the caller's context, so :func:`progress`,
     :func:`progress_scope` and cancellation work inside fn. Returns the
-    results in item order; the first exception (in item order) propagates
-    once all calls have finished. With ``max_workers=1``, the calls run
-    one after the other in the calling thread.
+    results in item order. On the first exception (including
+    cancellation), the calls not yet started are dropped; the exception
+    (the first in item order) propagates once the running calls have
+    finished. With ``max_workers=1``, the calls run one after the other in
+    the calling thread.
 
     fn should compute and return values; the caller writes them into its
     view afterwards. Writing from fn into the caller's view is not
@@ -328,4 +330,10 @@ def parallel_map(fn, items, max_workers: int=4) -> list:
         # threads at once.
         futures = [executor.submit(copy_context().run, fn, item)
             for item in items]
+        wait(futures, return_when=FIRST_EXCEPTION)
+        # No-op for calls that have started. The executor starts calls in
+        # item order, so every dropped call comes after the failed one, and
+        # the loop below raises before it reaches a dropped call.
+        for f in futures:
+            f.cancel()
     return [f.result() for f in futures]
