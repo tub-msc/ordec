@@ -447,8 +447,11 @@ body.theme-dark .toolbar-btn option {
     position: relative;
     /* Height of the refresh status bar; the content below is inset by this
        same amount when .refreshbar-active is set (see .refreshing/.refreshable
-       and the inset rules below). */
-    --refreshbar-h: 32px;
+       and the inset rules below). While a view generates, the bar grows by
+       one row per level of open progress scopes (--refresh-depth, set by
+       resultviewer.js). */
+    --refresh-depth: 0;
+    --refreshbar-h: calc(32px * (1 + var(--refresh-depth)));
 }
 /* Push the (absolutely-positioned) content down below the status bar so the
    bar never covers it. */
@@ -602,6 +605,44 @@ body.theme-dark .resviewhead button:hover {
     --overlay-bg: var(--color-refreshable-bg);
     --overlay-fg: var(--color-refreshable-fg);
 }
+/* The refreshing bar is a grid of cells that each look like the bar itself:
+   the main row on top, below it the cells of the open progress scopes, one
+   row per tree level, with parallel scopes side by side (see scopeCell in
+   resultviewer.js). The rows draw the borders, so the bar draws none. A cell
+   without child scopes stretches down to the bottom of the bar. */
+.refreshing {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    padding: 0;
+    border-bottom: none;
+}
+.refresh-row {
+    flex: 0 0 32px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    padding: 0 8px;
+    border-bottom: 1px solid var(--overlay-fg);
+}
+.refresh-scopes {
+    flex: 1 1 auto;
+    display: flex;
+}
+.refresh-cell {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+.refresh-cell + .refresh-cell {
+    border-left: 1px solid var(--overlay-fg);
+}
+.refresh-cell > .refresh-row:last-child {
+    flex-grow: 1;
+}
 /* Course viewer build/check error strip (see resultviewer.js showBuildError):
    shown instead of the traceback replacing the lesson report. */
 .builderror {
@@ -645,9 +686,14 @@ body.theme-dark .resviewhead button:hover {
     overflow: hidden;
     text-overflow: ellipsis;
 }
-/* Determinate progress bar, shown once a view generator reports a fraction. */
+/* Determinate progress bar, shown once a view generator reports a fraction.
+   In narrow cells, the detail gives way first, then the bar (down to a
+   stub), and the status text last. flex-shrink weighs by basis width, so
+   the weights of bar (100) and detail (10000) are far apart from each
+   other and from the status text's 1. */
 .refresh-progress {
-    flex: 0 1 140px;
+    flex: 0 100 140px;
+    min-width: 24px;
     height: 6px;
     border: 1px solid var(--overlay-fg);
     border-radius: 3px;
@@ -667,7 +713,7 @@ body.theme-dark .resviewhead button:hover {
 /* Free-form extra info next to the bar, e.g. "1.35ms / 3s" during a
    transient simulation. Shrinks away before the bar does. */
 .refresh-detail {
-    flex: 0 1 auto;
+    flex: 0 10000 auto;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
