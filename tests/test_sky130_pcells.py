@@ -166,3 +166,24 @@ def test_pcell_geometry(tmp_path):
             failures.append(f"{cell}: {drawn}")
     assert not failures, "XOR area in um² per layer:\n" + "\n".join(failures)
 
+
+# Symbol pins without a LayoutPin: the common substrate, and a well or
+# substrate terminal only drawn by the guard ring.
+def shapeless_pins(cell) -> set:
+    ring = isinstance(cell, sky130.GuardRing) and cell.guard and cell.full_metal
+    if isinstance(cell, sky130.Mos):
+        return set() if ring or (cell.pin_b == "b" and cell.rules.dev_sub_type == "nwell") else {cell.pin_b}
+    if isinstance(cell, (sky130.Rnd, sky130.ResPo)):
+        return {"sub"}
+    if isinstance(cell, sky130.Res) and cell.bulk and not ring:
+        return {cell.bulk}
+    return set()
+
+
+def test_layout_pins():
+    for cell, _, _ in CASES:
+        if isinstance(cell, (sky130.Via, sky130.Subconn, sky130.NwellRing, sky130.DeepNwell)):
+            continue  # layout-only cells
+        symbol_pins = {str(p.npath.name) for p in cell.symbol.all(Pin)}
+        layout_pins = {str(p.pin.npath.name) for p in cell.layout.all(LayoutPin)}
+        assert symbol_pins - layout_pins == shapeless_pins(cell), cell
