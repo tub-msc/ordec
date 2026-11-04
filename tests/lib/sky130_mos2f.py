@@ -12,7 +12,7 @@ from ordec.lib import sky130
 
 class Mos2f(Cell):
     def nmos(self):
-        return sky130.Nmos(w="1u", l="150n", nf=2)
+        return sky130.Nmos(w="1u", l="300n", nf=2, guard=False, topc=False, botc=False)
 
     @viewgen_noctx
     def symbol(self):
@@ -48,7 +48,7 @@ class Mos2f(Cell):
         l.m = LayoutInstance(ref=self.nmos().layout)
         l.tap = LayoutInstance(ref=ptap.layout)
         s.constrain(l.m.pos == (0, 0))
-        s.constrain(l.tap.pos == (-1200, 0))
+        s.constrain(l.tap.pos == (-2000, -350))
 
         # Poly strap joining both gate fingers above the diffusion. The LVS
         # deck reads poly labels, so the pin can sit directly on the strap.
@@ -63,15 +63,15 @@ class Mos2f(Cell):
         l.sdrop0 = LayoutRect(layer=layers.met1)
         s.constrain(l.sdrop0.x_extent == l.m.sd[0].x_extent)
         s.constrain(l.sdrop0.uy == l.m.sd[0].ly + 50)
-        s.constrain(l.sdrop0.ly == -400)
+        s.constrain(l.sdrop0.ly == l.m.sd[0].ly - 400)
         l.sdrop2 = LayoutRect(layer=layers.met1)
         s.constrain(l.sdrop2.x_extent == l.m.sd[2].x_extent)
         s.constrain(l.sdrop2.uy == l.m.sd[2].ly + 50)
-        s.constrain(l.sdrop2.ly == -400)
+        s.constrain(l.sdrop2.ly == l.m.sd[2].ly - 400)
         l.sstrap = LayoutRect(layer=layers.met1)
         s.constrain(l.sstrap.lx == l.m.sd[0].lx)
         s.constrain(l.sstrap.ux == l.m.sd[2].ux)
-        s.constrain(l.sstrap.uy == -230)
+        s.constrain(l.sstrap.uy == l.m.sd[0].ly - 230)
         s.constrain(l.sstrap.height == 170)
         l.sstrap % LayoutPin(pin=self.symbol.s)
 
