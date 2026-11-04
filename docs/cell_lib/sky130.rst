@@ -37,6 +37,10 @@ The layouts reproduce the device generators of the PDK's magic technology (``sky
 
 * **Gate met1 pads**: widened to the m1.6 minimum area. ``gate_min_area=False`` draws the generator's pads, which only pass once routed.
 * **w** and **l**: magic rounds each half distance to the 5 nm grid, so the odd multiples of 5 nm are drawn 5 nm off and fail LVS. Layouts reject them.
+* **Rpoly** with ``nx`` > 1: the generator's 210 nm between the stripes is raised to the 480 nm of poly.9.
+* **RisoPw** snakes with odd ``nx``: the guard ring clears the last end's well, which the generator leaves out of its bounding box, so that its ring fails nwell.6.
+* **Snakes**: layouts reject ``w`` > ``l``, for which the generator draws ``w`` = ``l``, and a ``RhighPo0p35`` with ``l`` - ``w`` below 2.16 µm, whose first contact the generator overruns.
+* Magic computes distances in floating point, so a few options that land exactly between two grid points end 5 nm off. ORDeC rounds them half away from zero, as magic does for exact values.
 * **Source and drain**: ``s`` is on the even regions (``sd[0]``, ``sd[2]``, ...), counted from the left, as in ``ihp130``. In magic it is the odd ones, so its ``viasrc`` is ORDeC's ``viadrn``. With ``doverlap=False`` each finger has two regions of its own, mirrored from finger to finger, so the regions are ``s``, ``d``, ``d``, ``s`` and so on.
 
 Cells

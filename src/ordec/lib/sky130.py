@@ -8,7 +8,7 @@ from pathlib import Path
 from public import public
 import functools
 from importlib import resources
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from ..core import *
 from ..schematic import spice_params, Netlister
@@ -359,6 +359,85 @@ def rects_subtract(a: list, b: list) -> list:
         return {(i, j) for r in rects for i in range(xi[r[0]], xi[r[2]]) for j in range(yi[r[1]], yi[r[3]])}
     return rects_of_cells(xs, ys, cover(a) - cover(b))
 
+def slots_along(lo: int, hi: int, size: int, sep: int) -> tuple:
+    """Number and first position of the slots along one axis, as magic's cifSlotFunc."""
+    while True:
+        n = (hi - lo + sep - 160) // (size + sep)
+        if n <= 0:
+            return 0, lo
+        first = int((lo + hi + sep - n*(size + sep)) / 2)
+        if first % 5 == 0:
+            return n, first
+        hi += 2 * (abs(first) % 5) * (1 if first < 0 else -1)
+
+def rects_grow_min(rects: list, d: int) -> list:
+    """Magic's grow-min operator (cifGrowMinFunc). It works on the tiles of magic's
+    plane, the maximal horizontal strips of material and of space."""
+    if not rects:
+        return []
+    xs, ys, cells = rects_cells(rects)
+    yi = {y: j for j, y in enumerate(ys)}
+
+    def neighbours(j, lx, ux):
+        """Tiles of a row of the plane touching the x range, as [solid, left, right]."""
+        row = [[False, -math.inf, xs[0]]]
+        for i in range(len(xs) - 1):
+            solid = (i, j) in cells
+            if row[-1][0] == solid:
+                row[-1][2] = xs[i + 1]
+            else:
+                row.append([solid, xs[i], xs[i + 1]])
+        if row[-1][0]:
+            row.append([False, xs[-1], math.inf])
+        else:
+            row[-1][2] = math.inf
+        return [n for n in row if n[1] < ux and n[2] > lx]
+
+    def min_box(lx, ly, ux, uy):
+        """SetMinBoxGrid: at least d in both directions, outward onto the 5 nm grid."""
+        if ux - lx < d:
+            lx, ux = int((lx + ux - d) / 2), int((lx + ux + d) / 2)
+        if uy - ly < d:
+            ly, uy = int((ly + uy - d) / 2), int((ly + uy + d) / 2)
+        return (lx - lx % 5, ly - ly % 5, ux + -ux % 5, uy + -uy % 5)
+
+    grown = []
+    for ly, lx, uy, ux in rects_of_cells(ys, xs, {(j, i) for i, j in cells}):
+        width, height = ux - lx, uy - ly
+        below, above = neighbours(yi[ly] - 1, lx, ux), neighbours(yi[uy], lx, ux)
+        area = (lx, ly, ux, uy)
+        if width < d:
+            grow_x = (d - width) // 2
+            area = (lx - grow_x, ly, ux + grow_x, uy)
+            if height < d:
+                free_bot, free_top = not any(n[0] for n in below), not any(n[0] for n in above)
+                step = int(math.sqrt(d*d - 0.25*(d + width)**2 + 0.5))
+                grow_y = (d - height) // 2
+                if free_top and not free_bot:
+                    area = (area[0], ly - step, area[2], uy)
+                elif free_bot and not free_top:
+                    area = (area[0], ly, area[2], uy + step)
+                else:
+                    area = (area[0], ly - grow_y, area[2], uy + grow_y)
+                area = min_box(*area)
+        grown.append(area)
+        # What runs between the same type of tile above and below, on its own.
+        for b in below:
+            for t in above:
+                if b[0] != t[0]:
+                    continue
+                if b[1] <= t[1] <= b[2]:
+                    x0, x1 = max(t[1], lx), min(b[2], ux)
+                elif b[1] <= t[2] <= b[2]:
+                    x0, x1 = max(b[1], lx), min(t[2], ux)
+                else:
+                    continue
+                if x1 - x0 < d or height < d:
+                    grow_x = (d - (x1 - x0)) // 2 if x1 - x0 < d else 0
+                    grow_y = (d - height) // 2 if height < d else 0
+                    grown.append(min_box(x0 - grow_x, ly - grow_y, x1 + grow_x, uy + grow_y))
+    return grown
+
 def rects_close(rects: list, gap: int) -> list:
     """Morphological closing: fill notches and gaps narrower than gap."""
     if not rects:
@@ -391,7 +470,7 @@ class Paint:
         return rect
 
     def of(self, *types) -> list:
-        return [r for t in types for r in self.types.get(t, [])]
+        return list(dict.fromkeys(r for t in types for r in self.types.get(t, [])))
 
     def draw(self, l: Layout):
         layers = l.ref_layers
@@ -415,18 +494,44 @@ class Paint:
 
         ndiff, pdiff = self.of(*self.NDIFF), self.of(*self.PDIFF)
         ntap, ptap = self.of(*self.NTAP), self.of(*self.PTAP)
-        shapes(layers.diff, ndiff + pdiff)
+        ndiffres, pdiffres = self.of("rdn", "mvrdn"), self.of("rdp", "mvrdp")
+        polyres = rects_subtract(self.of("xhrpoly", "uhrpoly"), self.of("xpc"))
+        shapes(layers.diff, ndiff + pdiff + ndiffres + pdiffres)
+        shapes(layers.diff.res, ndiffres + pdiffres)
         shapes(layers.tap, ntap + ptap)
-        shapes(layers.poly, self.of("poly", "pc"))
-        shapes(layers.li1, self.of("li"))
-        shapes(layers.met1, self.of("m1"))
+        shapes(layers.poly, self.of("poly", "pc", "mrp1", "xpc") + polyres)
+        shapes(layers.poly.res, self.of("mrp1") + polyres)
+        # An mcon also paints li1 and met1, a precision resistor's end li1.
+        for type_, res, metal in (("li", "rli", layers.li1), ("m1", "rm1", layers.met1), ("m2", "rm2", layers.met2),
+                ("m3", "rm3", layers.met3), ("m4", "rm4", layers.met4), ("m5", "rm5", layers.met5)):
+            shapes(metal, self.of(type_, res) + (self.of("mcon") if type_ in ("li", "m1") else [])
+                + (self.of("xpc") if type_ == "li" else []))
+            shapes(metal.res, self.of(res))
         shapes(layers.dnwell, self.of("dnwell"))
-        shapes(layers.nwell, self.of("nwell"))
+        if self.of("rpw"):
+            # NWELL: the DNWELL region around the p-well resistor
+            shapes(layers.pwell.res, rects_subtract(self.of("rpw"), rects_subtract(self.of("rpw"), self.of("dnwell"))))
+            shapes(layers.nwell, rects_subtract(self.of("nwell", "dnwell"), self.of("rpw", "pwell")))
+        else:
+            shapes(layers.nwell, self.of("nwell"))
         shapes(layers.prBoundary, self.of("boundary"))
 
+        # POLYRES extends to the edge of the contact cut.
+        reach = [rect_grow(r, 60) for r in polyres]
+        shapes(layers.poly.res, rects_subtract(reach, rects_subtract(reach, self.of("xpc"))))
+
+        # RPM, URPM
+        def poly_implant(res):
+            if not self.of(res):
+                return []
+            return rects_close(rects_grow_min([rect_grow(r, 200) for r in self.of(res, "xpc")], 1270), 845)
+        shapes(layers.rpm, poly_implant("xhrpoly"))
+        shapes(layers.urpm, poly_implant("uhrpoly"))
+
         # PSDM, NSDM
-        base_n = [rect_grow(r, 125) for r in ndiff + ntap]
-        base_p = [rect_grow(r, 125) for r in pdiff + ptap]
+        base_n = [rect_grow(r, 125) for r in ndiff + ntap + ndiffres]
+        base_p = [rect_grow(r, 125) for r in pdiff + ptap + pdiffres] \
+            + [rect_grow(r, 110) for r in polyres + self.of("xpc")]
         def implant(base, other):
             return rects_close(base + rects_subtract(rects_close(base, 380), other), 375)
         shapes(layers.nsdm, implant(base_n, base_p))
@@ -447,15 +552,15 @@ class Paint:
         # HVNTM
         block = [rect_grow(r, 185) for r in self.of("mvpsd", "mvpsc")]
         hvntm = []
-        if self.of("mvnfet", "mvnnfet", "nnfet"):
-            hvntm += self.of("mvndiff", "mvndc")
+        if self.of("mvnfet", "mvnnfet", "nnfet", "mvrdn"):
+            hvntm += self.of("mvndiff", "mvndc", "mvrdn")
         if self.of("mvvar"):
             hvntm += self.of("mvnsd", "mvnsc")
         shapes(layers.hvntm, rects_subtract(rects_close([rect_grow(r, 185) for r in
             rects_subtract(hvntm, block)], 695), block))
 
         # HVI
-        mv = self.of(*self.MVDIFF)
+        mv = self.of(*self.MVDIFF, "mvrdn", "mvrdp")
         thkox = [rect_grow(r, 185) for r in mv + self.of("mvvar")]
         if mv:
             thkox += self.of("nwell")
@@ -477,6 +582,21 @@ class Paint:
         # CONT, MCON
         cuts(layers.licon1, self.of(*self.DIFFCUT, "pc_cut"), 0, 170, 170)
         cuts(layers.mcon, self.of("mcon"), 0, 170, 190)
+        # Slots of the precision resistors' contacts. Magic's "short" slot axis
+        # swaps where a 2 um slot fits across in both directions (xpc_horiz), and
+        # lies across the contact, along its smaller side if only one row fits.
+        for r in rects_of_cells(*rects_cells(self.of("xpc"))) if self.of("xpc") else []:
+            width, height = r[2] - r[0], r[3] - r[1]
+            short, long = ((2000, 350), (190, 520)) if min(width, height) > 2014 else ((190, 520), (2000, 350))
+            strip = short[0] + 160 <= min(width, height) < 2*short[0] + short[1] + 160
+            vertical = height > width if strip else height >= width
+            along_x, along_y = (short, long) if vertical else (long, short)
+            nx, x0 = slots_along(r[0], r[2], *along_x)
+            ny, y0 = slots_along(r[1], r[3], *along_y)
+            for i in range(nx):
+                for j in range(ny):
+                    x, y = x0 + i*sum(along_x), y0 + j*sum(along_y)
+                    l % LayoutRect(layer=layers.licon1, rect=Rect4I(x, y, x + along_x[0], y + along_y[0]))
 
         # NPC
         npc = []
@@ -490,6 +610,7 @@ class Paint:
         diffcut = [rect_grow(r, 90) for r in self.of(*self.DIFFCUT)]
         npc = rects_close(rects_subtract(rects_close(npc, 270), diffcut), 270)
         shapes(layers.npc, rects_close(npc, 265))
+        shapes(layers.npc, rects_close([rect_grow(r, 95) for r in self.of("xpc") + polyres], 265))
 
 M1_MIN_AREA = 83000  # m1.6, in nm²
 
@@ -503,6 +624,7 @@ class MosRules:
     plus_contact_type: str
     sub_type: str = "psub"
     dev_sub_type: str = ""
+    guard_sub_type: str = ""
     poly_surround: int = 80
     diff_surround: int = 60
     gate_to_diffcont: int = 145
@@ -532,6 +654,9 @@ class MosRules:
 def box(x: int, y: int, e: int, w: int, n: int, s: int) -> tuple:
     """Box at (x, y) grown by the given amounts, as magic's box grow."""
     return (x - w, y - s, x + e, y + n)
+
+def bbox_of(rects: list) -> tuple:
+    return (min(e[0] for e in rects), min(e[1] for e in rects), max(e[2] for e in rects), max(e[3] for e in rects))
 
 def via_extent(full: int, via_size: int, coverage: str) -> tuple:
     """Length of a via row of coverage percent of full and its offset from
@@ -577,7 +702,7 @@ def guard_ring(p: Paint, cell: Cell, r: MosRules, gw: int, gh: int):
     for side in sides:
         p.paint(r.plus_diff_type, side)
         if r.guard_sub_surround > 0:
-            p.paint(r.dev_sub_type, rect_grow(side, r.guard_sub_surround))
+            p.paint(r.guard_sub_type or r.sub_type, rect_grow(side, r.guard_sub_surround))
     ring = []
     if cell.full_metal:
         hmetw, hmeth = rnd((gw + size) / 2), rnd((gh + size) / 2)
@@ -677,9 +802,6 @@ def mos_device(p: Paint, cell: Cell, r: MosRules, x: int, y: int, w: int, l: int
         li = (cx - rnd(r.contact_size / 2), y - rnd(max(cdw, r.contact_size) / 2) - r.metal_surround,
             cx + rnd(r.contact_size / 2), y + rnd(max(cdw, r.contact_size) / 2) + r.metal_surround)
         sd[side] = ("met1", top) if top is not None else ("li1", li)
-
-    def bbox_of(rects):
-        return (min(e[0] for e in rects), min(e[1] for e in rects), max(e[2] for e in rects), max(e[3] for e in rects))
 
     diffarea = bbox_of(ext)
     gate = []
@@ -830,7 +952,23 @@ def layoutgen_mos(cell: Cell, r: MosRules) -> Layout:
         l.nwell.create_pin(cell.symbol.b)
     return l
 
-class Mos(SimLeafCell):
+class GuardRing(SimLeafCell):
+    """Guard ring options of magic's generators (sky130::guard_ring), with their defaults."""
+    guard = Parameter(bool, default=True) #: Guard ring
+    glc = Parameter(bool, default=True) #: Guard ring contacts on the left
+    grc = Parameter(bool, default=True) #: Guard ring contacts on the right
+    gtc = Parameter(bool, default=True) #: Guard ring contacts on the top
+    gbc = Parameter(bool, default=True) #: Guard ring contacts on the bottom
+    tbcov = Parameter(int, default=100) #: Top and bottom guard ring contact coverage in percent
+    rlcov = Parameter(int, default=100) #: Left and right guard ring contact coverage in percent
+    full_metal = Parameter(bool, default=True) #: Continuous li1 guard ring
+    #: mcon coverage in percent of the guard ring's bottom, top, right and left side
+    viagb = Parameter(str, default="0")
+    viagt = Parameter(str, default="0")
+    viagr = Parameter(str, default="0")
+    viagl = Parameter(str, default="0")
+
+class Mos(GuardRing):
     """
     The usual parameters are l, w, nf and m, mirroring the SG13G2 devices.
     The remaining parameters are simulation-only overrides for the BSIM4
@@ -854,29 +992,17 @@ class Mos(SimLeafCell):
     sd = Parameter(R, optional=True) #: Poly-to-poly distance for multi-finger (stress model)
 
     # Layout options of magic's generator (sky130::mos_draw), with its defaults:
-    guard = Parameter(bool, default=True) #: Guard ring
-    glc = Parameter(bool, default=True) #: Guard ring contacts on the left
-    grc = Parameter(bool, default=True) #: Guard ring contacts on the right
-    gtc = Parameter(bool, default=True) #: Guard ring contacts on the top
-    gbc = Parameter(bool, default=True) #: Guard ring contacts on the bottom
-    tbcov = Parameter(int, default=100) #: Top and bottom guard ring contact coverage in percent
-    rlcov = Parameter(int, default=100) #: Left and right guard ring contact coverage in percent
-    full_metal = Parameter(bool, default=True) #: Continuous li1 guard ring
     topc = Parameter(bool, default=True) #: Top poly contact
     botc = Parameter(bool, default=True) #: Bottom poly contact
     diffcov = Parameter(int, default=100) #: Diffusion contact coverage in percent
     polycov = Parameter(int, default=100) #: Poly contact coverage in percent
     poverlap = Parameter(bool, default=False) #: Overlap poly contacts of adjacent rows
     doverlap = Parameter(bool, default=True) #: Overlap diffusion contacts of adjacent fingers
-    #: mcon coverage in percent of source, drain, gate and the guard ring's
-    #: bottom, top, right and left side. "+50" and "-50" anchor it at one end.
+    #: mcon coverage in percent of source, drain and gate. "+50" and "-50"
+    #: anchor it at one end.
     viasrc = Parameter(str, default="100")
     viadrn = Parameter(str, default="100")
     viagate = Parameter(str, default="100")
-    viagb = Parameter(str, default="0")
-    viagt = Parameter(str, default="0")
-    viagr = Parameter(str, default="0")
-    viagl = Parameter(str, default="0")
     #: Widen the gate's met1 pads to the m1.6 minimum area, unlike the generator
     gate_min_area = Parameter(bool, default=True)
 
@@ -1178,134 +1304,251 @@ class Ptap(Cell):
         return [cls(l=R("0.7u"), w=R("0.7u"))]
 
 
-def layoutgen_res_poly(cell: Cell) -> Layout:
-    """
-    Generate a straight sky130_fd_pr__res_generic_po resistor: a salicided
-    poly body marked with the poly res purpose, terminal heads with a
-    licon/npc contact row and the li1/mcon/met1 stack on each end.
-    """
-    if cell.m != 1:
-        raise ParameterError("m != 1 not supported for layout.")
+@dataclass(frozen=True)
+class ResRules:
+    """Rules of a device of magic's resistor generator (sky130::ruleset and *_draw), in nm."""
+    res_type: str
+    end_type: str
+    end_surround: int
+    end_spacing: int
+    res_to_endcont: int
+    res_spacing: int
+    end_contact_type: str = ""
+    end_to_end_space: int = None
+    end_contact_size: int = None
+    plus_diff_type: str = "psd"
+    plus_contact_type: str = "psc"
+    sub_type: str = "psub"
+    guard_sub_type: str = ""
+    guard_sub_surround: int = 0
+    res_diff_spacing: int = 0
+    mask_clearance: int = 0
+    overlap_compress: int = 0
+    well_res_type: str = ""
+    well_res_overlap: int = 0
+    end_overlap_cont: int = 0
+    n_guard_end_spacing: int = None      #: end_spacing with n_guard, if different
+    n_guard_res_diff_spacing: int = None #: res_diff_spacing with n_guard, if different
+    rho: float = 0              #: Typical-corner sheet resistance in ohms
+    dw: float = 0               #: Effective width offset of the model in um
+    term: float = 0             #: Contact resistance in ohms
+    diff_surround: int = 60
+    contact_size: int = 170
+    via_size: int = 170
+    metal_surround: int = 80
+    metal_spacing: int = 230
+    sub_surround: int = 180
+    #: Extent of the model's body beyond l at each end, in nm
+    lvs_extend: int = 0
+    #: The guard ring is the bulk terminal (a well), not the common substrate.
+    bulk_on_guard: bool = False
 
-    layers = SKY130().layers
-    l = Layout(ref_layers=layers, cell=cell, symbol=cell.symbol)
+LAYER_LI1, LAYER_MET1 = "li1", "met1"
+METAL_OF = {"li": "li1", "m1": "met1", "m2": "met2", "m3": "met3", "m4": "met4", "m5": "met5"}
 
-    tr = tech_rules
-    width = int(cell.w / R("1n"))
-    length = int(cell.l / R("1n"))
-    ps = int(cell.ps / R("1n"))
-    bends = cell.b
-    if bends < 0:
-        raise ParameterError("b must be non-negative.")
-    if width < tr['res_poly_width']:
-        raise ParameterError("w below poly.3 minimum resistor width.")
-    if length < tr['res_poly_length']:
-        raise ParameterError("l below generic_po minimum length.")
-    if bends != 0 and ps < tr['res_poly_space']:
-        raise ParameterError("ps below poly.9 minimum resistor spacing.")
+def res_end(p: Paint, cell: Cell, r: ResRules, x: int, y: int, epl: int, cpl: int, size: int, hesz: int, hepl: int,
+    via_side: int = 0) -> tuple:
+    """End material and contact of a resistor at (x, y), returns its rects. A nonzero
+    via_side draws mcons reaching towards the body, which lies in that direction."""
+    ext = [p.paint(r.end_type, box(x, y, hepl, hepl, hesz, hesz))]
+    # A metal resistor's end is its own metal.
+    term = (METAL_OF.get(r.end_type), ext[0]) if r.end_type in METAL_OF else None
+    if r.end_contact_type:
+        half_w, half_h = rnd(max(cpl, size) / 2) + r.metal_surround, rnd(size / 2)
+        term = (LAYER_LI1, (x - half_w, y - half_h, x + half_w, y + half_h))
+        if via_side != 0 and cell.vias:
+            ch = max(r.res_to_endcont, r.via_size)
+            half_w, half_via = rnd(max(epl, r.via_size) / 2), rnd(r.via_size / 2)
+            far, near = half_via, rnd(ch - r.via_size / 2)
+            term = (LAYER_MET1, mcon_draw(p, box(x, y, half_w, half_w, near if via_side > 0 else far,
+                far if via_side > 0 else near), False))
+        ext.append(draw_contact(p, x, y, cpl, 0, r.end_surround, r.metal_surround, size,
+            r.end_type, r.end_contact_type, False))
+    return ext, term
 
-    licon = tr['licon_size']
-    body_gap = tr['res_licon_body_space']
-    head_len = body_gap + licon + tr['licon_encl_poly']
+def res_device(p: Paint, cell: Cell, r: ResRules, x: int, y: int, w: int, l: int) -> dict:
+    """As sky130::res_device: one straight resistor at (x, y)."""
+    size = r.contact_size if r.end_contact_size is None else r.end_contact_size
+    hw, hl = rnd(w / 2), rnd(l / 2)
+    well = r.well_res_overlap > 0
+    reach = rnd(r.res_to_endcont)
+    if well:
+        reach += rnd(r.well_res_overlap + size / 2 + r.end_surround)
+    end = r.well_res_type if well else r.end_type
+    ext = [p.paint(end, (x - hw, y + hl, x + hw, y + hl + reach)),
+        p.paint(end, (x - hw, y - hl - reach, x + hw, y - hl))]
+    if well:
+        # The end of a row overlapping the row below paints over its body.
+        p.types[r.res_type] = rects_subtract(p.of(r.res_type), ext)
+    p.paint(r.res_type, (x - hw, y - hl, x + hw, y + hl))
 
-    # b bends fold the body into b+1 stripes of length l, ps apart, joined
-    # at alternating ends. Connector j joins stripes j and j+1, at the top
-    # for even j, at the bottom for odd j. n sits below stripe 0, p at the
-    # last stripe's free end.
-    stripes = bends + 1
-    pitch = width + ps
+    epl = w - 2*r.end_surround
+    if well:
+        epl -= 2*r.well_res_overlap
+    cpl = epl * cell.endcov / 100 if not cell.roverlap and cell.endcov > 0 else epl
+    if epl - cpl < 2*r.end_overlap_cont:
+        cpl = epl - 2*r.end_overlap_cont
+    hepl = rnd(epl / 2 + r.end_surround)
+    hesz = size / 2 if r.end_type in ("psd", "nsd") else size / 2 + r.end_surround
+    hesz = rnd(hesz)
 
-    def stripe_x(i):
-        return i * pitch
+    terms = {}
+    for side in (1, -1):
+        rects, term = res_end(p, cell, r, x, y + side*(hl + rnd(r.res_to_endcont)), epl, cpl, size, hesz, hepl,
+            via_side=-side)
+        ext += rects
+        terms[side] = term
+    return dict(bbox=bbox_of(ext), terms=terms)
 
-    body_rects = [
-        Rect4I(stripe_x(i), 0, stripe_x(i) + width, length)
-        for i in range(stripes)
-    ]
-    bend_rects = [
-        Rect4I(stripe_x(j), length, stripe_x(j + 1) + width, length + width)
-        if j % 2 == 0 else
-        Rect4I(stripe_x(j), -width, stripe_x(j + 1) + width, 0)
-        for j in range(bends)
-    ]
+def res_snake_device(p: Paint, cell: Cell, r: ResRules, x: int, y: int, w: int, l: int) -> dict:
+    """As sky130::res_snake_device: nx stripes joined at alternating ends, at (x, y)."""
+    size = r.contact_size if r.end_contact_size is None else r.end_contact_size
+    nf = cell.nx
+    hw, hl = rnd(w / 2), rnd(l / 2)
+    well = r.well_res_overlap > 0
+    epl = w - 2*r.end_surround
+    if well:
+        epl -= 2*r.well_res_overlap
+    cpl = epl * cell.endcov / 100 if cell.endcov > 0 else epl
+    hepl, hesz = rnd(epl / 2 + r.end_surround), rnd(size / 2 + r.end_surround)
+    mc, reach = r.mask_clearance, rnd(r.res_to_endcont)
+    extra = rnd(r.well_res_overlap + size / 2 + r.end_surround) if well else 0
+    end = r.well_res_type if well else r.end_type
 
-    # Body poly with the res purpose marker defining the extracted resistor:
-    l.poly_body = PathNode()
-    l.res_marker = PathNode()
-    for i, rect in enumerate(body_rects + bend_rects):
-        l.poly_body[i] = LayoutRect(layer=layers.poly, rect=rect)
-        l.res_marker[i] = LayoutRect(layer=layers.poly.res, rect=rect)
+    terms = {}
+    def terminal(tx, direction, side):
+        """Contact at the stripe's end, with the portion between them."""
+        cy = y + direction*(hl + mc + reach)
+        rects, terms[side] = res_end(p, cell, r, tx, cy, epl, cpl, size, hesz, hepl)
+        edge = y + direction*hl
+        if mc > 0:
+            p.paint(r.res_type, (tx - hw, min(edge, edge + direction*mc), tx + hw, max(edge, edge + direction*mc)))
+        y0, y1 = edge + direction*mc, edge + direction*(mc + reach + extra)
+        rects.append(p.paint(end, (tx - hw, min(y0, y1), tx + hw, max(y0, y1))))
+        return rects
 
-    def make_terminal(name, x0, base_y, direction):
-        if direction > 0:
-            head_rect = Rect4I(x0, base_y, x0 + width, base_y + head_len)
-            licon_ly = base_y + body_gap
-        else:
-            head_rect = Rect4I(x0, base_y - head_len, x0 + width, base_y)
-            licon_ly = base_y - body_gap - licon
-        setattr(l, f"head_{name}", LayoutRect(layer=layers.poly, rect=head_rect))
-        licon_rect = makevias(l,
-            Rect4I(x0, licon_ly, x0 + width, licon_ly + licon), layers.licon1,
-            size=Vec2I(licon, licon),
-            spacing=Vec2I(tr['licon_space'], tr['licon_space']),
-            margin=Vec2I(tr['licon_encl_poly'], 0),
-            )
-        setattr(l, f"npc_{name}", LayoutRect(layer=layers.npc, rect=(
-            licon_rect.lx - tr['licon_encl_npc'],
-            licon_rect.ly - tr['licon_encl_npc'],
-            licon_rect.ux + tr['licon_encl_npc'],
-            licon_rect.uy + tr['licon_encl_npc'])))
-        setattr(l, f"li_{name}", LayoutRect(layer=layers.li1, rect=(
-            licon_rect.lx - tr['li_encl_licon_end'], licon_rect.ly,
-            licon_rect.ux + tr['li_encl_licon_end'], licon_rect.uy)))
-        mcon_rect = makevias(l, getattr(l, f"li_{name}").rect, layers.mcon,
-            size=Vec2I(tr['mcon_size'], tr['mcon_size']),
-            spacing=Vec2I(tr['mcon_space'], tr['mcon_space']),
-            margin=Vec2I(0, 0),
-            )
-        setattr(l, f"term_{name}", LayoutRect(layer=layers.met1,
-            rect=met1_min_area_rect(mcon_rect, grow_axis='x')))
-        return getattr(l, f"term_{name}")
+    ext = terminal(x, -1, -1)
+    deltax = r.res_spacing + w
+    deltay = l - w
+    ly = y - hl
+    for i in range(nf):
+        tx = x + i*deltax
+        # With a negative clearance, the first contact reaches into its stripe.
+        p.paint(r.res_type, (tx - hw, ly - min(mc, 0) if i == 0 else ly, tx + hw, y + hl))
+        if i < nf - 1:
+            cy = ly + (deltay if i % 2 == 0 else 0)
+            p.paint(r.res_type, (tx - hw, cy, tx - hw + deltax, cy + w))
+    ext.append((x - hw, ly, x + (nf - 1)*deltax + hw, y + hl))
+    ext += terminal(x + (nf - 1)*deltax, 1 if nf % 2 == 1 else -1, 1)
+    return dict(bbox=bbox_of(ext), terms=terms)
 
-    make_terminal("n", 0, 0, -1).create_pin(cell.symbol.n)
-    if stripes % 2 == 1:
-        make_terminal("p", stripe_x(stripes - 1), length, 1).create_pin(cell.symbol.p)
+def layoutgen_res(cell: Cell, r: ResRules) -> Layout:
+    """Layout generation function of the resistors, as sky130::res_draw."""
+    check_grid(cell, R("10n"), "w", "l")
+    l = Layout(ref_layers=SKY130().layers, cell=cell, symbol=cell.symbol)
+    layers = l.ref_layers
+    p = Paint()
+    r = cell.guard_rules(r)
+
+    if cell.snake and cell.w > cell.l:
+        raise ParameterError("A snake needs w <= l (magic silently sets w = l instead).")
+    w, L = int(cell.w / R("1n")), int(cell.l / R("1n"))
+    snake = cell.snake and cell.nx > 1
+    nx = 1 if snake else cell.nx
+    device = res_snake_device if snake else res_device
+    size = r.contact_size if r.end_contact_size is None else r.end_contact_size
+    if snake and L - w < -r.mask_clearance:
+        raise ParameterError("The first link of this snake runs over its first contact (magic then loses the contact's cuts).")
+    bbox = device(Paint(), cell, r, 0, 0, w, L)["bbox"]
+    fw, fh = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    lw, lh = bbox[2] + bbox[0], bbox[3] + bbox[1]
+
+    space = r.end_spacing if r.end_to_end_space is None else r.end_to_end_space
+    if cell.roverlap and snake and cell.nx % 2 == 1 and cell.m > 1:
+        dy = fh - r.overlap_compress
+    elif not cell.roverlap or snake:
+        dy = fh + space
     else:
-        make_terminal("p", stripe_x(stripes - 1), 0, -1).create_pin(cell.symbol.p)
+        dy = fh - (2*(r.end_surround + r.well_res_overlap) + size)
+    dx = fw + r.res_spacing
 
+    corex, corey = (nx - 1)*dx + fw, (cell.m - 1)*dy + fh
+    corellx, corelly = (corex - fw + lw) / 2, (corey - fh + lh) / 2
+
+    ring = []
+    if cell.guard:
+        guard_ds = 0 if r.plus_diff_type in ("psd", "nsd") else r.diff_surround
+        gx = corex + 2*(r.res_diff_spacing + guard_ds) + r.contact_size
+        gy = corey + 2*(r.end_spacing + guard_ds) + r.contact_size
+        ring = guard_ring(p, cell, r, gx, gy)
+
+    x0, y0 = -rnd(corellx), -rnd(corelly)
+    terms = {}
+    for i in range(nx):
+        for j in range(cell.m):
+            dev = device(p, cell, r, x0 + i*dx, y0 + j*dy, w, L)
+            if i == 0 and j == 0:
+                terms = dev["terms"]
+    p.draw(l)
+
+    # Pins on the ends of the first device. A metal resistor's ends are its
+    # own metal, reaching res_to_endcont beyond the body.
+    for side, pin in ((1, cell.symbol.p), (-1, cell.symbol.n)):
+        if terms[side] is not None:
+            (l % LayoutRect(layer=layers[terms[side][0]], rect=Rect4I(*terms[side][1]))).create_pin(pin)
+    if ring and r.bulk_on_guard:
+        (l % LayoutRect(layer=layers.li1, rect=Rect4I(*ring[0]))).create_pin(cell.symbol[cell.bulk])
     return l
 
 
-@public
-class Rpoly(SimLeafCell):
+class Res(GuardRing):
     """
-    Salicided generic polysilicon resistor (sky130_fd_pr__res_generic_po,
-    about 48 ohm/sq). Two-terminal device without a bulk connection.
-
-    ``b`` bends fold the body into ``b + 1`` stripes of length ``l`` each,
-    ``ps`` apart, joined at alternating ends, so a large resistance becomes
-    a compact meander. ``ps`` must be at least 480 nm (poly.9).
+    Shared base class of the resistors. The layout options are the ones of
+    magic's generator (sky130::res_draw), with its defaults: nx and m repeat
+    the device in x and y, or nx folds it into a snake of nx stripes joined at
+    alternating ends. Metal resistors have no guard ring.
     """
-    model_name = "sky130_fd_pr__res_generic_po"
-    l = Parameter(R, default=R("1.65u"))
-    w = Parameter(R, default=R("0.33u"))
-    b = Parameter(int, default=0)
-    ps = Parameter(R, default=R("0.48u"))
+    l = Parameter(R)
+    w = Parameter(R)
     m = Parameter(int, default=1)
+    nx = Parameter(int, default=1)  #: Repeats in x, or stripes of a snake
+    snake = Parameter(bool, default=False)
+    roverlap = Parameter(bool, default=False)  #: Overlap the ends of adjacent devices
+    endcov = Parameter(int, default=100)  #: End contact coverage in percent
+    vias = Parameter(bool, default=True)  #: mcons on the end contacts
 
-    # Typical-corner model constants (rp1 sheet resistance and the fitted
-    # effective width offset of the dw correction), see nominal_resistance:
-    model_rsh = 48.2
-    model_dw = 0.005e-6
+    bulk = None  # third model pin, if any
+    lvs_model = None  # name in the LVS deck, if it differs from the model's
 
-    def effective_length(self) -> R:
-        """Electrical length of the body: each bend counts as the stripe
-        gap plus two corner squares at the usual 0.56 corner factor."""
-        return (self.b + 1) * self.l + self.b * (self.ps + R("1.12")*self.w)
+    @classmethod
+    def params_check(cls, params):
+        check_counts(params, "m", "nx")
+        for name in ("l", "w"):
+            minimum = getattr(cls, f"min_{name}", None)
+            if None not in (params[name], minimum) and params[name] < minimum:
+                raise ParameterError(f"{name} = {params[name]} below the minimum of {minimum}.")
 
     def nominal_resistance(self) -> float:
-        """Nominal typical-corner resistance in ohms, for display."""
-        return self.model_rsh*float(self.effective_length())/(float(self.w) + self.model_dw) / self.m
+        """
+        Nominal typical-corner resistance in ohms of the body that lvs_length
+        gives, with the sheet resistance, end resistance and effective width
+        of the ngspice models, for all repeats in parallel.
+        """
+        r = self.rules
+        w = float(self.w) * 1e6 + r.dw
+        l = float(self.lvs_length()) * 1e6 - 2 * r.lvs_extend * 1e-3
+        return (2*r.term + l*r.rho) / w / self.parallel()
+
+    def guard_rules(self, r: ResRules) -> ResRules:
+        return r
+
+    def lvs_length(self) -> R:
+        """Length of the extracted body: its area over its width."""
+        r = self.rules
+        if self.snake and self.nx > 1:
+            return self.nx * self.l + (self.nx - 1) * R(f"{r.res_spacing}n") \
+                + 2 * R(f"{r.mask_clearance + r.lvs_extend}n")
+        return self.l + 2 * R(f"{r.lvs_extend}n")
 
     def ngspice_current_pins(self):
         return {"i": "p"}
@@ -1315,24 +1558,12 @@ class Rpoly(SimLeafCell):
         s = Symbol(cell=self)
         s % SymbolAnnotation(key='r', value=str(R(f'{self.nominal_resistance():.3g}')))
 
-        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
-        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
-
-        zigzag_height = R(2)
-        zigzag_width_half = R(0.625)
-        zigzag_start = (R(4) - zigzag_height) / R(2)
-        s % SymbolPoly(vertices=[
-            Vec2R(2, 0),
-            Vec2R(2, zigzag_start),
-            Vec2R(2 - zigzag_width_half, zigzag_start + zigzag_height * R(1) / R(12)),
-            Vec2R(2 + zigzag_width_half, zigzag_start + zigzag_height * R(3) / R(12)),
-            Vec2R(2 - zigzag_width_half, zigzag_start + zigzag_height * R(5) / R(12)),
-            Vec2R(2 + zigzag_width_half, zigzag_start + zigzag_height * R(7) / R(12)),
-            Vec2R(2 - zigzag_width_half, zigzag_start + zigzag_height * R(9) / R(12)),
-            Vec2R(2 + zigzag_width_half, zigzag_start + zigzag_height * R(11) / R(12)),
-            Vec2R(2, zigzag_start + zigzag_height),
-            Vec2R(2, 4),
-        ])
+        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, orient=South, show_arrow=False, show_label=False, rotate_label=False)
+        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, orient=North, show_arrow=False, show_label=False, rotate_label=False)
+        s % SymbolPoly(vertices=resistor_zigzag())
+        if self.bulk:
+            s[self.bulk] = Pin(pos=Vec2R(4, 2), pintype=PinType.Inout, orient=East, show_arrow=False, rotate_label=False)
+            s % SymbolPoly(vertices=[Vec2R(2.6, 2), Vec2R(4, 2)])
 
         s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
         return s
@@ -1340,35 +1571,287 @@ class Rpoly(SimLeafCell):
     def ngspice_netlist(self, netlister, inst):
         netlister.require_netlist_setup(netlist_setup)
         pins = [inst.symbol.p, inst.symbol.n]
+        if self.bulk:
+            pins.append(inst.symbol[self.bulk])
         if netlister.lvs:
-            # KLayout compares the extracted body's W and L (the deck
-            # disables the R parameter), in SI units on the card. It derives
-            # W from the terminals and L as body area / W, so each bend
-            # connector contributes its full area as 2*w + ps of length.
-            l_lvs = (self.b + 1) * self.l + self.b * (2*self.w + self.ps)
-            params = {"w": self.w, "l": l_lvs}
-        else:
-            # ngspice semiconductor resistor with the PDK's R model. With
-            # ".option scale=1.0u" the dimensions are given in um.
-            params = {
-                "w": self.w * R("1e6"),
-                "l": self.effective_length() * R("1e6"),
-                "m": self.m,
-            }
+            # KLayout compares the extracted W and L, in SI units on the card.
+            netlister.add(
+                netlister.name_obj(inst, prefix="R"),
+                netlister.portmap(inst, pins),
+                self.lvs_model or self.model_name,
+                *spice_params({"w": self.w, "l": self.lvs_length(), "m": self.parallel()}),
+            )
+            return
         netlister.add(
-            netlister.name_obj(inst, prefix="R"),
+            netlister.name_obj(inst, prefix=self.spice_prefix),
             netlister.portmap(inst, pins),
             self.model_name,
-            *spice_params(params),
+            *spice_params(self.spice_params()),
         )
+
+    def spice_params(self) -> dict:
+        # With ".option scale=1.0u" the dimensions are given in um.
+        return {"w": self.w * R("1e6"), "l": self.lvs_length() * R("1e6"), "m": self.parallel()}
+
+    def parallel(self) -> int:
+        return self.m * (1 if self.snake else self.nx)
+
+    spice_prefix = "R"
 
     @viewgen_noctx
     def layout(self) -> Layout:
-        return layoutgen_res_poly(self)
+        return layoutgen_res(self, self.rules)
 
     @classmethod
     def discoverable_instances(cls):
-        return [cls()]
+        return [cls(l=cls.min_l, w=cls.min_w)] if hasattr(cls, "model_name") else []
+
+
+def resistor_zigzag() -> list[Vec2R]:
+    """The zigzag line of the resistor symbols, as in ihp130."""
+    height, half, start = R(2), R("0.625"), R(1)
+    return [
+        Vec2R(2, 0),
+        Vec2R(2, start),
+        Vec2R(2 - half, start + height / 12),
+        Vec2R(2 + half, start + height * 3 / 12),
+        Vec2R(2 - half, start + height * 5 / 12),
+        Vec2R(2 + half, start + height * 7 / 12),
+        Vec2R(2 - half, start + height * 9 / 12),
+        Vec2R(2 + half, start + height * 11 / 12),
+        Vec2R(2, start + height),
+        Vec2R(2, 4),
+    ]
+
+def res_po_rules(res_type: str, rho: float, term: float, mask_clearance: int, end_spacing=480,
+    res_diff_spacing=480) -> ResRules:
+    """Precision poly resistors: one contact slot in the xpc end, no well."""
+    return ResRules(res_type=res_type, end_type="xpc", end_contact_type="xpc", end_surround=80,
+        n_guard_end_spacing=525, n_guard_res_diff_spacing=785,
+        end_contact_size=190, end_spacing=end_spacing, end_to_end_space=520, res_to_endcont=1985,
+        res_spacing=480, res_diff_spacing=res_diff_spacing, mask_clearance=mask_clearance,
+        overlap_compress=360, rho=rho, term=term, lvs_extend=60)
+
+class PolyGuard(Res):
+    """The poly resistors' guard ring options of magic's generator."""
+    hv_guard = Parameter(bool, default=False)  #: 5 V guard ring
+    n_guard = Parameter(bool, default=False)  #: N+ guard ring in an N-well
+
+    def guard_rules(self, r: ResRules) -> ResRules:
+        kind = ("mvn" if self.n_guard else "mvp") if self.hv_guard else ("n" if self.n_guard else "p")
+        changes = dict(plus_diff_type=f"{kind}sd", plus_contact_type=f"{kind}sc",
+            guard_sub_surround=330 if self.hv_guard else 180)
+        if self.n_guard:
+            changes["sub_type"] = "nwell"
+            if r.n_guard_end_spacing is not None:
+                changes.update(end_spacing=r.n_guard_end_spacing, res_diff_spacing=r.n_guard_res_diff_spacing)
+        return replace(r, **changes)
+
+class ResPo(PolyGuard):
+    """
+    Shared base class of the precision poly resistors, whose width is fixed by
+    the model. Their ends are slots in the xpc layer with the model's b as a
+    third pin on the substrate, named sub.
+    """
+    bulk = "sub"
+    spice_prefix = "x"
+    min_l = R("0.5u")
+
+    def spice_params(self) -> dict:
+        # mult only scales the model's mismatch, m is ngspice's parallel count.
+        return {"l": self.lvs_length() * R("1e6"), "m": self.parallel(), "mult": self.parallel()}
+
+    @classmethod
+    def params_check(cls, params):
+        super().params_check(params)
+        if params['w'] is not None and params['w'] != cls.width:
+            raise ParameterError(f"w of {cls.__name__} must be {cls.width}.")
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls(l=R("2u"), w=cls.width)] if hasattr(cls, "width") else []
+
+@public
+class Rpoly(PolyGuard):
+    """Salicided generic polysilicon resistor (res_generic_po, 48.2 ohm/sq)."""
+    model_name = "sky130_fd_pr__res_generic_po"
+    # res_spacing is the generator's 210 raised to poly.9, see the docs.
+    rules = ResRules(res_type="mrp1", end_type="poly", end_contact_type="pc_cut", end_surround=80,
+        end_spacing=480, end_to_end_space=520, res_to_endcont=1985, res_spacing=480, res_diff_spacing=480,
+        mask_clearance=520, overlap_compress=360, rho=48.2)
+    min_l, min_w = R("1.65u"), R("0.33u")
+
+@public
+class RhighPo0p69(ResPo):
+    """P+ poly resistor of width 0.69 um (res_high_po_0p69, 319.8 ohm/sq)."""
+    model_name = "sky130_fd_pr__res_high_po_0p69"
+    width = R("0.69u")
+    rules = res_po_rules("xhrpoly", 319.8, 194.82, 520)
+
+@public
+class RhighPo0p35(RhighPo0p69):
+    """P+ poly resistor of width 0.35 um (res_high_po_0p35, 319.8 ohm/sq)."""
+    model_name = "sky130_fd_pr__res_high_po_0p35"
+    width = R("0.35u")
+    rules = res_po_rules("xhrpoly", 319.8, 194.82, -2160)
+
+@public
+class RhighPo1p41(RhighPo0p69):
+    """P+ poly resistor of width 1.41 um (res_high_po_1p41, 319.8 ohm/sq)."""
+    model_name = "sky130_fd_pr__res_high_po_1p41"
+    width = R("1.41u")
+
+@public
+class RhighPo2p85(RhighPo0p69):
+    """P+ poly resistor of width 2.85 um (res_high_po_2p85, 319.8 ohm/sq)."""
+    model_name = "sky130_fd_pr__res_high_po_2p85"
+    width = R("2.85u")
+
+@public
+class RhighPo5p73(RhighPo0p69):
+    """P+ poly resistor of width 5.73 um (res_high_po_5p73, 319.8 ohm/sq)."""
+    model_name = "sky130_fd_pr__res_high_po_5p73"
+    width = R("5.73u")
+
+@public
+class RxhighPo0p35(ResPo):
+    """P- poly resistor of width 0.35 um (res_xhigh_po_0p35, 2000 ohm/sq)."""
+    model_name = "sky130_fd_pr__res_xhigh_po_0p35"
+    width = R("0.35u")
+    rules = res_po_rules("uhrpoly", 2000, 188.2, 520)
+
+@public
+class RxhighPo0p69(RxhighPo0p35):
+    """P- poly resistor of width 0.69 um (res_xhigh_po_0p69, 2000 ohm/sq)."""
+    model_name = "sky130_fd_pr__res_xhigh_po_0p69"
+    width = R("0.69u")
+
+@public
+class RxhighPo1p41(RxhighPo0p35):
+    """P- poly resistor of width 1.41 um (res_xhigh_po_1p41, 2000 ohm/sq)."""
+    model_name = "sky130_fd_pr__res_xhigh_po_1p41"
+    width = R("1.41u")
+
+@public
+class RxhighPo2p85(RxhighPo0p35):
+    """P- poly resistor of width 2.85 um (res_xhigh_po_2p85, 2000 ohm/sq)."""
+    model_name = "sky130_fd_pr__res_xhigh_po_2p85"
+    width = R("2.85u")
+
+@public
+class RxhighPo5p73(RxhighPo0p35):
+    """P- poly resistor of width 5.73 um (res_xhigh_po_5p73, 2000 ohm/sq)."""
+    model_name = "sky130_fd_pr__res_xhigh_po_5p73"
+    width = R("5.73u")
+
+class ResDiff(Res):
+    """Shared base class of the diffusion resistors, with the model's b as third pin."""
+    spice_prefix = "x"
+    min_l, min_w = R("2.1u"), R("0.42u")
+
+    def spice_params(self) -> dict:
+        return {"w": self.w * R("1e6"), "l": self.lvs_length() * R("1e6"), "m": self.parallel(), "mult": self.parallel()}
+
+DIFF_RES = dict(end_surround=60, end_spacing=440, res_to_endcont=370, res_diff_spacing=440,
+    mask_clearance=220, overlap_compress=360)
+
+@public
+class Rnd(ResDiff):
+    """N+ diffusion resistor (res_generic_nd, 120 ohm/sq), ``sub`` on the substrate."""
+    model_name = "sky130_fd_pr__res_generic_nd"
+    bulk = "sub"
+    rules = ResRules(res_type="rdn", end_type="ndiff", end_contact_type="ndc", res_spacing=300,
+        rho=120, dw=0.017, **DIFF_RES)
+
+@public
+class Rpd(ResDiff):
+    """P+ diffusion resistor (res_generic_pd, 197 ohm/sq), ``nw`` on its well."""
+    model_name = "sky130_fd_pr__res_generic_pd"
+    bulk = "nw"
+    rules = ResRules(res_type="rdp", end_type="pdiff", end_contact_type="pdc", plus_diff_type="nsd",
+        plus_contact_type="nsc", sub_type="nwell", res_spacing=280, rho=197, dw=0.034, bulk_on_guard=True, **DIFF_RES)
+
+@public
+class RndHv(Rnd):
+    """5 V N+ diffusion resistor (res_generic_nd__hv, 120 ohm/sq), ``sub`` on the substrate."""
+    model_name = "sky130_fd_pr__res_generic_nd__hv"
+    lvs_model = "sky130_fd_pr__res_generic_nd_hv"
+    rules = ResRules(res_type="mvrdn", end_type="mvndiff", end_contact_type="mvndc", plus_diff_type="mvpsd",
+        plus_contact_type="mvpsc", res_spacing=300, rho=114, dw=0.017, **DIFF_RES)
+
+@public
+class RpdHv(Rpd):
+    """5 V P+ diffusion resistor (res_generic_pd__hv, 197 ohm/sq), ``nw`` on its well."""
+    model_name = "sky130_fd_pr__res_generic_pd__hv"
+    lvs_model = "sky130_fd_pr__res_generic_pd_hv"
+    rules = ResRules(res_type="mvrdp", end_type="mvpdiff", end_contact_type="mvpdc", plus_diff_type="mvnsd",
+        plus_contact_type="mvnsc", sub_type="nwell", guard_sub_surround=330, res_spacing=300, rho=191, dw=0.034,
+        bulk_on_guard=True, **DIFF_RES)
+
+class ResMetal(Res):
+    """Shared base class of the metal resistors: a marker over the metal, no contacts or guard ring."""
+    guard = Parameter(bool, default=False)
+
+METAL_RES = dict(end_surround=0, end_spacing=0, res_to_endcont=200)
+
+@public
+class Rl1(ResMetal):
+    """li1 resistor (res_generic_l1)."""
+    model_name = "sky130_fd_pr__res_generic_l1"
+    rules = ResRules(res_type="rli", end_type="li", end_to_end_space=230, res_spacing=230, rho=12.2, dw=0.017, **METAL_RES)
+    min_l, min_w = R("0.17u"), R("0.17u")
+
+@public
+class Rm1(ResMetal):
+    """met1 resistor (res_generic_m1)."""
+    model_name = "sky130_fd_pr__res_generic_m1"
+    rules = ResRules(res_type="rm1", end_type="m1", end_to_end_space=280, res_spacing=140, rho=0.125, dw=-0.039, **METAL_RES)
+    min_l, min_w = R("0.14u"), R("0.14u")
+
+@public
+class Rm2(ResMetal):
+    """met2 resistor (res_generic_m2)."""
+    model_name = "sky130_fd_pr__res_generic_m2"
+    rules = ResRules(res_type="rm2", end_type="m2", end_to_end_space=280, res_spacing=140, rho=0.125, dw=-0.039, **METAL_RES)
+    min_l, min_w = R("0.14u"), R("0.14u")
+
+@public
+class Rm3(ResMetal):
+    """met3 resistor (res_generic_m3)."""
+    model_name = "sky130_fd_pr__res_generic_m3"
+    rules = ResRules(res_type="rm3", end_type="m3", end_to_end_space=280, res_spacing=140, rho=0.047, dw=-0.025, **METAL_RES)
+    min_l, min_w = R("0.3u"), R("0.3u")
+
+@public
+class Rm4(ResMetal):
+    """met4 resistor (res_generic_m4)."""
+    model_name = "sky130_fd_pr__res_generic_m4"
+    rules = ResRules(res_type="rm4", end_type="m4", end_to_end_space=280, res_spacing=140, rho=0.047, dw=-0.025, **METAL_RES)
+    min_l, min_w = R("0.3u"), R("0.3u")
+
+@public
+class Rm5(ResMetal):
+    """met5 resistor (res_generic_m5)."""
+    model_name = "sky130_fd_pr__res_generic_m5"
+    rules = ResRules(res_type="rm5", end_type="m5", end_to_end_space=1600, res_spacing=140, rho=0.0285, dw=-0.09, **METAL_RES)
+    min_l, min_w = R("1.6u"), R("1.6u")
+
+@public
+class RisoPw(Res):
+    """Isolated p-well resistor (res_iso_pw, 975 ohm/sq), ``nw`` on the DNWell around it."""
+    model_name = "sky130_fd_pr__res_iso_pw"
+    bulk = "nw"
+    spice_prefix = "x"
+    rules = ResRules(res_type="rpw", end_type="psd", end_contact_type="psc", well_res_type="pwell",
+        plus_diff_type="nsd", plus_contact_type="nsc", sub_type="dnwell", sub_surround=230,
+        guard_sub_type="nwell", guard_sub_surround=630, end_surround=60, end_spacing=630,
+        end_to_end_space=1150, end_overlap_cont=60, end_contact_size=530, overlap_compress=-170,
+        res_to_endcont=265, res_spacing=1400, res_diff_spacing=630, well_res_overlap=200,
+        rho=3816, term=992, bulk_on_guard=True)
+    min_l, min_w = R("26.5u"), R("2.65u")
+
+    # The model takes the parameters of the diffusion resistors' models.
+    spice_params = ResDiff.spice_params
 
 
 def layoutgen_cmim(cell: Cell) -> Layout:
