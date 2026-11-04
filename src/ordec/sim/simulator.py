@@ -68,8 +68,9 @@ class Simulator:
         simhier: The simulation hierarchy to simulate.
         enable_savecurrents: Enable .option savecurrents in the netlist.
         corner: Process corner, interpreted by the PDK in use (e.g.
-            :class:`ordec.lib.ihp130.Corner` for ihp130 or a string auch as
-            ``'ss'`` for sky130). None selects the PDK's typical corner.
+            :class:`ordec.lib.ihp130.Corner` for ihp130 or
+            :class:`ordec.lib.sky130.Corner` for sky130). None selects the
+            PDK's typical corner.
         options: ngspice options such as temperature, tolerances and
             integration method. None keeps ngspice's defaults.
     """

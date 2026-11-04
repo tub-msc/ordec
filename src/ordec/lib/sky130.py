@@ -8,8 +8,10 @@ from pathlib import Path
 from public import public
 import functools
 from importlib import resources
+from enum import Enum
 from dataclasses import dataclass, replace
 
+from ..schematic.spice_in import DeviceMapping
 from ..core import *
 from ..schematic import spice_params, Netlister
 from . import base, generic_mos, pdk_dirs
@@ -40,13 +42,84 @@ def pdk() -> PdkDict:
 
     return pdk
 
+@public
+class MosCorner(Enum):
+    """MOS corner (corners/<value>.spice)."""
+    TT = 'tt'
+    SS = 'ss'
+    FF = 'ff'
+    SF = 'sf'
+    FS = 'fs'
+    LEAK = 'leak'
+    WAFER = 'wafer'
+
+@public
+class ResCorner(Enum):
+    """Resistor corner (r+c/res_<value>__cap_*.spice)."""
+    TYPICAL = 'typical'
+    LOW = 'low'
+    HIGH = 'high'
+
+@public
+class CapCorner(Enum):
+    """Capacitor corner (r+c/res_*__cap_<value>.spice)."""
+    TYPICAL = 'typical'
+    LOW = 'low'
+    HIGH = 'high'
+
+@public
+class Corner:
+    """
+    Process corner for simulation: one MOS, resistor and capacitor corner
+    each. Pass as ``corner`` to :meth:`SimHierarchy.simulate`. Strings are
+    coerced to the enums, e.g. ``Corner(mos='ss', res='low', cap='high')``. The class
+    attributes ``Corner.TT``, ``Corner.SS``, ``Corner.FF``, ``Corner.SF`` and
+    ``Corner.FS`` are the MOS corners with the other devices typical.
+    """
+    def __init__(self, mos='tt', res='typical', cap='typical'):
+        self.mos = MosCorner(mos)
+        self.res = ResCorner(res)
+        self.cap = CapCorner(cap)
+        if (self.res == ResCorner.TYPICAL) != (self.cap == CapCorner.TYPICAL):
+            raise ValueError("The PDK has no typical resistor corner with a low or high capacitor corner, or vice versa.")
+
+    def __repr__(self):
+        return f"Corner(mos={self.mos.value!r}, res={self.res.value!r}, cap={self.cap.value!r})"
+
+    def __eq__(self, other):
+        if not isinstance(other, Corner):
+            return NotImplemented
+        return (self.mos, self.res, self.cap) == (other.mos, other.res, other.cap)
+
+    def __hash__(self):
+        return hash((self.mos, self.res, self.cap))
+
+Corner.TT = Corner(mos='tt')
+Corner.SS = Corner(mos='ss')
+Corner.FF = Corner(mos='ff')
+Corner.SF = Corner(mos='sf')
+Corner.FS = Corner(mos='fs')
+
+def netlister_corner(netlister) -> Corner:
+    corner = Corner.TT if netlister.corner is None else netlister.corner
+    if not isinstance(corner, Corner):
+        raise TypeError(f"sky130 expects a sky130.Corner, not {netlister.corner!r}.")
+    return corner
+
 def netlist_setup(netlister):
     if netlister.lvs:
         return
-    # The corner section of the PDK's lib file pulls in the MOSFET corner
-    # deck plus the resistor/capacitor models and sets mc_mm_switch=0.
-    corner = 'tt' if netlister.corner is None else netlister.corner
-    netlister.add(".lib",f"\"{pdk().ngspice_lib}\"",corner)
+    # The contents of a section of the PDK's sky130.lib.spice, which only has
+    # a few combinations of the corners.
+    corner = netlister_corner(netlister)
+    root = pdk().ngspice_lib.parent
+    rc = f"res_{corner.res.value}__cap_{corner.cap.value}"
+    netlister.add(".param", "mc_mm_switch=0")
+    netlister.add(".param", "mc_pr_switch=0")
+    netlister.add(".include", f"\"{root / 'corners' / (corner.mos.value + '.spice')}\"")
+    netlister.add(".include", f"\"{root / 'r+c' / (rc + '.spice')}\"")
+    netlister.add(".include", f"\"{root / 'r+c' / (rc + '__lin.spice')}\"")
+    netlister.add(".include", f"\"{root / 'corners' / corner.mos.value / 'specialized_cells.spice'}\"")
 
 # SKY130 has no machine-readable tech parameter file in the PDK (unlike
 # SG13G2's sg13g2_tech_mod.json), so the rule values used by the layout
@@ -2657,7 +2730,8 @@ def netlist_setup_npn(netlister):
     """
     if netlister.lvs:
         return
-    corner = (pdk().pr_spice_dir / "sky130_fd_pr__npn_05v5__t.corner.spice").read_text()
+    npn = {MosCorner.SS: "s", MosCorner.FF: "f"}.get(netlister_corner(netlister).mos, "t")
+    corner = (pdk().pr_spice_dir / f"sky130_fd_pr__npn_05v5__{npn}.corner.spice").read_text()
     for line in corner.splitlines():
         if line.startswith("+ dk"):
             netlister.add(".param", line[2:])
@@ -2871,6 +2945,48 @@ class Or2(Cell):
         s.outline = Rect4R(lx=0, ly=0, ux=5, uy=5)
 
         return s
+
+def varcap_of_card(cell, l, w, vm=1):
+    """The varactor of a SPICE card, whose w is the width of one of its vm fingers."""
+    return cell(l=l, w=w * vm, nf=vm)
+
+#: Device map for spice_in. Netlists must give sizes in meters (magic's and
+#: xschem's assume ".option scale=1.0u").
+MOS_PINS = ("d", "g", "s", "b")
+MOS_PARAMS = dict(real_params=("l", "w"), int_params=("nf", "m"))
+RES_PARAMS = dict(real_params=("l", "w"), int_params=("m",))
+device_map = {
+    cell.model_name: DeviceMapping(cell, getattr(cell, "subckt_pins", MOS_PINS), **MOS_PARAMS)
+    for cell in (Nmos, NmosLvt, NmosHv, Nmos05v0Nvt, Nmos03v3Nvt, Pmos, PmosLvt, PmosHvt, PmosHv, PmosMvt,
+        NmosG5v0d16v0, PmosG5v0d16v0, Nmos20v0, Pmos20v0, Nmos20v0Nvt, Nmos20v0Zvt, Nmos20v0Iso,
+        Nmos20v0ReverseIso, EsdNmos01v8, EsdNmosHv, EsdPmosHv, NmosLatch, NmosPass, NmosPassFlash,
+        NmosPassLvt, PmosPass)
+} | {
+    cell.model_name: DeviceMapping(cell, ("p", "n"), **RES_PARAMS) for cell in (Rpoly, Rl1, Rm1, Rm2, Rm3, Rm4, Rm5)
+} | {
+    cell.model_name: DeviceMapping(cell, ("p", "n", cell.bulk), **RES_PARAMS) for cell in (Rnd, Rpd, RndHv, RpdHv, RisoPw)
+} | {
+    # The cards of the precision poly resistors have no w: the model fixes it.
+    cell.model_name: DeviceMapping(functools.partial(cell, w=cell.width), ("p", "n", cell.bulk), **RES_PARAMS)
+    for cell in (RhighPo0p35, RhighPo0p69, RhighPo1p41, RhighPo2p85, RhighPo5p73,
+        RxhighPo0p35, RxhighPo0p69, RxhighPo1p41, RxhighPo2p85, RxhighPo5p73)
+} | {
+    cell.model_name: DeviceMapping(cell, ("p", "n"), real_params=("l", "w"), int_params=("m",)) for cell in (Cmim, Cmim2)
+} | {
+    cell.model_name: DeviceMapping(functools.partial(varcap_of_card, cell), ("g", "nw", "sub"),
+        real_params=("l", "w"), int_params=("vm",))
+    for cell in (VarCapLvt, VarCapHvt)
+} | {
+    f"sky130_fd_pr__{device}": DeviceMapping(functools.partial(cell, device=device), pins, int_params=("m",))
+    for cell, pins, devices in (
+        (Npn, ("c", "b", "e", "s"), ("npn_05v5_W1p00L1p00", "npn_05v5_W1p00L2p00", "npn_11v0_W1p00L1p00")),
+        (Pnp, ("collector", "base", "emitter"), ("pnp_05v5_W0p68L0p68", "pnp_05v5_W3p40L3p40")),
+        (Inductor, ("a", "b", "ct", "sub"), tuple(Inductor.COILS)))
+    for device in devices
+}
+# Diodes are left out on purpose: their SPICE cards size them through area and
+# pj, which do not map back to l and w. The many fixed cells of CapVpp and
+# RfMos are left to the caller, as partial(CapVpp, device=...) with their pins.
 
 @public
 def run_drc(l: Layout, use_tempdir: bool=True, feol: bool=True,
