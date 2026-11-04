@@ -10,21 +10,29 @@ from ordec.lib import sky130, Gnd, Vdc
 from .lib.thinwrap import gallery_wrapper_cell
 
 # One gallery for a single DRC and a single LVS run (deck startup dominates).
-# Both resistor stripe parities place the p terminal at opposite ends.
+# The guard rings of the NMOS devices tie the common substrate, whose net the
+# LVS deck merges by name. Both resistor stripe parities place the p terminal
+# at opposite ends.
 GALLERY = [
+    sky130.Nmos(w="1u", l="150n"), sky130.NmosLvt(w="1u", l="150n"), sky130.NmosHv(w="1u", l="500n"),
+    sky130.Nmos05v0Nvt(w="1u", l="900n"), sky130.Nmos03v3Nvt(w="1u", l="500n"),
+    sky130.Pmos(w="1u", l="150n"), sky130.PmosLvt(w="1u", l="350n"), sky130.PmosHvt(w="1u", l="150n"),
+    sky130.PmosHv(w="1u", l="500n"),
     sky130.Rpoly(), sky130.Cmim(),
     sky130.Rpoly(l="2.0u", w="0.5u", b=2),
 ]
+SUBSTRATE = "nmos0_b"
+TIES = ("nmoslvt1_b", "nmoshv2_b", "nmos05v0nvt3_b", "nmos03v3nvt4_b")
 
 def test_gallery():
-    wrapper = gallery_wrapper_cell(GALLERY, "Gallery")
+    wrapper = gallery_wrapper_cell(GALLERY, "Gallery", substrate=SUBSTRATE, ties=TIES)
     assert sky130.run_drc(wrapper.layout, use_tempdir=True).summary() == {}
-    assert sky130.run_lvs(wrapper.layout, wrapper.symbol, use_tempdir=True).clean()
+    assert sky130.run_lvs(wrapper.layout, wrapper.symbol, use_tempdir=True, substrate_net=SUBSTRATE).clean()
 
 
 @pytest.mark.magic
 def test_gallery_magic():
-    wrapper = gallery_wrapper_cell(GALLERY, "Gallery")
+    wrapper = gallery_wrapper_cell(GALLERY, "Gallery", substrate=SUBSTRATE, ties=TIES)
     assert sky130.run_magic_drc(wrapper.layout).summary() == {}
 
 

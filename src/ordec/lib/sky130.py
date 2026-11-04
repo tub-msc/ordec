@@ -2,11 +2,13 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import os
+import math
 import subprocess
 from pathlib import Path
 from public import public
 import functools
 from importlib import resources
+from dataclasses import dataclass
 
 from ..core import *
 from ..schematic import spice_params, Netlister
@@ -296,101 +298,536 @@ class SKY130(Cell):
         return rs
 
 
-def layoutgen_mos(cell: Cell, length: R, width: R, num_gates: int, nwell: bool) -> Layout:
+def check_grid(cell: Cell, grid: R, *names: str):
+    """Reject parameters off the grid, which magic's generators would round."""
+    for name in names:
+        v = getattr(cell, name)
+        if v / grid != int(v / grid):
+            raise ParameterError(f"{name} = {v} must be a multiple of {grid}.")
+
+def check_counts(params: dict, *names: str):
+    """Reject repeat counts below 1."""
+    for name in names:
+        if params[name] < 1:
+            raise ParameterError(f"{name} must be at least 1.")
+
+def rnd(v) -> int:
+    """A distance rounded to the 5 nm grid, half away from zero, as magic's box commands do."""
+    return int(math.copysign(5 * ((abs(v) + 2.5) // 5), v))
+
+def rect_grow(r: tuple, d: int) -> tuple:
+    return (r[0] - d, r[1] - d, r[2] + d, r[3] + d)
+
+def rects_cells(rects: list) -> tuple:
+    """Coordinates and the covered cells of the grid they span."""
+    xs = sorted({r[0] for r in rects} | {r[2] for r in rects})
+    ys = sorted({r[1] for r in rects} | {r[3] for r in rects})
+    xi, yi = {x: i for i, x in enumerate(xs)}, {y: j for j, y in enumerate(ys)}
+    cells = set()
+    for r in rects:
+        cells.update((i, j) for i in range(xi[r[0]], xi[r[2]]) for j in range(yi[r[1]], yi[r[3]]))
+    return xs, ys, cells
+
+def rects_of_cells(xs: list, ys: list, cells: set) -> list:
+    """Cells as rects, joined along y, then along x."""
+    runs = {}
+    for i in range(len(xs) - 1):
+        j = 0
+        while j < len(ys) - 1:
+            if (i, j) in cells:
+                j0 = j
+                while (i, j) in cells:
+                    j += 1
+                runs.setdefault((ys[j0], ys[j]), []).append(i)
+            j += 1
+    rects = []
+    for (ly, uy), columns in runs.items():
+        i0 = prev = columns[0]
+        for i in columns[1:] + [None]:
+            if i != prev + 1 if i is not None else True:
+                rects.append((xs[i0], ly, xs[prev + 1], uy))
+                i0 = i
+            prev = i
+    return rects
+
+def rects_subtract(a: list, b: list) -> list:
+    if not a or not b:
+        return list(a)
+    xs, ys, _ = rects_cells(a + b)
+    def cover(rects):
+        xi, yi = {x: i for i, x in enumerate(xs)}, {y: j for j, y in enumerate(ys)}
+        return {(i, j) for r in rects for i in range(xi[r[0]], xi[r[2]]) for j in range(yi[r[1]], yi[r[3]])}
+    return rects_of_cells(xs, ys, cover(a) - cover(b))
+
+def rects_close(rects: list, gap: int) -> list:
+    """Morphological closing: fill notches and gaps narrower than gap."""
+    if not rects:
+        return []
+    d = (gap - 1) // 2
+    grown = [rect_grow(r, d) for r in rects]
+    xs, ys, cells = rects_cells(grown)
+    outer = (xs[0] - 2*d, ys[0] - 2*d, xs[-1] + 2*d, ys[-1] + 2*d)
+    # Shrink: grow the complement of the grown rects.
+    complement = rects_subtract([outer], grown)
+    return rects_subtract([outer], [rect_grow(r, d) for r in complement])
+
+class Paint:
     """
-    Layout generation function shared for Nmos and Pmos cells.
-
-    Each source/drain column is a full local-interconnect stack: licon1
-    contacts in the diffusion, an li1 strip, mcon contacts and a met1 strip,
-    so that sd[i] connects at met1 like the SG13G2 generator's sd strips.
+    Shapes by magic type (sky130A.tcl draws them), and the mask layers derived
+    from them by the gdsii style of magic's cifoutput section (sky130A.tech).
     """
-    layers = SKY130().layers
-    l = Layout(ref_layers=layers, cell=cell)
-    s = Solver(l)
+    NDIFF = ("ndiff", "mvndiff", "ndc", "mvndc", "nnd")
+    PDIFF = ("pdiff", "mvpdiff", "pdc", "mvpdc")
+    NTAP = ("nsd", "mvnsd", "nsc", "mvnsc")
+    PTAP = ("psd", "mvpsd", "psc", "mvpsc")
+    MVDIFF = ("mvndiff", "mvpdiff", "mvndc", "mvpdc", "mvnsd", "mvpsd", "mvnsc", "mvpsc")
+    DIFFCUT = ("ndc", "pdc", "nsc", "psc", "mvndc", "mvpdc", "mvnsc", "mvpsc")
 
-    tr = tech_rules
-    L = int(length/R("1n"))
-    W = int(width/R("1n") / num_gates)
+    def __init__(self):
+        self.types = {}
 
-    if cell.m != 1:
-        raise ParameterError("m != 1 not supported for layout.")
+    def paint(self, type: str, rect: tuple) -> tuple:
+        self.types.setdefault(type, []).append(rect)
+        return rect
 
+    def of(self, *types) -> list:
+        return [r for t in types for r in self.types.get(t, [])]
+
+    def draw(self, l: Layout):
+        layers = l.ref_layers
+
+        def shapes(layer, rects):
+            for r in rects:
+                l % LayoutRect(layer=layer, rect=Rect4I(*r))
+
+        def cuts(layer, rects, border, size, sep):
+            # Overlapping contacts form one area, as in magic's plane.
+            for r in rects_of_cells(*rects_cells(rects)) if rects else []:
+                # squares-grid: as many cuts as fit, centered
+                nx = (r[2] - r[0] - 2*border + sep) // (size + sep)
+                ny = (r[3] - r[1] - 2*border + sep) // (size + sep)
+                x0 = r[0] + 5 * ((r[2] - r[0] - nx*size - (nx - 1)*sep) // 10)
+                y0 = r[1] + 5 * ((r[3] - r[1] - ny*size - (ny - 1)*sep) // 10)
+                for i in range(nx):
+                    for j in range(ny):
+                        x, y = x0 + i*(size + sep), y0 + j*(size + sep)
+                        l % LayoutRect(layer=layer, rect=Rect4I(x, y, x + size, y + size))
+
+        ndiff, pdiff = self.of(*self.NDIFF), self.of(*self.PDIFF)
+        ntap, ptap = self.of(*self.NTAP), self.of(*self.PTAP)
+        shapes(layers.diff, ndiff + pdiff)
+        shapes(layers.tap, ntap + ptap)
+        shapes(layers.poly, self.of("poly", "pc"))
+        shapes(layers.li1, self.of("li"))
+        shapes(layers.met1, self.of("m1"))
+        shapes(layers.dnwell, self.of("dnwell"))
+        shapes(layers.nwell, self.of("nwell"))
+        shapes(layers.prBoundary, self.of("boundary"))
+
+        # PSDM, NSDM
+        base_n = [rect_grow(r, 125) for r in ndiff + ntap]
+        base_p = [rect_grow(r, 125) for r in pdiff + ptap]
+        def implant(base, other):
+            return rects_close(base + rects_subtract(rects_close(base, 380), other), 375)
+        shapes(layers.nsdm, implant(base_n, base_p))
+        shapes(layers.psdm, implant(base_p, base_n))
+
+        # LVTN, HVTP
+        def threshold(gates):
+            return rects_close(rects_close([rect_grow(r, 180) for r in gates], 380), 375)
+        shapes(layers.lvtn, threshold(self.of("pfetlvt", "nfetlvt", "mvnnfet", "nnfet", "mvvar", "nsonos")))
+        shapes(layers.hvtp, threshold(self.of("pfethvt", "varhvt")))
+        shapes(layers.areaid.le, [rect_grow(r, 100) for r in self.of("nnfet")])
+
+        # SONOS, LDNTM
+        shapes(layers.tunm, rects_close([rect_grow(r, 250) for r in self.of("nsonos")], 505))
+        if self.of("nsonos"):
+            shapes(layers.ldntm, rects_close([rect_grow(r, 185) for r in self.of("ndiff", "ndc")], 695))
+
+        # HVNTM
+        block = [rect_grow(r, 185) for r in self.of("mvpsd", "mvpsc")]
+        hvntm = []
+        if self.of("mvnfet", "mvnnfet", "nnfet"):
+            hvntm += self.of("mvndiff", "mvndc")
+        if self.of("mvvar"):
+            hvntm += self.of("mvnsd", "mvnsc")
+        shapes(layers.hvntm, rects_subtract(rects_close([rect_grow(r, 185) for r in
+            rects_subtract(hvntm, block)], 695), block))
+
+        # HVI
+        mv = self.of(*self.MVDIFF)
+        thkox = [rect_grow(r, 185) for r in mv + self.of("mvvar")]
+        if mv:
+            thkox += self.of("nwell")
+        hvi = []
+        if thkox:
+            # grow-min works on magic's tiles, the maximal horizontal strips:
+            # thin ones widen to the 840 nm of CNTM.
+            xs, ys, cells = rects_cells(rects_close(thkox, 695))
+            strips = rects_of_cells(ys, xs, {(j, i) for i, j in cells})
+            for ly, lx, uy, ux in strips:
+                grow_x = rnd(max(0, 840 - (ux - lx)) / 2)
+                # Only a strip free above and below grows in y.
+                free = not any(o[1] < ux and lx < o[3] and uy_ly for o in strips
+                    for uy_ly in [o[2] == ly or o[0] == uy])
+                grow_y = rnd(max(0, 840 - (uy - ly)) / 2) if free else 0
+                hvi.append((lx - grow_x, ly - grow_y, ux + grow_x, uy + grow_y))
+        shapes(layers.hvi, rects_close(hvi, 700))
+
+        # CONT, MCON
+        cuts(layers.licon1, self.of(*self.DIFFCUT, "pc_cut"), 0, 170, 170)
+        cuts(layers.mcon, self.of("mcon"), 0, 170, 190)
+
+        # NPC
+        npc = []
+        for r in self.of("pc_cut"):
+            nx = (r[2] - r[0] + 170) // 340
+            ny = (r[3] - r[1] + 170) // 340
+            x0 = r[0] + 5 * ((r[2] - r[0] - nx*170 - (nx - 1)*170) // 10)
+            y0 = r[1] + 5 * ((r[3] - r[1] - ny*170 - (ny - 1)*170) // 10)
+            npc += [rect_grow((x0 + i*340, y0 + j*340, x0 + i*340 + 170, y0 + j*340 + 170), 100)
+                for i in range(nx) for j in range(ny)]
+        diffcut = [rect_grow(r, 90) for r in self.of(*self.DIFFCUT)]
+        npc = rects_close(rects_subtract(rects_close(npc, 270), diffcut), 270)
+        shapes(layers.npc, rects_close(npc, 265))
+
+M1_MIN_AREA = 83000  # m1.6, in nm²
+
+@dataclass(frozen=True)
+class MosRules:
+    """Rules of a device of magic's MOS generator (sky130::ruleset and *_draw), in nm."""
+    gate_type: str
+    diff_type: str
+    diff_contact_type: str
+    plus_diff_type: str
+    plus_contact_type: str
+    sub_type: str = "psub"
+    dev_sub_type: str = ""
+    poly_surround: int = 80
+    diff_surround: int = 60
+    gate_to_diffcont: int = 145
+    gate_to_polycont: int = 275
+    gate_extension: int = 130
+    diff_extension: int = 290
+    contact_size: int = 170
+    via_size: int = 170
+    metal_surround: int = 80
+    sub_surround: int = 180
+    diff_spacing: int = 280
+    poly_spacing: int = 210
+    diff_poly_space: int = 75
+    diff_gate_space: int = 200
+    metal_spacing: int = 230
+    diff_tap_space: int = None
+    min_effl: int = 0
+    min_allc: int = 0
+    guard_sub_surround: int = 0
+    diff_overlap_cont: int = 0
+    dev_sub_dist: int = 0
+    dev_sub_space: int = 0
+    sub_surround_dev: int = None
+    id_type: str = ""
+    id_surround: int = 0
+
+def box(x: int, y: int, e: int, w: int, n: int, s: int) -> tuple:
+    """Box at (x, y) grown by the given amounts, as magic's box grow."""
+    return (x - w, y - s, x + e, y + n)
+
+def via_extent(full: int, via_size: int, coverage: str) -> tuple:
+    """Length of a via row of coverage percent of full and its offset from
+    the center. A coverage of "+50" or "-50" anchors it at the lower or upper end."""
+    length = max(full * abs(int(coverage)) / 100, via_size)
+    end = (full - via_size) / 2
+    anchor = str(coverage)[0]
+    if anchor == "+":
+        return length, length / 2 - end
+    if anchor == "-":
+        return length, end - length / 2
+    return length, 0
+
+def mcon_draw(p: Paint, r: tuple, vert: bool) -> tuple:
+    """As sky130::mcon_draw, returns the m1 rect."""
+    p.paint("mcon", r)
+    if vert or r[2] - r[0] < r[3] - r[1]:
+        return p.paint("m1", (r[0] - 30, r[1] - 60, r[2] + 30, r[3] + 60))
+    return p.paint("m1", (r[0] - 60, r[1] - 30, r[2] + 60, r[3] + 30))
+
+def draw_contact(p: Paint, x: int, y: int, w: int, h: int, s: int, o: int, size: int,
+    atype: str, ctype: str, vert: bool) -> tuple:
+    """As sky130::draw_contact, returns the rect of atype. Contacts on substrate
+    diffusions are surrounded along their length only."""
+    w, h = rnd(max(w, size) / 2), rnd(max(h, size) / 2)
+    p.paint(ctype, (x - w, y - h, x + w, y + h))
+    if atype in ("psd", "nsd"):
+        ext = p.paint(atype, box(x, y, w, w, h + s, h + s) if vert else box(x, y, w + s, w + s, h, h))
+    else:
+        ext = p.paint(atype, box(x, y, w + s, w + s, h + s, h + s))
+    p.paint("li", box(x, y, w, w, h + o, h + o) if vert else box(x, y, w + o, w + o, h, h))
+    return ext
+
+def guard_ring(p: Paint, cell: Cell, r: MosRules, gw: int, gh: int):
+    """As sky130::guard_ring, returns its li rects."""
+    size, ms = r.contact_size, r.metal_surround
+    ds = 0 if r.plus_diff_type in ("psd", "nsd") else r.diff_surround
+    hx, hw, hh = rnd(size / 2), rnd(gw / 2), rnd(gh / 2)
+    difft = size + 2*ds
+    hdifft, hdiffw, hdiffh = rnd(difft / 2), rnd((gw + difft) / 2), rnd((gh + difft) / 2)
+    sides = (box(0, hh, hdiffw, hdiffw, hdifft, hdifft), box(0, -hh, hdiffw, hdiffw, hdifft, hdifft),
+        box(hw, 0, hdifft, hdifft, hdiffh, hdiffh), box(-hw, 0, hdifft, hdifft, hdiffh, hdiffh))
+    for side in sides:
+        p.paint(r.plus_diff_type, side)
+        if r.guard_sub_surround > 0:
+            p.paint(r.dev_sub_type, rect_grow(side, r.guard_sub_surround))
+    ring = []
+    if cell.full_metal:
+        hmetw, hmeth = rnd((gw + size) / 2), rnd((gh + size) / 2)
+        ring = [p.paint("li", box(0, hh, hmetw, hmetw, hx, hx)), p.paint("li", box(0, -hh, hmetw, hmetw, hx, hx)),
+            p.paint("li", box(hw, 0, hx, hx, hmeth, hmeth)), p.paint("li", box(-hw, 0, hx, hx, hmeth, hmeth))]
+
+    ch = max((gh - size - 2*(ms + r.metal_spacing)) * cell.rlcov / 100, size)
+    cw = max((gw - size - 2*(ms + r.metal_spacing)) * cell.tbcov / 100, size)
+    args = (ds, ms, size, r.plus_diff_type, r.plus_contact_type)
+    if cell.tbcov > 0:
+        if cell.gtc:
+            draw_contact(p, 0, hh, cw, 0, *args, vert=False)
+        if cell.gbc:
+            draw_contact(p, 0, -hh, cw, 0, *args, vert=False)
+    if cell.rlcov > 0:
+        if cell.grc:
+            draw_contact(p, hw, 0, 0, ch, *args, vert=True)
+        if cell.glc:
+            draw_contact(p, -hw, 0, 0, ch, *args, vert=True)
+
+    for coverage, x, y, vert in ((cell.viagb, 0, -hh, False), (cell.viagt, 0, hh, False),
+            (cell.viagr, hw, 0, True), (cell.viagl, -hw, 0, True)):
+        if int(coverage) != 0:
+            length, offset = via_extent((gh if vert else gw) - r.via_size, r.via_size, coverage)
+            half = rnd(length / 2)
+            if vert:
+                mcon_draw(p, box(x, y + rnd(offset), rnd(r.via_size / 2), rnd(r.via_size / 2), half, half), True)
+            else:
+                mcon_draw(p, box(x + rnd(offset), y, half, half, rnd(r.via_size / 2), rnd(r.via_size / 2)), False)
+
+    p.paint("boundary", (-hw, -hh, hw, hh))
+    if r.sub_type != "psub":
+        p.paint(r.sub_type, rect_grow((-hw, -hh, hw, hh), hx + ds + r.sub_surround))
+    return ring
+
+def mos_device(p: Paint, cell: Cell, r: MosRules, x: int, y: int, w: int, l: int,
+    evens: bool, topc: bool, botc: bool) -> dict:
+    """
+    As sky130::mos_device: one finger at (x, y). Returns its bounding box and
+    the shapes making up its terminals.
+    """
+    hw, hl = rnd(w / 2), rnd(l / 2)
+    he = r.min_effl / 2
+    if cell.nf == 1 or he < l / 2:
+        he = l / 2
+    he = rnd(he)
+    g2d, g2p = r.gate_to_diffcont, r.gate_to_polycont
+
+    p.paint(r.diff_type, box(x, y, hl + rnd(max(r.diff_extension, g2d)), hl + rnd(max(r.diff_extension, g2d)), hw, hw))
+    if r.gate_extension > g2p:
+        stem_n = stem_s = r.gate_extension
+    else:
+        stem_n = g2p if topc else r.gate_extension
+        stem_s = g2p if botc else r.gate_extension
+    stem = p.paint("poly", box(x, y, hl, hl, hw + rnd(stem_n), hw + rnd(stem_s)))
+    ext = [stem]
+
+    # Rule 1: diffusion dogbone
+    ddover = 0
+    cdwmin = r.contact_size + 2*r.diff_surround
+    if w < cdwmin:
+        cgrow = r.diff_poly_space - (g2d - cdwmin / 2)
+        if cgrow > 0:
+            g2d += cgrow
+        ddover = (cdwmin - w) / 2
+    # Rule 2: poly dogbone
+    gporig = g2p
+    cplmin = r.contact_size + 2*r.poly_surround
+    if l < cplmin:
+        cgrow = r.diff_poly_space - (g2p - cplmin / 2)
+        if cgrow > 0:
+            g2p += cgrow
+    # Rule 3: both dogboned
+    if w < cdwmin and l < cplmin:
+        g2p += (cplmin - w) / 2
+    # Rule 4: overlapping poly contacts
+    if cell.poverlap and cell.m > 1 and g2p - gporig < ddover:
+        g2p = gporig + ddover
+
+    cdwfull = w - 2*(r.diff_surround + r.diff_overlap_cont)
+    cplfull = l - 2*r.poly_surround
+    cdw = cdwfull * cell.diffcov / 100
+    cpl = cplfull if cell.poverlap and cell.m > 1 else cplfull * cell.polycov / 100
+
+    size_half = rnd(r.via_size / 2)
+    dx = he + rnd(g2d)
+    sd = {}
+    for side, viatype in ((1, cell.viasrc if evens else cell.viadrn), (-1, cell.viadrn if evens else cell.viasrc)):
+        cx = x + side*dx
+        top = None
+        if int(viatype) != 0:
+            length, offset = via_extent(cdwfull, r.via_size, viatype)
+            half = rnd(length / 2)
+            top = mcon_draw(p, box(cx, y + rnd(offset), size_half, size_half, half, half), True)
+        ext.append(draw_contact(p, cx, y, 0, cdw, r.diff_surround, r.metal_surround, r.contact_size,
+            r.diff_type, r.diff_contact_type, True))
+        li = (cx - rnd(r.contact_size / 2), y - rnd(max(cdw, r.contact_size) / 2) - r.metal_surround,
+            cx + rnd(r.contact_size / 2), y + rnd(max(cdw, r.contact_size) / 2) + r.metal_surround)
+        sd[side] = ("met1", top) if top is not None else ("li1", li)
+
+    def bbox_of(rects):
+        return (min(e[0] for e in rects), min(e[1] for e in rects), max(e[2] for e in rects), max(e[3] for e in rects))
+
+    diffarea = bbox_of(ext)
+    gate = []
+    for present, side in ((topc, 1), (botc, -1)):
+        if not present:
+            continue
+        cy = y + side*(hw + rnd(g2p))
+        top = None
+        if int(cell.viagate) != 0:
+            length, offset = via_extent(cplfull, r.via_size, cell.viagate)
+            half = rnd(length / 2)
+            top = mcon_draw(p, box(x + rnd(offset), cy, half, half, size_half, size_half), False)
+            if cell.gate_min_area:
+                # The generator's pad fails m1.6 until routed.
+                width = 5 * -(-M1_MIN_AREA // (5 * (top[3] - top[1])))
+                if width > top[2] - top[0]:
+                    grow = 5 * -(-(width - (top[2] - top[0])) // 10)
+                    top = p.paint("m1", (top[0] - grow, top[1], top[2] + grow, top[3]))
+        w_half, h_half = rnd(max(cpl, r.contact_size) / 2), rnd(r.contact_size / 2)
+        p.paint("pc_cut", (x - w_half, cy - h_half, x + w_half, cy + h_half))
+        ext.append(p.paint("poly", rect_grow((x - w_half, cy - h_half, x + w_half, cy + h_half), r.poly_surround)))
+        li = p.paint("li", box(x, cy, w_half + r.metal_surround, w_half + r.metal_surround, h_half, h_half))
+        gate.append(top if top is not None else li)
+
+    gaterect = (x - hl, y - hw, x + hl, y + hw)
+    p.paint(r.gate_type, gaterect)
+    if r.sub_surround_dev is not None:
+        ext.append(p.paint(r.dev_sub_type, rect_grow(gaterect, r.sub_surround_dev)))
+    if r.dev_sub_type != "":
+        sub = p.paint(r.dev_sub_type, rect_grow(diffarea, r.sub_surround))
+        if r.dev_sub_dist > 0:
+            ext.append(sub)
+    return dict(bbox=bbox_of(ext), sd=sd, gate=gate, stem=stem)
+
+def layoutgen_mos(cell: Cell, r: MosRules) -> Layout:
+    """
+    Layout generation function of the MOS devices and varactors, as magic's
+    sky130::mos_draw: nf fingers in x, m rows in y, optional guard ring. Each
+    distance is rounded to the 5 nm grid, as magic does, so w/nf and l must be
+    multiples of 10 nm to be drawn as given.
+    """
+    check_grid(cell, R("10n"), "l")
+    if (cell.w / cell.nf) / R("10n") != int((cell.w / cell.nf) / R("10n")):
+        raise ParameterError(f"w/nf = {cell.w / cell.nf} must be a multiple of 10n.")
+    l = Layout(ref_layers=SKY130().layers, cell=cell, symbol=cell.symbol)
+    layers = l.ref_layers
+    p = Paint()
+
+    w, L = int(cell.w / cell.nf / R("1n")), int(cell.l / R("1n"))
+    nf, m = cell.nf, cell.m
+    poverlap, doverlap = cell.poverlap, cell.doverlap
+    topc, botc = cell.topc or poverlap, cell.botc or poverlap
+    intc = nf > 1 and L < r.min_allc
+    if intc:
+        topc = botc = True
+        poverlap = False
+    size, ds, ps = r.contact_size, r.diff_surround, r.poly_surround
+    diff_tap_space = r.diff_spacing if r.diff_tap_space is None else r.diff_tap_space
+
+    # Device dimensions, from one device drawn on a scratch Paint.
+    bbox = mos_device(Paint(), cell, r, 0, 0, w, L, True, topc, botc)["bbox"]
+    fw, fh = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    lw, lh = bbox[2] + bbox[0], bbox[3] + bbox[1]
+
+    if r.dev_sub_dist > 0:
+        poverlap = doverlap = False
+        dx = fw + max(r.dev_sub_space, r.poly_spacing)
+        dy = fh + max(r.dev_sub_space, r.poly_spacing)
+    else:
+        dy = fh - (2*ps + size) if poverlap else fh + r.poly_spacing
+        dx = fw - (2*ds + size) if doverlap else fw + r.diff_spacing
+
+    corex = (nf - 1)*dx + fw
+    corey = (m - 1)*dy + fh
+    corellx = (corex - fw + lw) / 2
+    corelly = (corey - fh + lh) / 2
+    if not topc and w < size + 2*ds:
+        corey += (size + 2*ds - w) / 2
+
+    if cell.guard or r.id_type:
+        if r.dev_sub_dist > 0 and r.dev_sub_dist + r.sub_surround > diff_tap_space:
+            gx = corex + 2*(r.dev_sub_dist + ds) + size
+        else:
+            gx = corex + 2*(diff_tap_space + ds) + size
+        if r.dev_sub_dist > 0 and r.dev_sub_dist + r.sub_surround > r.diff_gate_space:
+            gy = corey + 2*(r.dev_sub_dist + ds) + size
+        else:
+            gy = corey + 2*(r.diff_gate_space + ds) + size
+        # With a small dogboned diffusion and a missing poly contact, the
+        # guard ring distance may be limited by diffusion spacing.
+        sdiff = (size + 2*ds - w) / 2 + diff_tap_space - (r.gate_extension + r.diff_gate_space)
+        if sdiff > 0:
+            if not topc:
+                gy += sdiff
+                corelly += sdiff / 2
+            if not botc:
+                gy += sdiff
+                corelly -= sdiff / 2
+    ring = guard_ring(p, cell, r, gx, gy) if cell.guard else []
+    if r.id_type:
+        p.paint(r.id_type, rect_grow(box(0, 0, rnd(gx / 2), rnd(gx / 2), rnd(gy / 2), rnd(gy / 2)), r.id_surround))
+
+    # Fingers from the left, rows from the bottom. Without a top or bottom
+    # contact on every finger, the contacts alternate along x and y.
     l.poly = PathNode()
     l.sd = PathNode()
-    l.li = PathNode()
+    sd_by_x = {}
+    gate_pin = None
+    x0, y0 = -rnd(corellx), -rnd(corelly)
+    for i in range(nf):
+        for j in range(m):
+            top, bot = topc, botc
+            if intc:
+                top, bot = (i + j) % 2 == 1, (i + j) % 2 == 0
+            dev = mos_device(p, cell, r, x0 + i*dx, y0 + j*dy, w, L, i % 2 == 1, top, bot)
+            if j == 0:
+                l.poly[i] = LayoutRect(layer=layers.poly, rect=Rect4I(*dev["stem"]))
+                for layer, rect in dev["sd"].values():
+                    sd_by_x[(rect[0] + rect[2]) // 2] = layer, rect
+                if i == 0:
+                    gate_contacted = bool(dev["gate"])
+                    gate_pin = dev["gate"][0] if gate_contacted else dev["stem"]
 
-    sd_width = tr['licon_size']
-    m1_width = sd_width + 2*tr['met1_encl_mcon']
-
-    def add_sd(i):
-        nonlocal l, s, x_cur
-        # met1 strip, the connection point exposed to parent layouts:
-        l.sd[i] = LayoutRect(layer=layers.met1)
-        sd = l.sd[i]
-        s.constrain(sd.west == (x_cur - tr['met1_encl_mcon'], l.diff.cy))
-        s.constrain(sd.size == (m1_width, W))
-        # li1 strip, flush with the licon column in x, extending past the
-        # diffusion so li.5 (0.08 end enclosure of licon) is met:
-        l.li[i] = LayoutRect(layer=layers.li1)
-        li = l.li[i]
-        s.constrain(li.west == (x_cur, l.diff.cy))
-        s.constrain(li.size == (sd_width,
-            W + 2*(tr['li_encl_licon_end'] - tr['licon_encl_diff'])))
-        x_cur += sd_width
-
-    def add_poly(i):
-        nonlocal l, s, x_cur
-        x_cur += tr['licon_gate_space']
-        l.poly[i] = LayoutRect(layer=layers.poly)
-        poly = l.poly[i]
-        s.constrain(poly.west == (x_cur, l.diff.cy))
-        s.constrain(poly.size == (L, W + 2*tr['poly_endcap']))
-        s.constrain(poly.ly == 0)
-        x_cur = poly.ux + tr['licon_gate_space']
-
-    l.diff = LayoutRect(layer=layers.diff)
-    s.constrain(l.diff.height == W)
-    s.constrain(l.diff.lx == 0)
-    x_cur = tr['licon_encl_diff']
-
-    add_sd(0)
-    for i in range(num_gates):
-        add_poly(i)
-        add_sd(i+1)
-
-    s.constrain(l.diff.ux == x_cur + tr['licon_encl_diff'])
-
-    # N+/P+ implant over the diffusion (nsd.5a/psd.5a):
-    implant_layer = layers.psdm if nwell else layers.nsdm
-    l.implant = LayoutRect(layer=implant_layer)
-    s.constrain(l.implant.center == l.diff.center)
-    s.constrain(l.implant.size == l.diff.size + Vec2I(2*tr['implant_encl'],
-        2*tr['implant_encl']))
-
-    if nwell:
-        l.nwell = LayoutRect(layer=layers.nwell)
-        s.constrain(l.nwell.center == l.diff.center)
-        s.constrain(l.nwell.width == l.diff.width + 2*tr['nwell_encl'])
-        s.constrain(l.nwell.height == max(W + 2*tr['nwell_encl'],
-            tr['nwell_width']))
-
-    s.solve()
-
-    for i in range(num_gates + 1):
-        li = l.li[i]
-        # licon1 contacts within the diffusion (licon.5a/5c enclosure):
-        makevias(l, Rect4I(li.lx, l.diff.ly, li.ux, l.diff.uy), layers.licon1,
-            size=Vec2I(tr['licon_size'], tr['licon_size']),
-            spacing=Vec2I(tr['licon_space'], tr['licon_space']),
-            margin=Vec2I(0, tr['licon_encl_diff']),
-            )
-        # mcon contacts within the met1 strip (m1.4/m1.5 enclosure):
-        makevias(l, l.sd[i].rect, layers.mcon,
-            size=Vec2I(tr['mcon_size'], tr['mcon_size']),
-            spacing=Vec2I(tr['mcon_space'], tr['mcon_space']),
-            margin=Vec2I(tr['met1_encl_mcon'], tr['met1_encl_mcon_end']),
-            )
-
+    p.draw(l)
+    for i, x in enumerate(sorted(sd_by_x)):
+        layer, rect = sd_by_x[x]
+        l.sd[i] = LayoutRect(layer=layers[layer], rect=Rect4I(*rect))
+    # s on the even regions, d on the odd ones, as in ihp130. (Magic names
+    # them the other way around, so its viasrc is our viadrn.) Without
+    # doverlap each finger has regions of its own, mirrored from finger to
+    # finger: s, d, d, s, ...
+    l.sd[0].create_pin(cell.symbol.s)
+    l.sd[1].create_pin(cell.symbol.d)
+    if not gate_contacted:
+        gate_layer = layers.poly
+    else:
+        gate_layer = layers.met1 if int(cell.viagate) != 0 else layers.li1
+    (l % LayoutRect(layer=gate_layer, rect=Rect4I(*gate_pin))).create_pin(cell.symbol.g)
+    if r.dev_sub_type == "nwell":
+        # The well of the first device, not a side of the guard ring's.
+        sd = l.sd[0].rect
+        l.nwell = LayoutRect(layer=layers.nwell, rect=Rect4I(*next(w for w in p.of("nwell")
+            if w[0] <= sd.lx and w[1] <= sd.ly and sd.ux <= w[2] and sd.uy <= w[3])))
+    if ring:
+        l.guard = LayoutRect(layer=layers.li1, rect=Rect4I(*ring[0]))
+        l.guard.create_pin(cell.symbol.b)
+    elif r.dev_sub_type == "nwell":
+        l.nwell.create_pin(cell.symbol.b)
     return l
 
 class Mos(SimLeafCell):
@@ -415,6 +852,33 @@ class Mos(SimLeafCell):
     sa = Parameter(R, optional=True) #: OD-to-poly distance, one side (stress model)
     sb = Parameter(R, optional=True) #: OD-to-poly distance, other side (stress model)
     sd = Parameter(R, optional=True) #: Poly-to-poly distance for multi-finger (stress model)
+
+    # Layout options of magic's generator (sky130::mos_draw), with its defaults:
+    guard = Parameter(bool, default=True) #: Guard ring
+    glc = Parameter(bool, default=True) #: Guard ring contacts on the left
+    grc = Parameter(bool, default=True) #: Guard ring contacts on the right
+    gtc = Parameter(bool, default=True) #: Guard ring contacts on the top
+    gbc = Parameter(bool, default=True) #: Guard ring contacts on the bottom
+    tbcov = Parameter(int, default=100) #: Top and bottom guard ring contact coverage in percent
+    rlcov = Parameter(int, default=100) #: Left and right guard ring contact coverage in percent
+    full_metal = Parameter(bool, default=True) #: Continuous li1 guard ring
+    topc = Parameter(bool, default=True) #: Top poly contact
+    botc = Parameter(bool, default=True) #: Bottom poly contact
+    diffcov = Parameter(int, default=100) #: Diffusion contact coverage in percent
+    polycov = Parameter(int, default=100) #: Poly contact coverage in percent
+    poverlap = Parameter(bool, default=False) #: Overlap poly contacts of adjacent rows
+    doverlap = Parameter(bool, default=True) #: Overlap diffusion contacts of adjacent fingers
+    #: mcon coverage in percent of source, drain, gate and the guard ring's
+    #: bottom, top, right and left side. "+50" and "-50" anchor it at one end.
+    viasrc = Parameter(str, default="100")
+    viadrn = Parameter(str, default="100")
+    viagate = Parameter(str, default="100")
+    viagb = Parameter(str, default="0")
+    viagt = Parameter(str, default="0")
+    viagr = Parameter(str, default="0")
+    viagl = Parameter(str, default="0")
+    #: Widen the gate's met1 pads to the m1.6 minimum area, unlike the generator
+    gate_min_area = Parameter(bool, default=True)
 
     # Dimension minimums (poly.1a, difftap.2 per finger).
     min_l = R("150n")
@@ -526,35 +990,90 @@ class Mos(SimLeafCell):
             self.model_name,
             *spice_params(params))
 
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        return layoutgen_mos(self, self.rules)
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls(w=R("1u"), l=cls.min_l)] if hasattr(cls, "model_name") else []
+
+NFET = dict(gate_type="nfet", diff_type="ndiff", diff_contact_type="ndc", plus_diff_type="psd",
+    plus_contact_type="psc", min_effl=185, min_allc=260)
+PFET = dict(gate_type="pfet", diff_type="pdiff", diff_contact_type="pdc", plus_diff_type="nsd",
+    plus_contact_type="nsc", sub_type="nwell", dev_sub_type="nwell", gate_to_polycont=320,
+    min_effl=185, min_allc=260)
+MVNFET = dict(gate_type="mvnfet", diff_type="mvndiff", diff_contact_type="mvndc", plus_diff_type="mvpsd",
+    plus_contact_type="mvpsc", diff_spacing=310, diff_tap_space=380, diff_gate_space=380)
+
 @public
 class Nmos(Mos):
+    """1.8 V NMOS."""
     model_name = "sky130_fd_pr__nfet_01v8"
+    rules = MosRules(**NFET)
 
     # Reuse the generic MOS symbol viewgen (not the class: inheriting from
     # generic_mos.Nmos would also drag in its defaulted l/w parameters).
     symbol = generic_mos.Nmos.symbol
 
-    @viewgen_noctx
-    def layout(self) -> Layout:
-        return layoutgen_mos(self, self.l, self.w, self.nf, nwell=False)
+@public
+class NmosLvt(Nmos):
+    """1.8 V low-threshold NMOS."""
+    model_name = "sky130_fd_pr__nfet_01v8_lvt"
+    rules = MosRules(**NFET | dict(gate_type="nfetlvt"))
+    min_l = R("150n")
 
-    @classmethod
-    def discoverable_instances(cls):
-        return [cls(w=R("1u"), l=R("150n"))]
+@public
+class NmosHv(Nmos):
+    """5 V NMOS (g5v0d10v5)."""
+    model_name = "sky130_fd_pr__nfet_g5v0d10v5"
+    rules = MosRules(**MVNFET)
+    min_l = R("500n")
+
+@public
+class Nmos05v0Nvt(Nmos):
+    """5 V native NMOS."""
+    model_name = "sky130_fd_pr__nfet_05v0_nvt"
+    rules = MosRules(**MVNFET | dict(gate_type="mvnnfet", diff_spacing=300))
+    min_l = R("900n")
+
+@public
+class Nmos03v3Nvt(Nmos):
+    """3.3 V native NMOS."""
+    model_name = "sky130_fd_pr__nfet_03v3_nvt"
+    rules = MosRules(**MVNFET | dict(gate_type="nnfet", diff_spacing=300))
+    min_l = R("500n")
 
 @public
 class Pmos(Mos):
+    """1.8 V PMOS."""
     model_name = "sky130_fd_pr__pfet_01v8"
+    rules = MosRules(**PFET)
 
     symbol = generic_mos.Pmos.symbol
 
-    @viewgen_noctx
-    def layout(self) -> Layout:
-        return layoutgen_mos(self, self.l, self.w, self.nf, nwell=True)
+@public
+class PmosLvt(Pmos):
+    """1.8 V low-threshold PMOS."""
+    model_name = "sky130_fd_pr__pfet_01v8_lvt"
+    rules = MosRules(**PFET | dict(gate_type="pfetlvt"))
+    min_l = R("350n")
 
-    @classmethod
-    def discoverable_instances(cls):
-        return [cls(w=R("1u"), l=R("150n"))]
+@public
+class PmosHvt(Pmos):
+    """1.8 V high-threshold PMOS."""
+    model_name = "sky130_fd_pr__pfet_01v8_hvt"
+    rules = MosRules(**PFET | dict(gate_type="pfethvt"))
+
+@public
+class PmosHv(Pmos):
+    """5 V PMOS (g5v0d10v5)."""
+    model_name = "sky130_fd_pr__pfet_g5v0d10v5"
+    rules = MosRules(gate_type="mvpfet", diff_type="mvpdiff", diff_contact_type="mvpdc",
+        plus_diff_type="mvnsd", plus_contact_type="mvnsc", sub_type="nwell", dev_sub_type="nwell",
+        guard_sub_surround=330, gate_to_polycont=320, diff_spacing=310, diff_tap_space=380,
+        diff_gate_space=380)
+    min_l = R("500n")
 
 def met1_min_area_rect(mcon_rect: Rect4I, grow_axis: str) -> tuple:
     """
@@ -562,18 +1081,18 @@ def met1_min_area_rect(mcon_rect: Rect4I, grow_axis: str) -> tuple:
     grow_axis (on the manufacturing grid) if needed to reach the m1.6
     minimum area.
     """
-    tr = tech_rules
     mg = 5  # manufacturing grid
+    encl, encl_end = 30, 60  # m1.4, m1.5
     if grow_axis == 'y':
-        fix_lo = mcon_rect.lx - tr['met1_encl_mcon']
-        fix_hi = mcon_rect.ux + tr['met1_encl_mcon']
+        fix_lo = mcon_rect.lx - encl
+        fix_hi = mcon_rect.ux + encl
         grow_lo, grow_hi = mcon_rect.ly, mcon_rect.uy
     else:
-        fix_lo = mcon_rect.ly - tr['met1_encl_mcon']
-        fix_hi = mcon_rect.uy + tr['met1_encl_mcon']
+        fix_lo = mcon_rect.ly - encl
+        fix_hi = mcon_rect.uy + encl
         grow_lo, grow_hi = mcon_rect.lx, mcon_rect.ux
-    span = grow_hi - grow_lo + 2*tr['met1_encl_mcon_end']
-    min_span = -(-tr['met1_min_area'] // (fix_hi - fix_lo))
+    span = grow_hi - grow_lo + 2*encl_end
+    min_span = -(-M1_MIN_AREA // (fix_hi - fix_lo))
     span = max(span, -(-min_span // mg) * mg)
     grow = (span - (grow_hi - grow_lo)) // 2 // mg * mg
     if grow_axis == 'y':
@@ -586,7 +1105,6 @@ def layoutgen_tap(cell: Cell, length: R, width: R, nwell: bool):
     l = Layout(ref_layers=layers, cell=cell)
     s = Solver(l)
 
-    tr = tech_rules
     L = int(length/R("1n"))
     W = int(width/R("1n"))
 
@@ -598,16 +1116,14 @@ def layoutgen_tap(cell: Cell, length: R, width: R, nwell: bool):
     implant_layer = layers.nsdm if nwell else layers.psdm
     l.implant = LayoutRect(layer=implant_layer)
     s.constrain(l.implant.center == l.tap.center)
-    s.constrain(l.implant.size == l.tap.size + Vec2I(2*tr['implant_encl'],
-        2*tr['implant_encl']))
+    s.constrain(l.implant.size == l.tap.size + Vec2I(250, 250))  # nsd.5a/psd.5a
 
     if nwell:
         l.nwell = LayoutRect(layer=layers.nwell)
         s.constrain(l.nwell.center == l.tap.center)
-        s.constrain(l.nwell.width == max(L + 2*tr['nwell_encl'],
-            tr['nwell_width']))
-        s.constrain(l.nwell.height == max(W + 2*tr['nwell_encl'],
-            tr['nwell_width']))
+        # Enclosure of difftap.8/difftap.10, width of nwell.1:
+        s.constrain(l.nwell.width == max(L + 360, 840))
+        s.constrain(l.nwell.height == max(W + 360, 840))
 
     # l.li.rect/l.m1.rect are assigned after solve() from the contact stack,
     # which needs the solved geometry, so the undefined-attribute check is deferred.
@@ -617,18 +1133,17 @@ def layoutgen_tap(cell: Cell, length: R, width: R, nwell: bool):
 
     # licon.1, licon.2, licon.7:
     licon_rect = makevias(l, l.tap.rect, layers.licon1,
-        size=Vec2I(tr['licon_size'], tr['licon_size']),
-        spacing=Vec2I(tr['licon_space'], tr['licon_space']),
-        margin=Vec2I(tr['licon_encl_tap'], tr['licon_encl_tap']),
+        size=Vec2I(170, 170),
+        spacing=Vec2I(170, 170),
+        margin=Vec2I(120, 120),
         )
     # li1 over the licon array, extended for li.5 end enclosure:
-    l.li.rect = (licon_rect.lx, licon_rect.ly - tr['li_encl_licon_end'],
-        licon_rect.ux, licon_rect.uy + tr['li_encl_licon_end'])
+    l.li.rect = (licon_rect.lx, licon_rect.ly - 80, licon_rect.ux, licon_rect.uy + 80)
 
     # ct.1, ct.2:
     mcon_rect = makevias(l, l.li.rect, layers.mcon,
-        size=Vec2I(tr['mcon_size'], tr['mcon_size']),
-        spacing=Vec2I(tr['mcon_space'], tr['mcon_space']),
+        size=Vec2I(170, 170),
+        spacing=Vec2I(190, 190),
         margin=Vec2I(0, 0),
         )
     l.m1.rect = met1_min_area_rect(mcon_rect, grow_axis='y')

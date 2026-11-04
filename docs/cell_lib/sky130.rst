@@ -28,6 +28,17 @@ rules, the gate extensions and the latch-up rules. It checks neither npc,
 whose layer magic ignores when reading GDS, nor antennas, so a tapeout still
 needs an independent DRC run.
 
+.. _sky130_generator_differences:
+
+Differences from the PDK's device generators
+--------------------------------------------
+
+The layouts reproduce the device generators of the PDK's magic technology (``sky130A.tcl``) geometrically, with magic's parameter names and defaults; ``tests/test_sky130_pcells.py`` compares them layer by layer. They differ where the generators conflict with the DRC or LVS decks:
+
+* **Gate met1 pads**: widened to the m1.6 minimum area. ``gate_min_area=False`` draws the generator's pads, which only pass once routed.
+* **w** and **l**: magic rounds each half distance to the 5 nm grid, so the odd multiples of 5 nm are drawn 5 nm off and fail LVS. Layouts reject them.
+* **Source and drain**: ``s`` is on the even regions (``sd[0]``, ``sd[2]``, ...), counted from the left, as in ``ihp130``. In magic it is the odd ones, so its ``viasrc`` is ORDeC's ``viadrn``. With ``doverlap=False`` each finger has two regions of its own, mirrored from finger to finger, so the regions are ``s``, ``d``, ``d``, ``s`` and so on.
+
 Cells
 -----
 
