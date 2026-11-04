@@ -15,6 +15,7 @@ from ..schematic import spice_params, Netlister
 from . import base, generic_mos, pdk_dirs
 from .pdk_common import PdkDict, check_dir, check_file, rundir
 from ..layout import makevias, write_gds, flatten
+from ..extlibrary import ExtLibrary
 from ..layout.style import read_layout_style
 from ..layout import klayout, magic
 
@@ -27,6 +28,9 @@ def pdk() -> PdkDict:
     pdk = PdkDict(root=check_dir(Path(root).resolve()))
 
     pdk.ngspice_lib = check_file(pdk.root / "libs.tech/ngspice/sky130.lib.spice")
+
+    pdk.pr_gds = check_file(pdk.root / "libs.ref/sky130_fd_pr/gds/sky130_fd_pr.gds")
+    pdk.pr_spice_dir = check_dir(pdk.root / "libs.ref/sky130_fd_pr/spice")
 
     pdk.klayout_drc_deck = check_file(pdk.root / "libs.tech/klayout/drc/sky130A_mr.drc")
     pdk.klayout_density_deck = check_file(pdk.root / "libs.tech/klayout/drc/met_min_ca_density.lydrc")
@@ -207,6 +211,8 @@ class SKY130(Cell):
 
         for m in (s.li1, s.met1, s.met2, s.met3, s.met4, s.met5):
             n = m.gdslayer_shapes.layer
+            # Labels on the pin purpose, as many cells of sky130_fd_pr.gds have them
+            m.pintext = Layer(gdslayer_text=GdsLayer(layer=n, data_type=16))
             # Metal resistor marker and short, as res_generic_l1 etc. draw them
             m.res = Layer(gdslayer_shapes=GdsLayer(layer=n, data_type=13))
             m.short = Layer(gdslayer_shapes=GdsLayer(layer=n, data_type=15))
@@ -231,7 +237,16 @@ class SKY130(Cell):
                 ("re", 125)):
             s.areaid[name] = Layer(gdslayer_shapes=GdsLayer(layer=81, data_type=data_type))
 
-        s.TEXT = Layer(gdslayer_text=GdsLayer(layer=83, data_type=44))
+        s.TEXT = Layer(gdslayer_text=GdsLayer(layer=83, data_type=44), gdslayer_shapes=GdsLayer(layer=83, data_type=44))
+
+        # Further layers of the fixed cells in sky130_fd_pr.gds: fill keepouts
+        # and undocumented ones, named by their numbers.
+        s.waffle = PathNode()
+        for name, layer_, data_type in (("fom", 22, 24), ("poly", 33, 24), ("met4", 112, 4)):
+            s.waffle[name] = Layer(gdslayer_shapes=GdsLayer(layer=layer_, data_type=data_type))
+        s.gds = PathNode()
+        for layer_, data_type in ((22, 48), (110, 14), (170, 0), (173, 0), (174, 0), (236, 0), (251, 0)):
+            s.gds[f"l{layer_}_{data_type}"] = Layer(gdslayer_shapes=GdsLayer(layer=layer_, data_type=data_type))
 
         s.prBoundary = layer(235, 4)
 
@@ -2498,6 +2513,211 @@ class Cmim2(Cmim):
     rules = CapRules(top_type="m5", top_contact_type="via4", cap_type="mimcap2", cap_contact_type="mim2cc",
         bot_type="m4", top_surround=120, contact_size=1180, metal_surround=210, top_metal_width=1600,
         top_metal_space=1700)
+
+
+@functools.cache
+def pr_library() -> ExtLibrary:
+    """The fixed cells of the PDK's primitive library sky130_fd_pr.gds."""
+    lib = ExtLibrary()
+    lib.read_gds(pdk().pr_gds, SKY130().layers)
+    return lib
+
+@functools.cache
+def subckt_of(name: str) -> tuple:
+    """The spice file of a fixed cell and its pins, in lower case, from the
+    .subckt line."""
+    for path in (pdk().pr_spice_dir / f"{name}.model.spice", pdk().pr_spice_dir / f"{name}.spice"):
+        if path.is_file():
+            break
+    else:
+        raise ParameterError(f"No spice file of {name} in the PDK.")
+    for line in path.read_text().splitlines():
+        if line.lower().startswith(".subckt"):
+            return path, tuple(p.lower() for p in line.split()[2:] if "=" not in p)
+    return path, ()
+
+@functools.cache
+def spice_include(path: Path):
+    """Netlist setup including a model file that sky130.lib.spice does not."""
+    def setup(netlister):
+        if not netlister.lvs:
+            netlister.add(".include", f"\"{path}\"")
+    return setup
+
+def layoutgen_fixed(cell: Cell) -> Layout:
+    """
+    The fixed cell of the PDK's sky130_fd_pr.gds, with pins at the labels
+    naming them.
+    """
+    layers = SKY130().layers
+    l = Layout(ref_layers=layers, cell=cell, symbol=cell.symbol)
+    l % LayoutInstance(ref=pr_library()[cell.gds_name()].layout, pos=Vec2I(0, 0))
+    flatten(l)
+    pins = {cell.pin_aliases.get(str(p.npath.name), str(p.npath.name)): p for p in cell.symbol.all(Pin)}
+    metals = {m.gdslayer_shapes.layer: m for m in (layers.li1, layers.met1, layers.met2, layers.met3, layers.met4, layers.met5)}
+    done = set()
+    for label in list(l.all(LayoutLabel)):
+        name = label.text.lower()
+        text = label.layer.gdslayer_text
+        metal = layers.pwell if label.layer == layers.pwell.pin else metals.get(text.layer)
+        if name in pins and name not in done and metal is not None:
+            pos = label.pos
+            (l % LayoutRect(layer=metal, rect=Rect4I(pos.x - 5, pos.y - 5, pos.x + 5, pos.y + 5))).create_pin(pins[name])
+            done.add(name)
+    return l
+
+class FixedDevice(SimLeafCell):
+    """
+    Shared base class of the devices with a fixed cell in sky130_fd_pr.gds,
+    selected by the parameter ``device``. Their pins are the ones of the PDK's
+    .subckt. Magic's generators place these same cells.
+    """
+    device = Parameter(str)
+    m = Parameter(int, default=1)
+    pin_aliases = {}
+    lvs_prefix = "X"
+    prefixes = ()  # the names of the family's devices start with one of these
+
+    @classmethod
+    def params_check(cls, params):
+        check_counts(params, "m")
+        if not params['device'].startswith(cls.prefixes):
+            raise ParameterError(f"device of {cls.__name__} must start with {' or '.join(cls.prefixes)}.")
+
+    def model_file(self) -> Path:
+        """A file with the model that sky130.lib.spice does not include."""
+        return subckt_of(self.model())[0]
+
+    def model(self) -> str:
+        return f"sky130_fd_pr__{self.device}"
+
+    def gds_name(self) -> str:
+        return self.model()
+
+    def pins(self) -> tuple:
+        try:
+            return subckt_of(self.model())[1]
+        except ParameterError:
+            return ()
+
+    @viewgen_noctx
+    def symbol(self) -> Symbol:
+        s = Symbol(cell=self)
+        for name in self.pins():
+            s[name] = Pin(pintype=PinType.Inout, orient=South if name in ("b", "s", "sub", "substrate") else North)
+        s.place_pins()
+        return s
+
+    def ngspice_netlist(self, netlister, inst):
+        if not self.pins():
+            raise ParameterError(f"The PDK has no subcircuit of {self.device}.")
+        netlister.require_netlist_setup(netlist_setup)
+        pins = [inst.symbol[p] for p in self.pins()]
+        if netlister.lvs:
+            netlister.add(netlister.name_obj(inst, prefix=self.lvs_prefix),
+                netlister.portmap(inst, pins), self.model())
+            return
+        if self.model_file() is not None:
+            netlister.require_netlist_setup(spice_include(self.model_file()))
+        netlister.add(netlister.name_obj(inst, prefix="x"), netlister.portmap(inst, pins), self.model(),
+            *spice_params({"m": self.m} if self.m != 1 else {}))
+
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        if self.m != 1:
+            raise ParameterError("m != 1 not supported for layout.")
+        return layoutgen_fixed(self)
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls(device=cls.example)] if hasattr(cls, "example") else []
+
+@public
+class CapVpp(FixedDevice):
+    """Vertical parallel plate (MoM) capacitor, e.g. ``device="cap_vpp_11p5x11p7_m1m2_noshield"``."""
+    example = "cap_vpp_11p5x11p7_m1m2_noshield"
+    prefixes = ("cap_vpp_",)
+    lvs_prefix = "C"
+    pin_aliases = {"b": "sub"}
+
+    def model_file(self) -> Path:
+        return pdk().root / "libs.tech/ngspice/capacitors/sky130_fd_pr__model__cap_vpp.model.spice"
+
+@public
+class RfMos(FixedDevice):
+    """RF MOS, e.g. ``device="rf_nfet_01v8_aM02W1p65L0p15"``. The LVS deck extracts no devices from these cells."""
+    example = "rf_nfet_01v8_aM02W1p65L0p15"
+    prefixes = ("rf_nfet_", "rf_pfet_")
+
+def netlist_setup_npn(netlister):
+    """
+    The corner parameters of the NPN models, which sky130.lib.spice leaves
+    undefined. The corner file itself cannot be included, as it redefines
+    the model subcircuits.
+    """
+    if netlister.lvs:
+        return
+    corner = (pdk().pr_spice_dir / "sky130_fd_pr__npn_05v5__t.corner.spice").read_text()
+    for line in corner.splitlines():
+        if line.startswith("+ dk"):
+            netlister.add(".param", line[2:])
+
+class Bjt(FixedDevice):
+    """Shared base class of the bipolar transistors."""
+    lvs_prefix = "Q"
+
+    def gds_name(self) -> str:
+        return f"sky130_fd_pr__rf_{self.device}" if self.device.endswith(("L1p00", "L2p00", "L0p68")) and "11v0" not in self.device else self.model()
+
+@public
+class Npn(Bjt):
+    """NPN transistor, e.g. ``device="npn_05v5_W1p00L1p00"``, pins c, b, e, s."""
+    example = "npn_05v5_W1p00L1p00"
+    prefixes = ("npn_",)
+
+    def model_file(self) -> Path:
+        return None
+
+    def ngspice_netlist(self, netlister, inst):
+        netlister.require_netlist_setup(netlist_setup_npn)
+        super().ngspice_netlist(netlister, inst)
+
+@public
+class Pnp(Bjt):
+    """PNP transistor, e.g. ``device="pnp_05v5_W0p68L0p68"``."""
+    example = "pnp_05v5_W0p68L0p68"
+    prefixes = ("pnp_",)
+    pin_aliases = {"collector": "c", "base": "b", "emitter": "e"}
+
+    def model_file(self) -> Path:
+        return None
+
+@public
+class Inductor(FixedDevice):
+    """Inductor from the models, ``device`` one of ``ind_03_90``, ``ind_05_125``, ``ind_05_220``. The cells rf_test_coil1 to 3 draw them."""
+    example = "ind_03_90"
+    prefixes = ("ind_",)
+    lvs_prefix = "L"
+    COILS = {"ind_03_90": "rf_test_coil1", "ind_05_125": "rf_test_coil2", "ind_05_220": "rf_test_coil3"}
+
+    def gds_name(self) -> str:
+        return f"sky130_fd_pr__{self.COILS[self.device]}"
+
+@public
+class EsdRfNmos(Cell):
+    """Fixed 20 V ESD NMOS layout, e.g. ``device="esd_rf_nfet_20v0_hbm_21vW60p00"``, without a model."""
+    device = Parameter(str)
+
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        l = Layout(ref_layers=SKY130().layers, cell=self)
+        l % LayoutInstance(ref=pr_library()[f"sky130_fd_pr__{self.device}"].layout, pos=Vec2I(0, 0))
+        flatten(l)
+        return l
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls(device="esd_rf_nfet_20v0_hbm_21vW60p00")]
 
 
 @public
