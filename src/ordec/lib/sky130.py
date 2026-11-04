@@ -12,7 +12,7 @@ from dataclasses import dataclass, replace
 
 from ..core import *
 from ..schematic import spice_params, Netlister
-from . import generic_mos, pdk_dirs
+from . import base, generic_mos, pdk_dirs
 from .pdk_common import PdkDict, check_dir, check_file, rundir
 from ..layout import makevias, write_gds, flatten
 from ..layout.style import read_layout_style
@@ -584,6 +584,15 @@ class Paint:
                 grow_y = rnd(max(0, 840 - (uy - ly)) / 2) if free else 0
                 hvi.append((lx - grow_x, ly - grow_y, ux + grow_x, uy + grow_y))
         shapes(layers.hvi, rects_close(hvi, 700))
+
+        # CAPM, VIA3, VIA4
+        shapes(layers.capm, self.of("mimcap"))
+        shapes(layers.cap2m, self.of("mimcap2"))
+        shapes(layers.met3, self.of("via3"))
+        shapes(layers.met4, self.of("via3", "via4", "mimcc"))
+        shapes(layers.met5, self.of("via4", "mim2cc"))
+        cuts(layers.via3, self.of("via3", "mimcc"), 60, 200, 200)
+        cuts(layers.via4, self.of("via4", "mim2cc"), 190, 800, 800)
 
         # CONT, MCON
         cuts(layers.licon1, self.of(*self.DIFFCUT, "pc_cut", "ndic", "ndilvtc", "nndic", "mvndic",
@@ -2105,111 +2114,193 @@ class DiodePd2nw11v0(DiodePd2nwBase):
         end_spacing=300, end_sub_surround=330, end_surround=60)
 
 
-def layoutgen_cmim(cell: Cell) -> Layout:
-    """Generate the SKY130 met3/met4 MiM capacitor (cap_mim_m3_1)."""
+@dataclass(frozen=True)
+class CapRules:
+    """Rules of a device of magic's MiM capacitor generator (sky130::*_draw), in nm."""
+    top_type: str
+    top_contact_type: str
+    cap_type: str
+    cap_contact_type: str
+    bot_type: str
+    top_surround: int
+    contact_size: int
+    metal_surround: int
+    top_metal_width: int = 0
+    top_metal_space: int = 230
+    bot_surround: int = 500
+    cap_spacing: int = 500
+    cap_surround: int = 200
+    end_surround: int = 100
+    end_spacing: int = 100
+
+def cap_device(p: Paint, cell: Cell, r: CapRules, x: int, y: int, w: int, l: int) -> list:
+    """As sky130::cap_device: one capacitor at (x, y), contact to its right. Returns its bounding box and metals."""
+    hw, hl = rnd(w / 2), rnd(l / 2)
+    p.paint(r.cap_type, (x - hw, y - hl, x + hw, y + hl))
+    cmaxw = w - 2*r.cap_surround
+    cw = max(cmaxw * abs(int(cell.ccov)) / 100, r.contact_size, r.top_metal_width)
+    cdif = cmaxw - cw
+    lx, ux = x - hw + r.cap_surround, x + hw - r.cap_surround
+    anchor = str(cell.ccov)[0]
+    if anchor == "+":
+        ux -= rnd(cdif)
+    elif anchor == "-":
+        lx += rnd(cdif)
+    else:
+        cdif = cdif / 2
+        lx, ux = lx + rnd(cdif), ux - rnd(cdif)
+    cut = (lx, y - hl + r.cap_surround, ux, y + hl - r.cap_surround)
+    p.paint(r.cap_contact_type, cut)
+    top = p.paint(r.top_type, rect_grow(cut, r.top_surround))
+    plate = rect_grow((x - hw, y - hl, x + hw, y + hl), r.bot_surround)
+    bottom = p.paint(r.bot_type, plate)
+    p.types["boundary"] = [plate]
+
+    top_met_sep = r.end_spacing + cdif - r.top_surround
+    end_spacing = r.end_spacing
+    if top_met_sep < r.top_metal_space:
+        end_spacing += r.top_metal_space - top_met_sep
+    chw = rnd(r.contact_size / 2)
+    p.paint(r.bot_type, (plate[0], plate[1], plate[2] + rnd(end_spacing) + chw + r.end_surround, plate[3]))
+
+    lcont = l
+    if not cell.bconnect and cell.ny > 1 and r.cap_spacing < r.top_metal_space:
+        lcont = l - (r.top_metal_space - r.cap_spacing)
+    cx = x + hw + r.bot_surround + rnd(end_spacing)
+    cl = lcont + 2*r.bot_surround - 2*r.end_surround - r.metal_surround
+    half = rnd(max(cl, r.contact_size) / 2)
+    p.paint(r.top_contact_type, (cx - chw, y - half, cx + chw, y + half))
+    p.paint(r.bot_type, (cx - chw - r.end_surround, y - half - r.end_surround, cx + chw + r.end_surround,
+        y + half + r.end_surround))
+    end = p.paint(r.top_type, (cx - chw - r.metal_surround, y - half - r.metal_surround, cx + chw + r.metal_surround,
+        y + half + r.metal_surround))
+    return dict(bbox=bbox_of([top, plate, (cx - chw - r.end_surround, y - half - r.end_surround, cx + chw + r.end_surround,
+        y + half + r.end_surround)]), top=top, end=end, bottom=bottom)
+
+def layoutgen_cap(cell: Cell, r: CapRules) -> Layout:
+    """Layout generation function of the MiM capacitors, as sky130::cap_draw."""
     if cell.m != 1:
-        raise ParameterError("m != 1 not supported for layout.")
-
-    layers = SKY130().layers
-    l = Layout(ref_layers=layers, cell=cell, symbol=cell.symbol)
-
-    tr = tech_rules
-    width = int(cell.w / R("1n"))
-    length = int(cell.l / R("1n"))
-    if width < tr['capm_width'] or length < tr['capm_width']:
-        raise ParameterError("w and l must be at least capm.1 minimum width.")
-
-    l.capm = LayoutRect(layer=layers.capm, rect=(0, 0, width, length))
-    l.term_n = LayoutRect(
-        layer=layers.met3,
-        rect=(-tr['capm_encl_met3'], -tr['capm_encl_met3'],
-            width + tr['capm_encl_met3'], length + tr['capm_encl_met3']),
-    )
-    via_bbox = makevias(l, l.capm.rect, layers.via3,
-        size=Vec2I(tr['via3_size'], tr['via3_size']),
-        spacing=Vec2I(tr['via3_space'], tr['via3_space']),
-        margin=Vec2I(tr['capm_encl_via3'], tr['capm_encl_via3']),
-        )
-    l.term_p = LayoutRect(
-        layer=layers.met4,
-        rect=(
-            via_bbox.lx - tr['met4_encl_via3'],
-            via_bbox.ly - tr['met4_encl_via3'],
-            via_bbox.ux + tr['met4_encl_via3'],
-            via_bbox.uy + tr['met4_encl_via3'],
-        ),
-    )
-
-    # The n pin must sit on the met3 ring outside capm: the LVS deck attaches
-    # met3 labels to met3.not(capm) only.
-    l.term_n_edge = LayoutRect(
-        layer=layers.met3,
-        rect=(-tr['capm_encl_met3'], -tr['capm_encl_met3'],
-            width + tr['capm_encl_met3'], 0),
-    )
-    l.term_n_edge.create_pin(cell.symbol.n)
-    l.term_p.create_pin(cell.symbol.p)
-
+        raise ParameterError("m != 1 not supported for layout, use nx and ny.")
+    check_grid(cell, R("10n"), "w", "l")
+    l = Layout(ref_layers=SKY130().layers, cell=cell, symbol=cell.symbol)
+    layers = l.ref_layers
+    p = Paint()
+    w, L = int(cell.w / R("1n")), int(cell.l / R("1n"))
+    bbox = cap_device(Paint(), cell, r, 0, 0, w, L)["bbox"]
+    fw, fh = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    lw, lh = bbox[2] + bbox[0], bbox[3] + bbox[1]
+    # capm.2b: bottom plates 1.2 um apart. The generator leaves less.
+    gap_y = max(r.cap_spacing, 1200) if cell.deck_spacing else r.cap_spacing
+    gap_x = max(r.end_spacing, 1200) if cell.deck_spacing else r.end_spacing
+    dy = fh + gap_y
+    dx = fw + gap_x
+    corex, corey = (cell.nx - 1)*dx + fw, (cell.ny - 1)*dy + fh
+    x0, y0 = -rnd((corex - fw + lw) / 2), -rnd((corey - fh + lh) / 2)
+    hmw = rnd(max(r.contact_size + 2*r.end_surround, r.top_metal_width) / 2)
+    hdy = rnd(dy / 2)
+    cdx = rnd(w / 2 + r.bot_surround + r.end_spacing)
+    first = None
+    for i in range(cell.nx):
+        for j in range(cell.ny):
+            x, y = x0 + i*dx, y0 + j*dy
+            dev = cap_device(p, cell, r, x, y, w, L)
+            first = first or dev
+            if cell.ny > 1:
+                if cell.tconnect:
+                    p.paint(r.top_type, box(x, y, hmw, hmw, hdy, hdy))
+                if cell.bconnect:
+                    # The generator's strap misses a contact moved for top_metal_space.
+                    sx = (dev["end"][0] + dev["end"][2]) // 2 if cell.deck_spacing else x + cdx
+                    p.paint(r.top_type, box(sx, y, hmw, hmw, hdy, hdy))
+    p.draw(l)
+    metal = getattr(layers, {"m4": "met4", "m5": "met5"}[r.top_type])
+    (l % LayoutRect(layer=metal, rect=Rect4I(*first["top"]))).create_pin(cell.symbol.p)
+    (l % LayoutRect(layer=metal, rect=Rect4I(*first["end"]))).create_pin(cell.symbol.n)
     return l
-
 
 @public
 class Cmim(SimLeafCell):
-    """SKY130 MiM capacitor between met3 and met4 (cap_mim_m3_1)."""
-    l = Parameter(R, default=R("5u"))
-    w = Parameter(R, default=R("5u"))
+    """
+    MiM capacitor between met3 and capm (cap_mim_m3_1, 2 fF/um²). The layout
+    options are the ones of magic's generator (sky130::cap_draw), with its
+    defaults: nx and ny tile the device.
+    """
+    model_name = "sky130_fd_pr__cap_mim_m3_1"
+    lvs_model = "sky130_fd_pr__model__cap_mim"
+    rules = CapRules(top_type="m4", top_contact_type="via3", cap_type="mimcap", cap_contact_type="mimcc",
+        bot_type="m3", top_surround=5, contact_size=320, metal_surround=80)
+
+    l = Parameter(R)
+    w = Parameter(R)
     m = Parameter(int, default=1)
+    nx = Parameter(int, default=1)
+    ny = Parameter(int, default=1)
+    bconnect = Parameter(bool, default=True)  #: Connect the bottom plates of the array
+    tconnect = Parameter(bool, default=True)  #: Connect the top plates of the array
+    ccov = Parameter(str, default="100")  #: Top contact coverage in percent, "+" and "-" anchor it
+    #: Space arrays to the capm.2b rule and align the bottom strap with its contact, unlike the generator
+    deck_spacing = Parameter(bool, default=True)
+
+    min_lw, max_lw = R("2u"), R("30u")
+
+    @classmethod
+    def params_check(cls, params):
+        check_counts(params, "m", "nx", "ny")
+        for name in ("l", "w"):
+            if params[name] is not None and not cls.min_lw <= params[name] <= cls.max_lw:
+                raise ParameterError(f"{name} = {params[name]} outside the allowed range [{cls.min_lw}, {cls.max_lw}].")
 
     def ngspice_current_pins(self):
         return {"i": "p"}
 
-    @viewgen_noctx
-    def symbol(self) -> Symbol:
-        s = Symbol(cell=self)
-
-        s.n = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, align=South)
-        s.p = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, align=North)
-
-        s % SymbolPoly(vertices=[Vec2R(1.25, 1.8), Vec2R(2.75, 1.8)])
-        s % SymbolPoly(vertices=[Vec2R(1.25, 2.2), Vec2R(2.75, 2.2)])
-        s % SymbolPoly(vertices=[Vec2R(2, 2.2), Vec2R(2, 4)])
-        s % SymbolPoly(vertices=[Vec2R(2, 1.8), Vec2R(2, 0)])
-
-        s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
-        return s
+    # The ideal capacitor's symbol viewgen (not the class, see Nmos.symbol).
+    symbol = base.Cap.symbol
 
     def ngspice_netlist(self, netlister, inst):
         netlister.require_netlist_setup(netlist_setup)
         pins = [inst.symbol.p, inst.symbol.n]
+        count = self.m * self.nx * self.ny
         if netlister.lvs:
             # The LVS deck's MIMCap class compares plate area and perimeter
             # and disables the C value. KLayout reads A/P in SI units.
             netlister.add(
                 netlister.name_obj(inst, prefix="C"),
                 netlister.portmap(inst, pins),
-                "sky130_fd_pr__model__cap_mim",
+                self.lvs_model,
                 *spice_params({
-                    "a": self.w * self.l,
-                    "p": (self.w + self.l) * 2,
+                    "a": count * self.w * self.l,
+                    "p": count * (self.w + self.l) * 2,
                 }))
             return
         netlister.add(
             netlister.name_obj(inst, prefix="x"),
             netlister.portmap(inst, pins),
-            "sky130_fd_pr__cap_mim_m3_1",
+            self.model_name,
+            # mf only scales the model's mismatch, m is ngspice's parallel count.
             *spice_params({
                 "w": self.w * R("1e6"),
                 "l": self.l * R("1e6"),
-                "mf": self.m,
+                "m": count,
+                "mf": count,
             }))
 
     @viewgen_noctx
     def layout(self) -> Layout:
-        return layoutgen_cmim(self)
+        return layoutgen_cap(self, self.rules)
 
     @classmethod
     def discoverable_instances(cls):
-        return [cls()]
+        return [cls(l=R("2u"), w=R("2u"))]
+
+@public
+class Cmim2(Cmim):
+    """MiM capacitor between met4 and cap2m (cap_mim_m3_2, 2 fF/um²)."""
+    model_name = "sky130_fd_pr__cap_mim_m3_2"
+    lvs_model = "sky130_fd_pr__model__cap_mim_m4"
+    rules = CapRules(top_type="m5", top_contact_type="via4", cap_type="mimcap2", cap_contact_type="mim2cc",
+        bot_type="m4", top_surround=120, contact_size=1180, metal_surround=210, top_metal_width=1600,
+        top_metal_space=1700)
+
 
 @public
 class Inv(Cell):

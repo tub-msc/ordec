@@ -73,6 +73,13 @@ CASES = [
     (sky130.DiodePd2nwLvt(), "diode_pd2nw_05v5_lvt", "w 0.45 l 0.45"),
     (sky130.DiodePd2nwHvt(), "diode_pd2nw_05v5_hvt", "w 0.45 l 0.45"),
     (sky130.DiodePd2nw11v0(), "diode_pd2nw_11v0", "w 0.45 l 0.45"),
+    (sky130.Cmim(l="2u", w="2u"), "cap_mim_m3_1", "w 2.0 l 2.0"),
+    (sky130.Cmim(l="10u", w="8u", nx=2, ny=2), "cap_mim_m3_1", "w 8.0 l 10.0 nx 2 ny 2"),
+    (sky130.Cmim(l="5u", w="5u", ccov="50"), "cap_mim_m3_1", "w 5.0 l 5.0 ccov 50"),
+    (sky130.Cmim(l="5u", w="6u", ny=2, bconnect=False, tconnect=False), "cap_mim_m3_1",
+        "w 6.0 l 5.0 ny 2 bconnect 0 tconnect 0"),
+    (sky130.Cmim2(l="2u", w="2u"), "cap_mim_m3_2", "w 2.0 l 2.0"),
+    (sky130.Cmim2(l="10u", w="8u", nx=2, ny=2), "cap_mim_m3_2", "w 8.0 l 10.0 nx 2 ny 2"),
 ]
 
 PIN_PURPOSE = 16  # Pin shapes are not compared: the generators draw none.
@@ -82,6 +89,8 @@ def generator_variant(cell):
     """The cell without the deviations from the generators that can be switched off."""
     if isinstance(cell, sky130.Mos):
         return type(cell)(**cell.params | {"gate_min_area": False})
+    if isinstance(cell, sky130.Cmim):
+        return type(cell)(**cell.params | {"deck_spacing": False})
     return cell
 
 
