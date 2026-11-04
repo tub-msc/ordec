@@ -80,6 +80,10 @@ CASES = [
         "w 6.0 l 5.0 ny 2 bconnect 0 tconnect 0"),
     (sky130.Cmim2(l="2u", w="2u"), "cap_mim_m3_2", "w 2.0 l 2.0"),
     (sky130.Cmim2(l="10u", w="8u", nx=2, ny=2), "cap_mim_m3_2", "w 8.0 l 10.0 nx 2 ny 2"),
+    (sky130.VarCapLvt(w="1u", l="180n"), "cap_var_lvt", "w 1.0 l 0.18"),
+    (sky130.VarCapHvt(w="2u", l="500n", nf=2), "cap_var_hvt", "w 1.0 l 0.5 nf 2"),
+    (sky130.VarCap5v(w="1u", l="500n"), "cap_var", "w 1.0 l 0.5"),
+    (sky130.SonosFet(w="1u", l="150n"), "special_sonosfet_star", "w 1.0 l 0.15"),
 ]
 
 PIN_PURPOSE = 16  # Pin shapes are not compared: the generators draw none.
@@ -87,6 +91,10 @@ PIN_PURPOSE = 16  # Pin shapes are not compared: the generators draw none.
 
 def generator_variant(cell):
     """The cell without the deviations from the generators that can be switched off."""
+    if isinstance(cell, sky130.VarCap):
+        return type(cell)(**cell.params | {"gate_min_area": False, "well_enclosure": False})
+    if isinstance(cell, sky130.SonosFet):
+        return type(cell)(**cell.params | {"gate_min_area": False, "contact_spacing": False})
     if isinstance(cell, sky130.Mos):
         return type(cell)(**cell.params | {"gate_min_area": False})
     if isinstance(cell, sky130.Cmim):
@@ -96,7 +104,8 @@ def generator_variant(cell):
 
 def test_pcell_geometry(tmp_path):
     sky130.run_magic(Path(__file__).parent / "lib/sky130_magic_ref.tcl", tmp_path, cases="".join(
-        f"c{i} sky130_fd_pr__{device} {{{params}}}\n" for i, (_, device, params) in enumerate(CASES)))
+        f"c{i} {'sky130_fd_bs_flash' if 'sonos' in device else 'sky130_fd_pr'}__{device} {{{params}}}\n"
+        for i, (_, device, params) in enumerate(CASES)))
 
     cases = []
     for i, (cell, _, _) in enumerate(CASES):

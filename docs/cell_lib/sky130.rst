@@ -31,6 +31,16 @@ NVT and HVT diodes, which magic reads from GDS as plain diode contacts: the
 copyup rules of the GDS input of ``sky130A.tech`` ignore the threshold
 implants.
 
+Coverage
+--------
+
+The cells cover ``sky130_fd_pr`` with these limits:
+
+* The layout generators of magic and the fixed cells of ``sky130_fd_pr.gds`` define which devices have layouts. The 16 V and 20 V MOS devices, ``PmosMvt``, ESD MOS devices and SRAM and flash cells are simulation-only, their special sizes being model bins.
+* ``VarCap5v``: the LVS deck does not extract ``sky130_fd_pr__cap_var``.
+* Models that ``sky130.lib.spice`` does not include have no cell (``esd_nfet_05v0_nvt``, ``nfet_20v0_nvt_iso``). Neither have the resistor models that no generator draws: ``res_high_po`` and ``res_xhigh_po`` of any width, and ``res_generic_nw``.
+* ``device_map`` covers the MOS devices, resistors, MiM capacitors, varactors, bipolar transistors and inductors. Diodes are left out, as their SPICE cards give an area and a perimeter instead of ``l`` and ``w``, and so are the many fixed cells of ``CapVpp`` and ``RfMos``.
+
 .. _sky130_generator_differences:
 
 Differences from the PDK's device generators
@@ -41,6 +51,8 @@ The layouts reproduce the device generators of the PDK's magic technology (``sky
 * **Gate met1 pads**: widened to the m1.6 minimum area. ``gate_min_area=False`` draws the generator's pads, which only pass once routed.
 * **w** and **l**: magic rounds each half distance to the 5 nm grid, so the odd multiples of 5 nm are drawn 5 nm off and fail LVS. Layouts reject them.
 * **Cmim** arrays: spaced to the 1.2 µm of capm.2b. ``deck_spacing=False`` draws the generator's spacing, which fails it.
+* **VarCapLvt**, **VarCapHvt**: the N-well encloses the gate poly with its contact pads by the 0.15 µm of varac.5. ``well_enclosure=False`` draws the generator's well, which fails it (magic's DRC checks it on ``VarCapLvt`` only).
+* **SonosFet**: the diffusion contacts keep the 0.075 µm of licon.11 from the SONOS gate. ``contact_spacing=False`` draws the generator's 0.06 µm, which fails it. Like the generator, it leaves the N-well ring of its deep N-well (nwell.5a and nwell.7) to the array.
 * **Rpoly** with ``nx`` > 1: the generator's 210 nm between the stripes is raised to the 480 nm of poly.9.
 * **RisoPw** snakes with odd ``nx``: the guard ring clears the last end's well, which the generator leaves out of its bounding box, so that its ring fails nwell.6.
 * **Snakes**: layouts reject ``w`` > ``l``, for which the generator draws ``w`` = ``l``, and a ``RhighPo0p35`` with ``l`` - ``w`` below 2.16 µm, whose first contact the generator overruns.

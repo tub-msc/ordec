@@ -28,6 +28,7 @@ GALLERY = [
     sky130.Cmim(l="8u", w="8u", ny=2), sky130.Cmim2(l="8u", w="8u", ny=2),
     sky130.DiodePw2nd(), sky130.DiodePw2ndLvt(), sky130.DiodePw2ndNvt(), sky130.DiodePw2nd11v0(),
     sky130.DiodePd2nw(), sky130.DiodePd2nwLvt(), sky130.DiodePd2nwHvt(), sky130.DiodePd2nw11v0(),
+    sky130.VarCapLvt(w="1u", l="180n"), sky130.VarCapHvt(w="1u", l="180n"),
 ]
 SUBSTRATE = "nmos0_b"
 TIES = ("nmoslvt1_b", "nmoshv2_b", "nmos05v0nvt3_b", "nmos03v3nvt4_b")
@@ -45,6 +46,8 @@ def test_gallery_magic():
     # plain diode contacts, which then fail licon.5a: the copyup rules of the
     # cifinput section of sky130A.tech ignore the threshold implants.
     assert sky130.run_magic_drc(wrapper.layout).summary() == {"licon.5a": 32}
+    # The N-well ring of the SONOS FET's deep N-well is left to the array.
+    assert sky130.run_magic_drc(sky130.SonosFet(w="1u", l="150n").layout).summary() == {"nwell.5a, 7": 4}
 
 
 @pytest.mark.parametrize("build", [
@@ -182,6 +185,40 @@ def test_diode_op(cell, expected_i):
             s.i_gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(0, -1))
             s.i_vdc = SchemInstance(Vdc(dc=R("0.8")).symbol.portmap(n=s.vss, p=s.vdd), pos=Vec2R(0, 5))
             s.d = SchemInstance(cell.symbol.portmap(p=s.vdd, n=s.vss), pos=Vec2R(12, 5))
+            s.auto_wire()
+            s.check(add_conn_points=True, add_terminal_taps=True)
+            return s
+
+    h = SimHierarchy.from_schematic(Tb().schematic)
+    h.simulate().op()
+    assert abs(float(h.i_vdc.p.current[0])) == pytest.approx(expected_i, rel=0.05)
+
+
+# The current through a diode-connected device, captured from ngspice. Sizes
+# of the special cells are bins of their models.
+@pytest.mark.parametrize("cell,expected_i", [
+    (sky130.NmosLvt(w="1u", l="0.15u"), 1.25e-4),
+    (sky130.PmosHvt(w="1u", l="0.15u"), 1.57e-3),
+    (sky130.NmosHv(w="1u", l="0.5u"), 7.44e-6),
+    (sky130.PmosHv(w="1u", l="0.5u"), 1.07e-5),
+    (sky130.Nmos05v0Nvt(w="1u", l="0.9u"), 5.6e-5),
+    (sky130.Nmos03v3Nvt(w="1u", l="0.5u"), 1.31e-4),
+    (sky130.NmosG5v0d16v0(w="5u", l="0.7u"), 1.91e-5),
+    (sky130.Nmos20v0(w="30u", l="2u"), 4.81e-5),
+    (sky130.EsdNmos01v8(w="20.35u", l="0.165u"), 1.84e-3),
+    (sky130.NmosLatch(w="0.21u", l="0.15u"), 1.4e-5),
+    (sky130.PmosPass(w="0.14u", l="0.15u"), 2.08e-2),
+])
+def test_mos_op(cell, expected_i):
+    class Tb(Cell):
+        @viewgen_noctx
+        def schematic(self):
+            s = Schematic(cell=self)
+            s.vdd = Net()
+            s.vss = Net()
+            s.i_gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(0, -1))
+            s.i_vdc = SchemInstance(Vdc(dc=1).symbol.portmap(n=s.vss, p=s.vdd), pos=Vec2R(0, 5))
+            s.m = SchemInstance(cell.symbol.portmap(d=s.vdd, g=s.vdd, s=s.vss, b=s.vss), pos=Vec2R(12, 5))
             s.auto_wire()
             s.check(add_conn_points=True, add_terminal_taps=True)
             return s
