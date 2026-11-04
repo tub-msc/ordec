@@ -550,7 +550,7 @@ class Paint:
         shapes(layers.areaid.le, [rect_grow(r, 100) for r in self.of("nnfet")])
 
         # SONOS, LDNTM
-        shapes(layers.tunm, rects_close([rect_grow(r, 250) for r in self.of("nsonos")], 505))
+        shapes(layers.tunm, rects_close(rects_grow_min([rect_grow(r, 100) for r in self.of("nsonos")], 410), 505))
         if self.of("nsonos"):
             shapes(layers.ldntm, rects_close([rect_grow(r, 185) for r in self.of("ndiff", "ndc")], 695))
 
@@ -781,6 +781,7 @@ def mos_device(p: Paint, cell: Cell, r: MosRules, x: int, y: int, w: int, l: int
         stem_s = g2p if botc else r.gate_extension
     stem = p.paint("poly", box(x, y, hl, hl, hw + rnd(stem_n), hw + rnd(stem_s)))
     ext = [stem]
+    polys = [stem]
 
     # Rule 1: diffusion dogbone
     ddover = 0
@@ -844,7 +845,8 @@ def mos_device(p: Paint, cell: Cell, r: MosRules, x: int, y: int, w: int, l: int
                     top = p.paint("m1", (top[0] - grow, top[1], top[2] + grow, top[3]))
         w_half, h_half = rnd(max(cpl, r.contact_size) / 2), rnd(r.contact_size / 2)
         p.paint("pc_cut", (x - w_half, cy - h_half, x + w_half, cy + h_half))
-        ext.append(p.paint("poly", rect_grow((x - w_half, cy - h_half, x + w_half, cy + h_half), r.poly_surround)))
+        polys.append(p.paint("poly", rect_grow((x - w_half, cy - h_half, x + w_half, cy + h_half), r.poly_surround)))
+        ext.append(polys[-1])
         li = p.paint("li", box(x, cy, w_half + r.metal_surround, w_half + r.metal_surround, h_half, h_half))
         gate.append(top if top is not None else li)
 
@@ -853,7 +855,11 @@ def mos_device(p: Paint, cell: Cell, r: MosRules, x: int, y: int, w: int, l: int
     if r.sub_surround_dev is not None:
         ext.append(p.paint(r.dev_sub_type, rect_grow(gaterect, r.sub_surround_dev)))
     if r.dev_sub_type != "":
-        sub = p.paint(r.dev_sub_type, rect_grow(diffarea, r.sub_surround))
+        sub = rect_grow(diffarea, r.sub_surround)
+        if isinstance(cell, VarCap) and cell.well_enclosure:
+            # varac.5: the well encloses the gate poly, with its contact pads, by 0.15 um.
+            sub = bbox_of([sub, rect_grow(bbox_of(polys), 150)])
+        sub = p.paint(r.dev_sub_type, sub)
         if r.dev_sub_dist > 0:
             ext.append(sub)
     return dict(bbox=bbox_of(ext), sd=sd, gate=gate, stem=stem)
@@ -955,8 +961,9 @@ def layoutgen_mos(cell: Cell, r: MosRules) -> Layout:
     # them the other way around, so its viasrc is our viadrn.) Without
     # doverlap each finger has regions of its own, mirrored from finger to
     # finger: s, d, d, s, ...
-    l.sd[0].create_pin(cell.symbol.s)
-    l.sd[1].create_pin(cell.symbol.d)
+    l.sd[0].create_pin(cell.symbol[cell.pin_s])
+    if cell.pin_d != cell.pin_s:
+        l.sd[1].create_pin(cell.symbol[cell.pin_d])
     if not gate_contacted:
         gate_layer = layers.poly
     else:
@@ -969,8 +976,8 @@ def layoutgen_mos(cell: Cell, r: MosRules) -> Layout:
             if w[0] <= sd.lx and w[1] <= sd.ly and sd.ux <= w[2] and sd.uy <= w[3])))
     if ring:
         l.guard = LayoutRect(layer=layers.li1, rect=Rect4I(*ring[0]))
-        l.guard.create_pin(cell.symbol.b)
-    elif r.dev_sub_type == "nwell":
+        l.guard.create_pin(cell.symbol[cell.pin_b])
+    elif r.dev_sub_type == "nwell" and cell.pin_b == "b":
         l.nwell.create_pin(cell.symbol.b)
     return l
 
@@ -1031,6 +1038,8 @@ class Mos(GuardRing):
     # Dimension minimums (poly.1a, difftap.2 per finger).
     min_l = R("150n")
     min_w = R("420n")
+
+    pin_s, pin_d, pin_b = "s", "d", "b"
 
     @classmethod
     def params_check(cls, params):
@@ -1222,6 +1231,195 @@ class PmosHv(Pmos):
         guard_sub_surround=330, gate_to_polycont=320, diff_spacing=310, diff_tap_space=380,
         diff_gate_space=380)
     min_l = R("500n")
+
+class SimOnlyMos(Mos):
+    """A MOS device of the ngspice models without a generator in the PDK, so without layout."""
+    rules = None
+    subckt_params = ("w", "l", "nf")
+
+    def ngspice_save_params(self):
+        return self.save_params
+
+    save_params = ["gm", "gds", "vth", "vdsat", "id", "vgs", "vds"]
+
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        raise ParameterError(f"{type(self).__name__} has no layout: the PDK has no generator for it.")
+
+    @classmethod
+    def discoverable_instances(cls):
+        return []
+
+    def ngspice_netlist(self, netlister, inst):
+        netlister.require_netlist_setup(netlist_setup)
+        params = {
+            'w': self.w * R('1e6'),
+            'l': self.l * R('1e6'),
+            'nf': self.nf,
+        }
+        # m on an X card works whether or not the subcircuit declares it.
+        netlister.add(
+            netlister.name_obj(inst, prefix="x"),
+            netlister.portmap(inst, [inst.symbol[p] for p in self.subckt_pins]),
+            self.model_name,
+            *spice_params({k: params[k] for k in self.subckt_params} | {'m': self.m}))
+
+    subckt_pins = ("d", "g", "s", "b")
+
+def sim_only(name: str, model: str, doc: str, base, min_l: str, params=("w", "l", "nf"), save_params=None):
+    cls = type(name, (SimOnlyMos, base), dict(__doc__=doc, model_name=f"sky130_fd_pr__{model}",
+        min_l=R(min_l), min_w=R("0.14u"), subckt_params=params, __module__=__name__,
+        save_params=SimOnlyMos.save_params if save_params is None else save_params))
+    public(**{name: cls})
+    return cls
+
+# The 16 V and 20 V models are several devices, without a single one to read
+# parameters from.
+M20 = ("w", "l")
+for name, model, doc, device, min_l, params in (
+        ("NmosG5v0d16v0", "nfet_g5v0d16v0", "16 V NMOS.", Nmos, "0.7u", ("w", "l", "nf")),
+        ("PmosG5v0d16v0", "pfet_g5v0d16v0", "16 V PMOS.", Pmos, "0.66u", ("w", "l", "nf")),
+        ("Nmos20v0", "nfet_20v0", "20 V NMOS.", Nmos, "0.15u", M20),
+        ("Pmos20v0", "pfet_20v0", "20 V PMOS.", Pmos, "0.15u", M20),
+        ("Nmos20v0Nvt", "nfet_20v0_nvt", "20 V native NMOS.", Nmos, "0.15u", M20),
+        ("Nmos20v0Zvt", "nfet_20v0_zvt", "20 V zero-threshold NMOS.", Nmos, "0.15u", M20),
+        ("EsdNmos01v8", "esd_nfet_01v8", "1.8 V ESD NMOS.", Nmos, "0.15u", ("w", "l", "nf")),
+        ("EsdNmosHv", "esd_nfet_g5v0d10v5", "5 V ESD NMOS.", Nmos, "0.5u", ("w", "l", "nf")),
+        ("EsdPmosHv", "esd_pfet_g5v0d10v5", "5 V ESD PMOS.", Pmos, "0.5u", ("w", "l", "nf")),
+        ("NmosLatch", "special_nfet_latch", "SRAM latch NMOS.", Nmos, "0.15u", ("w", "l")),
+        ("NmosPass", "special_nfet_pass", "SRAM pass NMOS.", Nmos, "0.15u", ("w", "l")),
+        ("NmosPassFlash", "special_nfet_pass_flash", "Flash pass NMOS.", Nmos, "0.15u", ("w", "l")),
+        ("NmosPassLvt", "special_nfet_pass_lvt", "Low-threshold SRAM pass NMOS.", Nmos, "0.15u", ("w", "l")),
+        ("PmosPass", "special_pfet_pass", "SRAM pull-up PMOS.", Pmos, "0.15u", ("w", "l")),
+        ("PmosMvt", "pfet_01v8_mvt", "1.8 V medium-threshold PMOS.", Pmos, "0.15u", ("w", "l", "nf"))):
+    sim_only(name, model, doc, device, min_l, params, [] if "_20v0" in model or "d16v0" in model else None)
+
+class Nmos20v0IsoBase(SimOnlyMos, Nmos):
+    """
+    Shared base class of the isolated 20 V NMOS devices, with the substrate
+    below their deep N-well on ``sub``.
+    """
+    min_l, min_w = R("0.15u"), R("0.14u")
+    subckt_params = M20
+    subckt_pins = ("d", "g", "s", "b", "sub")
+    save_params = []
+
+    @viewgen_noctx
+    def symbol(self) -> Symbol:
+        s = generic_mos.Nmos.symbol.func(self)
+        s.sub = Pin(pos=Vec2R(4, 1), pintype=PinType.Inout, orient=East, show_arrow=False, rotate_label=False)
+        return s
+
+@public
+class Nmos20v0Iso(Nmos20v0IsoBase):
+    """Isolated 20 V NMOS."""
+    model_name = "sky130_fd_pr__nfet_20v0_iso"
+
+@public
+class Nmos20v0ReverseIso(Nmos20v0IsoBase):
+    """Isolated 20 V NMOS, reverse (nfet_20v0_reverse_iso)."""
+    model_name = "sky130_fd_pr__nfet_20v0_reverse_iso"
+
+class VarCap(Mos):
+    """
+    Shared base class of the MOS varactors between the gate ``g`` and the N-well
+    ``nw``, ``sub`` on the substrate. Their layout uses the MOS generator.
+    """
+    min_w = R("1u")
+    pin_s, pin_d, pin_b = "nw", "nw", "sub"
+
+    #: Enclose the gate poly and its contact pads in the N-well by the 0.15 µm of varac.5, unlike the generator
+    well_enclosure = Parameter(bool, default=True)
+
+    def ngspice_save_params(self):
+        # The models are capacitors and resistors, without a MOS device.
+        return []
+
+    @viewgen_noctx
+    def symbol(self) -> Symbol:
+        s = Symbol(cell=self)
+        s.g = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, orient=North, show_arrow=False, show_label=False, rotate_label=False)
+        s.nw = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, orient=South, show_arrow=False, show_label=False, rotate_label=False)
+        s.sub = Pin(pos=Vec2R(4, 2), pintype=PinType.Inout, orient=East, show_arrow=False, rotate_label=False)
+        s % SymbolPoly(vertices=[Vec2R(1.25, 2.2), Vec2R(2.75, 2.2)])
+        s % SymbolPoly(vertices=[Vec2R(1.25, 1.8), Vec2R(2.75, 1.8)])
+        s % SymbolPoly(vertices=[Vec2R(2, 2.2), Vec2R(2, 4)])
+        s % SymbolPoly(vertices=[Vec2R(2, 1.8), Vec2R(2, 0)])
+        s % SymbolPoly(vertices=[Vec2R(2.5, 2), Vec2R(4, 2)])
+        s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
+        return s
+
+    def ngspice_netlist(self, netlister, inst):
+        netlister.require_netlist_setup(netlist_setup)
+        pins = [inst.symbol.g, inst.symbol.nw, inst.symbol.sub]
+        if netlister.lvs:
+            # The LVS deck compares the gate's area and perimeter, in SI units.
+            wf, count = self.w / self.nf, self.nf * self.m
+            netlister.add(
+                netlister.name_obj(inst, prefix="C"),
+                netlister.portmap(inst, pins),
+                self.model_name,
+                *spice_params({"a": count * wf * self.l, "p": count * 2 * (wf + self.l)}))
+            return
+        netlister.add(
+            netlister.name_obj(inst, prefix="x"),
+            netlister.portmap(inst, pins),
+            self.model_name,
+            *spice_params({"w": self.w / self.nf * R("1e6"), "l": self.l * R("1e6"), "vm": self.nf * self.m}))
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls(w=cls.min_w, l=cls.min_l)] if hasattr(cls, "model_name") else []
+
+VAR = dict(diff_overlap_cont=60, gate_to_diffcont=340, diff_extension=485, plus_diff_type="psd",
+    plus_contact_type="psc", dev_sub_type="nwell")
+
+@public
+class VarCapLvt(VarCap):
+    """1.8 V MOS varactor (cap_var_lvt)."""
+    model_name = "sky130_fd_pr__cap_var_lvt"
+    rules = MosRules(gate_type="var", diff_type="nnd", diff_contact_type="nsc", dev_sub_dist=140, dev_sub_space=1270, **VAR)
+    min_l = R("0.18u")
+
+@public
+class VarCapHvt(VarCap):
+    """1.8 V high-threshold MOS varactor (cap_var_hvt)."""
+    model_name = "sky130_fd_pr__cap_var_hvt"
+    rules = MosRules(gate_type="varhvt", diff_type="nnd", diff_contact_type="nsc", dev_sub_dist=140, dev_sub_space=1270, **VAR)
+    min_l = R("0.18u")
+
+@public
+class VarCap5v(VarCap):
+    """5 V MOS varactor (cap_var)."""
+    model_name = "sky130_fd_pr__cap_var"
+    def ngspice_netlist(self, netlister, inst):
+        if not netlister.lvs:
+            raise ParameterError("sky130.lib.spice has no model of cap_var.")
+        super().ngspice_netlist(netlister, inst)
+
+    rules = MosRules(gate_type="mvvar", diff_type="mvnsd", diff_contact_type="mvnsc", sub_surround=380,
+        sub_surround_dev=560, guard_sub_surround=180, dev_sub_dist=785, dev_sub_space=2000,
+        diff_overlap_cont=60, gate_to_diffcont=340, diff_extension=485, plus_diff_type="mvpsd",
+        plus_contact_type="mvpsc", dev_sub_type="nwell")
+    min_l = R("0.5u")
+
+@public
+class SonosFet(Nmos):
+    """SONOS flash FET (special_sonosfet_star) in a DNWell, magic's generator only draws it."""
+    model_name = "sky130_fd_bs_flash__special_sonosfet_star"
+    rules = MosRules(**NFET | dict(gate_type="nsonos", id_type="dnwell", id_surround=1355))
+    min_l = R("0.15u")
+    #: Space the diffusion contacts to the 0.075 µm of licon.11 from the SONOS gate, unlike the generator
+    contact_spacing = Parameter(bool, default=True)
+
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        return layoutgen_mos(self, replace(self.rules, gate_to_diffcont=160) if self.contact_spacing else self.rules)
+
+    def ngspice_netlist(self, netlister, inst):
+        if not netlister.lvs:
+            raise ParameterError("sky130.lib.spice has no SONOS model.")
+        super().ngspice_netlist(netlister, inst)
 
 def met1_min_area_rect(mcon_rect: Rect4I, grow_axis: str) -> tuple:
     """
