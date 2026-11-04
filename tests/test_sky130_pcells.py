@@ -62,6 +62,13 @@ CASES = [
     (sky130.Rm5(l="2u", w="1.6u"), "res_generic_m5", "w 1.6 l 2.0"),
     (sky130.RisoPw(l="26.5u", w="2.65u"), "res_iso_pw", "w 2.65 l 26.5"),
     (sky130.RisoPw(l="26.5u", w="2.65u", m=2, guard=False), "res_iso_pw", "w 2.65 l 26.5 m 2 guard 0"),
+    (sky130.Nmos(w="1u", l="150n", guard=False, viasrc="100", viadrn="0"), "nfet_01v8", "w 1.0 l 0.15 guard 0 viasrc 0 viadrn 100"),
+    (sky130.Rnd(l="6.3u", w="0.52u", m=2, roverlap=True), "res_generic_nd", "w 0.52 l 6.3 m 2 roverlap 1"),
+    (sky130.Rpoly(l="1.65u", w="0.33u", n_guard=True), "res_generic_po", "w 0.33 l 1.65 n_guard 1"),
+    (sky130.RhighPo0p35(l="2u", w="0.35u", n_guard=True), "res_high_po_0p35", "w 0.35 l 2.0 n_guard 1"),
+    (sky130.RxhighPo0p69(l="2u", w="0.69u"), "res_xhigh_po_0p69", "w 0.69 l 2.0"),
+    (sky130.RxhighPo1p41(l="2u", w="1.41u"), "res_xhigh_po_1p41", "w 1.41 l 2.0"),
+    (sky130.RxhighPo2p85(l="2u", w="2.85u"), "res_xhigh_po_2p85", "w 2.85 l 2.0"),
     (sky130.Rpoly(l="1.65u", w="0.33u"), "res_generic_po", "w 0.33 l 1.65"),
     (sky130.Rpoly(l="2u", w="1u", endcov=50), "res_generic_po", "w 1.0 l 2.0 endcov 50"),
     (sky130.DiodePw2nd(), "diode_pw2nd_05v5", "w 0.45 l 0.45"),
@@ -96,6 +103,21 @@ CASES = [
     (sky130.MvSubconn(w="1u", h="0.17u"), "mvsubconn_draw", "1.0 0.17"),
     (sky130.NwellRing(w="5u", h="6u"), "nwell_draw", "5.0 6.0"),
     (sky130.DeepNwell(w="4u", h="4u"), "deep_nwell_draw", "4.0 4.0"),
+    # Half-grid rounding of a negative offset
+    (sky130.PmosHv(w="2u", l="500n", topc=False), "pfet_g5v0d10v5", "w 2.0 l 0.5 topc 0"),
+    # poverlap keeps full poly coverage on devices that cannot overlap
+    (sky130.VarCapLvt(w="2u", l="500n", nf=2, m=2, poverlap=True, polycov=60), "cap_var_lvt",
+        "w 1.0 l 0.5 nf 2 m 2 poverlap 1 polycov 60"),
+    # Slots along the long side of merged contacts
+    (sky130.RhighPo2p85(l="1.5u", w="2.85u", m=2, roverlap=True), "res_high_po_2p85", "w 2.85 l 1.5 m 2 roverlap 1"),
+    # grow-min of URPM and HVI on non-rectangular areas
+    (sky130.RxhighPo0p69(l="1.5u", w="0.69u", nx=3, m=2, snake=True), "res_xhigh_po_0p69", "w 0.69 l 1.5 nx 3 m 2 snake 1"),
+    (sky130.RndHv(l="6.3u", w="0.42u", nx=3, snake=True, glc=False, grc=False, gtc=False, gbc=False, full_metal=False),
+        "res_generic_nd__hv", "w 0.42 l 6.3 nx 3 snake 1 glc 0 grc 0 gtc 0 gbc 0 full_metal 0"),
+    (sky130.Nmos05v0Nvt(w="4u", l="1u", nf=4, m=3), "nfet_05v0_nvt", "w 1.0 l 1.0 nf 4 m 3"),
+    (sky130.Rpoly(l="1.65u", w="0.33u", hv_guard=True), "res_generic_po", "w 0.33 l 1.65 hv_guard 1"),
+    # The well's end on overlapping rows
+    (sky130.RisoPw(l="26.5u", w="2.65u", m=2, roverlap=True), "res_iso_pw", "w 2.65 l 26.5 m 2 roverlap 1"),
 ]
 
 # Drawn layers that differ on purpose, see the sky130 docs.
@@ -143,3 +165,4 @@ def test_pcell_geometry(tmp_path):
         if drawn:
             failures.append(f"{cell}: {drawn}")
     assert not failures, "XOR area in um² per layer:\n" + "\n".join(failures)
+
