@@ -187,7 +187,7 @@ def read_gds_structure(data, name: str, start: int, end: int, layers: LayerStack
             elif kind == BOX:
                 raise NotImplementedError("GDS Box element not supported.")
             elif kind == NODE:
-                raise NotImplementedError("GDS Node element not supported.")
+                pass # An electrical connection without geometry (sky130_fd_pr.gds has them).
             else:
                 raise GdsReaderException(f"Unknown GDS element: record type {kind:#04x}")
 
