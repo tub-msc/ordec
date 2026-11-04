@@ -598,7 +598,8 @@ class Paint:
             shapes(metal, self.of(type_, res) + (self.of("mcon") if type_ in ("li", "m1") else [])
                 + (self.of("xpc") if type_ == "li" else []))
             shapes(metal.res, self.of(res))
-        shapes(layers.dnwell, self.of("dnwell"))
+        shapes(layers.dnwell, self.of("dnwell", "photo"))
+        shapes(layers.areaid.po, self.of("photo"))
         if self.of("rpw"):
             # NWELL: the DNWELL region around the p-well resistor
             shapes(layers.pwell.res, rects_subtract(self.of("rpw"), rects_subtract(self.of("rpw"), self.of("dnwell"))))
@@ -660,18 +661,16 @@ class Paint:
             thkox += self.of("nwell")
         hvi = []
         if thkox:
-            # grow-min works on magic's tiles, the maximal horizontal strips:
-            # thin ones widen to the 840 nm of CNTM.
-            xs, ys, cells = rects_cells(rects_close(thkox, 695))
-            strips = rects_of_cells(ys, xs, {(j, i) for i, j in cells})
-            for ly, lx, uy, ux in strips:
-                grow_x = rnd(max(0, 840 - (ux - lx)) / 2)
-                # Only a strip free above and below grows in y.
-                free = not any(o[1] < ux and lx < o[3] and uy_ly for o in strips
-                    for uy_ly in [o[2] == ly or o[0] == uy])
-                grow_y = rnd(max(0, 840 - (uy - ly)) / 2) if free else 0
-                hvi.append((lx - grow_x, ly - grow_y, ux + grow_x, uy + grow_y))
+            thkox = rects_close(thkox, 695)
+            # Parts thinner than the 840 nm of CNTM widen to it.
+            outer = rect_grow(bbox_of(thkox), 840)
+            shrunk = rects_subtract([outer], [rect_grow(r, 420) for r in rects_subtract([outer], thkox)])
+            hvi = thkox + rects_grow_min(rects_subtract(thkox, [rect_grow(r, 420) for r in shrunk]), 840)
         shapes(layers.hvi, rects_close(hvi, 700))
+
+        # VIA1, VIA2
+        cuts(layers.via, self.of("via1"), 55, 150, 170)
+        cuts(layers.via2, self.of("via2"), 40, 200, 200)
 
         # CAPM, VIA3, VIA4
         shapes(layers.capm, self.of("mimcap"))
@@ -2586,6 +2585,235 @@ class Cmim2(Cmim):
     rules = CapRules(top_type="m5", top_contact_type="via4", cap_type="mimcap2", cap_contact_type="mim2cc",
         bot_type="m4", top_surround=120, contact_size=1180, metal_surround=210, top_metal_width=1600,
         top_metal_space=1700)
+
+
+def layoutgen_via(cell: Cell) -> Layout:
+    """A via over the rect of w and h, as sky130::mcon_draw and sky130::via1_draw to via4_draw."""
+    check_grid(cell, R("10n"), "w", "h")
+    l = Layout(ref_layers=SKY130().layers, cell=cell)
+    p = Paint()
+    hw, hh = int(cell.w / R("2n")), int(cell.h / R("2n"))
+    r = (-hw, -hh, hw, hh)
+    if cell.via == "mcon":
+        mcon_draw(p, r, False)
+    elif cell.via == "via":
+        p.paint("via1", r)
+        p.paint("m2", (r[0], r[1] - 50, r[2], r[3] + 50))
+        p.paint("m1", (r[0] - 50, r[1], r[2] + 50, r[3]))
+    elif cell.via == "via2":
+        p.paint("via2", r)
+        p.paint("m2", (r[0], r[1] - 50, r[2], r[3] + 50))
+        p.paint("m3", (r[0] - 50, r[1] - 25, r[2] + 50, r[3] + 25))
+    elif cell.via == "via3":
+        p.paint("via3", r)
+        p.paint("m4", rect_grow(r, 5))
+        p.paint("m3", (r[0] - 50, r[1], r[2] + 50, r[3]))
+    elif cell.via == "via4":
+        p.paint("via4", r)
+        p.paint("m5", rect_grow(r, 120))
+    else:
+        raise ParameterError("via must be mcon, via, via2, via3 or via4.")
+    p.draw(l)
+    return l
+
+@public
+class Via(Cell):
+    """A via array over a rect of ``w`` and ``h``, as magic's via commands: mcon, via, via2, via3 or via4."""
+    via = Parameter(str)
+    w = Parameter(R)
+    h = Parameter(R)
+
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        return layoutgen_via(self)
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls(via="via", w=R("0.3u"), h=R("0.3u"))]
+
+def layoutgen_subconn(cell: Cell, psc: str, psd: str) -> Layout:
+    """A tap along the longer side of the rect of w and h, as sky130::subconn_draw and mvsubconn_draw."""
+    check_grid(cell, R("10n"), "w", "h")
+    l = Layout(ref_layers=SKY130().layers, cell=cell)
+    p = Paint()
+    hw, hh = int(cell.w / R("2n")), int(cell.h / R("2n"))
+    r = p.paint(psc, (-hw, -hh, hw, hh))
+    if hw > hh:
+        p.paint("li", (r[0] - 80, r[1], r[2] + 80, r[3]))
+        p.paint(psd, (r[0] - 120, r[1], r[2] + 120, r[3]))
+    else:
+        p.paint("li", (r[0], r[1] - 80, r[2], r[3] + 80))
+        p.paint(psd, (r[0], r[1] - 120, r[2], r[3] + 120))
+    p.draw(l)
+    return l
+
+@public
+class Subconn(Cell):
+    """1.8 V substrate contact without metal, as magic's command."""
+    w = Parameter(R, default=R("0.17u"))
+    h = Parameter(R, default=R("0.51u"))
+
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        return layoutgen_subconn(self, "psc", "psd")
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls()]
+
+@public
+class MvSubconn(Subconn):
+    """5 V substrate contact without metal, as magic's command."""
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        return layoutgen_subconn(self, "mvpsc", "mvpsd")
+
+def well_sides(p: Paint, r: tuple, extra: int):
+    """
+    The contact strips along the sides of the well rect, as sky130::nwell_draw,
+    except that the last side's diffusion is as long as the others: the
+    generator's shorter one fails difftap.3 against their corners.
+    """
+    for lx, ly, ux, uy in ((r[0], r[1], r[0], r[3]), (r[0], r[1], r[2], r[1]),
+            (r[0], r[3], r[2], r[3]), (r[2], r[1], r[2], r[3])):
+        strip = (lx - 85, ly - 85, ux + 85, uy + 85)
+        p.paint("li", strip)
+        vertical = lx == ux
+        cut = (strip[0], strip[1] + 300, strip[2], strip[3] - 300) if vertical \
+            else (strip[0] + 300, strip[1], strip[2] - 300, strip[3])
+        p.paint("nsc", cut)
+        p.paint("nsd", rect_grow(strip, extra))
+
+@public
+class NwellRing(Cell):
+    """N-well with a contact ring around the rect of ``w`` and ``h``, as sky130::nwell_draw."""
+    w = Parameter(R, default=R("2u"))
+    h = Parameter(R, default=R("2u"))
+
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        check_grid(self, R("10n"), "w", "h")
+        l = Layout(ref_layers=SKY130().layers, cell=self)
+        p = Paint()
+        hw, hh = int(self.w / R("2n")), int(self.h / R("2n"))
+        r = (-hw, -hh, hw, hh)
+        p.paint("nwell", rect_grow(r, 265))
+        well_sides(p, r, 0)
+        p.draw(l)
+        return l
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls()]
+
+@public
+class DeepNwell(Cell):
+    """Deep N-well of ``w`` and ``h`` with its N-well ring, as sky130::deep_nwell_draw."""
+    w = Parameter(R, default=R("3.5u"))
+    h = Parameter(R, default=R("3.5u"))
+
+    @classmethod
+    def params_check(cls, params):
+        # Below this, the hole of the ring fails nwell.2a (the generator allows 3u).
+        if params['w'] < R("3.5u") or params['h'] < R("3.5u"):
+            raise ParameterError("w and h must be at least 3.5u.")
+
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        check_grid(self, R("10n"), "w", "h")
+        l = Layout(ref_layers=SKY130().layers, cell=self)
+        p = Paint()
+        hw, hh = int(self.w / R("2n")), int(self.h / R("2n"))
+        r = (-hw, -hh, hw, hh)
+        p.paint("dnwell", r)
+        for rect in rects_subtract([rect_grow(r, 400)], [rect_grow(r, 400 - 1430)]):
+            p.paint("nwell", rect)
+        well_sides(p, rect_grow(r, 30), 100)
+        p.draw(l)
+        return l
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls()]
+
+
+@dataclass(frozen=True)
+class PhotoRing(GuardRules):
+    """The two rings of the photodiode (sky130::sky130_fd_pr__photodiode_draw), in nm."""
+    plus_diff_type: str
+    plus_contact_type: str
+    guard_sub_type: str
+    guard_sub_surround: int
+    sub_type: str = "space"
+    diff_surround: int = 60
+    contact_size: int = 170
+    via_size: int = 170
+    metal_surround: int = 80
+    metal_spacing: int = 230
+    sub_surround: int = 180
+
+@public
+class Photodiode(GuardRing):
+    """
+    Photodiode (photodiode) with the fixed geometry of sky130::photodiode_draw:
+    nx times ny N-well contacts in a deep N-well area, with an N-well ring and a
+    guard ring. ``n`` on the N-well contact, ``p`` on the guard ring. The PDK has
+    no simulation model.
+    """
+    nx = Parameter(int, default=1)
+    ny = Parameter(int, default=1)
+
+    @classmethod
+    def params_check(cls, params):
+        check_counts(params, "nx", "ny")
+
+    @viewgen_noctx
+    def symbol(self) -> Symbol:
+        return Diode.symbol.func(self)
+
+    def ngspice_netlist(self, netlister, inst):
+        if not netlister.lvs:
+            raise ParameterError("The PDK has no simulation model of the photodiode.")
+        netlister.add(netlister.name_obj(inst, prefix="D"), netlister.portmap(inst, [inst.symbol.p, inst.symbol.n]),
+            "sky130_fd_pr__photodiode")
+
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        l = Layout(ref_layers=SKY130().layers, cell=self, symbol=self.symbol)
+        p = Paint()
+        fw, dx = 3000, 8000
+        corex, corey = (self.nx - 1)*dx + fw, (self.ny - 1)*dx + fw
+        gx, gy = corex + 15965, corey + 15965
+        dwx, dwy = rnd(gx / 2 + 315), rnd(gy / 2 + 315)
+        outer = (-dwx, -dwy, dwx, dwy)
+        inner = rect_grow(outer, -3000)
+        for rect in rects_subtract([outer], [inner]):
+            p.paint("dnwell", rect)
+        # nwell.5a/7 also hold at the inner edge of the deep N-well ring, so
+        # N-well covers the whole ring, unlike the generator's N-well ring.
+        for rect in rects_subtract([outer], [rect_grow(inner, -400)]):
+            p.paint("nwell", rect)
+        nring = PhotoRing("nsd", "nsc", "nwell", 630)
+        guard_ring(p, self, nring, gx, gy)
+        pring = PhotoRing("psd", "psc", "", 0)
+        ring = guard_ring(p, self, pring, gx + 2*(560 + 280 + 60) + 170, gy + 2*(560 + 280 + 60) + 170)
+        contact = None
+        for i in range(self.nx):
+            for j in range(self.ny):
+                x, y = -rnd((corex - fw) / 2) + i*dx, -rnd((corey - fw) / 2) + j*dx
+                p.paint("nsd", (x - 205, y - 205, x + 205, y + 205))
+                p.paint("nwell", (x - 420, y - 420, x + 420, y + 420))
+                p.paint("photo", (x - 1500, y - 1500, x + 1500, y + 1500))
+                draw_contact(p, x, y, 170, 170, 0, 80, 170, "nsd", "nsc", False)
+                contact = contact or (x - 165, y - 85, x + 165, y + 85)
+        p.draw(l)
+        (l % LayoutRect(layer=l.ref_layers.li1, rect=Rect4I(*contact))).create_pin(self.symbol.n)
+        (l % LayoutRect(layer=l.ref_layers.li1, rect=Rect4I(*ring[0]))).create_pin(self.symbol.p)
+        return l
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls()]
 
 
 @functools.cache
