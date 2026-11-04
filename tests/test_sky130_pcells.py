@@ -63,6 +63,16 @@ CASES = [
     (sky130.RisoPw(l="26.5u", w="2.65u", m=2, guard=False), "res_iso_pw", "w 2.65 l 26.5 m 2 guard 0"),
     (sky130.Rpoly(l="1.65u", w="0.33u"), "res_generic_po", "w 0.33 l 1.65"),
     (sky130.Rpoly(l="2u", w="1u", endcov=50), "res_generic_po", "w 1.0 l 2.0 endcov 50"),
+    (sky130.DiodePw2nd(), "diode_pw2nd_05v5", "w 0.45 l 0.45"),
+    (sky130.DiodePw2nd(w="1u", l="2u", nx=2, ny=2, vias=False), "diode_pw2nd_05v5", "w 1.0 l 2.0 nx 2 ny 2 vias 0"),
+    (sky130.DiodePw2ndLvt(), "diode_pw2nd_05v5_lvt", "w 0.45 l 0.45"),
+    (sky130.DiodePw2ndNvt(), "diode_pw2nd_05v5_nvt", "w 0.45 l 0.45"),
+    (sky130.DiodePw2nd11v0(), "diode_pw2nd_11v0", "w 0.45 l 0.45"),
+    (sky130.DiodePd2nw(), "diode_pd2nw_05v5", "w 0.45 l 0.45"),
+    (sky130.DiodePd2nw(w="1u", l="2u", nx=2), "diode_pd2nw_05v5", "w 1.0 l 2.0 nx 2"),
+    (sky130.DiodePd2nwLvt(), "diode_pd2nw_05v5_lvt", "w 0.45 l 0.45"),
+    (sky130.DiodePd2nwHvt(), "diode_pd2nw_05v5_hvt", "w 0.45 l 0.45"),
+    (sky130.DiodePd2nw11v0(), "diode_pd2nw_11v0", "w 0.45 l 0.45"),
 ]
 
 PIN_PURPOSE = 16  # Pin shapes are not compared: the generators draw none.

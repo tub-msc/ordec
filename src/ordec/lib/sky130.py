@@ -455,11 +455,14 @@ class Paint:
     Shapes by magic type (sky130A.tcl draws them), and the mask layers derived
     from them by the gdsii style of magic's cifoutput section (sky130A.tech).
     """
-    NDIFF = ("ndiff", "mvndiff", "ndc", "mvndc", "nnd")
-    PDIFF = ("pdiff", "mvpdiff", "pdc", "mvpdc")
-    NTAP = ("nsd", "mvnsd", "nsc", "mvnsc")
-    PTAP = ("psd", "mvpsd", "psc", "mvpsc")
-    MVDIFF = ("mvndiff", "mvpdiff", "mvndc", "mvpdc", "mvnsd", "mvpsd", "mvnsc", "mvpsc")
+    NDIODE = ("ndiode", "ndic", "ndiodelvt", "ndilvtc", "nndiode", "nndic", "mvndiode", "mvndic")
+    PDIODE = ("pdiode", "pdic", "pdiodelvt", "pdilvtc", "pdiodehvt", "pdihvtc", "mvpdiode", "mvpdic")
+    NDIFF = ("ndiff", "mvndiff", "ndc", "mvndc") + NDIODE
+    PDIFF = ("pdiff", "mvpdiff", "pdc", "mvpdc") + PDIODE
+    NTAP = ("nsd", "mvnsd", "nsc", "mvnsc", "nnd")
+    PTAP = ("psd", "mvpsd", "psc", "mvpsc", "ppd")
+    MVDIFF = ("mvndiff", "mvpdiff", "mvndc", "mvpdc", "mvnsd", "mvpsd", "mvnsc", "mvpsc", "mvndiode", "mvndic",
+        "mvpdiode", "mvpdic", "nndiode", "nndic")
     DIFFCUT = ("ndc", "pdc", "nsc", "psc", "mvndc", "mvpdc", "mvnsc", "mvpsc")
 
     def __init__(self):
@@ -540,8 +543,10 @@ class Paint:
         # LVTN, HVTP
         def threshold(gates):
             return rects_close(rects_close([rect_grow(r, 180) for r in gates], 380), 375)
-        shapes(layers.lvtn, threshold(self.of("pfetlvt", "nfetlvt", "mvnnfet", "nnfet", "mvvar", "nsonos")))
-        shapes(layers.hvtp, threshold(self.of("pfethvt", "varhvt")))
+        shapes(layers.lvtn, threshold(self.of("pfetlvt", "nfetlvt", "mvnnfet", "nnfet", "mvvar", "nsonos",
+            "pdiodelvt", "pdilvtc", "ndiodelvt", "ndilvtc", "nndiode", "nndic")))
+        shapes(layers.hvtp, threshold(self.of("pfethvt", "varhvt", "pdiodehvt", "pdihvtc")))
+        shapes(layers.areaid.de, self.of(*self.NDIODE, *self.PDIODE))
         shapes(layers.areaid.le, [rect_grow(r, 100) for r in self.of("nnfet")])
 
         # SONOS, LDNTM
@@ -554,6 +559,7 @@ class Paint:
         hvntm = []
         if self.of("mvnfet", "mvnnfet", "nnfet", "mvrdn"):
             hvntm += self.of("mvndiff", "mvndc", "mvrdn")
+        hvntm += self.of("mvndiode", "mvndic", "nndiode", "nndic")
         if self.of("mvvar"):
             hvntm += self.of("mvnsd", "mvnsc")
         shapes(layers.hvntm, rects_subtract(rects_close([rect_grow(r, 185) for r in
@@ -580,7 +586,8 @@ class Paint:
         shapes(layers.hvi, rects_close(hvi, 700))
 
         # CONT, MCON
-        cuts(layers.licon1, self.of(*self.DIFFCUT, "pc_cut"), 0, 170, 170)
+        cuts(layers.licon1, self.of(*self.DIFFCUT, "pc_cut", "ndic", "ndilvtc", "nndic", "mvndic",
+            "pdic", "pdilvtc", "pdihvtc", "mvpdic"), 0, 170, 170)
         cuts(layers.mcon, self.of("mcon"), 0, 170, 190)
         # Slots of the precision resistors' contacts. Magic's "short" slot axis
         # swaps where a 2 um slot fits across in both directions (xpc_horiz), and
@@ -614,8 +621,12 @@ class Paint:
 
 M1_MIN_AREA = 83000  # m1.6, in nm²
 
+class GuardRules:
+    def guard_sides(self, cell: Cell) -> tuple:
+        return cell.glc, cell.grc, cell.gtc, cell.gbc
+
 @dataclass(frozen=True)
-class MosRules:
+class MosRules(GuardRules):
     """Rules of a device of magic's MOS generator (sky130::ruleset and *_draw), in nm."""
     gate_type: str
     diff_type: str
@@ -690,15 +701,15 @@ def draw_contact(p: Paint, x: int, y: int, w: int, h: int, s: int, o: int, size:
     p.paint("li", box(x, y, w, w, h + o, h + o) if vert else box(x, y, w + o, w + o, h, h))
     return ext
 
-def guard_ring(p: Paint, cell: Cell, r: MosRules, gw: int, gh: int):
+def guard_ring(p: Paint, cell: Cell, r, gw: int, gh: int, x: int = 0, y: int = 0) -> list:
     """As sky130::guard_ring, returns its li rects."""
     size, ms = r.contact_size, r.metal_surround
     ds = 0 if r.plus_diff_type in ("psd", "nsd") else r.diff_surround
     hx, hw, hh = rnd(size / 2), rnd(gw / 2), rnd(gh / 2)
     difft = size + 2*ds
     hdifft, hdiffw, hdiffh = rnd(difft / 2), rnd((gw + difft) / 2), rnd((gh + difft) / 2)
-    sides = (box(0, hh, hdiffw, hdiffw, hdifft, hdifft), box(0, -hh, hdiffw, hdiffw, hdifft, hdifft),
-        box(hw, 0, hdifft, hdifft, hdiffh, hdiffh), box(-hw, 0, hdifft, hdifft, hdiffh, hdiffh))
+    sides = (box(x, y + hh, hdiffw, hdiffw, hdifft, hdifft), box(x, y - hh, hdiffw, hdiffw, hdifft, hdifft),
+        box(x + hw, y, hdifft, hdifft, hdiffh, hdiffh), box(x - hw, y, hdifft, hdifft, hdiffh, hdiffh))
     for side in sides:
         p.paint(r.plus_diff_type, side)
         if r.guard_sub_surround > 0:
@@ -706,36 +717,38 @@ def guard_ring(p: Paint, cell: Cell, r: MosRules, gw: int, gh: int):
     ring = []
     if cell.full_metal:
         hmetw, hmeth = rnd((gw + size) / 2), rnd((gh + size) / 2)
-        ring = [p.paint("li", box(0, hh, hmetw, hmetw, hx, hx)), p.paint("li", box(0, -hh, hmetw, hmetw, hx, hx)),
-            p.paint("li", box(hw, 0, hx, hx, hmeth, hmeth)), p.paint("li", box(-hw, 0, hx, hx, hmeth, hmeth))]
+        ring = [p.paint("li", box(x, y + hh, hmetw, hmetw, hx, hx)), p.paint("li", box(x, y - hh, hmetw, hmetw, hx, hx)),
+            p.paint("li", box(x + hw, y, hx, hx, hmeth, hmeth)), p.paint("li", box(x - hw, y, hx, hx, hmeth, hmeth))]
 
     ch = max((gh - size - 2*(ms + r.metal_spacing)) * cell.rlcov / 100, size)
     cw = max((gw - size - 2*(ms + r.metal_spacing)) * cell.tbcov / 100, size)
     args = (ds, ms, size, r.plus_diff_type, r.plus_contact_type)
+    glc, grc, gtc, gbc = r.guard_sides(cell)
     if cell.tbcov > 0:
-        if cell.gtc:
-            draw_contact(p, 0, hh, cw, 0, *args, vert=False)
-        if cell.gbc:
-            draw_contact(p, 0, -hh, cw, 0, *args, vert=False)
+        if gtc:
+            draw_contact(p, x, y + hh, cw, 0, *args, vert=False)
+        if gbc:
+            draw_contact(p, x, y - hh, cw, 0, *args, vert=False)
     if cell.rlcov > 0:
-        if cell.grc:
-            draw_contact(p, hw, 0, 0, ch, *args, vert=True)
-        if cell.glc:
-            draw_contact(p, -hw, 0, 0, ch, *args, vert=True)
+        if grc:
+            draw_contact(p, x + hw, y, 0, ch, *args, vert=True)
+        if glc:
+            draw_contact(p, x - hw, y, 0, ch, *args, vert=True)
 
-    for coverage, x, y, vert in ((cell.viagb, 0, -hh, False), (cell.viagt, 0, hh, False),
-            (cell.viagr, hw, 0, True), (cell.viagl, -hw, 0, True)):
+    for coverage, vx, vy, vert in ((cell.viagb, x, y - hh, False), (cell.viagt, x, y + hh, False),
+            (cell.viagr, x + hw, y, True), (cell.viagl, x - hw, y, True)):
         if int(coverage) != 0:
             length, offset = via_extent((gh if vert else gw) - r.via_size, r.via_size, coverage)
             half = rnd(length / 2)
             if vert:
-                mcon_draw(p, box(x, y + rnd(offset), rnd(r.via_size / 2), rnd(r.via_size / 2), half, half), True)
+                mcon_draw(p, box(vx, vy + rnd(offset), rnd(r.via_size / 2), rnd(r.via_size / 2), half, half), True)
             else:
-                mcon_draw(p, box(x + rnd(offset), y, half, half, rnd(r.via_size / 2), rnd(r.via_size / 2)), False)
+                mcon_draw(p, box(vx + rnd(offset), vy, half, half, rnd(r.via_size / 2), rnd(r.via_size / 2)), False)
 
-    p.paint("boundary", (-hw, -hh, hw, hh))
-    if r.sub_type != "psub":
-        p.paint(r.sub_type, rect_grow((-hw, -hh, hw, hh), hx + ds + r.sub_surround))
+    # The boundary is a property of the cell, the last ring drawn sets it.
+    p.types["boundary"] = [(x - hw, y - hh, x + hw, y + hh)]
+    if r.sub_type not in ("psub", "space"):
+        p.paint(r.sub_type, rect_grow((x - hw, y - hh, x + hw, y + hh), hx + ds + r.sub_surround))
     return ring
 
 def mos_device(p: Paint, cell: Cell, r: MosRules, x: int, y: int, w: int, l: int,
@@ -1305,7 +1318,7 @@ class Ptap(Cell):
 
 
 @dataclass(frozen=True)
-class ResRules:
+class ResRules(GuardRules):
     """Rules of a device of magic's resistor generator (sky130::ruleset and *_draw), in nm."""
     res_type: str
     end_type: str
@@ -1852,6 +1865,244 @@ class RisoPw(Res):
 
     # The model takes the parameters of the diffusion resistors' models.
     spice_params = ResDiff.spice_params
+
+
+@dataclass(frozen=True)
+class DiodeRules(GuardRules):
+    """Rules of a device of magic's diode generator (sky130::ruleset and *_draw), in nm."""
+    dev_type: str
+    dev_contact_type: str
+    end_type: str
+    end_contact_type: str
+    end_sub_type: str
+    end_surround: int
+    end_spacing: int = 280
+    dev_spacing: int = 280
+    dev_surround: int = 60
+    end_sub_surround: int = None
+    # Outer guard ring around all devices
+    plus_diff_type: str = "psd"
+    plus_contact_type: str = "psc"
+    sub_type: str = "psub"
+    guard_sub_type: str = ""
+    guard_sub_surround: int = 0
+    diff_spacing: int = 280
+    diff_surround: int = 60
+    contact_size: int = 170
+    via_size: int = 170
+    metal_surround: int = 80
+    metal_spacing: int = 230
+    sub_surround: int = 180
+
+    def end_ring(self):
+        """The rules of the ring around each device, with the elc to ebc options."""
+        return EndRing(plus_diff_type=self.end_type, plus_contact_type=self.end_contact_type,
+            diff_surround=self.end_surround, sub_type=self.end_sub_type, sub_surround=self.sub_surround,
+            guard_sub_surround=self.sub_surround if self.end_sub_surround is None else self.end_sub_surround,
+            contact_size=self.contact_size, via_size=self.via_size, metal_surround=self.metal_surround,
+            metal_spacing=self.metal_spacing)
+
+@dataclass(frozen=True)
+class EndRing:
+    plus_diff_type: str
+    plus_contact_type: str
+    diff_surround: int
+    sub_type: str
+    sub_surround: int
+    guard_sub_surround: int
+    contact_size: int
+    via_size: int
+    metal_surround: int
+    metal_spacing: int
+    guard_sub_type: str = ""
+
+    def guard_sides(self, cell: Cell) -> tuple:
+        return cell.elc, cell.erc, cell.etc, cell.ebc
+
+def diode_device(p: Paint, cell: Cell, r: DiodeRules, x: int, y: int, w: int, l: int) -> dict:
+    """As sky130::diode_device: one diode at (x, y) in its ring."""
+    gx = w + 2*(r.dev_spacing + r.dev_surround) + r.contact_size
+    gy = l + 2*(r.dev_spacing + r.dev_surround) + r.contact_size
+    ring = guard_ring(p, cell, r.end_ring(), gx, gy, x, y)
+    ds = 0 if r.end_type in ("psd", "nsd") else r.end_surround
+    ext = rect_grow((x - rnd(gx / 2), y - rnd(gy / 2), x + rnd(gx / 2), y + rnd(gy / 2)),
+        rnd(r.contact_size / 2) + ds + r.sub_surround)
+    hw, hl = rnd(w / 2), rnd(l / 2)
+    p.paint(r.dev_type, (x - hw, y - hl, x + hw, y + hl))
+
+    cw, cl = w - 2*r.dev_surround, l - 2*r.dev_surround
+    term = (LAYER_LI1, (x - rnd(max(cw, r.contact_size) / 2), y - rnd(max(cl, r.contact_size) / 2),
+        x + rnd(max(cw, r.contact_size) / 2), y + rnd(max(cl, r.contact_size) / 2)))
+    if cell.vias:
+        half_w, half_h = rnd(max(cw, r.via_size) / 2), rnd(max(cl, r.via_size) / 2)
+        term = (LAYER_MET1, mcon_draw(p, box(x, y, half_w, half_w, half_h, half_h), False))
+    draw_contact(p, x, y, cw, cl, r.dev_surround, r.metal_surround, r.contact_size, r.dev_type,
+        r.dev_contact_type, w < l)
+    return dict(bbox=ext, term=term, ring=ring)
+
+def layoutgen_diode(cell: Cell, r: DiodeRules) -> Layout:
+    """Layout generation function of the diodes, as sky130::diode_draw."""
+    check_grid(cell, R("10n"), "w", "l")
+    l = Layout(ref_layers=SKY130().layers, cell=cell, symbol=cell.symbol)
+    layers = l.ref_layers
+    p = Paint()
+    w, L = int(cell.w / R("1n")), int(cell.l / R("1n"))
+    bbox = diode_device(Paint(), cell, r, 0, 0, w, L)["bbox"]
+    fw, fh = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    if cell.doverlap:
+        overlap = 2*r.sub_surround + 2*r.end_surround + r.contact_size
+        dx, dy = fw - overlap, fh - overlap
+    else:
+        dx, dy = fw + r.end_spacing, fh + r.end_spacing
+    corex, corey = (cell.nx - 1)*dx + fw, (cell.ny - 1)*dy + fh
+    corellx, corelly = (corex - fw) / 2, (corey - fh) / 2
+    if cell.guard:
+        gx = corex + 2*(r.diff_spacing + r.diff_surround) + r.contact_size
+        gy = corey + 2*(r.diff_spacing + r.diff_surround) + r.contact_size
+        guard_ring(p, cell, r, gx, gy)
+    x0, y0 = -rnd(corellx), -rnd(corelly)
+    if (cell.nx > 1 or cell.ny > 1) and r.end_sub_type != "psub":
+        p.paint(r.end_sub_type, (x0 - rnd(fw / 2), y0 - rnd(fh / 2), x0 - rnd(fw / 2) + corex, y0 - rnd(fh / 2) + corey))
+    first = None
+    for i in range(cell.nx):
+        for j in range(cell.ny):
+            dev = diode_device(p, cell, r, x0 + i*dx, y0 + j*dy, w, L)
+            first = first or dev
+    p.draw(l)
+
+    # The contact is the anode of Pd2nw, the cathode of Pw2nd, the ring the other terminal.
+    (l % LayoutRect(layer=layers[first["term"][0]], rect=Rect4I(*first["term"][1]))).create_pin(cell.symbol[cell.contact])
+    if first["ring"]:
+        (l % LayoutRect(layer=layers.li1, rect=Rect4I(*first["ring"][0]))).create_pin(cell.symbol[cell.ring])
+    return l
+
+class Diode(GuardRing):
+    """
+    Shared base class of the diodes from ``p`` to ``n``. The layout options are
+    the ones of magic's generator (sky130::diode_draw), with its defaults: nx
+    and ny tile the device, each with a ring holding its other terminal.
+    """
+    l = Parameter(R, default=R("0.45u"))
+    w = Parameter(R, default=R("0.45u"))
+    nx = Parameter(int, default=1)
+    ny = Parameter(int, default=1)
+    elc = Parameter(bool, default=True)  #: Ring contacts on the left
+    erc = Parameter(bool, default=True)  #: Ring contacts on the right
+    etc = Parameter(bool, default=True)  #: Ring contacts on the top
+    ebc = Parameter(bool, default=True)  #: Ring contacts on the bottom
+    doverlap = Parameter(bool, default=False)  #: Overlap the rings of adjacent devices
+    vias = Parameter(bool, default=True)  #: mcons on the device contact
+
+    min_l, min_w = R("0.45u"), R("0.45u")
+
+    @classmethod
+    def params_check(cls, params):
+        check_counts(params, "nx", "ny")
+        if params['l'] < cls.min_l or params['w'] < cls.min_w:
+            raise ParameterError(f"l and w must be at least {cls.min_l} and {cls.min_w}.")
+
+    @viewgen_noctx
+    def symbol(self) -> Symbol:
+        s = Symbol(cell=self)
+        s.n = Pin(pos=Vec2R(2, 4), pintype=PinType.Inout, orient=North, rotate_label=False)
+        s.p = Pin(pos=Vec2R(2, 0), pintype=PinType.Inout, orient=South, rotate_label=False)
+        s % SymbolPoly(vertices=[Vec2R(2, 4), Vec2R(2, 2.65)])
+        s % SymbolPoly(vertices=[Vec2R(2, 1.35), Vec2R(2, 0)])
+        s % SymbolPoly(vertices=[Vec2R(1.25, 2.65), Vec2R(2.75, 2.65)])
+        s % SymbolPoly(vertices=[Vec2R(2, 2.65), Vec2R(1.25, 1.35), Vec2R(2.75, 1.35), Vec2R(2, 2.65)])
+        s.outline = Rect4R(lx=0, ly=0, ux=4, uy=4)
+        return s
+
+    def ngspice_netlist(self, netlister, inst):
+        netlister.require_netlist_setup(netlist_setup)
+        pins = [inst.symbol.p, inst.symbol.n]
+        count = self.nx * self.ny
+        # KLayout reads A and P in SI units. ".option scale=1.0u" scales
+        # ngspice's area and perimeter factors, given in um.
+        if netlister.lvs:
+            params = {"a": count * self.w * self.l, "p": count * 2 * (self.w + self.l)}
+        else:
+            params = {"area": count * self.w * self.l * R("1e12"), "pj": count * 2 * (self.w + self.l) * R("1e6")}
+        netlister.add(
+            netlister.name_obj(inst, prefix="D"),
+            netlister.portmap(inst, pins),
+            self.model_name,
+            *spice_params(params),
+        )
+
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        return layoutgen_diode(self, self.rules)
+
+    @classmethod
+    def discoverable_instances(cls):
+        return [cls()] if hasattr(cls, "model_name") else []
+
+class DiodePw2ndBase(Diode):
+    """Diode from the p-substrate to an N+ region."""
+    contact, ring = "n", "p"
+    guard = Parameter(bool, default=False)
+
+class DiodePd2nwBase(Diode):
+    """Diode from a P+ region to the N-well around it, with a guard ring."""
+    contact, ring = "p", "n"
+
+@public
+class DiodePw2nd(DiodePw2ndBase):
+    """N+ to p-substrate diode (diode_pw2nd_05v5)."""
+    model_name = "sky130_fd_pr__diode_pw2nd_05v5"
+    rules = DiodeRules(dev_type="ndiode", dev_contact_type="ndic", end_type="psd", end_contact_type="psc",
+        end_sub_type="psub", end_surround=0)
+
+@public
+class DiodePw2ndLvt(DiodePw2ndBase):
+    """Low-threshold N+ to p-substrate diode (diode_pw2nd_05v5_lvt)."""
+    model_name = "sky130_fd_pr__diode_pw2nd_05v5_lvt"
+    rules = DiodeRules(dev_type="ndiodelvt", dev_contact_type="ndilvtc", end_type="ppd", end_contact_type="psc",
+        end_sub_type="psub", end_surround=60)
+
+@public
+class DiodePw2ndNvt(DiodePw2ndBase):
+    """Native N+ to p-substrate diode (diode_pw2nd_05v5_nvt)."""
+    model_name = "sky130_fd_pr__diode_pw2nd_05v5_nvt"
+    rules = DiodeRules(dev_type="nndiode", dev_contact_type="nndic", end_type="mvpsd", end_contact_type="mvpsc",
+        end_sub_type="psub", end_surround=60, dev_spacing=370, end_spacing=300)
+
+@public
+class DiodePw2nd11v0(DiodePw2ndBase):
+    """11 V N+ to p-substrate diode (diode_pw2nd_11v0)."""
+    model_name = "sky130_fd_pr__diode_pw2nd_11v0"
+    rules = DiodeRules(dev_type="mvndiode", dev_contact_type="mvndic", end_type="mvpsd", end_contact_type="mvpsc",
+        end_sub_type="psub", end_surround=60, diff_spacing=370, dev_spacing=390, end_spacing=360)
+
+@public
+class DiodePd2nw(DiodePd2nwBase):
+    """P+ to N-well diode (diode_pd2nw_05v5)."""
+    model_name = "sky130_fd_pr__diode_pd2nw_05v5"
+    rules = DiodeRules(dev_type="pdiode", dev_contact_type="pdic", end_type="nsd", end_contact_type="nsc",
+        end_sub_type="nwell", end_surround=0)
+
+@public
+class DiodePd2nwLvt(DiodePd2nwBase):
+    """Low-threshold P+ to N-well diode (diode_pd2nw_05v5_lvt)."""
+    model_name = "sky130_fd_pr__diode_pd2nw_05v5_lvt"
+    rules = DiodeRules(dev_type="pdiodelvt", dev_contact_type="pdilvtc", end_type="nnd", end_contact_type="nsc",
+        end_sub_type="nwell", end_surround=60)
+
+@public
+class DiodePd2nwHvt(DiodePd2nwBase):
+    """High-threshold P+ to N-well diode (diode_pd2nw_05v5_hvt)."""
+    model_name = "sky130_fd_pr__diode_pd2nw_05v5_hvt"
+    rules = DiodeRules(dev_type="pdiodehvt", dev_contact_type="pdihvtc", end_type="nnd", end_contact_type="nsc",
+        end_sub_type="nwell", end_surround=60)
+
+@public
+class DiodePd2nw11v0(DiodePd2nwBase):
+    """11 V P+ to N-well diode (diode_pd2nw_11v0)."""
+    model_name = "sky130_fd_pr__diode_pd2nw_11v0"
+    rules = DiodeRules(dev_type="mvpdiode", dev_contact_type="mvpdic", end_type="mvnsd", end_contact_type="mvnsc",
+        end_sub_type="nwell", plus_diff_type="mvpsd", plus_contact_type="mvpsc", diff_spacing=580, dev_spacing=370,
+        end_spacing=300, end_sub_surround=330, end_surround=60)
 
 
 def layoutgen_cmim(cell: Cell) -> Layout:
