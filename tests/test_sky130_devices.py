@@ -282,3 +282,25 @@ def test_fixed_cells_load():
     for name in lib.layout_funcs:
         lib[name].layout
 
+
+def test_mos_save_params():
+    """Device parameters are read through the model subcircuit."""
+    class Tb(Cell):
+        @viewgen_noctx
+        def schematic(self):
+            s = Schematic(cell=self)
+            s.vdd = Net()
+            s.vss = Net()
+            s.i_gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(0, -1))
+            s.i_vdc = SchemInstance(Vdc(dc=1).symbol.portmap(n=s.vss, p=s.vdd), pos=Vec2R(0, 5))
+            s.m = SchemInstance(sky130.Nmos(w="1u", l="150n").symbol.portmap(d=s.vdd, g=s.vdd, s=s.vss, b=s.vss),
+                pos=Vec2R(12, 5))
+            s.auto_wire()
+            s.check(add_conn_points=True, add_terminal_taps=True)
+            return s
+
+    h = SimHierarchy.from_schematic(Tb().schematic)
+    h.simulate().op(save_params=True)
+    assert h.m.params['id'].value[0] == pytest.approx(abs(float(h.i_vdc.p.current[0])), rel=0.01)
+    assert h.m.params['vth'].value[0] > 0
+
