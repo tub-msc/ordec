@@ -1,0 +1,99 @@
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# Default LayoutStyle of SKY130 (see ordec/layout/style.py for the format),
+# with the colors of the PDK's sky130A.lyp. To customize it, put the settings
+# and layers to change into ~/.config/ordec/layout/sky130.toml.
+
+background = "#000000"
+blend = "additive"
+opacity = 1.0
+
+[layers]
+pwell = { fill = "#00ffff" }
+"pwell.pin" = { fill = "#ffbff2" }
+"pwell.res" = { fill = "#ffbff2" }
+dnwell = { fill = "#c8ffc8" }
+nwell = { fill = "#00cc66" }
+"nwell.pin" = { fill = "#268c6b" }
+vhvi = { fill = "#00ffff" }
+uhvi = { fill = "#ffffff" }
+hvi = { fill = "#9900e6" }
+pwbm = { fill = "#ffffff" }
+pwde = { fill = "#ffffff" }
+hvtp = { fill = "#ffffff" }
+hvtr = { fill = "#e61f0d" }
+lvtn = { fill = "#ffffff" }
+ldntm = { fill = "#00cc66" }
+hvntm = { fill = "#ffff00" }
+tunm = { fill = "#9900e6" }
+nsdm = { fill = "#e61f0d" }
+psdm = { fill = "#9900e6" }
+ncm = { fill = "#ffe6bf" }
+rpm = { fill = "#96c8ff" }
+urpm = { fill = "#ffffff" }
+diff = { fill = "#00ff00" }
+"diff.pin" = { fill = "#268c6b" }
+"diff.res" = { fill = "#00ff00" }
+"diff.hv" = { fill = "#9900e6" }
+tap = { fill = "#d9cc00" }
+poly = { fill = "#ff0000" }
+"poly.pin" = { fill = "#ff8000" }
+"poly.res" = { fill = "#ff0000" }
+"poly.short" = { fill = "#ff0000" }
+"poly.gate" = { fill = "#ff0000" }
+npc = { fill = "#bf4026" }
+licon1 = { stroke = "#ffffcc", cross = true }
+li1 = { fill = "#ffe6bf" }
+"li1.pin" = { fill = "#bf4026" }
+"li1.res" = { fill = "#ffe6bf" }
+"li1.short" = { fill = "#ffe6bf" }
+mcon = { stroke = "#ccccd9", cross = true }
+met1 = { fill = "#0000ff" }
+"met1.pin" = { fill = "#5e00e6" }
+"met1.res" = { fill = "#0000ff" }
+"met1.short" = { fill = "#0000ff" }
+via = { stroke = "#5e00e6", cross = true }
+met2 = { fill = "#ff00ff" }
+"met2.pin" = { fill = "#ff00ff" }
+"met2.res" = { fill = "#ff00ff" }
+"met2.short" = { fill = "#ff00ff" }
+via2 = { stroke = "#ff8000", cross = true }
+met3 = { fill = "#00ffff" }
+"met3.pin" = { fill = "#00ffff" }
+"met3.res" = { fill = "#00ffff" }
+"met3.short" = { fill = "#00ffff" }
+capm = { fill = "#c3ccd9" }
+via3 = { stroke = "#268c6b", cross = true }
+met4 = { fill = "#5e00e6" }
+"met4.pin" = { fill = "#5e00e6" }
+"met4.res" = { fill = "#5e00e6" }
+"met4.short" = { fill = "#5e00e6" }
+cap2m = { fill = "#c33cd9" }
+via4 = { stroke = "#ffff00", cross = true }
+met5 = { fill = "#d9cc00" }
+"met5.pin" = { fill = "#d9cc00" }
+"met5.res" = { fill = "#d9cc00" }
+"met5.short" = { fill = "#d9cc00" }
+pad = { fill = "#ffffcc" }
+"pad.pin" = { fill = "#d9e6ff" }
+nsm = { fill = "#00cc66" }
+npn = { fill = "#00ffff" }
+pnp = { fill = "#ff00ff" }
+inductor = { fill = "#d9cc00" }
+capacitor = { fill = "#ffb232" }
+"areaid.sl" = { fill = "#ffffff" }
+"areaid.ce" = { fill = "#d9e6ff" }
+"areaid.fe" = { fill = "#ffffcc" }
+"areaid.sc" = { fill = "#ff00ff" }
+"areaid.ed" = { fill = "#d9cc00" }
+"areaid.de" = { fill = "#ffff00" }
+"areaid.st" = { fill = "#ccccd9" }
+"areaid.en" = { fill = "#daa520" }
+"areaid.le" = { fill = "#ffbff2" }
+"areaid.hl" = { fill = "#ff0000" }
+"areaid.sd" = { fill = "#ffffff" }
+"areaid.po" = { fill = "#9900e6" }
+"areaid.lvt" = { fill = "#ffffff" }
+"areaid.re" = { fill = "#bebed8" }
+prBoundary = { stroke = "#ccccd9" }
