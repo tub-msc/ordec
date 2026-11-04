@@ -3,6 +3,34 @@
 
 This cell library provides part of the `SkyWater Open Source PDK <https://github.com/google/skywater-pdk/>`_.
 
+Substrate handling in LVS
+-------------------------
+
+The SKY130 KLayout LVS deck models the substrate as a chip-wide global net
+whose name is given by the ``substrate_net`` argument of :func:`run_lvs`
+(default ``vss``). Devices with a substrate terminal (e.g. the bulk of
+``Nmos``) connect to this global net, and the deck merges it with layout nets
+of the same name. The name must therefore match the netlisted name of the net
+that ties the substrate taps (``Ptap``), otherwise the bulk terminals remain
+on a separate net and the comparison fails.
+
+DRC coverage
+------------
+
+The PDK's KLayout DRC deck (``sky130A_mr.drc``) covers widths, spacings and
+BEOL via enclosures, but omits several front-end rules (licon, npc, implant
+and nwell enclosures, poly/diff gate extensions), and the PDK has no KLayout
+antenna deck. :func:`run_drc` runs the PDK's decks only, so it checks none of
+these. ``density=True`` runs the PDK's metal density deck, which only checks
+the maximum density. :func:`run_magic_drc` runs the full DRC of the PDK's
+magic technology (``sky130A.tech``), which has the licon, implant and nwell
+rules, the gate extensions and the latch-up rules. It checks neither npc,
+whose layer magic ignores when reading GDS, nor antennas, so a tapeout still
+needs an independent DRC run.
+
+Cells
+-----
+
 .. automodule:: ordec.lib.sky130
   :members:
   :member-order: groupwise
