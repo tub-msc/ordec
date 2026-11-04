@@ -22,7 +22,10 @@ GALLERY = [
     sky130.RpdHv(l="2.1u", w="0.42u"), sky130.RhighPo0p35(l="2u", w="0.35u"),
     sky130.RxhighPo0p69(l="2u", w="0.69u"), sky130.RhighPo5p73(l="2u", w="5.73u"),
     sky130.RisoPw(l="26.5u", w="2.65u"),
-    sky130.Cmim(),
+    sky130.Rl1(l="2u", w="0.5u"), sky130.Rm1(l="2u", w="0.5u"), sky130.Rm3(l="2u", w="1u"), sky130.Rm5(l="5u", w="2u"),
+    sky130.Rpoly(l="1.65u", w="0.33u", hv_guard=True), sky130.RhighPo0p35(l="2u", w="0.35u", n_guard=True),
+    sky130.Cmim(l="5u", w="5u"), sky130.Cmim2(l="5u", w="5u"),
+    sky130.Cmim(l="8u", w="8u", ny=2), sky130.Cmim2(l="8u", w="8u", ny=2),
     sky130.DiodePw2nd(), sky130.DiodePw2ndLvt(), sky130.DiodePw2ndNvt(), sky130.DiodePw2nd11v0(),
     sky130.DiodePd2nw(), sky130.DiodePd2nwLvt(), sky130.DiodePd2nwHvt(), sky130.DiodePd2nw11v0(),
 ]
@@ -113,6 +116,10 @@ def resistor_tb(res_cell):
     (sky130.Rm1(l="10u", w="0.14u"), 12.26),
     (sky130.Rm5(l="20u", w="1.6u"), 0.3735),
     (sky130.RisoPw(l="26.5u", w="2.65u"), 3.799e4),
+    (sky130.RisoPw(l="26.5u", w="2.65u", nx=3, snake=True), 1.164e5),
+    (sky130.RhighPo0p35(l="4u", w="0.35u", nx=2, snake=True), 5354),
+    (sky130.RhighPo0p35(l="2u", w="0.35u", m=2), 2977 / 2),
+    (sky130.Rnd(l="2.1u", w="0.42u", nx=2), 574.2 / 2),
 ])
 def test_resistor_op(cell, expected_r):
     """Ngspice op-point: drive each resistor with 1 V and check R = V / I."""
@@ -129,6 +136,8 @@ def test_resistor_op(cell, expected_r):
 @pytest.mark.parametrize("cell,expected_c", [
     (sky130.Cmim(l="5u", w="5u"), 5.3282e-14),
     (sky130.Cmim(l="10u", w="8u"), 1.6592e-13),
+    (sky130.Cmim2(l="5u", w="5u"), 5.3282e-14),
+    (sky130.Cmim(l="5u", w="5u", m=2), 2 * 5.3282e-14),
 ])
 def test_cmim_ac(cell, expected_c):
     freq = 1e6
