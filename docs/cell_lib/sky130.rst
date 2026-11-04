@@ -37,7 +37,7 @@ Coverage
 The cells cover ``sky130_fd_pr`` with these limits:
 
 * The layout generators of magic and the fixed cells of ``sky130_fd_pr.gds`` define which devices have layouts. The 16 V and 20 V MOS devices, ``PmosMvt``, ESD MOS devices and SRAM and flash cells are simulation-only, their special sizes being model bins.
-* ``VarCap5v``: the LVS deck does not extract ``sky130_fd_pr__cap_var``.
+* ``VarCap5v``: the LVS deck does not extract ``sky130_fd_pr__cap_var``, and ``sky130.lib.spice`` has no model of it. ``SonosFet`` has no model there either. Simulating them raises an error.
 * ``RfMos``: the LVS deck extracts no devices from the RF cells, also when run on the PDK's GDS alone.
 * ``Npn``, ``Pnp`` and ``Inductor``: most of these fixed cells hold no labels, so their layouts have no pins, and ``Npn`` cells fail ``nwell.1``, ``nwell.6`` and ``difftap.10a`` of the DRC deck. They stay out of the DRC and LVS gallery.
 * Models that ``sky130.lib.spice`` does not include have no cell (``esd_nfet_05v0_nvt``, ``nfet_20v0_nvt_iso``). Neither have the resistor models that no generator draws: ``res_high_po`` and ``res_xhigh_po`` of any width, and ``res_generic_nw``.
@@ -52,6 +52,9 @@ The layouts reproduce the device generators of the PDK's magic technology (``sky
 
 * **Gate met1 pads**: widened to the m1.6 minimum area. ``gate_min_area=False`` draws the generator's pads, which only pass once routed.
 * **w** and **l**: magic rounds each half distance to the 5 nm grid, so the odd multiples of 5 nm are drawn 5 nm off and fail LVS. Layouts reject them.
+* **NwellRing**, **DeepNwell**: the last side's tap is as long as the others, since the generator's shorter one fails difftap.3. ``DeepNwell`` starts at 3.5 µm, below which its ring fails nwell.2a.
+* **Photodiode**: N-well covers the whole deep N-well ring, whose inner edge the generator's N-well ring leaves uncovered, failing nwell.5a and nwell.7.
+* **Via** and **Subconn**: as the generator, so small ones need a route to pass the minimum area rules.
 * **Cmim** arrays: spaced to the 1.2 µm of capm.2b. ``deck_spacing=False`` draws the generator's spacing, which fails it.
 * **VarCapLvt**, **VarCapHvt**: the N-well encloses the gate poly with its contact pads by the 0.15 µm of varac.5. ``well_enclosure=False`` draws the generator's well, which fails it (magic's DRC checks it on ``VarCapLvt`` only).
 * **SonosFet**: the diffusion contacts keep the 0.075 µm of licon.11 from the SONOS gate. ``contact_spacing=False`` draws the generator's 0.06 µm, which fails it. Like the generator, it leaves the N-well ring of its deep N-well (nwell.5a and nwell.7) to the array.
@@ -59,6 +62,7 @@ The layouts reproduce the device generators of the PDK's magic technology (``sky
 * **RisoPw** snakes with odd ``nx``: the guard ring clears the last end's well, which the generator leaves out of its bounding box, so that its ring fails nwell.6.
 * **Snakes**: layouts reject ``w`` > ``l``, for which the generator draws ``w`` = ``l``, and a ``RhighPo0p35`` with ``l`` - ``w`` below 2.16 µm, whose first contact the generator overruns.
 * Magic computes distances in floating point, so a few options that land exactly between two grid points end 5 nm off. ORDeC rounds them half away from zero, as magic does for exact values.
+* The MOS, resistor and capacitor options of the generators are not all DRC clean on their own: small via coverage needs a route to meet the width and area rules, and without a guard ring a device needs a tap nearby (the latch-up rules of magic's DRC).
 * **Source and drain**: ``s`` is on the even regions (``sd[0]``, ``sd[2]``, ...), counted from the left, as in ``ihp130``. In magic it is the odd ones, so its ``viasrc`` is ORDeC's ``viadrn``. With ``doverlap=False`` each finger has two regions of its own, mirrored from finger to finger, so the regions are ``s``, ``d``, ``d``, ``s`` and so on.
 
 Cells

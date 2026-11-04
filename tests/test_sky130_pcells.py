@@ -16,7 +16,8 @@ from ordec.lib import sky130
 
 pytestmark = pytest.mark.magic
 
-# (ORDeC cell, generator device, generator parameters). Magic's w is per finger.
+# (ORDeC cell, generator device or drawing command, parameters). Magic's w is
+# per finger, the drawing commands take the box's width and height.
 CASES = [
     (sky130.Nmos(w="1u", l="150n"), "nfet_01v8", "w 1.0 l 0.15"),
     (sky130.Nmos(w="1u", l="150n", guard=False), "nfet_01v8", "w 1.0 l 0.15 guard 0"),
@@ -84,7 +85,21 @@ CASES = [
     (sky130.VarCapHvt(w="2u", l="500n", nf=2), "cap_var_hvt", "w 1.0 l 0.5 nf 2"),
     (sky130.VarCap5v(w="1u", l="500n"), "cap_var", "w 1.0 l 0.5"),
     (sky130.SonosFet(w="1u", l="150n"), "special_sonosfet_star", "w 1.0 l 0.15"),
+    (sky130.Photodiode(), "photodiode", "nx 1 ny 1"),
+    (sky130.Photodiode(nx=2, glc=False), "photodiode", "nx 2 glc 0"),
+    (sky130.Via(via="mcon", w="0.17u", h="0.51u"), "mcon_draw", "0.17 0.51"),
+    (sky130.Via(via="via", w="0.3u", h="0.3u"), "via1_draw", "0.3 0.3"),
+    (sky130.Via(via="via2", w="0.5u", h="0.3u"), "via2_draw", "0.5 0.3"),
+    (sky130.Via(via="via3", w="0.4u", h="0.8u"), "via3_draw", "0.4 0.8"),
+    (sky130.Via(via="via4", w="1.2u", h="2.4u"), "via4_draw", "1.2 2.4"),
+    (sky130.Subconn(w="0.17u", h="0.51u"), "subconn_draw", "0.17 0.51"),
+    (sky130.MvSubconn(w="1u", h="0.17u"), "mvsubconn_draw", "1.0 0.17"),
+    (sky130.NwellRing(w="5u", h="6u"), "nwell_draw", "5.0 6.0"),
+    (sky130.DeepNwell(w="4u", h="4u"), "deep_nwell_draw", "4.0 4.0"),
 ]
+
+# Drawn layers that differ on purpose, see the sky130 docs.
+DEVIATIONS = {"nwell_draw": {"65/44", "93/44"}, "deep_nwell_draw": {"65/44", "93/44"}, "photodiode": {"64/20"}}
 
 PIN_PURPOSE = 16  # Pin shapes are not compared: the generators draw none.
 
@@ -103,9 +118,12 @@ def generator_variant(cell):
 
 
 def test_pcell_geometry(tmp_path):
+    def proc(device):
+        if device.endswith("_draw"):
+            return device
+        return f"{'sky130_fd_bs_flash' if 'sonos' in device else 'sky130_fd_pr'}__{device}"
     sky130.run_magic(Path(__file__).parent / "lib/sky130_magic_ref.tcl", tmp_path, cases="".join(
-        f"c{i} {'sky130_fd_bs_flash' if 'sonos' in device else 'sky130_fd_pr'}__{device} {{{params}}}\n"
-        for i, (_, device, params) in enumerate(CASES)))
+        f"c{i} {proc(device)} {{{params}}}\n" for i, (_, device, params) in enumerate(CASES)))
 
     cases = []
     for i, (cell, _, _) in enumerate(CASES):
@@ -119,8 +137,9 @@ def test_pcell_geometry(tmp_path):
     result = json.loads((tmp_path / "result.json").read_text())
 
     failures = []
-    for i, (cell, _, _) in enumerate(CASES):
-        drawn = {k: area for k, area in result[str(i)].items() if int(k.split("/")[1]) != PIN_PURPOSE}
+    for i, (cell, device, _) in enumerate(CASES):
+        drawn = {k: area for k, area in result[str(i)].items()
+            if int(k.split("/")[1]) != PIN_PURPOSE and k not in DEVIATIONS.get(device, ())}
         if drawn:
             failures.append(f"{cell}: {drawn}")
     assert not failures, "XOR area in um² per layer:\n" + "\n".join(failures)

@@ -11,7 +11,14 @@
 foreach {id device params} $cases {
     load case$id -silent
     box 0 0 0 0
-    magic::gencell sky130::$device g$id {*}$params
+    if {[string match *_draw $device]} {
+        # A command drawing over a box, params its width and height in um.
+        lassign $params w h
+        box 0um 0um ${w}um ${h}um
+        sky130::$device
+    } else {
+        magic::gencell sky130::$device g$id {*}$params
+    }
     select top cell
     gds write $id.gds
 }

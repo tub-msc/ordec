@@ -29,7 +29,7 @@ GALLERY = [
     sky130.DiodePw2nd(), sky130.DiodePw2ndLvt(), sky130.DiodePw2ndNvt(), sky130.DiodePw2nd11v0(),
     sky130.DiodePd2nw(), sky130.DiodePd2nwLvt(), sky130.DiodePd2nwHvt(), sky130.DiodePd2nw11v0(),
     sky130.VarCapLvt(w="1u", l="180n"), sky130.VarCapHvt(w="1u", l="180n"),
-    sky130.CapVpp(device="cap_vpp_11p5x11p7_m1m2_noshield"),
+    sky130.CapVpp(device="cap_vpp_11p5x11p7_m1m2_noshield"), sky130.Photodiode(),
 ]
 SUBSTRATE = "nmos0_b"
 TIES = ("nmoslvt1_b", "nmoshv2_b", "nmos05v0nvt3_b", "nmos03v3nvt4_b")
@@ -56,8 +56,12 @@ def test_gallery_magic():
     lambda: sky130.Nmos(w="300n", l="150n"),
     lambda: sky130.Nmos(w="1u", l="150n", nf=4),
     lambda: sky130.Nmos(w="2u", l="150n", nf=3),
-], ids=["short-l", "narrow-w", "narrow-finger", "indivisible"])
-def test_mos_dimension_limits(build):
+    lambda: sky130.Rpoly(l="2u", w="1u", nx=0),
+    lambda: sky130.Rm1(l="1u", w="0.039u"),
+    lambda: sky130.Photodiode(nx=0),
+    lambda: sky130.CapVpp(device="npn_05v5_W1p00L1p00"),
+], ids=["short-l", "narrow-w", "narrow-finger", "indivisible", "no-stripe", "narrow-res", "no-diode", "other-family"])
+def test_dimension_limits(build):
     """Out-of-range dimensions are rejected at cell construction, before
     they can silently reach simulation or layout."""
     with pytest.raises(ParameterError):
@@ -259,6 +263,16 @@ def test_fixed_device_op(cell, conn, expected_i):
     if expected_i is not None:
         assert current == pytest.approx(expected_i, rel=0.05)
     assert any(True for _ in cell.layout.all(LayoutRect))
+
+
+def test_discoverable_instances():
+    """The instances that the web UI lists have a symbol, and the shared base
+    classes list none."""
+    for cls in vars(sky130).values():
+        if isinstance(cls, type) and issubclass(cls, SimLeafCell):
+            for cell in cls.discoverable_instances():
+                cell.symbol
+    assert sky130.Mos.discoverable_instances() == []
 
 
 def test_fixed_cells_load():
