@@ -23,6 +23,8 @@ GALLERY = [
     sky130.RxhighPo0p69(l="2u", w="0.69u"), sky130.RhighPo5p73(l="2u", w="5.73u"),
     sky130.RisoPw(l="26.5u", w="2.65u"),
     sky130.Cmim(),
+    sky130.DiodePw2nd(), sky130.DiodePw2ndLvt(), sky130.DiodePw2ndNvt(), sky130.DiodePw2nd11v0(),
+    sky130.DiodePd2nw(), sky130.DiodePd2nwLvt(), sky130.DiodePd2nwHvt(), sky130.DiodePd2nw11v0(),
 ]
 SUBSTRATE = "nmos0_b"
 TIES = ("nmoslvt1_b", "nmoshv2_b", "nmos05v0nvt3_b", "nmos03v3nvt4_b")
@@ -36,7 +38,10 @@ def test_gallery():
 @pytest.mark.magic
 def test_gallery_magic():
     wrapper = gallery_wrapper_cell(GALLERY, "Gallery", substrate=SUBSTRATE, ties=TIES)
-    assert sky130.run_magic_drc(wrapper.layout).summary() == {}
+    # Magic reads the contacts of the LVT, NVT and HVT diodes from GDS as
+    # plain diode contacts, which then fail licon.5a: the copyup rules of the
+    # cifinput section of sky130A.tech ignore the threshold implants.
+    assert sky130.run_magic_drc(wrapper.layout).summary() == {"licon.5a": 32}
 
 
 @pytest.mark.parametrize("build", [
@@ -150,3 +155,28 @@ def test_cmim_ac(cell, expected_c):
     h.simulate().ac("lin", 1, freq, freq)
     c = abs(complex(h.i_vac.p.current[0])) / (2 * math.pi * freq)
     assert c == pytest.approx(expected_c, rel=0.02)
+
+
+@pytest.mark.parametrize("cell,expected_i", [
+    (sky130.DiodePw2nd(w="1u", l="1u"), 3.31e-5),
+    (sky130.DiodePd2nw(w="1u", l="1u"), 1.2e-5),
+    (sky130.DiodePd2nw11v0(w="1u", l="1u"), 1.75e-7),
+])
+def test_diode_op(cell, expected_i):
+    """Ngspice op-point: forward current at 0.8 V, captured from ngspice."""
+    class Tb(Cell):
+        @viewgen_noctx
+        def schematic(self):
+            s = Schematic(cell=self)
+            s.vdd = Net()
+            s.vss = Net()
+            s.i_gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(0, -1))
+            s.i_vdc = SchemInstance(Vdc(dc=R("0.8")).symbol.portmap(n=s.vss, p=s.vdd), pos=Vec2R(0, 5))
+            s.d = SchemInstance(cell.symbol.portmap(p=s.vdd, n=s.vss), pos=Vec2R(12, 5))
+            s.auto_wire()
+            s.check(add_conn_points=True, add_terminal_taps=True)
+            return s
+
+    h = SimHierarchy.from_schematic(Tb().schematic)
+    h.simulate().op()
+    assert abs(float(h.i_vdc.p.current[0])) == pytest.approx(expected_i, rel=0.05)

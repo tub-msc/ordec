@@ -26,7 +26,10 @@ the maximum density. :func:`run_magic_drc` runs the full DRC of the PDK's
 magic technology (``sky130A.tech``), which has the licon, implant and nwell
 rules, the gate extensions and the latch-up rules. It checks neither npc,
 whose layer magic ignores when reading GDS, nor antennas, so a tapeout still
-needs an independent DRC run.
+needs an independent DRC run. It reports licon.5a on the contacts of the LVT,
+NVT and HVT diodes, which magic reads from GDS as plain diode contacts: the
+copyup rules of the GDS input of ``sky130A.tech`` ignore the threshold
+implants.
 
 .. _sky130_generator_differences:
 
