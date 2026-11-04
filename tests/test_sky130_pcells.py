@@ -41,9 +41,38 @@ CASES = [
     (sky130.PmosHv(w="2u", l="500n", nf=2), "pfet_g5v0d10v5", "w 1.0 l 0.5 nf 2"),
     (sky130.Nmos05v0Nvt(w="2u", l="900n", nf=2), "nfet_05v0_nvt", "w 1.0 l 0.9 nf 2"),
     (sky130.Nmos03v3Nvt(w="1u", l="500n"), "nfet_03v3_nvt", "w 1.0 l 0.5"),
+    (sky130.RhighPo0p35(l="2u", w="0.35u"), "res_high_po_0p35", "w 0.35 l 2.0"),
+    (sky130.RhighPo0p69(l="6u", w="0.69u", nx=2, snake=True), "res_high_po_0p69", "w 0.69 l 6.0 nx 2 snake 1"),
+    (sky130.RhighPo1p41(l="2u", w="1.41u"), "res_high_po_1p41", "w 1.41 l 2.0"),
+    (sky130.RhighPo2p85(l="2u", w="2.85u"), "res_high_po_2p85", "w 2.85 l 2.0"),
+    (sky130.RhighPo5p73(l="6u", w="5.73u"), "res_high_po_5p73", "w 5.73 l 6.0"),
+    (sky130.RxhighPo0p35(l="2u", w="0.35u"), "res_xhigh_po_0p35", "w 0.35 l 2.0"),
+    (sky130.RxhighPo5p73(l="2u", w="5.73u", guard=False), "res_xhigh_po_5p73", "w 5.73 l 2.0 guard 0"),
+    (sky130.Rnd(l="2.1u", w="0.42u"), "res_generic_nd", "w 0.42 l 2.1"),
+    (sky130.Rnd(l="2.1u", w="0.42u", nx=3, snake=True), "res_generic_nd", "w 0.42 l 2.1 nx 3 snake 1"),
+    (sky130.Rpd(l="2.1u", w="0.42u", nx=2, m=2), "res_generic_pd", "w 0.42 l 2.1 nx 2 m 2"),
+    (sky130.RndHv(l="2.1u", w="0.42u"), "res_generic_nd__hv", "w 0.42 l 2.1"),
+    (sky130.RpdHv(l="2.1u", w="0.42u", vias=False), "res_generic_pd__hv", "w 0.42 l 2.1 vias 0"),
+    (sky130.Rl1(l="1u", w="0.17u"), "res_generic_l1", "w 0.17 l 1.0"),
+    (sky130.Rm1(l="1u", w="0.14u"), "res_generic_m1", "w 0.14 l 1.0"),
+    (sky130.Rm2(l="1u", w="0.14u", nx=2), "res_generic_m2", "w 0.14 l 1.0 nx 2"),
+    (sky130.Rm3(l="2u", w="1u", m=2), "res_generic_m3", "w 1.0 l 2.0 m 2"),
+    (sky130.Rm4(l="1u", w="0.3u"), "res_generic_m4", "w 0.3 l 1.0"),
+    (sky130.Rm5(l="2u", w="1.6u"), "res_generic_m5", "w 1.6 l 2.0"),
+    (sky130.RisoPw(l="26.5u", w="2.65u"), "res_iso_pw", "w 2.65 l 26.5"),
+    (sky130.RisoPw(l="26.5u", w="2.65u", m=2, guard=False), "res_iso_pw", "w 2.65 l 26.5 m 2 guard 0"),
+    (sky130.Rpoly(l="1.65u", w="0.33u"), "res_generic_po", "w 0.33 l 1.65"),
+    (sky130.Rpoly(l="2u", w="1u", endcov=50), "res_generic_po", "w 1.0 l 2.0 endcov 50"),
 ]
 
 PIN_PURPOSE = 16  # Pin shapes are not compared: the generators draw none.
+
+
+def generator_variant(cell):
+    """The cell without the deviations from the generators that can be switched off."""
+    if isinstance(cell, sky130.Mos):
+        return type(cell)(**cell.params | {"gate_min_area": False})
+    return cell
 
 
 def test_pcell_geometry(tmp_path):
@@ -54,7 +83,7 @@ def test_pcell_geometry(tmp_path):
     for i, (cell, _, _) in enumerate(CASES):
         gds = tmp_path / f"o{i}.gds"
         with open(gds, "wb") as f:
-            write_gds(type(cell)(**cell.params | {"gate_min_area": False}).layout, f)
+            write_gds(generator_variant(cell).layout, f)
         cases.append(dict(id=str(i), gds=str(gds), ref_gds=str(tmp_path / f"c{i}.gds")))
     (tmp_path / "cases.json").write_text(json.dumps(cases))
     klayout.run(Path(__file__).parent / "lib/sky130_pcell_xor.py", tmp_path,
