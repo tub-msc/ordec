@@ -38,6 +38,8 @@ The cells cover ``sky130_fd_pr`` with these limits:
 
 * The layout generators of magic and the fixed cells of ``sky130_fd_pr.gds`` define which devices have layouts. The 16 V and 20 V MOS devices, ``PmosMvt``, ESD MOS devices and SRAM and flash cells are simulation-only, their special sizes being model bins.
 * ``VarCap5v``: the LVS deck does not extract ``sky130_fd_pr__cap_var``.
+* ``RfMos``: the LVS deck extracts no devices from the RF cells, also when run on the PDK's GDS alone.
+* ``Npn``, ``Pnp`` and ``Inductor``: most of these fixed cells hold no labels, so their layouts have no pins, and ``Npn`` cells fail ``nwell.1``, ``nwell.6`` and ``difftap.10a`` of the DRC deck. They stay out of the DRC and LVS gallery.
 * Models that ``sky130.lib.spice`` does not include have no cell (``esd_nfet_05v0_nvt``, ``nfet_20v0_nvt_iso``). Neither have the resistor models that no generator draws: ``res_high_po`` and ``res_xhigh_po`` of any width, and ``res_generic_nw``.
 * ``device_map`` covers the MOS devices, resistors, MiM capacitors, varactors, bipolar transistors and inductors. Diodes are left out, as their SPICE cards give an area and a perimeter instead of ``l`` and ``w``, and so are the many fixed cells of ``CapVpp`` and ``RfMos``.
 

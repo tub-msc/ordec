@@ -29,6 +29,7 @@ GALLERY = [
     sky130.DiodePw2nd(), sky130.DiodePw2ndLvt(), sky130.DiodePw2ndNvt(), sky130.DiodePw2nd11v0(),
     sky130.DiodePd2nw(), sky130.DiodePd2nwLvt(), sky130.DiodePd2nwHvt(), sky130.DiodePd2nw11v0(),
     sky130.VarCapLvt(w="1u", l="180n"), sky130.VarCapHvt(w="1u", l="180n"),
+    sky130.CapVpp(device="cap_vpp_11p5x11p7_m1m2_noshield"),
 ]
 SUBSTRATE = "nmos0_b"
 TIES = ("nmoslvt1_b", "nmoshv2_b", "nmos05v0nvt3_b", "nmos03v3nvt4_b")
@@ -63,10 +64,12 @@ def test_mos_dimension_limits(build):
         build()
 
 
-def test_snake_limits():
-    """Snakes that the generator cannot draw are rejected at layout generation."""
+def test_layout_limits():
+    """Snakes that the generator cannot draw and repeats of a fixed cell are
+    rejected at layout generation."""
     for cell in (sky130.RhighPo0p69(l="0.5u", w="0.69u", nx=2, snake=True),
-            sky130.RhighPo0p35(l="2.5u", w="0.35u", nx=2, snake=True)):
+            sky130.RhighPo0p35(l="2.5u", w="0.35u", nx=2, snake=True),
+            sky130.CapVpp(device="cap_vpp_11p5x11p7_m1m2_noshield", m=2)):
         with pytest.raises(ParameterError):
             cell.layout
 
@@ -226,3 +229,42 @@ def test_mos_op(cell, expected_i):
     h = SimHierarchy.from_schematic(Tb().schematic)
     h.simulate().op()
     assert abs(float(h.i_vdc.p.current[0])) == pytest.approx(expected_i, rel=0.05)
+
+
+@pytest.mark.parametrize("cell,conn,expected_i", [
+    (sky130.RfMos(device="rf_nfet_01v8_aM02W1p65L0p15"), dict(drain=1, gate=1, source=0, substrate=0), 2.56e-4),
+    (sky130.Npn(device="npn_05v5_W1p00L1p00"), dict(c=1, b=1, e=0, s=0), None),
+    (sky130.Pnp(device="pnp_05v5_W0p68L0p68"), dict(collector=0, base=0, emitter=1), 2.22e-4),
+    (sky130.Inductor(device="ind_03_90"), dict(a=1, b=0, ct=0, sub=0), None),
+])
+def test_fixed_device_op(cell, conn, expected_i):
+    """Each model simulates and each fixed cell loads from the PDK's GDS."""
+    class Tb(Cell):
+        @viewgen_noctx
+        def schematic(self):
+            s = Schematic(cell=self)
+            s.vdd = Net()
+            s.vss = Net()
+            s.i_gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(0, -1))
+            s.i_vdc = SchemInstance(Vdc(dc=1).symbol.portmap(n=s.vss, p=s.vdd), pos=Vec2R(0, 5))
+            s.d = SchemInstance(cell.symbol.portmap(**{k: s.vdd if v else s.vss for k, v in conn.items()}), pos=Vec2R(12, 5))
+            s.auto_wire()
+            s.check(add_conn_points=True, add_terminal_taps=True)
+            return s
+
+    h = SimHierarchy.from_schematic(Tb().schematic)
+    h.simulate().op()
+    current = abs(float(h.i_vdc.p.current[0]))
+    assert current > 0
+    if expected_i is not None:
+        assert current == pytest.approx(expected_i, rel=0.05)
+    assert any(True for _ in cell.layout.all(LayoutRect))
+
+
+def test_fixed_cells_load():
+    """Every cell of sky130_fd_pr.gds reads with the layer stack."""
+    lib = sky130.pr_library()
+    assert len(lib.layout_funcs) == 292
+    for name in lib.layout_funcs:
+        lib[name].layout
+
