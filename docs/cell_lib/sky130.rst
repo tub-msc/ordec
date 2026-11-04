@@ -1,7 +1,7 @@
 :mod:`ordec.lib.sky130` --- SkyWater 130 nm technology
 ======================================================
 
-This cell library provides part of the `SkyWater Open Source PDK <https://github.com/google/skywater-pdk/>`_.
+This cell library provides the primitive devices of the `SkyWater Open Source PDK <https://github.com/google/skywater-pdk/>`_. Device layouts have the layout options of magic's generators under the same names and with the same defaults, including the guard ring. In particular, ``m`` draws a row of the device in y, without connecting the rows, and ``w`` is the total width of all ``nf`` fingers (in magic, the width per finger).
 
 Substrate handling in LVS
 -------------------------
