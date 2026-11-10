@@ -24,6 +24,7 @@ ngspice-compatible netlists and makes adding more directives/devices additive.
 from functools import partial
 from dataclasses import dataclass, field
 from public import public
+import keyword
 import re
 
 from ..core import *
@@ -74,7 +75,7 @@ class DeviceMapping:
         int_params: SPICE parameter names converted to ``int`` (e.g. ng, m).
 
     SPICE parameters not listed in real_params/int_params are dropped (e.g. the
-    geometric ad/as/pd/ps parasitics that the target cell does not model).
+    geometric ad/as/pd/ps parasitics, if the target cell does not model them).
     """
     cell: type
     pin_order: tuple
@@ -386,7 +387,10 @@ def resolve_instance(extlib, deck, device_map, subckt_name, inst, node_to_net):
                 f"{len(mapping.pin_order)} nodes, got {len(inst.nodes)}.")
         kwargs = {p: R(inst.params[p]) for p in mapping.real_params if p in inst.params}
         kwargs |= {p: to_int_with_si_support(inst.params[p]) for p in mapping.int_params if p in inst.params}
-        child = mapping.cell(**kwargs)
+        # A parameter named like a Python keyword has a trailing underscore
+        # in the cell.
+        child = mapping.cell(**{k + "_" if keyword.iskeyword(k) else k: v
+            for k, v in kwargs.items()})
         child_sym = child.symbol
         conns = {pin: node_to_net[nd]
                  for pin, nd in zip(mapping.pin_order, inst.nodes)}

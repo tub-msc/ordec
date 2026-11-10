@@ -744,6 +744,13 @@ class Mos(SimLeafCell):
     m = Parameter(int, default=1)  #: Multiplier, i. e. number of devices with separate Activ areas in parallel)
     ng = Parameter(int, default=1)  #: Number of gate fingers
 
+    # Junction geometry, as an extraction reports it. Unset, the model derives
+    # it from w and ng.
+    ad = Parameter(R, optional=True)  #: Drain area
+    as_ = Parameter(R, optional=True)  #: Source area
+    pd = Parameter(R, optional=True)  #: Drain perimeter
+    ps = Parameter(R, optional=True)  #: Source perimeter
+
     #: Contact odd-numbered source/drain regions (Cont + Metal1)
     contact_sd_odd = Parameter(bool, default=True)
     #: Contact even-numbered source/drain regions (Cont + Metal1)
@@ -763,6 +770,9 @@ class Mos(SimLeafCell):
         l, w, ng, m = params['l'], params['w'], params['ng'], params['m']
         if l is None or w is None:
             return
+        geometry = [params[k] is None for k in ('ad', 'as_', 'pd', 'ps')]
+        if any(geometry) and not all(geometry):
+            raise ParameterError("ad, as_, pd and ps must be set together.")
         if ng < 1 or ng > cls.max_ng:
             raise ParameterError(f"ng must be between 1 and {cls.max_ng}.")
         if m < 1:
@@ -778,6 +788,11 @@ class Mos(SimLeafCell):
         grid = R("5n")
         if l / grid != int(l / grid) or w / ng / grid != int(w / ng / grid):
             raise ParameterError(f"l = {l} and w/ng = {w/ng} must be multiples of {grid}.")
+
+    def annotation_params(self):
+        # Junction geometry comes with a netlist and would crowd the symbol.
+        return [(k, v, shown and k not in ('ad', 'as_', 'pd', 'ps'))
+            for k, v, shown in super().annotation_params()]
 
     def ngspice_save_params(self):
         # PSP103 (OSDI) operating-point outputs:
@@ -807,6 +822,9 @@ class Mos(SimLeafCell):
                 model = self.rf_model
             else:
                 params['rfmode'] = 1
+        if not netlister.lvs:
+            geometry = {'ad': self.ad, 'as': self.as_, 'pd': self.pd, 'ps': self.ps}
+            params |= {k: v for k, v in geometry.items() if v is not None}
         netlister.add(
             netlister.name_obj(inst, prefix="M" if netlister.lvs else "x"),
             netlister.portmap(inst, pins),
@@ -3591,10 +3609,10 @@ class Nmoscl4(Nmoscl2):
 
 #: Device map for spice_in:
 device_map = {
-    "sg13_lv_nmos": DeviceMapping(Nmos, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("ng", "m")),
-    "sg13_lv_pmos": DeviceMapping(Pmos, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("ng", "m")),
-    "sg13_hv_nmos": DeviceMapping(NmosHv, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("ng", "m")),
-    "sg13_hv_pmos": DeviceMapping(PmosHv, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("ng", "m")),
+    "sg13_lv_nmos": DeviceMapping(Nmos, ("d", "g", "s", "b"), real_params=("l", "w", "ad", "as", "pd", "ps"), int_params=("ng", "m")),
+    "sg13_lv_pmos": DeviceMapping(Pmos, ("d", "g", "s", "b"), real_params=("l", "w", "ad", "as", "pd", "ps"), int_params=("ng", "m")),
+    "sg13_hv_nmos": DeviceMapping(NmosHv, ("d", "g", "s", "b"), real_params=("l", "w", "ad", "as", "pd", "ps"), int_params=("ng", "m")),
+    "sg13_hv_pmos": DeviceMapping(PmosHv, ("d", "g", "s", "b"), real_params=("l", "w", "ad", "as", "pd", "ps"), int_params=("ng", "m")),
     "rfnmos": DeviceMapping(RfNmos, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("ng", "m")),
     "rfpmos": DeviceMapping(RfPmos, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("ng", "m")),
     "rfnmoshv": DeviceMapping(RfNmosHv, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("ng", "m")),
