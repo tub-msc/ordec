@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: 2026 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-# ORDeC with tools, PDKs and Python packages, and the development shells.
-# See docs/dev/setup.rst and docs/dev/containers_and_ci.rst.
+# ORDeC with tools, PDKs and Python packages, the development shells and the
+# Docker images. See docs/dev/setup.rst and docs/dev/containers_and_ci.rst.
 {
   description = "ORDeC: tools, PDKs, Python packages and development environment";
 
@@ -179,7 +179,7 @@
 
     # For development: with yosys-config and the OpenVAF build dependencies.
     tools = [ ngspice klayout yosys openvaf ];
-    # For the ordec package and tests.yaml.
+    # For the ordec package, the images and tests.yaml.
     runtimeTools = [ ngspice klayout yosys-slim openvaf-slim ];
 
     # Python
@@ -206,10 +206,73 @@
       tools = runtimeTools;
     };
     inherit (py) ordec;
+
+    # Images
+    # ======
+
+    # Without a Linux distribution: Python with ordec (so that scripts can
+    # import it), the tools and a minimal shell environment, linked into /bin.
+    image-env = pkgs.buildEnv {
+      name = "ordec-image-env";
+      paths = runtimeTools ++ [
+        (py.python.withPackages (ps: [ ordec ]))
+        pkgs.bashInteractive pkgs.coreutils pkgs.gnugrep pkgs.gnused pkgs.findutils
+      ];
+      pathsToLink = [ "/bin" ];
+    };
+
+    # Load into Docker with: $(nix build --no-link --print-out-paths .#image) | docker load
+    mkImage = { name, cmd, env ? [ ] }: pkgs.dockerTools.streamLayeredImage {
+      inherit name;
+      tag = "latest";
+      contents = [ image-env ];
+      extraCommands = ''
+        mkdir -m 1777 tmp
+        mkdir -p etc root usr/bin
+        ln -s /bin/env usr/bin/env
+        printf 'root:x:0:0::/root:/bin/sh\napp:x:1000:1000::/home/app:/bin/sh\n' > etc/passwd
+        printf 'root:x:0:\napp:x:1000:\n' > etc/group
+      '';
+      fakeRootCommands = "mkdir -p home/app && chown 1000:1000 home/app";
+      config = {
+        User = "app";
+        WorkingDir = "/home/app";
+        Env = [
+          "PATH=/bin"
+          # Files written to the container (e.g. the LayoutStyle
+          # customizations in ~/.config/ordec) are lost with it; the web UI
+          # warns about this. Set to 0 when ~/.config/ordec is a volume.
+          "ORDEC_CONFIG_EPHEMERAL=1"
+        ] ++ lib.mapAttrsToList (n: v: "${n}=${v}") pdkEnv ++ env;
+        Cmd = cmd;
+        ExposedPorts."8100/tcp" = { };
+        Labels = {
+          "org.opencontainers.image.source" = "https://github.com/tub-msc/ordec";
+          "org.opencontainers.image.revision" = self.rev or self.dirtyRev or "unknown";
+        };
+      };
+    };
+
+    image = mkImage {
+      name = "ordec";
+      cmd = [ "ordec" "-l" "0.0.0.0" "-p" "8100" "--no-browser" "--url-authority" "127.0.0.1:8100" ];
+    };
+
+    # User image for ORDeC Hub (see docs/dev/hub.rst). ordec detects the hub
+    # through the JUPYTERHUB_* environment DockerSpawner sets and then takes
+    # address and port from JUPYTERHUB_SERVICE_URL; the command line values
+    # are the fallback for running the image without a hub. Unbuffered
+    # stdout, so that ordec's messages (e.g. hub login failures) reach
+    # docker logs immediately.
+    hub-image = mkImage {
+      name = "ordec-hub-user";
+      cmd = [ "ordec" "-l" "0.0.0.0" "-p" "8100" "--no-browser" ];
+      env = [ "PYTHONUNBUFFERED=1" ];
+    };
   in {
     packages.${system} = {
       inherit ngspice klayout yosys yosys-slim openvaf openvaf-slim pdk-sky130 pdk-ihp-sg13g2;
-      inherit ordec;
+      inherit ordec image-env image hub-image;
       inherit (py) web;
       default = ordec;
     };
@@ -245,7 +308,7 @@
         '';
       } // pdkEnv);
 
-      # For tests.yaml: the ordec package with its tools, the
+      # For tests.yaml: the ordec package and the tools as in the images, the
       # test dependencies and Chromium, with fonts of its own (without any,
       # it crashes when rendering pages). Chromium without its wrapper, which
       # adds GTK 4 and GStreamer (about 700 MiB) that headless runs do not

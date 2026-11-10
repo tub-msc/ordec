@@ -216,7 +216,7 @@ def webstyle(style: LayoutStyle | None, default: LayoutStyle | None,
         'userSettings': user_settings,
         'userLayers': user_layers,
         # Set in container images: files written there are lost with the
-        # container (see Dockerfile).
+        # container (see the images in flake.nix).
         'userFileEphemeral': os.environ.get('ORDEC_CONFIG_EPHEMERAL', '') not in ('', '0'),
         **websettings(style),
         # Pattern rows as 16-bit integers, top first, most significant bit

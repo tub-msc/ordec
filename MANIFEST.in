@@ -1,8 +1,5 @@
 recursive-exclude .gitignore
 exclude .readthedocs.yaml
-exclude base.Dockerfile
-exclude Dockerfile
-exclude .dockerignore
 exclude flake.nix
 exclude flake.lock
 prune support/nix

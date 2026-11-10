@@ -14,20 +14,51 @@ jobs:
     permissions:
       contents: read
       packages: write
-      attestations: write
-      id-token: write
+    # As in tests.yaml.
+    env:
+      FLAKE: github:${{ github.repository }}/${{ github.sha }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Install Nix
+        uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
+      # As in tests.yaml.
+      - name: Set up Cachix
+        uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866 # v17
         with:
-          fetch-depth: 0
+          name: ordec
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      # flake.nix builds the image without Docker (dockerTools); the result is
+      # a script that writes the image archive to stdout.
+      - name: Build image
+        run: |
+          nix build -L -o /tmp/image "$FLAKE#image"
+          /tmp/image | docker load
+      # tests.yaml runs the test suite with the same ordec package and tools
+      # (same store paths), so this only checks what is specific to the image:
+      # the root file system, user, environment and start command.
+      - name: Test image
+        run: |
+          docker run --rm ordec:latest sh -ec '
+            test "$(id -un)" = app && touch ~/x /tmp/x
+            python3 -c "import ordec.layout._gdsrecords"
+            ngspice -v && klayout -b -v && yosys -V && openvaf-r --version
+            ls $ORDEC_PDK_SKY130A $ORDEC_PDK_SKY130B $ORDEC_PDK_IHP_SG13G2/libs.tech/ngspice/osdi/psp103.osdi'
+          docker run -d --name ordec-test -p 8100:8100 ordec:latest
+          for i in $(seq 30); do curl -sf http://127.0.0.1:8100/app.html > /dev/null && break; sleep 1; done
+          curl -sf http://127.0.0.1:8100/app.html > /dev/null
+          docker rm -f ordec-test
+      # The version comes from .git_archival.txt in GitHub's archive (see
+      # flake.nix); a stale archive would give a dev version here.
+      - name: Check release version
+        if: github.ref_type == 'tag'
+        run: |
+          docker run --rm ordec:latest python3 -c "import ordec; v = ordec.__version__; assert v == '${GITHUB_REF_NAME#v}', v"
       - name: Log in to the Container registry
         uses: docker/login-action@65b78e6e13532edd9afa3aa52ac7964289d1a9c1
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Extract metadata (tags, labels) for Docker
+      - name: Extract metadata (tags) for Docker
         id: meta
         uses: docker/metadata-action@9ec57ed1fcdbf14dcef7dfbe97b2010124a938b7
         with:
@@ -38,50 +69,11 @@ jobs:
             type=ref,event=branch
             type=ref,event=tag
             type=raw,value=latest,enable={{is_default_branch}}
-      - name: Build Docker image for testing
-        uses: docker/build-push-action@f2a1d5e99d037542a71f64918e516c093c6f3fc4
-        with:
-          context: .
-          load: true
-          file: Dockerfile
-          tags: ordec-imagetest
-          provenance: false
-          sbom: false
-      # Regression test for the user-facing image: tests.yaml runs pytest in
-      # ordec-base, so it cannot detect runtime tools (klayout, ngspice, ...)
-      # missing from the ordec image. Run the full test suite, including web
-      # tests, inside the freshly built image: the web fixture serves the
-      # packaged webdist.tar (npm is not part of the image), so this also
-      # covers the frontend packaging that users actually get. Chromium and
-      # the test extra are test-only additions to a throwaway container
-      # (hence --user root); the pushed image is unaffected. Without selenium
-      # the web tests would silently skip. The extra is installed from the
-      # wheel left in /home/app by the Dockerfile (PEP 508 direct reference),
-      # so that the wheel stays the package under test and the dependency
-      # list lives in pyproject.toml only. --shm-size=1g avoids headless
-      # Chromium crashes with Docker's default 64 MB /dev/shm. Coverage/cache
-      # addopts are dropped to keep output out of the mounted checkout.
-      # The import checks that the wheel contains the _gdsrecords extension,
-      # which is optional in setup.py and silently left out if ordec-base
-      # lacks a compiler; it runs outside of /mnt so that the installed
-      # package is imported, not the checkout.
-      - name: Test image
+      - name: Push image
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
         run: |
-          docker run --rm --user root --shm-size=1g -v "$PWD":/mnt -w /mnt ordec-imagetest sh -xec '
-            apt-get update
-            apt-get install -y --no-install-recommends chromium chromium-driver
-            pip install --no-cache-dir "ordec[test] @ file://$(ls /home/app/ordec-*.whl)"
-            (cd / && python3 -c "import ordec.layout._gdsrecords")
-            pytest -p no:cacheprovider -o addopts="--tb=short"
-          '
-      - name: Build and push Docker image
-        id: push
-        uses: docker/build-push-action@f2a1d5e99d037542a71f64918e516c093c6f3fc4
-        with:
-          context: .
-          push: true
-          file: Dockerfile
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          provenance: false
-          sbom: false
+          for t in $TAGS; do
+            docker tag ordec:latest "$t"
+            docker push "$t"
+          done

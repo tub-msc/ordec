@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # JupyterHub image for ORDeC Hub (the hub itself, not the user containers;
-# for those see support/hub/Dockerfile).
+# for those see hub-image in flake.nix).
 
 FROM quay.io/jupyterhub/jupyterhub:5
 

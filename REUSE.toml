@@ -23,7 +23,6 @@ path = [
     "docs/.gitignore",
     "web/.gitignore",
     "support/editors/.gitignore",
-    ".dockerignore",
     "MANIFEST.in",
     "docs/requirements.txt",
 ]

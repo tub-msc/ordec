@@ -124,12 +124,16 @@ for the workshop hostname; Caddy fetches Let's Encrypt certificates by itself.
     #    way down) and drop its state -- user db, scoreboard, certificate
     docker compose -f support/hub/docker-compose.yml down -v -t 120
 
-    # 4. Images (from the repository root)
-    docker build -t ordec .
-    docker build -t ordec-hub-user -f support/hub/Dockerfile support/hub/
+    # 4. User image (from the repository root, needs Nix; see below)
+    $(nix build --no-link --print-out-paths .#hub-image) | docker load
 
     # 5. Start hub + TLS proxy
     docker compose -f support/hub/docker-compose.yml up -d --build
+
+The user image (``ordec-hub-user``) is the regular ordec image with a
+hub-suitable start command, both defined in *flake.nix*. Without Nix on the
+hub host, build it elsewhere and pipe it into ``docker load`` on the host
+(e.g. via ``ssh``).
 
 Participants then browse to ``https://<domain>/``, enter the workshop key (no
 username), and land in ORDeC.
@@ -146,8 +150,7 @@ support/hub/docker-compose.yml restart caddy``.
 
 The pieces live in ``support/hub/``: ``jupyterhub_config.py`` (authenticator, spawner,
 limits, culler — all tunable through ``ORDEC_HUB_*`` variables),
-``templates/login.html`` (the key-only login form), ``Dockerfile`` (the user
-image, the regular ``ordec`` image with a hub-suitable start command),
+``templates/login.html`` (the key-only login form),
 ``hub.Dockerfile`` (the hub itself), ``docker-compose.yml`` (hub plus Caddy, and
 the internal-only user network) and ``deploy/`` (``Caddyfile``,
 ``host-setup.sh``).
