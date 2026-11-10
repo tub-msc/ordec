@@ -114,6 +114,26 @@
       find $out -type f -exec remove-references-to -t ${yosys} -t ${pkgs.stdenv.cc} -t ${pkgs.stdenv.cc.cc} {} +
     '';
 
+    # KLayout-PEX (kpex) as an application of its own, as its dependencies
+    # (e.g. the klayout module, 0.30.12 from nixpkgs, and matplotlib) are not
+    # ORDeC's. protobuf 6, as its generated code is for protobuf 6. Only kpex
+    # is put in PATH, not its other executables with generic names.
+    kpex = let ps = pkgs.python313Packages; in ps.buildPythonApplication {
+      pname = "klayout-pex";
+      version = "0.8.1";
+      format = "wheel";
+      src = pkgs.fetchurl {
+        url = "https://files.pythonhosted.org/packages/py3/k/klayout-pex/klayout_pex-0.8.1-py3-none-any.whl";
+        hash = "sha256-sQ56DoOH9+Bvac4V2Ry8bu0w8HWyYIgAPvwR7nzLo7A=";
+      };
+      # Not with ps: the klayout above would take precedence over ps.klayout.
+      dependencies = [
+        ps.cairosvg ps.klayout ps.matplotlib ps.packaging ps.protobuf6 ps.rich ps.rich-argparse
+      ];
+      postInstall = "rm $out/bin/netlist $out/bin/pex25d";
+      meta.mainProgram = "kpex";
+    };
+
     # PDKs
     # ====
 
@@ -178,9 +198,9 @@
     };
 
     # For development: with yosys-config and the OpenVAF build dependencies.
-    tools = [ ngspice klayout yosys openvaf ];
+    tools = [ ngspice klayout yosys openvaf kpex ];
     # For the ordec package, the images and tests.yaml.
-    runtimeTools = [ ngspice klayout yosys-slim openvaf-slim ];
+    runtimeTools = [ ngspice klayout yosys-slim openvaf-slim kpex ];
 
     # Python
     # ======
@@ -271,7 +291,7 @@
     };
   in {
     packages.${system} = {
-      inherit ngspice klayout yosys yosys-slim openvaf openvaf-slim pdk-sky130 pdk-ihp-sg13g2;
+      inherit ngspice klayout yosys yosys-slim openvaf openvaf-slim kpex pdk-sky130 pdk-ihp-sg13g2;
       inherit ordec image-env image hub-image;
       inherit (py) web;
       default = ordec;

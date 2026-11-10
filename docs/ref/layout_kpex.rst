@@ -5,7 +5,7 @@
 
 This module integrates the external `KLayout-PEX <https://github.com/iic-jku/klayout-pex>`_ tool (kpex) for parasitic extraction. It runs the 2.5D engine of kpex (:func:`run`) and reads the extracted netlist back as a ``PexReport`` (:func:`read_netlist`). The report holds the netlist as a ``Schematic``: the devices become cells of the PDK, the parasitic resistances and capacitances ideal ``Res`` and ``Cap`` instances. The PDK-specific entry point ``ordec.lib.ihp130.run_pex`` builds on these functions.
 
-The ``kpex`` executable (version 0.8) must be on the ``PATH``, for example through ``pipx install klayout-pex``. kpex is no Python dependency of ORDeC. It brings its own LVS deck and process stack for each PDK, so it does not read the PDK that ``ORDEC_PDK_IHP_SG13G2`` points to.
+The ``kpex`` executable (version 0.8) must be on the ``PATH``. The Nix setup and the Docker image include it; otherwise, install it for example through ``pipx install klayout-pex``. kpex is no Python dependency of ORDeC. It brings its own LVS deck and process stack for each PDK, so it does not read the PDK that ``ORDEC_PDK_IHP_SG13G2`` points to.
 
 Post-layout simulation
 ----------------------
