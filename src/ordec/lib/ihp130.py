@@ -20,7 +20,7 @@ from .pdk_common import PdkDict, check_dir, check_file, rundir
 from ..layout import makevias, write_gds, flatten
 from ..layout.style import read_layout_style
 from ..extlibrary import ExtLibrary
-from ..layout import klayout
+from ..layout import klayout, kpex
 from ..layout.pnr import GridConfig
 
 @functools.cache
@@ -3740,6 +3740,17 @@ def run_drc(l: Layout, variant='maximal', use_tempdir: bool=True,
         return report
 
 
+def check_pin_layers(layout: Layout, tool: str):
+    # The LVS decks name nets only from labels on the text purpose (datatype
+    # 25) of the metals and NWell, so a top-level pin elsewhere (GatPoly,
+    # Activ) would leave its port unnamed.
+    for pin in layout.all(LayoutPin):
+        layer = pin.ref.layer
+        if layer.pinlayer().gdslayer_text.data_type != 25:
+            raise ValueError(f"Pin {pin.pin.npath.name} is on {layer.npath.name}, "
+                f"whose labels {tool} does not read. Route it to metal.")
+
+
 @public
 def run_lvs(layout: Layout, symbol: Symbol, use_tempdir: bool=True) -> LvsReport:
     """
@@ -3750,14 +3761,7 @@ def run_lvs(layout: Layout, symbol: Symbol, use_tempdir: bool=True) -> LvsReport
         symbol: The Symbol containing the reference schematic.
         use_tempdir: If True, use a temporary directory for intermediate files.
     """
-    # The deck names nets only from labels on the text purpose (datatype 25)
-    # of the metals and NWell, so a top-level pin elsewhere (GatPoly, Activ)
-    # would leave its port unnamed.
-    for pin in layout.all(LayoutPin):
-        layer = pin.ref.layer
-        if layer.pinlayer().gdslayer_text.data_type != 25:
-            raise ValueError(f"Pin {pin.pin.npath.name} is on {layer.npath.name}, "
-                "whose labels LVS does not read. Route it to metal.")
+    check_pin_layers(layout, "LVS")
 
     directory = klayout.LvsDirectory()
     nl = Netlister(directory, lvs=True)
@@ -3799,6 +3803,32 @@ def run_lvs(layout: Layout, symbol: Symbol, use_tempdir: bool=True) -> LvsReport
         log = (cwd / "out.log").read_text()
 
         return klayout.parse_lvsdb(cwd / 'out.lvsdb', layout, schematic, directory)
+
+
+@public
+def run_pex(layout: Layout, mode: str='RC', use_tempdir: bool=True) -> PexReport:
+    """
+    Extract the devices and parasitics of a layout with KLayout-PEX.
+
+    Args:
+        layout: The Layout to extract. It is extracted flat.
+        mode: 'CC' extracts capacitances, 'R' resistances, 'RC' both.
+        use_tempdir: If True, use a temporary directory for intermediate files.
+    """
+    if layout.symbol is None:
+        raise ValueError("The layout has no symbol, whose pins the extracted "
+            "netlist would get.")
+    check_pin_layers(layout, "kpex")
+    directory = Directory()
+
+    with rundir('pex', use_tempdir) as cwd:
+        with open(cwd / 'layout.gds', "wb") as f:
+            write_gds(layout, f, directory=directory, sublayout_pins=False)
+
+        kpex.run(cwd, pdk='ihp-sg13g2', gds='layout.gds',
+            cell=directory.name_subgraph(layout), mode=mode)
+
+        return kpex.read_netlist(cwd / 'pex.spice', layout, directory, device_map)
 
 # The sg13g2 routing-grid and emitted-geometry profile the P&R engine works
 # from. Track pitches and row height come from the tech LEF; the wire, via,

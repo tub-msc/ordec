@@ -8,7 +8,7 @@ ORDeC (Open Rapid Design Composer) is a custom IC design platform consisting of:
 - **ORD Hardware Description Language (HDL)** for design entry
 - **Web UI** comprising a Python-based backend/server (`src/ordec/server.py`) and a Vite / vanilla JS frontend (`web/`).
 
-ORDeC integrates various external tools, most importantly Ngspice for simulation and KLayout for DRC and LVS.
+ORDeC integrates various external tools, most importantly Ngspice for simulation, KLayout for DRC and LVS and KLayout-PEX for parasitic extraction.
 
 ## Architecture
 
@@ -17,9 +17,9 @@ For narrative descriptions, see `docs/ref/` (data model, ORD language, cells/vie
 - **ORDB** (`src/ordec/core/ordb/`): custom graph database underlying all IC design data (Symbols, Schematics, Layouts, SimHierarchy, etc.). Storage, indices, transactions and constraint checks live in the C extension `_ordb` (sources in `native/`: `engine.c` and `index.c` below the Python types, one file per Python type, shared declarations in `module.h`); `base.py` holds the schema language, the public classes and the error messages. The core has one storage engine, `keyed` (tables keyed by nid); the engine selection (`ORDEC_ORDB_BACKEND`, `ordb.use_backend(name)`) is kept for trying further engines. See `docs/ref/ordb.rst`, `docs/dev/ordb_core.rst` and `docs/dev/ordb_benchmarks.rst`.
 - **Cell and view generators** (`src/ordec/core/cell.py`): base class for parametrizable design components; `@viewgen`/`@viewgen_noctx` decorated methods produce cached views (schematic, symbol, layout, simulation). `src/ordec/server.py:discover_views` finds all view generators for the web UI. See `docs/ref/cell_and_viewgen.rst`.
 - **ORD language** (`src/ordec/language.py`, `src/ordec/ord/`, `src/ordec/importer.py`): Python-superset HDL; `.ord` files compile to Python AST then `exec()` into ORDB structures. The importer adds an import hook so `.ord` files import like `.py` files. See `docs/ref/ord.rst` and `docs/guides/ord_tutorial.py`. Use ORD (not Python) for new standalone hardware designs.
-- **Schema** (`src/ordec/core/schema/`): node type definitions, one module per view family (`schematic.py`, `layout.py`, `simhier.py`, `drc.py`, `lvs.py`, `report.py`, on the common `base.py`). See `docs/ref/schema.rst`.
+- **Schema** (`src/ordec/core/schema/`): node type definitions, one module per view family (`schematic.py`, `layout.py`, `simhier.py`, `drc.py`, `lvs.py`, `pex.py`, `report.py`, on the common `base.py`). See `docs/ref/schema.rst`.
 - **Simulation**: `src/ordec/schematic/netlister.py` (Schematic → SPICE netlist), `src/ordec/core/simarray.py` (SimArray/SimColumn), `src/ordec/sim/ngspice.py` and `src/ordec/sim/simulator.py` (ngspice integration), `src/ordec/core/schema/simhier.py` (SimHierarchy).
-- **Layout** (`src/ordec/layout/`): GDS import/export, KLayout integration, via generation; constraint helpers in `src/ordec/core/constraints.py`. See `docs/ref/layout.rst` and `docs/ref/layout_klayout.rst`.
+- **Layout** (`src/ordec/layout/`): GDS import/export, KLayout integration, KLayout-PEX integration (parasitic extraction), via generation; constraint helpers in `src/ordec/core/constraints.py`. See `docs/ref/layout.rst`, `docs/ref/layout_klayout.rst` and `docs/ref/layout_kpex.rst`.
 - **Web interface**: backend `src/ordec/server.py` (WebSocket protocol, token auth, integrated/local mode); frontend `web/src/` (Golden Layout app, WebSocket client, renderers). See `docs/dev/webui.rst`.
 - **Library system** (`src/ordec/lib/`): PDK primitives and integrations (base, sky130, ihp130, generic_mos), configured via `ORDEC_PDK_*` environment variables. Examples in `src/ordec/examples/`. Standard cell libraries are components on top of PDKs, not parts of PDKs.
 - **External libraries** (`src/ordec/extlibrary.py`): external library/GDS cell integration. See `docs/ref/extlibrary.rst`.
@@ -63,8 +63,9 @@ pytest tests/test_schematic.py
 # Run tests matching pattern
 pytest -k "test_ordb"
 
-# Markers: web (web interface), yosys (needs the yosys executable), ihp130
-# (needs the IHP PDK, ORDEC_PDK_IHP_SG13G2)
+# Markers: web (web interface), yosys (needs the yosys executable), kpex
+# (needs the kpex executable), ihp130 (needs the IHP PDK,
+# ORDEC_PDK_IHP_SG13G2)
 pytest -m web
 
 # Fast testing: skip web tests (saves significant time)

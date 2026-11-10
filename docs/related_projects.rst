@@ -64,6 +64,7 @@ This page lists related open-source projects.
 
 **Parasitic Extraction:**
 
+- `KLayout-PEX <https://github.com/iic-jku/klayout-pex>`_: used by ORDeC, see :doc:`/ref/layout_kpex`
 - `FastCap2 <https://github.com/ediloren/FastCap2>`_
 - `FasterCap <https://github.com/ediloren/FasterCap>`_
 - `Caplet <https://github.com/yuchsiao/caplet>`_

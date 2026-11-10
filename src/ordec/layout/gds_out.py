@@ -26,7 +26,7 @@ def d4_to_gds(d4: D4) -> tuple[float,int]:
     }[d4]
 
 class GdsGenerator:
-    def layout_to_struc(self, layout: Layout):
+    def layout_to_struc(self, layout: Layout, pins: bool):
         struc = Structure(name=self.directory.name_subgraph(layout).encode('ascii'))
 
         if layout.ref_layers != self.layers:
@@ -35,7 +35,8 @@ class GdsGenerator:
         layout = layout.mutable_copy()
         # Expand objects that are not supported by GDSII:
         expand_rects(layout)
-        expand_pins(layout, directory=self.directory)
+        if pins:
+            expand_pins(layout, directory=self.directory)
 
         layouts_want = set()
 
@@ -49,6 +50,9 @@ class GdsGenerator:
                 xy=vertices,
             ))
         for label in layout.all(LayoutLabel):
+            # Labels on pin layers name nets like the labels of pins.
+            if label.layer.is_pinlayer and not pins:
+                continue
             gdslayer = label.layer.gdslayer_text
             struc.append(elements.Text(
                 layer=gdslayer.layer,
@@ -118,8 +122,9 @@ class GdsGenerator:
         self.lib.append(struc)
         return layouts_want
 
-    def __init__(self, directory: Directory, layers: LayerStack):
+    def __init__(self, directory: Directory, layers: LayerStack, sublayout_pins: bool):
         self.directory = directory
+        self.sublayout_pins = sublayout_pins
         self.layout_names = {}
         self.layers = layers
         self.lib = Library(
@@ -134,7 +139,8 @@ class GdsGenerator:
         layouts_have = set()
         layout_next = layout
         while True:
-            want = self.layout_to_struc(layout_next)
+            want = self.layout_to_struc(layout_next,
+                pins=self.sublayout_pins or layout_next == layout)
             
             layouts_have.add(layout_next)
             layouts_want |= want
@@ -149,13 +155,22 @@ class GdsGenerator:
         self.lib.save(file)
 
 @public
-def write_gds(layout: Layout, file: IO[bytes], directory: Optional[Directory] = None):
-    """Write layout 'layout' as GDS binary data to file-like object 'file'."""
+def write_gds(layout: Layout, file: IO[bytes], directory: Optional[Directory] = None,
+    sublayout_pins: bool = True):
+    """
+    Write layout 'layout' as GDS binary data to file-like object 'file'.
+
+    Args:
+        sublayout_pins: Whether the pins of the layouts below 'layout' are
+            written (as shapes with labels), too, and their labels on pin
+            layers. A tool that reads the
+            layout flat takes their labels for labels of 'layout'.
+    """
 
     if directory is None:
         directory = Directory()
 
-    g = GdsGenerator(directory, layout.ref_layers)
+    g = GdsGenerator(directory, layout.ref_layers, sublayout_pins)
     g.add_layout(layout)
     g.save(file)
     
