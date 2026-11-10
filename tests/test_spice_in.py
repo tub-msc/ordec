@@ -155,8 +155,8 @@ def test_ihp130_passives(tmp_path):
         XR1 a mid sub rppd w=0.5u l=2u b=1 ps=0.4u m=1
         XC1 mid b cap_cmim w=7u l=7u m=1
         XP1 b sub Rparasitic R=10 TC1=1m
-        Rext_1 a mid 62.3m
-        Cext_1 mid b 0.5f
+        Rext_1 a mid 62.3M
+        Cext_1 mid b 5e-01fF
         .ends
         """))
     lib = ExtLibrary()
@@ -166,7 +166,8 @@ def test_ihp130_passives(tmp_path):
     assert (type(r), r.l, r.w, r.b, r.ps) == (ihp130.Rppd, R("2u"), R("0.5u"), 1, R("0.4u"))
     assert (type(p), p.r, p.tc1) == (ihp130.Rpara, R("10"), R("1m"))
     assert (type(c), c.l, c.w) == (ihp130.Cmim, R("7u"), R("7u"))
-    # Element cards become ideal elements.
+    # Element cards become ideal elements. Scale factors are SPICE's: they
+    # ignore case (M is milli), may follow an exponent and precede a unit.
     assert (type(ri), ri.r, type(ci), ci.c) == (Res, R("62.3m"), Cap, R("0.5f"))
 
 
