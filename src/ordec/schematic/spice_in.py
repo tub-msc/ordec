@@ -274,12 +274,31 @@ def safe_name(name: str) -> str:
     return safe
 
 
+#: SPICE scale factors (case-insensitive).
+SPICE_SCALE = {
+    't': R('1e12'), 'g': R('1e9'), 'meg': R('1e6'), 'k': R('1e3'),
+    'mil': R('25.4e-6'), 'm': R('1e-3'), 'u': R('1e-6'), 'n': R('1e-9'),
+    'p': R('1e-12'), 'f': R('1e-15'), 'a': R('1e-18'),
+}
+
+def spice_number(value: str) -> R:
+    """Convert a SPICE number. Unlike in R(), the scale factor ignores case
+    (``M`` is milli), may follow an exponent (``8.6e-06f``) and may precede
+    unit letters (``10pF``)."""
+    match = re.fullmatch(r'([-+]?[0-9.]+(?:e[-+]?[0-9]+)?)(meg|mil|[tgkmunpfa])?[a-z]*',
+        value, re.IGNORECASE)
+    if match is None:
+        raise ValueError(f"Invalid SPICE number: {value!r}")
+    number, scale = match.groups()
+    return R(number) * SPICE_SCALE[scale.lower()] if scale else R(number)
+
+
 def to_int_with_si_support(value: str) -> int:
-    """Supports SI prefixes u/m/k etc. using conditional R() detour."""
+    """Supports SI prefixes u/m/k etc. using conditional spice_number() detour."""
     try:
         return int(value)
     except ValueError:
-        return int(R(value))
+        return int(spice_number(value))
 
 
 @public
@@ -389,7 +408,7 @@ def resolve_instance(extlib, deck, device_map, subckt_name, inst, node_to_net):
             raise SpiceImportError(
                 f"Instance {inst.name!r} in {subckt_name!r}: device {model!r} expects "
                 f"{len(mapping.pin_order)} nodes, got {len(inst.nodes)}.")
-        kwargs = {p: R(inst.params[p]) for p in mapping.real_params if p in inst.params}
+        kwargs = {p: spice_number(inst.params[p]) for p in mapping.real_params if p in inst.params}
         kwargs |= {p: to_int_with_si_support(inst.params[p]) for p in mapping.int_params if p in inst.params}
         # A parameter named like a Python keyword has a trailing underscore
         # in the cell.
@@ -413,7 +432,7 @@ def resolve_instance(extlib, deck, device_map, subckt_name, inst, node_to_net):
         # An element card has its value in the place of the model.
         cell, param = ELEMENTS[inst.prefix]
         try:
-            value = R(model)
+            value = spice_number(model)
         except ValueError:
             raise SpiceImportError(
                 f"Instance {inst.name!r} in {subckt_name!r}: {model!r} is neither "
@@ -424,13 +443,13 @@ def resolve_instance(extlib, deck, device_map, subckt_name, inst, node_to_net):
             raise SpiceImportError(
                 f"Instance {inst.name!r} in {subckt_name!r}: unsupported ideal "
                 f"element parameters: {', '.join(sorted(unsupported))}.")
-        multiplier = R(inst.params.get("m", "1"))
+        multiplier = spice_number(inst.params.get("m", "1"))
         if multiplier <= 0:
             raise SpiceImportError(
                 f"Instance {inst.name!r} in {subckt_name!r}: m must be positive.")
         kwargs = {param: value * multiplier if cell is Cap else value / multiplier}
         if "ic" in inst.params:
-            kwargs["ic"] = R(inst.params["ic"])
+            kwargs["ic"] = spice_number(inst.params["ic"])
         conns = dict(zip(("p", "n"), (node_to_net[nd] for nd in inst.nodes)))
         return cell(**kwargs).symbol, conns
     raise SpiceImportError(
