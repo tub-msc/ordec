@@ -8,7 +8,7 @@ import pytest
 
 from ordec.core import *
 from ordec.extlibrary import ExtLibrary
-from ordec.lib import ihp130
+from ordec.lib import ihp130, Res, Cap
 from ordec.schematic.spice_in import clean_cards, tokenize, parse_deck, SpiceImportError
 from textwrap import dedent
 
@@ -152,15 +152,19 @@ def test_ihp130_passives(tmp_path):
         XR1 a mid sub rppd w=0.5u l=2u b=1 ps=0.4u m=1
         XC1 mid b cap_cmim w=7u l=7u m=1
         XP1 b sub Rparasitic R=10 TC1=1m
+        Rext_1 a mid 62.3m
+        Cext_1 mid b 0.5f
         .ends
         """))
     lib = ExtLibrary()
     lib.read_spice(netlist, device_map=ihp130.device_map)
-    r, p, c = sorted((i.symbol.cell for i in lib["rc"].schematic.all(SchemInstance)),
+    r, p, ri, c, ci = sorted((i.symbol.cell for i in lib["rc"].schematic.all(SchemInstance)),
         key=lambda cell: type(cell).__name__, reverse=True)
     assert (type(r), r.l, r.w, r.b, r.ps) == (ihp130.Rppd, R("2u"), R("0.5u"), 1, R("0.4u"))
     assert (type(p), p.r, p.tc1) == (ihp130.Rpara, R("10"), R("1m"))
     assert (type(c), c.l, c.w) == (ihp130.Cmim, R("7u"), R("7u"))
+    # Element cards become ideal elements.
+    assert (type(ri), ri.r, type(ci), ci.c) == (Res, R("62.3m"), Cap, R("0.5f"))
 
 
 def test_unknown_model_raises(tmp_path):

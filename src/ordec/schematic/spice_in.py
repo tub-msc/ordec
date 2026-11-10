@@ -27,6 +27,7 @@ from public import public
 import re
 
 from ..core import *
+from ..lib.base import Res, Cap
 from .helpers import schem_place
 
 @public
@@ -257,6 +258,9 @@ def parse_deck(text: str) -> SpiceDeck:
 # Schematic / symbol construction (ORDeC-specific layer)
 # ------------------------------------------------------
 
+#: Ideal elements by card prefix: the cell and the parameter of its value.
+ELEMENTS = {"R": (Res, "r"), "C": (Cap, "c")}
+
 def safe_name(name: str) -> str:
     """Sanitize a SPICE node/instance name into a valid path component."""
     safe = re.sub(r'[^A-Za-z0-9_]', '_', name)
@@ -285,8 +289,6 @@ def spice_subckt_discover(path, extlib, device_map: dict):
     """
     with open(path) as f:
         deck = parse_deck(f.read())
-    # Model names are case-insensitive in ngspice.
-    device_map = {model.lower(): mapping for model, mapping in device_map.items()}
     symbol_funcs = {}
     schematic_funcs = {}
     for name, subckt in deck.subckts.items():
@@ -317,7 +319,32 @@ def create_schematic_from_subckt(extlib, deck, name, device_map) -> Schematic:
     cell = extlib[name]
     symbol = cell.symbol
     schematic = Schematic(cell=cell, symbol=symbol)
+    node_to_net = add_subckt(schematic, extlib, deck, subckt, device_map,
+        {port: symbol[port] for port in subckt.ports})
 
+    # External ports, oriented opposite their symbol pins.
+    for port in subckt.ports:
+        pin = symbol[port]
+        schematic % SchemPort(ref=node_to_net[port], orient=pin.orient * R180)
+
+    schem_place(schematic)
+    return schematic.freeze()
+
+
+def add_subckt(schematic, extlib, deck, subckt, device_map, pins) -> dict:
+    """Add the nets and instances of subckt to schematic, without positions.
+
+    Args:
+        extlib: Library with the cells of the other subckts of deck (None if
+            subckt instantiates none).
+        device_map: SPICE model name -> DeviceMapping.
+        pins: Port name -> symbol pin. A port without a pin becomes an
+            internal net.
+
+    Returns the Net of every SPICE node.
+    """
+    # Model names are case-insensitive in ngspice.
+    device_map = {model.lower(): mapping for model, mapping in device_map.items()}
     used = set()
 
     def unique_name(base):
@@ -331,31 +358,21 @@ def create_schematic_from_subckt(extlib, deck, name, device_map) -> Schematic:
         return candidate
 
     # Create one Net per distinct SPICE node, ports first (so they get pins).
-    port_set = set(subckt.ports)
     node_to_net = {}
     ordered_nodes = list(subckt.ports)
     for inst in subckt.instances:
         ordered_nodes.extend(inst.nodes)
     for nd in dict.fromkeys(ordered_nodes):  # preserve order, de-duplicate
         path = unique_name(nd)
-        if nd in port_set:
-            schematic[path] = Net(pin=symbol[nd], auto_wire=False)
-        else:
-            schematic[path] = Net(auto_wire=False)
+        schematic[path] = Net(pin=pins.get(nd), auto_wire=False)
         node_to_net[nd] = schematic[path]
 
-    # External ports, oriented opposite their symbol pins.
-    for port in subckt.ports:
-        pin = symbol[port]
-        schematic % SchemPort(ref=node_to_net[port], orient=pin.orient * R180)
-
     for inst in subckt.instances:
-        child_sym, conns = resolve_instance(extlib, deck, device_map, name, inst, node_to_net)
+        child_sym, conns = resolve_instance(extlib, deck, device_map, subckt.name, inst, node_to_net)
         path = unique_name(inst.name)
         schematic[path] = SchemInstance(child_sym.portmap(**conns))
 
-    schem_place(schematic)
-    return schematic.freeze()
+    return node_to_net
 
 
 def resolve_instance(extlib, deck, device_map, subckt_name, inst, node_to_net):
@@ -384,6 +401,17 @@ def resolve_instance(extlib, deck, device_map, subckt_name, inst, node_to_net):
         conns = {port: node_to_net[nd]
                  for port, nd in zip(child_ports, inst.nodes)}
         return child_sym, conns
+    if inst.prefix in ELEMENTS and len(inst.nodes) == 2:
+        # An element card has its value in the place of the model.
+        cell, param = ELEMENTS[inst.prefix]
+        try:
+            value = R(model)
+        except ValueError:
+            raise SpiceImportError(
+                f"Instance {inst.name!r} in {subckt_name!r}: {model!r} is neither "
+                f"a value nor a model of device_map.") from None
+        conns = dict(zip(("p", "n"), (node_to_net[nd] for nd in inst.nodes)))
+        return cell(**{param: value}).symbol, conns
     raise SpiceImportError(
         f"Instance {inst.name!r} in {subckt_name!r} references unknown model/subckt "
         f"{model!r}. Add it to device_map or include its .subckt definition.")
