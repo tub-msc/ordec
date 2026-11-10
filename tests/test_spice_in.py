@@ -113,10 +113,13 @@ def test_build_schematic_standalone_auto_symbol():
     assert len(insts) == 2
     cells = {type(i.symbol.cell).__name__ for i in insts}
     assert cells == {"Nmos", "Pmos"}
-    # Parameter mapping: l/w as R, ng/m as int; ad/as/pd/ps dropped.
+    # Parameter mapping: l/w as R, ng/m as int; ad/as/pd/ps as R, with as
+    # in the cell's as_.
     nmos = next(i.symbol.cell for i in insts if type(i.symbol.cell).__name__ == "Nmos")
     assert nmos.l == R("130n") and nmos.w == R("740n")
     assert nmos.ng == 1 and nmos.m == 1
+    assert nmos.as_ == R("2.516e-13") and nmos.pd == R("2.16u")
+    assert [k for k, v, shown in nmos.annotation_params() if shown] == ["l", "w"]
     # schem_place also places the annotation blocks:
     assert all(i.annotation_pos is not None for i in insts)
 

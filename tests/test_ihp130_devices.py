@@ -123,6 +123,12 @@ def test_layout_rejects_rounding(cell):
         cell.layout
 
 
+def test_mos_junction_geometry():
+    """The model takes all four values or none (it switches on as alone)."""
+    with pytest.raises(ParameterError, match="set together"):
+        ihp130.Nmos(w="1u", l="130n", ad="340f")
+
+
 def test_layout_cells():
     # The PDK's layout-only PCells (geometry checked against them by the PCell
     # audit): a stack from Activ to Metal3 has one plate per layer, each
