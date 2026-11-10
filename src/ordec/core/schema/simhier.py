@@ -187,11 +187,18 @@ class SimHierarchy(SubgraphRoot):
             return inst.schematic
 
     @classmethod
-    def from_schematic(cls, schematic: Schematic):
+    def from_schematic(cls, schematic: Schematic, extracted=()):
         """
         Create a simulation hierarchy from a schematic. The returned
         SimHierarchy can be used to run simulations with Simulator.
+
+        Args:
+            extracted: Schematics that are simulated in place of the
+                schematic of their cell, e.g. the schematic of the
+                PexReport of :func:`ordec.lib.ihp130.run_pex` for a
+                post-layout simulation.
         """
+        extracted = {e.symbol: e for e in extracted}
         simhier = cls()
         simhier.schematic = schematic
         simhier.cell = schematic.cell
@@ -206,9 +213,10 @@ class SimHierarchy(SubgraphRoot):
 
             for scheminst in sch.all(SchemInstance):
                 inst = simhier % SimInstance(eref=scheminst, parent_inst=parent)
-                try:
-                    subsch = scheminst.symbol.cell.schematic
-                except AttributeError:
+                subsch = extracted.get(scheminst.symbol)
+                if subsch is None:
+                    subsch = getattr(scheminst.symbol.cell, 'schematic', None)
+                if subsch is None:
                     add_sym(scheminst.symbol, inst)
                 else:
                     inst.schematic = subsch

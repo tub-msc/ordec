@@ -8,6 +8,7 @@ from ordec.schematic import Netlister, NgspiceOptions
 from ordec.core import R
 from .lib import sim as lib_test
 from ordec.core import *
+from ordec.lib import Res
 
 # Helper functions
 # ----------------
@@ -161,6 +162,19 @@ def test_sim_op_hier():
     assert h.I0.I1.I1.p.current[0] == pytest.approx(2.051282e-03, abs=1e-8)
     # Deeper nesting via path: ResdivHier1 -> sub2.I2 -> Res I2.p (no current: shorted)
     assert h.I0.sub2.I2.I2.p.current[0] == pytest.approx(0, abs=1e-10)
+
+    # An extracted schematic is simulated in place of its cell's schematic:
+    # one resistor from t to b for ResdivHier2(r=200).
+    cell = lib_test.ResdivHier2(r=200)
+    extracted = Schematic(cell=cell, symbol=cell.symbol)
+    extracted.t = Net(pin=cell.symbol.t)
+    extracted.r = Net(pin=cell.symbol.r)
+    extracted.b = Net(pin=cell.symbol.b)
+    extracted.res = SchemInstance(Res(r=100).symbol.portmap(p=extracted.t, n=extracted.b))
+    h = SimHierarchy.from_schematic(tb.schematic, extracted=[extracted.freeze()])
+    h.simulate().op()
+    assert h.I0.sub.subsub.m.voltage[0] == pytest.approx(2 / 3, abs=1e-10)
+    assert h.I0.I1.res.p.current[0] == pytest.approx(1 / 300, abs=1e-8)
 
 
 def test_sim_vpwltb_tran():

@@ -84,7 +84,9 @@ class Simulator:
         progress("Netlisting")
         self.netlister = Netlister(
             self.directory, enable_savecurrents=enable_savecurrents,
-            corner=corner, options=options)
+            corner=corner, options=options,
+            schematics={inst.eref.symbol: inst.schematic
+                for inst in simhier.all(SimInstance) if inst.schematic is not None})
         self.netlister.netlist_hier(self.top)
 
     def hier_simobj_of_name(self, name: str) -> SimInstance|SimNet:
