@@ -111,8 +111,12 @@ class NgspiceOptions:
 
 class Netlister:
     def __init__(self, directory: Directory, enable_savecurrents: bool = True,
-                 lvs: bool = False, corner=None, options: NgspiceOptions|None = None):
+        lvs: bool = False, corner=None, options: NgspiceOptions|None = None,
+        schematics: dict|None = None):
         self.directory = directory
+        # Symbol -> Schematic netlisted in place of the schematic of the
+        # symbol's cell (see SimHierarchy.from_schematic).
+        self.schematics = {} if schematics is None else schematics
         # Process corner, interpreted by the PDK's netlist setup function
         # (e.g. ihp130.Corner selects .lib sections); None = PDK's typical.
         self.corner = corner
@@ -244,7 +248,7 @@ class Netlister:
         subckt_dep = set()
         for inst in s.all(SchemInstance):
             cell = inst.symbol.cell
-            if isinstance(cell, SimLeafCell):
+            if isinstance(cell, SimLeafCell) and self.schematics.get(inst.symbol) is None:
                 cell.ngspice_netlist(self, inst)
             else:
                 pins = self.pinlist(inst.symbol)
@@ -291,7 +295,9 @@ class Netlister:
         subckt_done = set()
         while len(subckt_dep - subckt_done) > 0:
             symbol = next(iter(subckt_dep - subckt_done))
-            schematic = symbol.cell.schematic
+            schematic = self.schematics.get(symbol)
+            if schematic is None:
+                schematic = symbol.cell.schematic
             self.add(
                 ".subckt",
                 self.directory.name_subgraph(symbol),
