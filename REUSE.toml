@@ -6,6 +6,7 @@ path = [
     "docs/Makefile",
     "docs/make.bat",
     "web/package-lock.json",
+    "flake.lock",
     "support/editors/tree-sitter-ord/package-lock.json",
     "support/editors/vscode/ord/package-lock.json",
     "tests/renderview_ref/*.svg",
@@ -17,6 +18,8 @@ SPDX-License-Identifier = "CC0-1.0"
 # Boilerplate files:
 path = [
     ".gitignore",
+    ".gitattributes",
+    ".git_archival.txt",
     "docs/.gitignore",
     "web/.gitignore",
     "support/editors/.gitignore",

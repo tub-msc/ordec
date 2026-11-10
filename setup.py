@@ -18,10 +18,16 @@ class NpmBuildPy(build_py):
         super().run()
         if self.editable_mode:
             return
-        subprocess.check_call(['npm', '--prefix', 'web/', 'ci'])
-        subprocess.check_call(['npm', '--prefix', 'web/', 'run', 'build'])
+        # ORDEC_WEBDIST: an already built frontend (the content of
+        # web/dist). flake.nix builds the frontend separately, as its build
+        # has no network access for npm ci.
+        webdist = os.environ.get('ORDEC_WEBDIST')
+        if not webdist:
+            subprocess.check_call(['npm', '--prefix', 'web/', 'ci'])
+            subprocess.check_call(['npm', '--prefix', 'web/', 'run', 'build'])
+            webdist = 'web/dist'
         webdist_tar = os.path.join(self.build_lib, 'ordec', 'webdist.tar')
-        subprocess.check_call(['tar', 'cvf', webdist_tar, '-C', 'web/dist', '.'])
+        subprocess.check_call(['tar', 'cvf', webdist_tar, '-C', webdist, '.'])
 
 setup(
     cmdclass={
