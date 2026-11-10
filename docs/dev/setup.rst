@@ -3,22 +3,43 @@
 Development setup
 =================
 
-The Docker container (see Readme) is the easiest way to try out ORDeC. Details on how the Docker image is built are found in :ref:`containers_and_ci`.
+To just try out ORDeC, the Docker image or ``nix run`` from the Readme is enough. This page sets up a repository checkout for development.
 
-For development, it is recommended not to use Docker. The setup below is tested with Debian 12.
+.. _nix_setup:
 
-- Install required packages: :code:`sudo apt-get install ngspice npm python3 python3-dev build-essential chromium-driver jupyter-notebook`
-- Install the Python ordec package in editable/"develop" mode: :code:`pip3 install -e .\[test\]`. This also builds the C extensions; rerun it after C sources change (see :doc:`c_extensions`).
-- Install additional dependencies for building the documentation: :code:`pip3 install -r docs/requirements.txt`
+Setup with Nix (recommended)
+----------------------------
 
-.. note::
+*flake.nix* provides everything needed for development: Ngspice, KLayout, Yosys, OpenVAF, the PDKs (SKY130, IHP-Open-PDK with compiled Verilog-A models), the Python packages, Node.js and Chromium. *flake.lock* pins their versions, so you get the same as the Docker image and the automated tests. It supports x86_64 Linux, including WSL2 on Windows.
 
-  In case of setup problems, *base.Dockerfile* and *Dockerfile* might offer some hints (see :ref:`containers_and_ci`).
+1. `Install Nix <https://nixos.org/download>`_.
+2. Enable flakes and the binary cache of ORDeC in */etc/nix/nix.conf* (or *~/.config/nix/nix.conf* with a single-user installation)::
 
-PDK installation
-----------------
+       experimental-features = nix-command flakes
+       extra-substituters = https://ordec.cachix.org
+       extra-trusted-public-keys = ordec.cachix.org-1:vYjSnOZ3z10QWY3r6xEHibmzSXvCVsSwcLN7UmxbgbQ=
 
-The **Skywater PDKs** 'sky130A' and 'sky130B' can for example be downloaded using the following shell commands::
+   Then restart the Nix daemon: ``sudo systemctl restart nix-daemon``. Without the cache, the first build takes one to two hours.
+3. In the repository root, enter the development shell and install the frontend dependencies::
+
+       nix develop
+       (cd web && npm ci)
+
+The shell sets the ``ORDEC_PDK_*`` variables and activates the venv *.venv* in the repository root, which has ORDeC installed in editable mode. The venv is set up on first use and again whenever the Python packages from Nix change; anything you install into it with pip is lost then. For building the documentation, install its dependencies with ``pip install -r docs/requirements.txt``.
+
+.. _manual_setup:
+
+Manual setup
+------------
+
+Without Nix, install the dependencies yourself. The commands below are for Debian.
+
+- Install the distribution packages: ``sudo apt-get install ngspice npm python3 python3-dev build-essential chromium-driver``
+- Install KLayout, and optionally Yosys (see :doc:`yosys`) and OpenVAF (needed to compile the IHP models, see below). Debian's packages of these are too old or missing; *flake.nix* lists the versions in use.
+- Install ORDeC in editable mode: ``pip3 install -e .[test]``. This also builds the C extensions (see :doc:`c_extensions`).
+- For building the documentation: ``pip3 install -r docs/requirements.txt``
+
+The **SKY130 PDKs** 'sky130A' and 'sky130B' can be downloaded as follows::
 
     mkdir skywater
     cd skywater
@@ -30,22 +51,15 @@ The **Skywater PDKs** 'sky130A' and 'sky130B' can for example be downloaded usin
     tar xf sky130_fd_pr.tar.zst
     rm common.tar.zst sky130_fd_pr.tar.zst
 
-Then, configure the environment variable ORDEC_PDK_SKY130A to point to the skywater/sky130A directory and the environment variable ORDEC_PDK_SKY130B to point to the skywater/sky130B directory. You can for example do this in your .bashrc or .profile.
+Point the environment variables ``ORDEC_PDK_SKY130A`` and ``ORDEC_PDK_SKY130B`` to the *skywater/sky130A* and *skywater/sky130B* directories, for example in your *.bashrc* or *.profile*.
 
-The **IHP Open PDK** can be downloaded using the following shell command::
+The **IHP Open PDK** is cloned with its submodules, which include the PCell support needed by ``tests/test_ihp130_pcells.py``. Its Verilog-A models must then be compiled with OpenVAF::
 
     git clone --recurse-submodules https://github.com/IHP-GmbH/IHP-Open-PDK.git
-
-The submodules include the PDK's PCell support (pycell4klayout-api, pypreprocessor), which ``tests/test_ihp130_pcells.py`` needs to compare ORDeC's layouts with the PCells. In an existing checkout, fetch them with ``git submodule update --init``.
-
-The IHP Open PDK includes Verilog-A models, which must be compiled before use using OpenVAF::
-
     cd IHP-Open-PDK/ihp-sg13g2/libs.tech/verilog-a/
     ./openvaf-compile-va.sh
 
-Then, configure the environment variable ORDEC_PDK_IHP_SG13G2 to point to the IHP-Open-PDK/ihp-sg13g2 directory, for example in your .bashrc or .profile.
-
-Tests requiring the IHP PDK carry the pytest marker ``ihp130``; ``pytest -m "not ihp130"`` runs the rest without it.
+Point ``ORDEC_PDK_IHP_SG13G2`` to the *IHP-Open-PDK/ihp-sg13g2* directory. Tests requiring this PDK carry the pytest marker ``ihp130``; ``pytest -m "not ihp130"`` runs the rest without it.
 
 
 Launch webinterface
@@ -53,8 +67,8 @@ Launch webinterface
 
 There are three setups to run the ``ordec`` web UI:
 
-1. **Combined frontend + backend server with regular installation:** A regular installation of ORDeC (e.g. from PyPI or in the Docker image) includes a compiled version of the frontend (*webdist.tar*). In this case, ORDeC is started through a simple ``ordec``. This is the setup for users; see :doc:`/guides/webui_design_organization`.
-2. **Combined frontend + backend server with editable installation:** In case of an editable installation ("develop mode", ``pip install -e``), setup 1 is not supported, as *webdist.tar* is not available in the package. Instead, the frontend can be built separately through ``npm run build`` in the *web/* directory. The build results must then be supplied to the ordec command: ``ordec -r [...]/web/dist/``
+1. **Combined frontend + backend server with regular installation:** A regular installation of ORDeC (with Nix, from PyPI or in the Docker image) includes a compiled version of the frontend (*webdist.tar*). In this case, ORDeC is started through a simple ``ordec``. This is the setup for users; see :doc:`/guides/webui_design_organization`.
+2. **Combined frontend + backend server with editable installation:** In case of an editable installation ("develop mode", ``pip install -e``, as in the development shell), setup 1 is not supported, as *webdist.tar* is not available in the package. Instead, the frontend can be built separately through ``npm run build`` in the *web/* directory. The build results must then be supplied to the ordec command: ``ordec -r [...]/web/dist/``
 3. **Separate frontend + backend server for frontend development:** This gives the best development experience when working on the frontend code and is described below.
 
 For frontend development, first launch the frontend (using Vite_)::
@@ -72,7 +86,7 @@ This will launch a browser and open the ORDeC interface. Use the browser only to
 Run tests
 ---------
 
-Automated testing is very important – not only to verify new features, but also to ensure that source code changes do not break existing functionality. To run all tests, execute :code:`pytest` in the repository's root directory.
+Automated testing is very important: not only to verify new features, but also to ensure that source code changes do not break existing functionality. To run all tests, execute :code:`pytest` in the repository's root directory.
 
 The tests run in parallel by default (pytest-xdist, up to 8 workers, see *tests/conftest.py*). Pass :code:`-n 0` to run them serially, e.g. for debugging.
 
