@@ -150,7 +150,9 @@ class GdsGenerator:
 
 @public
 def write_gds(layout: Layout, file: IO[bytes], directory: Optional[Directory] = None):
-    """Write layout 'layout' as GDS binary data to file-like object 'file'."""
+    """
+    Write layout 'layout' as GDS binary data to file-like object 'file'.
+    """
 
     if directory is None:
         directory = Directory()

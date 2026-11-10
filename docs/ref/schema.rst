@@ -441,3 +441,22 @@ items recording the match status of nets, devices, pins and subcircuits.
 .. autoclass:: LvsItemType
    :members:
    :undoc-members:
+
+Parasitic extraction (PEX)
+--------------------------
+
+A PEX report holds the :class:`Schematic` extracted from a :class:`Layout`,
+with its parasitic resistances and capacitances, and their totals per net
+(see :doc:`layout_kpex`).
+
+.. autoclass:: PexReport
+   :members:
+   :undoc-members:
+
+.. autoclass:: PexNet
+   :members:
+   :undoc-members:
+
+.. autoclass:: PexCoupling
+   :members:
+   :undoc-members:

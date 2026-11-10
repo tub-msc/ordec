@@ -16,6 +16,7 @@ Domain prefixes:
 - 6<<16: drc
 - 7<<16: lvs
 - 8<<16: report
+- 9<<16: pex
 - 15<<16: tests
 
 Rows and arrays

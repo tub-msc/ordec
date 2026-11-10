@@ -127,4 +127,5 @@ Verifying the result
 * View the layout in the web UI: ``ordec -b mymodule.py -e "MyCell().layout"`` (see :doc:`webui_design_organization`).
 * Run DRC: ``ihp130.run_drc(MyCell().layout).summary()`` returns ``{}`` when clean. Keep ≥1 µm clearance between resistor/device instance bounding boxes to stay clear of the poly-resistor spacing rules.
 * Run LVS against the schematic: ``ihp130.run_lvs(MyCell().layout, MyCell().symbol)`` (see :doc:`/ref/layout_klayout` for how hierarchical comparison works).
-* ``run_drc``/``run_lvs`` accept ``use_tempdir=False`` to keep the intermediate files (GDS, netlists, reports) in a local ``drc/``/``lvs/`` directory for inspection.
+* Extract the parasitics for a post-layout simulation: ``ihp130.run_pex(MyCell().layout)`` (see :doc:`/ref/layout_kpex`).
+* ``run_drc``/``run_lvs``/``run_pex`` accept ``use_tempdir=False`` to keep the intermediate files (GDS, netlists, reports) in a local ``drc/``/``lvs/``/``pex/`` directory for inspection.
