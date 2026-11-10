@@ -77,7 +77,8 @@ class ExtLibrary:
         Add schematic(s) from a SPICE subcircuit netlist file.
 
         Each ``.subckt`` becomes a schematic; device instances are mapped to
-        ORDeC leaf cells via device_map (model name -> DeviceMapping).
+        ORDeC leaf cells via device_map (model name -> DeviceMapping), R and C
+        element cards to the ideal Res and Cap.
 
         Symbols are auto-generated from the subckt port lists as a fallback
         only: a symbol already registered by another reader (e.g. read_lef,

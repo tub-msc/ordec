@@ -8,7 +8,7 @@ import pytest
 
 from ordec.core import *
 from ordec.extlibrary import ExtLibrary
-from ordec.lib import ihp130
+from ordec.lib import ihp130, Res, Cap
 from ordec.schematic.spice_in import clean_cards, tokenize, parse_deck, SpiceImportError
 from textwrap import dedent
 
@@ -152,15 +152,34 @@ def test_ihp130_passives(tmp_path):
         XR1 a mid sub rppd w=0.5u l=2u b=1 ps=0.4u m=1
         XC1 mid b cap_cmim w=7u l=7u m=1
         XP1 b sub Rparasitic R=10 TC1=1m
+        Rext_1 a mid 62.3m m=2
+        Cext_1 mid b 0.5f m=2 ic=1.2
         .ends
         """))
     lib = ExtLibrary()
     lib.read_spice(netlist, device_map=ihp130.device_map)
-    r, p, c = sorted((i.symbol.cell for i in lib["rc"].schematic.all(SchemInstance)),
+    r, p, ri, c, ci = sorted((i.symbol.cell for i in lib["rc"].schematic.all(SchemInstance)),
         key=lambda cell: type(cell).__name__, reverse=True)
     assert (type(r), r.l, r.w, r.b, r.ps) == (ihp130.Rppd, R("2u"), R("0.5u"), 1, R("0.4u"))
     assert (type(p), p.r, p.tc1) == (ihp130.Rpara, R("10"), R("1m"))
     assert (type(c), c.l, c.w) == (ihp130.Cmim, R("7u"), R("7u"))
+    # Element cards become ideal elements.
+    assert (type(ri), ri.r, type(ci), ci.c, ci.ic) == (Res, R("31.15m"), Cap, R("1f"), R("1.2"))
+
+
+@pytest.mark.parametrize("card, match", [
+    ("R1 a b 1k tc1=1m", "unsupported.*tc1"),
+    ("C1 a b 1p temp=30", "unsupported.*temp"),
+    ("R1 a b 1k m=0", "m must be positive"),
+    ("C1 a b 1p m=-1", "m must be positive"),
+])
+def test_ideal_params_invalid(tmp_path, card, match):
+    netlist = tmp_path / "bad.spice"
+    netlist.write_text(f".subckt bad a b\n{card}\n.ends\n")
+    lib = ExtLibrary()
+    lib.read_spice(netlist, device_map={})
+    with pytest.raises(SpiceImportError, match=match):
+        lib["bad"].schematic
 
 
 def test_unknown_model_raises(tmp_path):
