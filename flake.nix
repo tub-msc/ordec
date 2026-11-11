@@ -281,7 +281,8 @@
       # Python packages from Nix; ordec itself is installed editable into the
       # venv .venv in the repository root, which uses the Nix packages
       # (--system-site-packages). The venv is recreated when they change
-      # (marker file .nix-python); a venv not made here is left alone.
+      # (marker file .nix-python) and removed when its setup fails; a venv
+      # not made here is left alone.
       default = pkgs.mkShell ({
         packages = tools ++ [ py.devPython pkgs.nodejs pkgs.chromium pkgs.chromedriver ];
         # Otherwise, ChromeDriver picks up a system Chromium of another version.
@@ -290,20 +291,31 @@
           root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
           venv="$root/.venv"
           if [ -d "$venv" ] && [ ! -f "$venv/.nix-python" ]; then
-            echo "nix develop: $venv was not created by nix develop, not activating it." >&2
+            echo "nix develop: $venv exists, but was not set up by nix develop (it lacks .nix-python)." >&2
+            echo "nix develop: It is left untouched and not activated, so ordec is not installed in this shell." >&2
+            echo "nix develop: To have nix develop set it up, delete it (rm -rf $venv) and enter the shell again." >&2
           else
             if [ "$(cat "$venv/.nix-python" 2>/dev/null)" != "${py.devPython}" ]; then
               echo "nix develop: setting up $venv with an editable install of ordec" >&2
               rm -rf "$venv"
-              python -m venv --system-site-packages "$venv"
               # The pytest of the Nix environment runs with the Python
-              # of that environment, which does not see the venv.
-              printf '#!%s\nimport sys, pytest\nsys.exit(pytest.console_main())\n' "$venv/bin/python" > "$venv/bin/pytest"
-              chmod +x "$venv/bin/pytest"
-              "$venv/bin/pip" install -q --disable-pip-version-check --no-deps --no-build-isolation -e "$root" \
-                && echo "${py.devPython}" > "$venv/.nix-python"
+              # of that environment, which does not see the venv, hence
+              # the pytest script in the venv. On failure, the venv is
+              # removed, so that the next shell retries the setup.
+              if ! { python -m venv --system-site-packages "$venv" \
+                && printf '#!%s\nimport sys, pytest\nsys.exit(pytest.console_main())\n' "$venv/bin/python" > "$venv/bin/pytest" \
+                && chmod +x "$venv/bin/pytest" \
+                && "$venv/bin/pip" install -q --disable-pip-version-check --no-deps --no-build-isolation -e "$root" \
+                && echo "${py.devPython}" > "$venv/.nix-python"; }
+              then
+                rm -rf "$venv"
+                echo "nix develop: setting up $venv failed (see above), so ordec is not installed in this shell." >&2
+                echo "nix develop: Enter the shell again to retry." >&2
+              fi
             fi
-            source "$venv/bin/activate"
+            if [ -f "$venv/bin/activate" ]; then
+              source "$venv/bin/activate"
+            fi
           fi
         '';
       } // pdkEnv);
