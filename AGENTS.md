@@ -32,19 +32,19 @@ Treat ORDB semantics as stable. If you want to change ORDB semantics, it is like
 
 ## Development Commands
 
-### Environment Setup
+### Environment
+
+If `python3 -c 'import ordec; print(ordec.__file__)'` prints a path inside this checkout's `src/`, use the current environment as is. Otherwise, if Nix is available, run commands through the development shell with `nix develop -c <cmd>` (never a bare `nix develop`, which starts an interactive shell). Otherwise, ask the user. Both setups (Nix and manual) are described in `docs/dev/setup.rst`.
 
 ```bash
-# Install in editable mode with test dependencies. This also builds the C
-# extensions (ORDB core) into src/; rerun it after changing C sources.
-pip3 install -e .[test]
+# Rebuild the C extensions (ORDB core etc.) after changing or pulling C sources
+python3 setup.py build_ext --inplace
+
+# Install frontend dependencies (first time only)
+(cd web && npm ci)
 
 # Install documentation dependencies
 pip3 install -r docs/requirements.txt
-
-# Install frontend dependencies (first time only)
-cd web/
-npm ci
 ```
 
 ### Running Tests

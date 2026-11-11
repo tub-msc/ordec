@@ -30,7 +30,7 @@ Depending on the scope of your project and your Python expertise, chose  one of 
 Beginner: integrated mode
 -------------------------
 
-The easiest way to try out ORDeC and it's web UI is using the **Docker image**. A **local installation** outside of a container is also possible, but requires you to install a number of dependencies by hand.
+The easiest way to try out ORDeC and its web UI is the **Docker image**. For a **local installation**, Nix installs ORDeC together with all tools and PDKs.
 
 .. tab-set::
 
@@ -45,12 +45,12 @@ The easiest way to try out ORDeC and it's web UI is using the **Docker image**. 
    .. tab-item:: Local installation
       :sync: local
 
-      For a local installation, you need to set up Ngspice (for simulation), KLayout (for layout viewing) and the PDKs separately. :ref:`dev_setup` describes the PDK installation and the environment variables that point ORDeC to the PDKs.
+      Install Nix and enable flakes and the binary cache of ORDeC (steps 1 and 2 of :ref:`nix_setup`). Then install ORDeC and start the web UI::
 
-      Install ORDeC from `PyPI <https://pypi.org/project/ordec/>`_ and start the web UI::
-
-          pip install ordec
+          nix profile add github:tub-msc/ordec
           ordec
+
+      ``pip install ordec`` installs ORDeC alone, from `PyPI <https://pypi.org/project/ordec/>`_. Ngspice, KLayout and the PDKs then have to be set up by hand, see :ref:`manual_setup`.
 
 
 Then, access the web interface via the generated URL and try out the examples.

@@ -18,17 +18,17 @@ The ordec package contains four C extensions, all defined in ``setup.py``:
 Building
 --------
 
-Building requires a C compiler and the Python headers (on Debian:
-``sudo apt-get install build-essential python3-dev``).
-
-``pip3 install -e .[test]`` builds the extensions into the source tree
+The editable install of ORDeC builds the extensions into the source tree
 (``src/ordec/core/ordb/_ordb.abi3.so``, ``src/ordec/layout/_gdsrecords.abi3.so``,
 ``src/ordec/schematic/_auto_wire.abi3.so``,
-``src/ordec/schematic/_annotate.abi3.so``).
-After changing the C sources, or after pulling changes to them, run the same
-command again. For a quick rebuild during development,
-``python3 setup.py build_ext --inplace`` does the same if setuptools is
-installed.
+``src/ordec/schematic/_annotate.abi3.so``). After changing the C sources, or
+after pulling changes to them, rebuild them with::
+
+    python3 setup.py build_ext --inplace
+
+The Nix development shell (see :ref:`nix_setup`) has the C compiler and the
+Python headers. With the manual setup, install them first (on Debian:
+``sudo apt-get install build-essential python3-dev``).
 
 A missing or failed build of the ORDB core shows up on import as::
 

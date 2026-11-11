@@ -17,9 +17,13 @@ ORDeC is developed by the [Mixed Signal Circuit Design Group](https://www.tu.ber
 
 The development of ORDeC is currently at an early, experimental stage. The main branch of this repository provides a **working demo of some basic features and ideas**:
 
-## Getting Started
+![Web interface screenshot](https://raw.githubusercontent.com/tub-msc/ordec/refs/heads/main/docs/screenshot_demo.png)
 
-The easiest way to get started is via Docker:
+Further documentation is located in the *docs/* folder and is available online: https://ordec.readthedocs.io/
+
+## Quick start with Docker
+
+The Docker image contains ORDeC with all tools (Ngspice, KLayout, Yosys, OpenVAF) and PDKs (SKY130, IHP-Open-PDK):
 
 ```
 docker pull ghcr.io/tub-msc/ordec:latest
@@ -28,9 +32,43 @@ docker run --rm -p 127.0.0.1:8100:8100 -it ghcr.io/tub-msc/ordec:latest
 
 Then, access the web interface via the generated URL and try out examples.
 
-![Web interface screenshot](https://raw.githubusercontent.com/tub-msc/ordec/refs/heads/main/docs/screenshot_demo.png)
+## Installation with Nix
 
-Further documentation is located in the *docs/* folder and is available online: https://ordec.readthedocs.io/
+[Nix](https://nixos.org/download) is the recommended way to work with ORDeC locally. It provides the same tools and PDKs as the Docker image. The Nix setup supports x86_64 Linux, including WSL2 on Windows. On macOS, use the Docker image.
+
+First, enable flakes and the binary cache of ORDeC in `/etc/nix/nix.conf` (otherwise, the first run builds for one to two hours), then restart the Nix daemon (`sudo systemctl restart nix-daemon`):
+
+```
+experimental-features = nix-command flakes
+extra-substituters = https://ordec.cachix.org
+extra-trusted-public-keys = ordec.cachix.org-1:vYjSnOZ3z10QWY3r6xEHibmzSXvCVsSwcLN7UmxbgbQ=
+```
+
+### Running without installation
+
+```
+nix run github:tub-msc/ordec
+```
+
+Arguments for `ordec` follow after `--`, e.g. `nix run github:tub-msc/ordec -- mydesign.ord`.
+
+### Permanent installation
+
+```
+nix profile add github:tub-msc/ordec
+```
+
+This makes the `ordec` command available in your shell.
+
+### Development environment
+
+```
+git clone https://github.com/tub-msc/ordec.git
+cd ordec
+nix develop
+```
+
+The shell provides all tools and PDKs and activates a venv with ORDeC installed in editable mode. See [docs/dev/setup.rst](docs/dev/setup.rst) for details.
 
 ## Motivation
 

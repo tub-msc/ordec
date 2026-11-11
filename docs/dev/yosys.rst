@@ -8,7 +8,7 @@ ORDeC uses Yosys_ in two places:
 
 Yosys is optional: the ``yosys`` executable is only needed on ``PATH`` when ``read_verilog`` is called. Tests requiring it carry the pytest marker ``yosys``.
 
-The ordec-base image builds Yosys from source (stage ``ordec-build-yosys`` in *base.Dockerfile*) from the release asset *yosys.tar.gz*, which unlike the tag archive includes the submodules (abc, slang). Debian's packaged Yosys is too old. The ordec image copies the result, so users of the image have ``yosys`` available.
+*flake.nix* provides Yosys, including the slang frontend (``read_slang``), in the development shell, the ordec package and the Docker image. It is the Yosys of nixpkgs, built without readline: with readline, the ``abc`` pass can deadlock (Yosys 0.70). The image omits ``yosys-config`` and the formal verification scripts (*yosys-slim*). With the manual setup (see :ref:`manual_setup`), install a recent Yosys yourself; Debian's package is too old.
 
 Why not pyosys
 --------------

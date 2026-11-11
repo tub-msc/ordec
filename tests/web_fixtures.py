@@ -202,6 +202,9 @@ def web():
     webdriver_options.add_argument("--no-sandbox")
     webdriver_options.add_argument("--headless=new")
     webdriver_options.add_argument("--force-device-scale-factor=1")
+    # Set by the Nix development shell (flake.nix).
+    if os.environ.get("ORDEC_CHROME"):
+        webdriver_options.binary_location = os.environ["ORDEC_CHROME"]
 
     key = server.ServerKey()
     static_handler = server.StaticHandler(frontend_tar())

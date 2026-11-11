@@ -1,0 +1,96 @@
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+# Python with the packages ORDeC needs, and ORDeC itself. The dependency
+# lists are read from pyproject.toml, the versions are those of nixpkgs:
+# building ordec checks them against the version constraints in
+# pyproject.toml.
+{ pkgs, lib, version, tools, pdkEnv }:
+let
+  pyproject = builtins.fromTOML (builtins.readFile ../../pyproject.toml);
+
+  # From PyPI, as nixpkgs lacks them (atpublic: nixpkgs has 5.0).
+  wheel = ps: pname: version: url: hash: args: ps.buildPythonPackage ({
+    inherit pname version;
+    format = "wheel";
+    src = pkgs.fetchurl { inherit url hash; };
+  } // args);
+
+  python = pkgs.python313.override {
+    self = python;
+    packageOverrides = ps: _: {
+      atpublic = wheel ps "atpublic" "9.0.0"
+        "https://files.pythonhosted.org/packages/py3/a/atpublic/atpublic-9.0.0-py3-none-any.whl"
+        "sha256-RJw8Twx033l0nW/iJbpV4qL840swPwMpIR5NaYntb24=" { };
+      notcl = wheel ps "notcl" "0.5.1"
+        "https://files.pythonhosted.org/packages/py3/n/notcl/notcl-0.5.1-py3-none-any.whl"
+        "sha256-DfkqqQGslfMeHuViyG2ant9256IyMMDc6ToIoN/DDfQ=" { };
+      python-gdsii = wheel ps "python-gdsii" "0.2.3"
+        "https://files.pythonhosted.org/packages/py3/p/python_gdsii/python_gdsii-0.2.3-py3-none-any.whl"
+        "sha256-vCysPK1BiCp0fA2IN3kYK558BmwJXIqWqfMdXvegGU8=" { };
+      # No sdist on PyPI; the manylinux wheel needs the Nix libstdc++.
+      sc-leflib = wheel ps "sc-leflib" "0.5.2"
+        "https://files.pythonhosted.org/packages/cp313/s/sc_leflib/sc_leflib-0.5.2-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl"
+        "sha256-+qtii+mO3PPuOXSrhB4SNGK7T81Lrz7wPg1wM5Y119Y=" {
+          nativeBuildInputs = [ pkgs.autoPatchelfHook ];
+          buildInputs = [ pkgs.stdenv.cc.cc.lib ];
+        };
+    };
+  };
+
+  # Requirements like "numpy>=1.24.2" to nixpkgs packages.
+  deps = ps: map (req: ps.${lib.toLower (lib.replaceStrings [ "_" "." ] [ "-" "-" ]
+    (builtins.head (builtins.match "([A-Za-z0-9._-]+).*" req)))});
+  runtimeDeps = ps: deps ps pyproject.project.dependencies;
+  # All extras (test, test-editors, extra).
+  extraDeps = ps: deps ps (lib.concatLists (lib.attrValues pyproject.project.optional-dependencies));
+
+  # The frontend, built separately from ordec (setup.py takes it from
+  # ORDEC_WEBDIST), so that only changes in web/ rebuild it.
+  web = pkgs.buildNpmPackage {
+    pname = "ordec-web";
+    inherit version;
+    src = ../../web;
+    npmDeps = pkgs.importNpmLock { npmRoot = ../../web; };
+    npmConfigHook = pkgs.importNpmLock.npmConfigHook;
+    installPhase = "cp -r dist $out";
+  };
+
+  # The ordec executable finds the tools and PDKs without further setup;
+  # ORDEC_PDK_* set by the user take precedence.
+  ordec = python.pkgs.buildPythonPackage {
+    pname = "ordec";
+    inherit version;
+    pyproject = true;
+    src = lib.fileset.toSource {
+      root = ../..;
+      fileset = lib.fileset.unions [
+        ../../src ../../setup.py ../../pyproject.toml ../../MANIFEST.in
+        ../../README.md ../../REUSE.toml ../../LICENSES
+      ];
+    };
+    build-system = [ python.pkgs.setuptools python.pkgs.setuptools-scm ];
+    dependencies = runtimeDeps python.pkgs;
+    env = {
+      SETUPTOOLS_SCM_PRETEND_VERSION = version;
+      ORDEC_WEBDIST = web;
+    };
+    makeWrapperArgs = [ "--prefix" "PATH" ":" (lib.makeBinPath tools) ]
+      ++ lib.concatLists (lib.mapAttrsToList (n: v: [ "--set-default" n v ]) pdkEnv);
+    # _gdsrecords is optional in setup.py, i.e. silently left out when it
+    # fails to build.
+    pythonImportsCheck = [ "ordec" "ordec.layout._gdsrecords" ];
+    meta.mainProgram = "ordec";
+  };
+in {
+  inherit python web ordec;
+
+  # For the development shell, with the editable install of ordec in a venv
+  # on top (pip install -e . --no-build-isolation).
+  devPython = python.withPackages (ps: runtimeDeps ps ++ extraDeps ps
+    ++ [ ps.setuptools ps.setuptools-scm ]);
+
+  # The installed ordec with the test dependencies, for running the tests
+  # against the package as users get it.
+  testPython = python.withPackages (ps: [ ordec ] ++ extraDeps ps);
+}
