@@ -14,7 +14,7 @@ The ordec package
 
 The frontend is built separately, as flake output *web* from *web/package-lock.json*, because the Nix build has no network access for ``npm ci``. *setup.py* takes it from ``ORDEC_WEBDIST``.
 
-The version is derived from git tags, as with setuptools-scm, but a flake does not see the git history. Instead, *.git_archival.txt* is filled with the ``git describe`` output whenever GitHub creates a source archive (``export-subst`` in *.gitattributes*), and Nix fetches ``github:`` flake references as such archives. So ``nix run github:tub-msc/ordec/v0.10.0`` reports 0.10.0. Builds from a local checkout only see the placeholder and report ``0.dev0+g<rev>``.
+The version is derived from git tags, as with setuptools-scm, but a flake does not see the git history. Instead, *.git_archival.txt* is filled with the ``git describe`` output whenever GitHub creates a source archive (``export-subst`` in *.gitattributes*), and Nix fetches ``github:`` flake references as such archives. So ``nix run github:tub-msc/ordec/v0.10.0`` reports 0.10.0. Builds from a local checkout only see the placeholder and report ``0.dev0+g<rev>``. A drawback: the content of an archive changes when a tag is later added to its commit (or to a commit between it and the previous tag), so a *flake.lock* elsewhere that pins ORDeC by commit then fails with a hash mismatch until it is updated.
 
 Docker images
 -------------
