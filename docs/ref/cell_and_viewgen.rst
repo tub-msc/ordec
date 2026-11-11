@@ -169,20 +169,22 @@ simulation:
 
 .. code-block:: python
 
+    def simulate_corner(corner):
+        # A fresh SimHierarchy per corner: each simulation writes its
+        # results into the SimHierarchy it runs on.
+        h = SimHierarchy.from_schematic(tb.schematic)
+        with progress_scope(corner.name):
+            h.simulate(corner=corner).tran(...)
+        return h
+
     with progress_scope("Corners", steps=len(corners)):
-        for corner in corners:
-            with progress_scope(corner.name):
-                tb.simulate(corner=corner).tran(...)
+        results = [simulate_corner(corner) for corner in corners]
 
 Independent simulations, such as the points of a sweep, can run in
 parallel with ``parallel_map``. The progress bars of the running calls
 then share a row, side by side:
 
 .. code-block:: python
-
-    def simulate_corner(corner):
-        with progress_scope(corner.name):
-            return tb.simulate(corner=corner).tran(...)
 
     with progress_scope("Corners", steps=len(corners)):
         results = parallel_map(simulate_corner, corners)
