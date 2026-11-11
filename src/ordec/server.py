@@ -34,12 +34,12 @@ mirrors the ``python`` command line:
 In an editable installation (``pip install -e``), the packaged frontend
 (webdist.tar) is not available; ``ordec`` then runs the Vite dev server of
 the checkout's *web/* directory behind its own server, so that frontend
-changes show up instantly (see the development setup in the documentation).
+changes show up instantly (see ordec.vite and the development setup in the
+documentation).
 """
 
 import argparse
 import http
-import http.client
 import json
 import cbor2
 import traceback
@@ -1029,6 +1029,8 @@ class StaticHandler:
             # api/ belongs to ordec, also where not handled above (e.g.
             # api/token without hub, which the frontend probes).
             if self.vite and not path.startswith('/api/'):
+                if request.headers.get('Sec-WebSocket-Protocol') in self.vite.subprotocols:
+                    return None # --> for Vite's HMR websocket (see serve_web)
                 return self.process_request_vite(request)
             return self.process_request_static(req_path)
         except Exception:
@@ -1226,8 +1228,7 @@ class StaticHandler:
         return build_response(http.HTTPStatus.OK, mime_type=mime_type, data=data)    
 
     def process_request_vite(self, request):
-        conn = http.client.HTTPConnection(self.vite.hostname, self.vite.port,
-            timeout=60)
+        conn = self.vite.http_connection()
         # Forwarded with the full path, as Vite serves under base_path, too.
         # The Host header is passed on unchanged, so that Vite's check
         # against DNS rebinding (server.allowedHosts) still applies.
@@ -1248,6 +1249,23 @@ class StaticHandler:
         return build_response(http.HTTPStatus(resp.status),
             resp.getheader('Content-Type', 'application/octet-stream'),
             data, extra_headers)
+
+def serve_web(hostname, port, c, static_handler):
+    """
+    Returns the websockets server for static_handler and the websocket
+    connections of ConnectionHandler c. With Vite (static_handler.vite), it
+    also relays the websocket connections of Vite's HMR client.
+    """
+    vite = static_handler.vite
+    def handler(websocket):
+        # Only Vite's connections come with a subprotocol (select_subprotocol).
+        if websocket.subprotocol:
+            vite.relay(websocket)
+        else:
+            c.handle_connection(websocket)
+    return serve(handler, hostname, port,
+        process_request=static_handler.process_request,
+        select_subprotocol=vite.select_subprotocol if vite else None)
 
 def secure_url_open(user_url):
     """
@@ -1404,14 +1422,12 @@ def main():
     elif webdist_tar.is_file():
         static_handler = StaticHandler(tarfile.open(webdist_tar),
             base_path=base_path, hub=hub, key=key)
-    elif vite.available() and not hub:
-        # Editable installation: the browser cannot reach Vite's HMR
-        # websocket through the hub's proxy, hence not behind the hub.
-        dev_server = vite.Vite(hostname, base_path)
-        if not dev_server.exe.exists():
+    elif vite.available():
+        if not (vite.web_path / 'node_modules' / 'vite').is_dir():
             print(f"ERROR: Vite not found. Install the frontend dependencies "
                 f"with 'npm ci' in {vite.web_path}.")
             raise SystemExit(1)
+        dev_server = vite.Vite(base_path)
         static_handler = StaticHandler(base_path=base_path, hub=hub, key=key,
             vite=dev_server)
     else:
@@ -1449,8 +1465,7 @@ def main():
     c = ConnectionHandler(key=key, sysmodules_orig=sys.modules,
         jobrunner=jobrunner, on_activity=hub.touch_activity if hub else None)
     try:
-        server = serve(c.handle_connection, hostname, port,
-            process_request=static_handler.process_request)
+        server = serve_web(hostname, port, c, static_handler)
     except OSError as e:
         if e.errno == errno.EADDRINUSE:
             print(f"ERROR: Address already in use: {hostname}:{port}")
@@ -1487,7 +1502,7 @@ def server_thread(hostname, port, static_handler, key, startup_queue, server_que
         jobrunner=jobrunner, on_activity=on_activity)
     startup_notified = False
     try:
-        with serve(c.handle_connection, hostname, port, process_request=static_handler.process_request) as server:
+        with serve_web(hostname, port, c, static_handler) as server:
             if server_queue is not None:
                 server_queue.put(server)
             startup_queue.put(None)

@@ -6,9 +6,12 @@ Vite dev server behind ordec, as in editable installations (ordec.vite).
 """
 
 import http.client
+import json
 import queue
+import re
 import threading
 import pytest
+from websockets.sync.client import connect
 
 from ordec import server, vite
 
@@ -16,7 +19,7 @@ from ordec import server, vite
 def test_vite_behind_server():
     if not vite.available():
         pytest.skip("not run from a checkout with web/")
-    dev_server = vite.Vite('127.0.0.1', '/pre/')
+    dev_server = vite.Vite('/pre/')
     dev_server.start()
     try:
         static_handler = server.StaticHandler(base_path='/pre/',
@@ -41,5 +44,11 @@ def test_vite_behind_server():
         assert b'/pre/@vite/client' in body
         # api/ stays with ordec, also where ordec has no handler.
         assert get('/pre/api/token')[0] == 404
+
+        # The HMR websocket is relayed to Vite.
+        token = re.search(rb'const wsToken = "([^"]+)"', get('/pre/@vite/client')[1])[1]
+        with connect(f'ws://127.0.0.1:{port}/pre/?token={token.decode()}',
+                subprotocols=['vite-hmr']) as ws:
+            assert json.loads(ws.recv(timeout=10)) == {'type': 'connected'}
     finally:
         dev_server.stop()
