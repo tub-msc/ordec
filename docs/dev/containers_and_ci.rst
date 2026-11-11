@@ -44,7 +44,7 @@ What *flake.nix* builds itself (KLayout with its Qt, Yosys, Ngspice, the PDKs, o
 Updating the pinned versions
 ----------------------------
 
-``nix flake update`` moves *flake.lock* to the newest nixpkgs. This usually rebuilds Qt, KLayout and Yosys, which takes longer than the 30 minutes *tests.yaml* may run. Therefore, build the development shells and the image locally and push them to the cache (with the Cachix auth token configured) before committing the new *flake.lock*::
+``nix flake update`` moves *flake.lock* to the newest nixpkgs. This usually rebuilds Qt, KLayout and Yosys, which would make the next run of *tests.yaml* take one to two hours (the 30 minute limit there applies only to the tests). To avoid this, build the development shells and the image locally and push them to the cache (with the Cachix auth token configured) before committing the new *flake.lock*::
 
     nix flake update
     nix develop --profile /tmp/ordec-dev -c true

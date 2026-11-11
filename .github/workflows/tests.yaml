@@ -10,7 +10,6 @@ jobs:
   build:
     name: pytest
     runs-on: ubuntu-latest
-    timeout-minutes: 30
     # The flake as GitHub's source archive of this commit, not the checkout:
     # only the archive has the version in .git_archival.txt (see flake.nix).
     # build.yaml builds the image from the same, so that it has the same
@@ -37,8 +36,11 @@ jobs:
       - name: build test shell
         run: nix build -L -o /tmp/test-shell "$FLAKE#devShells.x86_64-linux.test"
       # faulthandler_timeout: a test hanging for 10 minutes dumps the stacks
-      # of all threads into the log.
+      # of all threads into the log. The time limit applies only to the
+      # tests: building the test shell takes one to two hours when the cache
+      # lacks Qt, KLayout and Yosys, and that build fills the cache.
       - name: run tests
+        timeout-minutes: 30
         run: nix develop "$FLAKE#test" -c pytest -v -o cache_dir=/tmp/pytestcache -o faulthandler_timeout=600 --junit-xml=/tmp/test-results.xml
       - name: display test results
         if: always()
