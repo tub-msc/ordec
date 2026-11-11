@@ -44,6 +44,10 @@ let
   runtimeDeps = ps: deps ps pyproject.project.dependencies;
   # All extras (test, test-editors, extra).
   extraDeps = ps: deps ps (lib.concatLists (lib.attrValues pyproject.project.optional-dependencies));
+  # The documentation dependencies, only for the development shell. Only
+  # plain "name>=version" lines are understood.
+  docsDeps = ps: deps ps (lib.filter (l: l != "" && !lib.hasPrefix "#" l)
+    (lib.splitString "\n" (builtins.readFile ../../docs/requirements.txt)));
 
   # The frontend, built separately from ordec (setup.py takes it from
   # ORDEC_WEBDIST), so that only changes in web/ rebuild it.
@@ -87,7 +91,7 @@ in {
 
   # For the development shell, with the editable install of ordec in a venv
   # on top (pip install -e . --no-build-isolation).
-  devPython = python.withPackages (ps: runtimeDeps ps ++ extraDeps ps
+  devPython = python.withPackages (ps: runtimeDeps ps ++ extraDeps ps ++ docsDeps ps
     ++ [ ps.setuptools ps.setuptools-scm ]);
 
   # The installed ordec with the test dependencies, for running the tests

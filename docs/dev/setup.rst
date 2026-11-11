@@ -10,7 +10,7 @@ To just try out ORDeC, the Docker image or ``nix run`` from the Readme is enough
 Setup with Nix (recommended)
 ----------------------------
 
-*flake.nix* provides everything needed for development: Ngspice, KLayout, Yosys, OpenVAF, the PDKs (SKY130, IHP-Open-PDK with compiled Verilog-A models), the Python packages, Node.js and Chromium. *flake.lock* pins their versions, so you get the same as the Docker image and the automated tests. It supports x86_64 Linux, including WSL2 on Windows.
+*flake.nix* provides everything needed for development: Ngspice, KLayout, Yosys, OpenVAF (as ``openvaf-r``), the PDKs (SKY130, IHP-Open-PDK with compiled Verilog-A models), the Python packages including those for building the documentation, Graphviz, Node.js and Chromium. *flake.lock* pins their versions, so you get the same as the Docker image and the automated tests. It supports x86_64 Linux, including WSL2 on Windows.
 
 1. `Install Nix <https://nixos.org/download>`_.
 2. Enable flakes and the binary cache of ORDeC in */etc/nix/nix.conf* (or *~/.config/nix/nix.conf* with a single-user installation)::
@@ -25,7 +25,7 @@ Setup with Nix (recommended)
        nix develop
        (cd web && npm ci)
 
-The shell sets the ``ORDEC_PDK_*`` variables and activates the venv *.venv* in the repository root, which has ORDeC installed in editable mode. The venv is set up on first use and again whenever the Python packages from Nix change; anything you install into it with pip is lost then. For building the documentation, install its dependencies with ``pip install -r docs/requirements.txt``.
+The shell sets the ``ORDEC_PDK_*`` variables and activates the venv *.venv* in the repository root, which has ORDeC installed in editable mode. The venv is set up on first use and again whenever the Python packages from Nix change; anything you install into it with pip is lost then.
 
 .. _manual_setup:
 
@@ -37,7 +37,7 @@ Without Nix, install the dependencies yourself. The commands below are for Debia
 - Install the distribution packages: ``sudo apt-get install ngspice npm python3 python3-dev build-essential chromium-driver``
 - Install KLayout, and optionally Yosys (see :doc:`yosys`) and OpenVAF (needed to compile the IHP models, see below). Debian's packages of these are too old or missing; *flake.nix* lists the versions in use.
 - Install ORDeC in editable mode: ``pip3 install -e .[test]``. This also builds the C extensions (see :doc:`c_extensions`).
-- For building the documentation: ``pip3 install -r docs/requirements.txt``
+- For building the documentation: ``pip3 install -r docs/requirements.txt`` and Graphviz (``sudo apt-get install graphviz``)
 
 The **SKY130 PDKs** 'sky130A' and 'sky130B' can be downloaded as follows::
 

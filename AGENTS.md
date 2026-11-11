@@ -43,7 +43,7 @@ python3 setup.py build_ext --inplace
 # Install frontend dependencies (first time only)
 (cd web && npm ci)
 
-# Install documentation dependencies
+# Install documentation dependencies (not needed in the Nix development shell)
 pip3 install -r docs/requirements.txt
 ```
 

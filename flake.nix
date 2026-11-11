@@ -284,9 +284,13 @@
       # (marker file .nix-python) and removed when its setup fails; a venv
       # not made here is left alone.
       default = pkgs.mkShell ({
-        packages = tools ++ [ py.devPython pkgs.nodejs pkgs.chromium pkgs.chromedriver ];
+        # graphviz: for the inheritance diagrams in the documentation.
+        packages = tools ++ [ py.devPython pkgs.nodejs pkgs.chromium pkgs.chromedriver pkgs.graphviz ];
         # Otherwise, ChromeDriver picks up a system Chromium of another version.
         ORDEC_CHROME = "${pkgs.chromium}/bin/chromium";
+        # Outside NixOS, the glibc of Nix cannot read the locales of the
+        # system, and setlocale fails for them (e.g. in sphinx-build).
+        LOCALE_ARCHIVE = "${pkgs.glibcLocales}/lib/locale/locale-archive";
         shellHook = ''
           root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
           venv="$root/.venv"
@@ -298,13 +302,15 @@
             if [ "$(cat "$venv/.nix-python" 2>/dev/null)" != "${py.devPython}" ]; then
               echo "nix develop: setting up $venv with an editable install of ordec" >&2
               rm -rf "$venv"
-              # The pytest of the Nix environment runs with the Python
-              # of that environment, which does not see the venv, hence
-              # the pytest script in the venv. On failure, the venv is
-              # removed, so that the next shell retries the setup.
+              # The pytest and sphinx-build of the Nix environment run
+              # with the Python of that environment, which does not see
+              # the venv, hence their scripts in the venv. On failure,
+              # the venv is removed, so that the next shell retries the
+              # setup.
               if ! { python -m venv --system-site-packages "$venv" \
                 && printf '#!%s\nimport sys, pytest\nsys.exit(pytest.console_main())\n' "$venv/bin/python" > "$venv/bin/pytest" \
-                && chmod +x "$venv/bin/pytest" \
+                && printf '#!%s\nimport sys\nfrom sphinx.cmd.build import main\nsys.exit(main())\n' "$venv/bin/python" > "$venv/bin/sphinx-build" \
+                && chmod +x "$venv/bin/pytest" "$venv/bin/sphinx-build" \
                 && "$venv/bin/pip" install -q --disable-pip-version-check --no-deps --no-build-isolation -e "$root" \
                 && echo "${py.devPython}" > "$venv/.nix-python"; }
               then
