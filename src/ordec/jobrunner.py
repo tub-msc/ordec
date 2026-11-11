@@ -167,7 +167,8 @@ class ThreadedJobRunner(JobRunner):
            next checkpoint()/progress(); registered subprocesses are killed
            (unblocking reads of their output).
         2. Async-exception injection (CPython only, optional): breaks
-           pure-Python infinite loops that never reach a checkpoint.
+           pure-Python infinite loops that never reach a checkpoint, in
+           the job thread and in its parallel_map threads.
         3. Give up: deliver the cancelled terminal anyway and leave the
            stuck thread be (it holds locks that must not be force-released;
            a source rebuild may stall until it finishes).
@@ -189,8 +190,14 @@ class ThreadedJobRunner(JobRunner):
 
         job.run.request_cancel()
         job._thread.join(self.cooperative_timeout)
-        if job._thread.is_alive() and _async_raise(job._thread, GenCancelled):
-            job._thread.join(self.async_exc_timeout)
+        if job._thread.is_alive():
+            # The job's parallel_map threads, too: the job thread waits for
+            # them in a blocking C call, which async-exc cannot interrupt.
+            threads = [job._thread, *job.run.registered_threads()]
+            injected = [_async_raise(t, GenCancelled)
+                for t in threads if t.is_alive()]
+            if any(injected):
+                job._thread.join(self.async_exc_timeout)
         if job._thread.is_alive():
             with job._state_lock:
                 if job.state != JobState.RUNNING:

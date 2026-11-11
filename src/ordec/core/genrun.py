@@ -23,8 +23,7 @@ caller's context for that reason.
 """
 
 import threading
-from concurrent.futures import ThreadPoolExecutor, wait, FIRST_EXCEPTION
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from contextvars import ContextVar, copy_context
 from public import public
 
@@ -103,6 +102,7 @@ class GenRun:
         self.cancel_event = threading.Event()
         self._procs = {}  # id(popen) -> popen
         self._wakeups = set()  # threading.Events to set on cancellation
+        self._threads = set()  # parallel_map threads, see registered_threads
         self._lock = threading.Lock()
         # Guards the progress tree. Held while on_progress runs, so that
         # snapshots from several threads arrive in order.
@@ -193,6 +193,21 @@ class GenRun:
                 self._wakeups.discard(ev)
 
     @contextmanager
+    def threads_registered(self, threads):
+        """
+        Register the threads (threading.Thread) that run part of the
+        generator for the duration of the block, see
+        :meth:`registered_threads`.
+        """
+        with self._lock:
+            self._threads.update(threads)
+        try:
+            yield
+        finally:
+            with self._lock:
+                self._threads.difference_update(threads)
+
+    @contextmanager
     def activate(self):
         """
         Make this run the active one for the current context. Must be
@@ -220,6 +235,15 @@ class GenRun:
                 p.kill()
             for ev in self._wakeups:
                 ev.set()
+
+    def registered_threads(self) -> list:
+        """
+        Threads other than the generator's own that run part of the
+        generator (those of :func:`parallel_map`), so that a canceller can
+        interrupt them as well.
+        """
+        with self._lock:
+            return list(self._threads)
 
 @public
 def progress(status: str, fraction: float=None, detail: str=None):
@@ -307,9 +331,11 @@ def cancelable_wait(ev):
 def parallel_map(fn, items, max_workers: int=4) -> list:
     """
     Like ``list(map(fn, items))``, but runs up to ``max_workers`` calls at
-    once, each in a thread of its own, e.g. the simulations of a sweep.
-    Each call runs in a copy of the caller's context, so :func:`progress`,
-    :func:`progress_scope` and cancellation work inside fn. Returns the
+    once, in threads of its own, e.g. the simulations of a sweep. Each
+    call runs in a copy of the caller's context, so :func:`progress`,
+    :func:`progress_scope` and cancellation work inside fn; the threads are
+    registered with the run, so that the escalating cancellation of the
+    job runner reaches them, too. Returns the
     results in item order. On the first exception (including
     cancellation), the calls not yet started are dropped; the exception
     (the first in item order) propagates once the running calls have
@@ -323,17 +349,43 @@ def parallel_map(fn, items, max_workers: int=4) -> list:
     is generating: unlike in the caller's own thread, this is not detected
     as a recursion and waits until cancelled.
     """
+    items = list(items)
     if max_workers == 1:
         return [fn(item) for item in items]
-    with ThreadPoolExecutor(max_workers) as executor:
-        # One context copy per call: a Context cannot be entered by two
-        # threads at once.
-        futures = [executor.submit(copy_context().run, fn, item)
-            for item in items]
-        wait(futures, return_when=FIRST_EXCEPTION)
-        # No-op for calls that have started. The executor starts calls in
-        # item order, so every dropped call comes after the failed one, and
-        # the loop below raises before it reaches a dropped call.
-        for f in futures:
-            f.cancel()
-    return [f.result() for f in futures]
+    ctx = copy_context()
+    results = [None] * len(items)
+    errors = []  # (item index, exception)
+    next_index = 0
+    lock = threading.Lock()
+    def worker():
+        nonlocal next_index
+        i = len(items)  # sorts after every item if raised outside fn
+        try:
+            while True:
+                with lock:
+                    if errors or next_index == len(items):
+                        return
+                    i = next_index
+                    next_index += 1
+                # One context copy per call: a Context cannot be entered by
+                # two threads at once.
+                results[i] = ctx.copy().run(fn, items[i])
+        except BaseException as e:
+            # Also catches an exception injected by the job runner's
+            # cancellation outside fn, which must not get lost either.
+            with lock:
+                errors.append((i, e))
+    # Daemon threads, unlike those of a ThreadPoolExecutor: a call that
+    # cannot be interrupted must not keep the process from exiting, just as
+    # the view generator's own thread (see jobrunner.py).
+    threads = [threading.Thread(target=worker, daemon=True)
+        for _ in range(min(max_workers, len(items)))]
+    run = _run_var.get()
+    with run.threads_registered(threads) if run else nullcontext():
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+    if errors:
+        raise min(errors, key=lambda error: error[0])[1]
+    return results
