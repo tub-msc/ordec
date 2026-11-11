@@ -68,20 +68,10 @@ Launch webinterface
 There are three setups to run the ``ordec`` web UI:
 
 1. **Combined frontend + backend server with regular installation:** A regular installation of ORDeC (with Nix, from PyPI or in the Docker image) includes a compiled version of the frontend (*webdist.tar*). In this case, ORDeC is started through a simple ``ordec``. This is the setup for users; see :doc:`/guides/webui_design_organization`.
-2. **Combined frontend + backend server with editable installation:** In case of an editable installation ("develop mode", ``pip install -e``, as in the development shell), setup 1 is not supported, as *webdist.tar* is not available in the package. Instead, the frontend can be built separately through ``npm run build`` in the *web/* directory. The build results must then be supplied to the ordec command: ``ordec -r [...]/web/dist/``
-3. **Separate frontend + backend server for frontend development:** This gives the best development experience when working on the frontend code and is described below.
+2. **Editable installation:** An editable installation ("develop mode", ``pip install -e``, as in the development shell) lacks *webdist.tar*. Instead, ``ordec`` runs the Vite_ dev server of the checkout's *web/* directory as child process and forwards static file requests to it. The browser uses the usual URL of ``ordec``, and frontend changes show up instantly (hot module replacement). Of Vite's output, only warnings and errors are shown, prefixed with ``vite:``. The frontend dependencies must be installed once through ``npm ci`` in the *web/* directory.
+3. **Separate frontend + backend server:** ``npm run dev`` in *web/* starts Vite on its own (port 5173), which acts as proxy to the backend started by ``ordec -b`` (port 8100). Use the browser only to connect to the Vite server / port.
 
-For frontend development, first launch the frontend (using Vite_)::
-
-    cd web/
-    npm ci
-    npm run dev
-
-:code:`npm ci` is only needed at the first launch. In this setup, the Vite frontend server acts as proxy to the backend server on port 8100, which has to be run separately::
-
-    ordec -b
-
-This will launch a browser and open the ORDeC interface. Use the browser only to connect to the Vite server / port.
+To serve a frontend build instead, run ``npm run build`` in *web/* and pass the result to ``ordec -r [...]/web/dist/``.
 
 Run tests
 ---------

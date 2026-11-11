@@ -6,7 +6,7 @@ This page documents the internal architecture of the web UI for developers: the 
 Components
 ----------
 
-* **Backend** (``src/ordec/server.py``): a WebSocket server that evaluates ORD/Python sources, discovers views, and serializes view data to the browser. In production it also serves the static frontend from ``src/ordec/webdist.tar``; during development, a separate Vite dev server (``cd web && npm run dev``) serves the frontend with hot reload while ``ordec -b`` provides only the backend.
+* **Backend** (``src/ordec/server.py``): a WebSocket server that evaluates ORD/Python sources, discovers views, and serializes view data to the browser. In production it also serves the static frontend from ``src/ordec/webdist.tar``; in an editable installation, it forwards static file requests to the Vite dev server of *web/*, which it runs as child process for hot reload (``src/ordec/vite.py``).
 * **Frontend** (``web/src/``): vanilla JS built with Vite, using `Golden Layout <https://golden-layout.com/>`_ for the tabbed/split panel arrangement.
 
 .. note::

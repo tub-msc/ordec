@@ -27,11 +27,23 @@ function enableFontCaching() {
     };
 }
 
+// Set when ordec runs Vite behind its own server (see src/ordec/vite.py):
+// the browser loads the frontend through ordec, but connects the HMR
+// websocket to Vite directly. ordec holds the other end of stdin, so that
+// Vite exits with ordec, even if ordec is killed.
+const ordecHmrPort = process.env.ORDEC_HMR_PORT;
+if (ordecHmrPort) {
+    process.stdin.on('end', () => process.exit());
+    process.stdin.resume();
+}
+
 export default defineConfig({
     // Relative asset/import paths, so the built app also works when served
     // under a URL path prefix (e.g. /user/<name>/ behind JupyterHub).
     base: './',
     server: {
+        hmr: ordecHmrPort ? { clientPort: Number(ordecHmrPort) } : undefined,
+        // For 'npm run dev' with 'ordec -b'.
         proxy: {
             '^/api/.*': {
                 target: 'ws://127.0.0.1:8100',

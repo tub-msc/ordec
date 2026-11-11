@@ -83,20 +83,16 @@ Keep test runs short: never run multi-minute measurement commands; use the small
 
 ### Web UI Development
 
-**Separate frontend + backend (recommended for development):**
+In an editable install (as in the Nix development shell), `ordec` runs the Vite dev server of `web/` behind its own server (`src/ordec/vite.py`), so frontend changes show up instantly under the usual `ordec` URL; `npm ci` in `web/` must have been run once.
 ```bash
-# Terminal 1: Start Vite dev server with hot module replacement
-cd web/
-npm run dev
-
-# Terminal 2: Start backend-only server
-ordec -b
-
+ordec
 # Local mode example (opening mymodule.py and displaying MyCell().schematic):
-ordec -b mymodule.py -e "MyCell().schematic"
+ordec mymodule.py -e "MyCell().schematic"
 # Equivalent with python-style module import (-m):
-ordec -b -m mymodule -e "MyCell().schematic"
+ordec -m mymodule -e "MyCell().schematic"
 ```
+
+Alternatively, run `npm run dev` in `web/` and `ordec -b` (backend only) separately.
 
 ### Debugging view generation
 

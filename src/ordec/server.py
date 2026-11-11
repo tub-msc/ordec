@@ -32,13 +32,14 @@ mirrors the ``python`` command line:
   are shorthand for a single ``--view``.
 
 In an editable installation (``pip install -e``), the packaged frontend
-(webdist.tar) is not available; pass a frontend build with ``-r web/dist/``
-or run the Vite dev server and ``ordec -b`` (see the development setup in
-the documentation).
+(webdist.tar) is not available; ``ordec`` then runs the Vite dev server of
+the checkout's *web/* directory behind its own server, so that frontend
+changes show up instantly (see the development setup in the documentation).
 """
 
 import argparse
 import http
+import http.client
 import json
 import cbor2
 import traceback
@@ -83,6 +84,7 @@ from .layout.style import default_style, update_customization
 from .config import read_config, update_config
 from .extlibrary import ExtLibrary
 from .jobrunner import ThreadedJobRunner
+from . import vite
 
 RELOAD_PROTECTED_MODULE_PREFIXES = (
     "numpy",
@@ -961,7 +963,8 @@ class StaticHandler:
     """
 
     def __init__(self, tar: tarfile.TarFile=None, base_path: str='/',
-            hub: HubIntegration=None, key: ServerKey=None):
+            hub: HubIntegration=None, key: ServerKey=None,
+            vite: 'vite.Vite'=None):
         """
         Args:
             tar: static file archive; None serves 404 for static paths.
@@ -972,6 +975,7 @@ class StaticHandler:
                 (see ordec.hub) and api/token hands the auth token to
                 hub-authenticated browsers.
             key: the server's auth key; required for the api/token route.
+            vite: Vite dev server to forward static paths to, instead of tar.
         """
         self.tar = tar
         self.tar_lock = threading.Lock()
@@ -980,6 +984,7 @@ class StaticHandler:
         self.base_path = base_path
         self.hub = hub
         self.key = key
+        self.vite = vite
         from .schematic.render import SchematicRenderer
         self.schematic_css = SchematicRenderer.css.encode('utf8')
 
@@ -1021,6 +1026,10 @@ class StaticHandler:
             if req_path == Path('api/schematic.css'):
                 return self.process_request_schematic_css()
 
+            # api/ belongs to ordec, also where not handled above (e.g.
+            # api/token without hub, which the frontend probes).
+            if self.vite and not path.startswith('/api/'):
+                return self.process_request_vite(request)
             return self.process_request_static(req_path)
         except Exception:
             traceback.print_exc()
@@ -1216,6 +1225,30 @@ class StaticHandler:
 
         return build_response(http.HTTPStatus.OK, mime_type=mime_type, data=data)    
 
+    def process_request_vite(self, request):
+        conn = http.client.HTTPConnection(self.vite.hostname, self.vite.port,
+            timeout=60)
+        # Forwarded with the full path, as Vite serves under base_path, too.
+        # The Host header is passed on unchanged, so that Vite's check
+        # against DNS rebinding (server.allowedHosts) still applies.
+        headers = {k: v for k, v in request.headers.raw_items()
+            if k.lower() not in ('connection', 'keep-alive')}
+        try:
+            conn.request('GET', request.path, headers=headers)
+            resp = conn.getresponse()
+            data = resp.read()
+        except OSError:
+            return build_response(http.HTTPStatus.BAD_GATEWAY)
+        finally:
+            conn.close()
+        # build_response sets Content-Type and Content-Length itself.
+        extra_headers = [(k, v) for k, v in resp.getheaders()
+            if k.lower() not in ('connection', 'keep-alive',
+                'transfer-encoding', 'content-length', 'content-type')]
+        return build_response(http.HTTPStatus(resp.status),
+            resp.getheader('Content-Type', 'application/octet-stream'),
+            data, extra_headers)
+
 def secure_url_open(user_url):
     """
     user_url includes the secret auth_token, which potentially allows
@@ -1256,7 +1289,7 @@ def build_argparser():
     parser.add_argument('-e', '--view', action='append', default=[], metavar='VIEW', help="Preselect a view, e.g. \"MyCell().schematic\". May be given several times; each view opens in its own result viewer, side by side. FILE:VIEW and MODULE:VIEW are shorthand for one --view.")
     parser.add_argument('-l', '--hostname', default="127.0.0.1", help="Hostname to listen on (default 127.0.0.1).")
     parser.add_argument('-p', '--port', default=8100, type=int, help="Port to listen on (default 8100).")
-    parser.add_argument('-r', '--static-root', help="Path for static web resources. If not specified, the webdist.tar file included in the ORDeC installation is used.", nargs='?')
+    parser.add_argument('-r', '--static-root', help="Path for static web resources. If not specified, the webdist.tar file included in the ORDeC installation is used; in an editable installation, the Vite dev server of the checkout.", nargs='?')
     parser.add_argument('-b', '--backend-only', action='store_true', help="Serve backend only. Requires a separate server (e.g. Vite) to serve the frontend.")
     parser.add_argument('-n', '--no-browser', action='store_true', help="Show URL, but do not launch browser.")
     parser.add_argument('-j', '--jobs', default=4, type=int, help="Maximum number of concurrently generated views (default 4). With 0, views are generated inline in the connection handler (no progress reporting or cancellation).")
@@ -1361,24 +1394,34 @@ def main():
     else:
         user_url = f"http://{hostname}:{port}"
 
+    webdist_tar = importlib.resources.files(__package__) / 'webdist.tar'
+    dev_server = None
     if args.backend_only:
         static_handler = StaticHandler(base_path=base_path, hub=hub, key=key)
     elif args.static_root:
         static_handler = StaticHandler(anonymous_tar(args.static_root),
             base_path=base_path, hub=hub, key=key)
-    else:
-        webdist_tar = importlib.resources.files(__package__) / 'webdist.tar'
-        try:
-            static_handler = StaticHandler(tarfile.open(webdist_tar),
-                base_path=base_path, hub=hub, key=key)
-        except FileNotFoundError:
-            print(
-                "ERROR: webdist.tar not found. -- This is likely an editable "
-                "installation. Please use variant (2) or (3) outlined below to "
-                "run the server.\n"
-                )
-            parser.print_help()
+    elif webdist_tar.is_file():
+        static_handler = StaticHandler(tarfile.open(webdist_tar),
+            base_path=base_path, hub=hub, key=key)
+    elif vite.available() and not hub:
+        # Editable installation: the browser cannot reach Vite's HMR
+        # websocket through the hub's proxy, hence not behind the hub.
+        dev_server = vite.Vite(hostname, base_path)
+        if not dev_server.exe.exists():
+            print(f"ERROR: Vite not found. Install the frontend dependencies "
+                f"with 'npm ci' in {vite.web_path}.")
             raise SystemExit(1)
+        static_handler = StaticHandler(base_path=base_path, hub=hub, key=key,
+            vite=dev_server)
+    else:
+        print(
+            "ERROR: webdist.tar not found. -- This is likely an editable "
+            "installation. Please use variant (2) or (3) outlined below to "
+            "run the server.\n"
+            )
+        parser.print_help()
+        raise SystemExit(1)
 
     if hub:
         # Behind the hub, browsers arrive through the hub's proxy and get
@@ -1416,22 +1459,26 @@ def main():
         raise SystemExit(1)
 
     with server:
-        if hub:
-            hub.start_activity_reporter()
-        else:
-            print(f"To start ORDeC, navigate to: {user_url}")
-
-        if args.no_browser:
-            launch_html = None
-        else:
-            time.sleep(1)
-            launch_html = secure_url_open(user_url)
-
+        launch_html = None
         try:
+            if dev_server:
+                dev_server.start()
+
+            if hub:
+                hub.start_activity_reporter()
+            else:
+                print(f"To start ORDeC, navigate to: {user_url}")
+
+            if not args.no_browser:
+                time.sleep(1)
+                launch_html = secure_url_open(user_url)
+
             server.serve_forever()
         except KeyboardInterrupt:
             print("Terminating.")
         finally:
+            if dev_server:
+                dev_server.stop()
             if launch_html:
                 launch_html.close() # Deletes the temporary file.
 
