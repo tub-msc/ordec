@@ -47,7 +47,7 @@ The easiest way to try out ORDeC and its web UI is the **Docker image**. For a *
 
       Install Nix and enable flakes and the binary cache of ORDeC (steps 1 and 2 of :ref:`nix_setup`). Then install ORDeC and start the web UI::
 
-          nix profile install github:tub-msc/ordec
+          nix profile add github:tub-msc/ordec
           ordec
 
       ``pip install ordec`` installs ORDeC alone, from `PyPI <https://pypi.org/project/ordec/>`_. Ngspice, KLayout and the PDKs then have to be set up by hand, see :ref:`manual_setup`.

@@ -55,7 +55,7 @@ Arguments for `ordec` follow after `--`, e.g. `nix run github:tub-msc/ordec -- m
 ### Permanent installation
 
 ```
-nix profile install github:tub-msc/ordec
+nix profile add github:tub-msc/ordec
 ```
 
 This makes the `ordec` command available in your shell.
