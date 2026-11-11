@@ -16,6 +16,54 @@ export function excSummary(exc) {
         ? `${exc.etype}: ${exc.message.split('\n')[0]}` : exc.etype;
 }
 
+// Refresh strip cell of one open progress scope (a node of the progress tree
+// below the root), styled like the main row, with the cells of its child
+// scopes side by side beneath it. Each level of the tree is thus one row of
+// the strip, and parallel scopes share their row. A slot freed by a closed
+// scope (null) is an empty cell, so that its siblings stay in place.
+function scopeCell(node) {
+    const span = (cls, text) => {
+        const el = document.createElement('span');
+        el.className = cls;
+        el.textContent = text;
+        return el;
+    };
+    const row = document.createElement('div');
+    row.className = 'refresh-row';
+    const cell = document.createElement('div');
+    cell.className = 'refresh-cell';
+    cell.append(row);
+    if (node == null) {
+        return cell;
+    }
+    row.append(span('refresh-status', nodeText(node)));
+    if (node.fraction != null) {
+        const bar = span('refresh-progress', '');
+        const fill = span('refresh-progress-fill', '');
+        fill.style.width = (node.fraction * 100) + '%';
+        bar.append(fill);
+        row.append(bar, span('refresh-pct', Math.round(node.fraction * 100) + '%'));
+    }
+    row.append(span('refresh-detail', node.detail ?? ''));
+    if (node.children.length) {
+        const scopes = document.createElement('div');
+        scopes.className = 'refresh-scopes';
+        scopes.append(...node.children.map(scopeCell));
+        cell.append(scopes);
+    }
+    return cell;
+}
+
+// "label: status" of a progress tree node, or whichever of them is set.
+function nodeText(node) {
+    return [node.label, node.status].filter(s => s != null).join(': ');
+}
+
+// Number of tree levels below node.
+function treeDepth(node) {
+    return Math.max(0, ...node.children.map(c => 1 + (c ? treeDepth(c) : 0)));
+}
+
 export class ResultViewer {
     static refreshAll = false;
     static useHierSelector = true;
@@ -31,7 +79,7 @@ export class ResultViewer {
             <div class="resview">
                 <div class="resviewhead"></div>
                 <div class="reswrapper">
-                    <div class="refreshing"><span class="refresh-spinner" aria-hidden="true"></span><span class="refresh-status">Refreshing view…</span><span class="refresh-progress"><span class="refresh-progress-fill"></span></span><span class="refresh-pct"></span><span class="refresh-detail"></span><button class="refresh-cancel" title="Cancel view generation">✕</button></div>
+                    <div class="refreshing"><div class="refresh-row"><span class="refresh-spinner" aria-hidden="true"></span><span class="refresh-status">Refreshing view…</span><span class="refresh-progress"><span class="refresh-progress-fill"></span></span><span class="refresh-pct"></span><span class="refresh-detail"></span><button class="refresh-cancel" title="Cancel view generation">✕</button></div><div class="refresh-scopes"></div></div>
                     <div class="refreshable"><button><svg class="refresh-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8 A5 5 0 1 1 11.5 4.5"/><path d="M11.5 1.5 L11.5 4.5 L8.5 4.5"/></svg>Refresh</button><span class="refreshable-text">View is out of date.</span></div>
                     <div class="builderror"><span class="builderror-text"></span><button class="builderror-toggle">Show details</button></div>
                     <div class="rescontent" tabindex="1"></div>
@@ -45,12 +93,14 @@ export class ResultViewer {
         });
         this.resOverlayRefreshing = container.element.querySelector(".refreshing");
         this.resOverlayRefreshable = container.element.querySelector(".refreshable");
+        this.refreshSpinner = container.element.querySelector(".refresh-spinner");
         this.refreshStatus = container.element.querySelector(".refresh-status");
         this.refreshProgress = container.element.querySelector(".refresh-progress");
         this.refreshProgressFill = container.element.querySelector(".refresh-progress-fill");
         this.refreshPct = container.element.querySelector(".refresh-pct");
         this.refreshDetail = container.element.querySelector(".refresh-detail");
         this.refreshCancel = container.element.querySelector(".refresh-cancel");
+        this.refreshScopes = container.element.querySelector(".refresh-scopes");
         this.refreshableText = container.element.querySelector(".refreshable-text");
         this.resOverlayError = container.element.querySelector(".builderror");
         this.buildErrorText = container.element.querySelector(".builderror-text");
@@ -176,6 +226,7 @@ export class ResultViewer {
         this.resOverlayError.style.display = (config == 'error')?'':'none';
         if (config == 'refreshing') {
             // Reset progress state; updateProgress() fills it in.
+            this.refreshSpinner.style.display = '';
             this.refreshStatus.textContent = 'Refreshing view…';
             this.refreshProgress.style.display = 'none';
             this.refreshPct.textContent = '';
@@ -183,6 +234,8 @@ export class ResultViewer {
             this.refreshCancel.disabled = false;
             this.cancelRequested = false;
         }
+        this.refreshScopes.replaceChildren();
+        this.resOverlayRefreshing.parentElement.style.setProperty('--refresh-depth', 0);
         // When a status bar is shown it occupies a fixed-height strip at the top
         // of the view; this class insets the content below it (see style.css).
         this.resOverlayRefreshing.parentElement.classList.toggle(
@@ -206,13 +259,29 @@ export class ResultViewer {
             // cancellation takes effect; keep the Cancelling… status.
             return;
         }
-        this.refreshStatus.textContent = msg.status;
-        if (msg.fraction != null) {
+        // msg.tree is the run's progress tree (see genrun.py): the root
+        // fills the main row, the open progress scopes the rows below. A
+        // root that reports nothing itself and holds a single scope (the
+        // usual batch) would only say "Refreshing view…" above that scope,
+        // so the scope takes the main row instead.
+        const tree = msg.tree;
+        const merged = tree.status == null && tree.fraction == null
+            && tree.detail == null && tree.children.length == 1;
+        const main = merged ? tree.children[0] : tree;
+        this.refreshStatus.textContent = nodeText(main) || 'Refreshing view…';
+        if (main.fraction != null) {
             this.refreshProgress.style.display = '';
-            this.refreshProgressFill.style.width = (msg.fraction * 100) + '%';
-            this.refreshPct.textContent = Math.round(msg.fraction * 100) + '%';
+            this.refreshProgressFill.style.width = (main.fraction * 100) + '%';
+            this.refreshPct.textContent = Math.round(main.fraction * 100) + '%';
         }
-        this.refreshDetail.textContent = msg.detail ?? '';
+        this.refreshDetail.textContent = main.detail ?? '';
+        // Next to a merged scope's bar, the spinner says nothing new. A
+        // scope without a bar keeps it as the sign of life.
+        this.refreshSpinner.style.display =
+            (merged && main.fraction != null) ? 'none' : '';
+        this.refreshScopes.replaceChildren(...main.children.map(scopeCell));
+        // Grows the strip and the content inset with it (see style.css).
+        this.resWrapper.style.setProperty('--refresh-depth', treeDepth(main));
     }
 
     requestsView() {

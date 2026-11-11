@@ -5,7 +5,7 @@ import threading
 import time
 import pytest
 
-from ordec.core import progress, checkpoint
+from ordec.core import progress, checkpoint, parallel_map
 from ordec.jobrunner import (
     InlineJobRunner, ThreadedJobRunner, JobState, ASYNC_CANCEL_ENABLED,
 )
@@ -18,8 +18,8 @@ class Collector:
         self.result = None
         self.cancelled = None
 
-    def on_progress(self, status, fraction, detail=None):
-        self.progress.append((status, fraction))
+    def on_progress(self, tree):
+        self.progress.append((tree['status'], tree['fraction']))
 
     def on_done(self, job, result, cancelled):
         assert not self.done.is_set(), "terminal delivered twice"
@@ -115,15 +115,17 @@ def test_cancel_running_cooperative():
 
 @pytest.mark.skipif(not ASYNC_CANCEL_ENABLED,
     reason="async-exc cancellation not available on this interpreter")
-def test_cancel_infinite_loop_via_async_exc():
+@pytest.mark.parametrize("parallel", [False, True])
+def test_cancel_infinite_loop_via_async_exc(parallel):
     pm = ThreadedJobRunner(1)
     pm.cooperative_timeout = 0.2
     c = Collector()
     started = threading.Event()
-    def fn():
+    def spin(i=None):
         started.set()
         while True:  # no checkpoint: only async-exc can break this
             pass
+    fn = (lambda: parallel_map(spin, range(2))) if parallel else spin
     job = pm.submit(fn, on_done=c.on_done)
     assert started.wait(timeout=10)
     pm.cancel(job)

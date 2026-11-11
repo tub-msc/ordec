@@ -192,7 +192,7 @@ C1 out 0 1u
 .end
 """
     events = []
-    run = GenRun(on_progress=lambda s, f, d: events.append((s, f, d)))
+    run = GenRun(on_progress=lambda t: events.append((t['status'], t['fraction'], t['detail'])))
     with run.activate():
         sa = ngspice_batch(netlist, tran_tstop=R('500m'))
     assert len(sa.column("time")) > 1
