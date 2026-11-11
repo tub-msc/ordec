@@ -9,7 +9,9 @@
 let
   pyproject = builtins.fromTOML (builtins.readFile ../../pyproject.toml);
 
-  # From PyPI, as nixpkgs lacks them (atpublic: nixpkgs has 5.0).
+  # From PyPI, as nixpkgs lacks them. Packages nixpkgs has are not replaced
+  # here: that changes the hashes of all packages depending on them, which
+  # then are not on cache.nixos.org and get built locally.
   wheel = ps: pname: version: url: hash: args: ps.buildPythonPackage ({
     inherit pname version;
     format = "wheel";
@@ -19,9 +21,6 @@ let
   python = pkgs.python313.override {
     self = python;
     packageOverrides = ps: _: {
-      atpublic = wheel ps "atpublic" "9.0.0"
-        "https://files.pythonhosted.org/packages/py3/a/atpublic/atpublic-9.0.0-py3-none-any.whl"
-        "sha256-RJw8Twx033l0nW/iJbpV4qL840swPwMpIR5NaYntb24=" { };
       notcl = wheel ps "notcl" "0.5.1"
         "https://files.pythonhosted.org/packages/py3/n/notcl/notcl-0.5.1-py3-none-any.whl"
         "sha256-DfkqqQGslfMeHuViyG2ant9256IyMMDc6ToIoN/DDfQ=" { };
