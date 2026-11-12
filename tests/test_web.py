@@ -1164,6 +1164,31 @@ def test_schematic_viewer(web, tmp_path, monkeypatch):
         "return document.querySelector('.schem-crossing-select').value") == 'bridge-h'
 
 @pytest.mark.web
+def test_schematic_descend(web):
+    """A double click on an instance whose cell has a schematic opens that
+    schematic in a new viewer, from where the next level opens the same way."""
+    qs_local = web.key.query_string_local("tests.lib.ord.d_ff_soc", ["D_flip_flop().schematic"])
+    web.navigate(f'app.html#refreshall=true&{qs_local}')
+    web.wait_for_ready()
+    view = 'D_flip_flop().schematic'
+    for inst in ['m1', 'i1']:
+        # Waits for the viewer of the previous level, then descends.
+        web.wait_until(f"""
+            const rv = window.ordecApp.client.resultViewers.find(rv => rv.viewSelected === {json.dumps(view)});
+            const group = [...(rv?.resContent.querySelectorAll('g[data-descend]') ?? [])]
+                .find(g => g.querySelector('.instanceName').textContent === '{inst}');
+            group?.dispatchEvent(new MouseEvent('dblclick', {{bubbles: true}}));
+            return group;
+        """)
+        view += f"['{inst}'].symbol.cell.schematic"
+    # The viewer is titled by the cell.
+    assert web.wait_until(f"""
+        const rv = window.ordecApp.client.resultViewers.find(rv => rv.viewSelected === {json.dumps(view)});
+        return rv?.resContent.querySelector('.schem-svg')
+            && rv.resViewHead.querySelector('.direct-view-label').textContent;
+    """) == 'Inv().schematic'
+
+@pytest.mark.web
 def test_report_plot_controls(web, tmp_path, monkeypatch):
     """In a scrolling report, the wheel over an inactive plot scrolls the
     report; Shift+drag zooms the plot group to the selected range; the controls

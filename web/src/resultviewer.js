@@ -154,7 +154,11 @@ export class ResultViewer {
         } else if (this.directView) {
             const label = document.createElement('span');
             label.className = 'direct-view-label';
-            label.textContent = state.view;
+            // A title given by the opener replaces the view name, which
+            // stays as tooltip.
+            this.directTitle = state.title || state.view;
+            label.textContent = this.directTitle;
+            label.title = state.view;
             this.resViewHead.appendChild(label);
             this.hierSelector = null;
             this.viewSelector = null;
@@ -406,7 +410,7 @@ export class ResultViewer {
         }
 
         if (this.directView) {
-            this.container.setTitle(this.viewSelected);
+            this.container.setTitle(this.directTitle);
             this.viewListInitialized = true;
             return;
         }

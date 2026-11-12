@@ -446,6 +446,22 @@ export class SvgView extends View {
                 }
             });
 
+        // Descend: a double click opens the schematic of the instance's cell
+        // (data-descend, set in render.py). The propagation is stopped, as
+        // d3-zoom zooms in on double clicks.
+        this.g.selectAll('g[data-descend]')
+            .on('dblclick', (event) => {
+                event.stopPropagation();
+                if (this.viewOutdated()) {
+                    return;
+                }
+                this.eventBus.emit('schematic:request-open', {
+                    view: `${this.viewName}${event.currentTarget.dataset.descend}`,
+                    title: event.currentTarget.dataset.descendTitle,
+                    sourceContainer: this.panelContainer,
+                });
+            });
+
         const pending = this.takePendingSelection('pendingHighlight');
         if (pending) {
             this.setHighlight(pending);

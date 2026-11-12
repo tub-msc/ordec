@@ -648,8 +648,8 @@ function openOrActivateView(data) {
         }
     }
 
-    const componentState = view ? { view, directView: true } : undefined;
-    const title = view || 'Result View';
+    const componentState = view ? { view, directView: true, title: data.title } : undefined;
+    const title = data.title || view || 'Result View';
 
     const componentConfig = {
         type: 'component',
