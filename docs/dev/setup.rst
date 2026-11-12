@@ -38,7 +38,7 @@ Manual setup
 Without Nix, install the dependencies yourself. The commands below are for Debian.
 
 - Install the distribution packages: ``sudo apt-get install ngspice npm python3 python3-dev build-essential chromium-driver``
-- Install KLayout, and optionally Yosys (see :doc:`yosys`) and OpenVAF (needed to compile the IHP models, see below). Debian's packages of these are too old or missing; *flake.nix* lists the versions in use.
+- Install KLayout, and optionally Magic (tests requiring it carry the pytest marker ``magic``), Yosys (see :doc:`yosys`) and OpenVAF (needed to compile the IHP models, see below). Debian's packages of these are too old or missing; *flake.nix* lists the versions in use.
 - Install ORDeC in editable mode: ``pip3 install -e .[test]``. This also builds the C extensions (see :doc:`c_extensions`).
 - For building the documentation: ``pip3 install -r docs/requirements.txt`` and Graphviz (``sudo apt-get install graphviz``)
 

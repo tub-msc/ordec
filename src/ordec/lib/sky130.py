@@ -10,6 +10,7 @@ from ..core import *
 from ..schematic import spice_params
 from . import generic_mos, pdk_dirs
 from .pdk_common import PdkDict, check_dir, check_file
+from ..layout import magic
 
 @functools.cache
 def pdk() -> PdkDict:
@@ -24,6 +25,8 @@ def pdk() -> PdkDict:
         cnr: check_file(pdk.root / f"libs.tech/ngspice/corners/{cnr}.spice")
             for cnr in corners
         }
+
+    pdk.magic_rcfile = check_file(pdk.root / "libs.tech/magic/sky130A.magicrc")
 
     return pdk
     
@@ -294,3 +297,13 @@ class Or2(Cell):
         s.outline = Rect4R(lx=0, ly=0, ux=5, uy=5)
 
         return s
+
+@public
+def run_magic(script, cwd, **kwargs):
+    """
+    Run a magic Tcl script with the PDK's magic technology, which includes
+    the PDK's device generators (sky130A.tcl). The arguments are those of
+    :func:`ordec.layout.magic.run`.
+    """
+    # The startup file loads the technology from PDK_ROOT/sky130A.
+    magic.run(script, cwd, pdk().magic_rcfile, env={'PDK_ROOT': str(pdk().root.parent)}, **kwargs)
