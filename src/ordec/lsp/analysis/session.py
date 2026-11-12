@@ -57,6 +57,35 @@ DEFINITION_NAME_RE = re.compile(
 )
 
 
+class Document:
+    """Text of a document tracked by the session, with the results derived from it.
+
+    Every stored snapshot gets a new record, which takes over
+    ``last_good_analysis``, ``last_good_text`` and ``stand_in`` from the
+    record before.
+    """
+    def __init__(
+        self,
+        text: str,
+        version: Optional[int],
+        is_open: bool,
+        last_good_analysis=None,
+        last_good_text=None,
+        stand_in=None,
+    ):
+        """Initialize the record of a document snapshot."""
+        self.text = text
+        self.version = version
+        self.is_open = is_open
+        self.lines = None
+        self.analysis = None
+        self.analysis_cache = None
+        self.last_good_analysis = last_good_analysis
+        self.last_good_text = last_good_text
+        self.stand_in = stand_in
+        self.last_access = 0
+
+
 class AnalysisSession:
     """Stateful ORD analysis facade for open documents and workspace files.
 
@@ -153,18 +182,16 @@ class AnalysisSession:
         if doc is None:
             return None
 
-        lines = doc.get("lines")
-        if lines is None:
-            lines = split_source_lines(doc["text"])
-            doc["lines"] = lines
-        return lines
+        if doc.lines is None:
+            doc.lines = split_source_lines(doc.text)
+        return doc.lines
 
     def document_version(self, uri: str):
         """Return the version of a tracked document, or None."""
         doc = self.documents.get(self.canonical_uri(uri))
         if doc is None:
             return None
-        return doc.get("version")
+        return doc.version
 
     def record_document_access(self, uri: str):
         """Record recent use for closed-document eviction."""
@@ -172,7 +199,7 @@ class AnalysisSession:
         if doc is None:
             return
         self.document_access_counter += 1
-        doc["last_access"] = self.document_access_counter
+        doc.last_access = self.document_access_counter
 
     def evict_closed_documents(self):
         """Evict least-recently-used closed file documents beyond the limit."""
@@ -180,9 +207,9 @@ class AnalysisSession:
             return
 
         closed = [
-            (doc.get("last_access", 0), uri)
+            (doc.last_access, uri)
             for uri, doc in self.documents.items()
-            if not doc.get("is_open") and uri.startswith("file:")
+            if not doc.is_open and uri.startswith("file:")
         ]
         overflow = len(closed) - self.max_closed_documents
         if overflow <= 0:
@@ -197,11 +224,11 @@ class AnalysisSession:
         if doc is None:
             return None, None
 
-        analysis = doc.get("analysis")
+        analysis = doc.analysis
         if analysis is not None and not analysis.has_errors():
-            return analysis, doc["text"]
+            return analysis, doc.text
 
-        return doc.get("last_good_analysis"), doc.get("last_good_text")
+        return doc.last_good_analysis, doc.last_good_text
 
     def invalidate_workspace_index(self):
         """Clear cached workspace dependency information."""
@@ -257,19 +284,17 @@ class AnalysisSession:
         uri = self.canonical_uri(uri)
         previous = self.documents.get(uri)
         # A document evicted while closed has no previous record.
-        if previous is None or previous["text"] != text:
+        if previous is None or previous.text != text:
             self.revisions.bump(("doc", uri))
         last_good_analysis, last_good_text = self.last_good_analysis(previous)
-        self.documents[uri] = {
-            "text": text,
-            "version": version,
-            "analysis": None,
-            "last_good_analysis": last_good_analysis,
-            "last_good_text": last_good_text,
-            "stand_in": None if previous is None else previous.get("stand_in"),
-            "is_open": is_open,
-            "last_access": 0,
-        }
+        self.documents[uri] = Document(
+            text,
+            version,
+            is_open,
+            last_good_analysis=last_good_analysis,
+            last_good_text=last_good_text,
+            stand_in=None if previous is None else previous.stand_in,
+        )
         self.record_document_access(uri)
         # The import index covers the documents it was built from.
         index = self.workspace_index
@@ -351,8 +376,8 @@ class AnalysisSession:
                 self.workspace_uri_cache.discard(uri)
 
         doc = self.documents.get(uri)
-        if doc is not None and doc.get("is_open"):
-            doc["analysis"] = None
+        if doc is not None and doc.is_open:
+            doc.analysis = None
             return uri
 
         self.revisions.bump(("doc", uri))
@@ -551,16 +576,16 @@ class AnalysisSession:
 
         self.revisions.read(("doc", uri))
         doc = self.documents[uri]
-        if doc["analysis"] is None:
-            analysis = analyze_ord(doc["text"], uri=uri, version=doc["version"])
+        if doc.analysis is None:
+            analysis = analyze_ord(doc.text, uri=uri, version=doc.version)
             if analysis.has_errors():
                 # The last good analysis fits while just one line changed;
                 # otherwise its ranges can be off below the edit.
-                fallback = doc.get("last_good_analysis")
-                good_text = doc.get("last_good_text")
+                fallback = doc.last_good_analysis
+                good_text = doc.last_good_text
                 same_lines = good_text is not None and (
-                    len(split_source_lines(good_text)) == len(split_source_lines(doc["text"]))
-                    and len(edited_line_numbers(doc["text"], good_text)) <= 1
+                    len(split_source_lines(good_text)) == len(split_source_lines(doc.text))
+                    and len(edited_line_numbers(doc.text, good_text)) <= 1
                 )
                 if not same_lines:
                     fallback = self.stand_in_analysis(doc, analysis) or fallback
@@ -568,13 +593,13 @@ class AnalysisSession:
                     analysis = fallback.with_diagnostics(
                         analysis.diagnostics,
                         uri=uri,
-                        version=doc["version"],
+                        version=doc.version,
                     )
             else:
-                doc["last_good_analysis"] = analysis
-                doc["last_good_text"] = doc["text"]
-            doc["analysis"] = analysis
-        return doc["analysis"]
+                doc.last_good_analysis = analysis
+                doc.last_good_text = doc.text
+            doc.analysis = analysis
+        return doc.analysis
 
     def stand_in_analysis(self, doc, analysis):
         """Return an analysis of a broken document with stand-ins, or None.
@@ -585,25 +610,25 @@ class AnalysisSession:
         """
         error_lines = {analysis.diagnostics[0].range.start.line}
         attempts = [error_lines]
-        good_text = doc.get("last_good_text")
+        good_text = doc.last_good_text
         if good_text is not None:
-            edited_lines = edited_line_numbers(doc["text"], good_text)
+            edited_lines = edited_line_numbers(doc.text, good_text)
             attempts += [edited_lines, edited_lines | error_lines]
 
         for index, line_numbers in enumerate(attempts):
             # No lines, or those of an earlier attempt, parse no differently.
             if not line_numbers or line_numbers in attempts[:index]:
                 continue
-            source = stand_in_source(doc["text"], line_numbers)
+            source = stand_in_source(doc.text, line_numbers)
             # Typing on a broken line keeps its stand-in, and with it the
             # analysis, unchanged from one keystroke to the next.
-            previous = doc.get("stand_in")
+            previous = doc.stand_in
             if previous is not None and previous[0] == source:
                 return previous[1]
 
-            candidate = analyze_ord(source, uri=analysis.uri, version=doc["version"])
+            candidate = analyze_ord(source, uri=analysis.uri, version=doc.version)
             if not candidate.has_errors():
-                doc["stand_in"] = (source, candidate)
+                doc.stand_in = (source, candidate)
                 return candidate
         return None
 
@@ -615,10 +640,10 @@ class AnalysisSession:
         analysis never need explicit invalidation.
         """
         doc = self.documents[uri]
-        cache = doc.get("analysis_cache")
+        cache = doc.analysis_cache
         if cache is None or cache.get("analysis") is not analysis:
             cache = {"analysis": analysis}
-            doc["analysis_cache"] = cache
+            doc.analysis_cache = cache
         return cache
 
     def diagnostics(self, uri: str):
@@ -651,7 +676,7 @@ class AnalysisSession:
         """Open a filesystem ORD file as a closed session document."""
         path = Path(os.path.abspath(path))
         uri = path.as_uri()
-        if uri in self.documents and self.documents[uri].get("is_open"):
+        if uri in self.documents and self.documents[uri].is_open:
             return uri
 
         text = path.read_text(encoding="utf-8")
@@ -662,8 +687,8 @@ class AnalysisSession:
         """Refresh a filesystem ORD file in the session."""
         path = Path(os.path.abspath(path))
         uri = path.as_uri()
-        if uri in self.documents and self.documents[uri].get("is_open"):
-            self.documents[uri]["analysis"] = None
+        if uri in self.documents and self.documents[uri].is_open:
+            self.documents[uri].analysis = None
             return uri
 
         try:

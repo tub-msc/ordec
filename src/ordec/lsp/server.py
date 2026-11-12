@@ -308,7 +308,7 @@ class OrdLanguageServer:
             return []
 
         doc = self.session.documents.get(uri)
-        text = doc["text"] if doc is not None else None
+        text = doc.text if doc is not None else None
         for change in content_changes:
             if "range" not in change:
                 text = change["text"]
@@ -391,7 +391,7 @@ class OrdLanguageServer:
         return {
             uri
             for uri, doc in self.session.documents.items()
-            if doc.get("is_open")
+            if doc.is_open
         }
 
     def handle_did_change_watched_files(self, message):

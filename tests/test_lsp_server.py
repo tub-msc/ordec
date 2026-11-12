@@ -715,7 +715,7 @@ def test_lsp_applies_incremental_did_change(tmp_path):
 
     assert responses[0]["method"] == "textDocument/publishDiagnostics"
     assert responses[0]["params"]["diagnostics"] == []
-    assert server.session.documents[uri]["text"] == dedent("""\
+    assert server.session.documents[uri].text == dedent("""\
         cell Buf:
             viewgen symbol(self) -> Symbol:
                 input a

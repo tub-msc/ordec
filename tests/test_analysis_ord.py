@@ -179,7 +179,7 @@ def test_error_snapshots_not_aliased():
     broken.symbols.clear()
 
     assert [symbol.name for symbol in good.symbols] == ["Inv", "symbol", "a"]
-    assert [symbol.name for symbol in session.documents[uri]["last_good_analysis"].symbols] == [
+    assert [symbol.name for symbol in session.documents[uri].last_good_analysis.symbols] == [
         "Inv",
         "symbol",
         "a",
@@ -1742,7 +1742,7 @@ def test_close_keeps_import_index(tmp_path):
 
     session.close_document(uri)
 
-    assert session.documents[uri]["is_open"] is False
+    assert session.documents[uri].is_open is False
     assert session.workspace_import_index() is workspace_index
 
 

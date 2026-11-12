@@ -62,7 +62,7 @@ def call_context(session, uri: str, position: AnalysisPosition):
     if not session.ensure_document(uri):
         return None
 
-    text = session.documents[uri]["text"]
+    text = session.documents[uri].text
     offset = position_offset(text, position)
     scan_start = max(0, offset - CALL_SCAN_LIMIT)
 
