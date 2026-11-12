@@ -326,6 +326,9 @@
         packages = runtimeTools ++ [ py.testPython pkgs.chromedriver ];
         ORDEC_CHROME = "${pkgs.chromium.browser}/libexec/chromium/chromium";
         FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = [ pkgs.dejavu_fonts ]; };
+        # Entered from the development shell, its PYTHONPATH would make the
+        # tests import ordec from the checkout instead of the package.
+        shellHook = "unset PYTHONPATH";
       } // pdkEnv);
     };
   };

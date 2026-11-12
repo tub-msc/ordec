@@ -37,8 +37,8 @@ Treat ORDB semantics as stable. If you want to change ORDB semantics, it is like
 If `python3 -c 'import ordec; print(ordec.__file__)'` prints a path inside this checkout's `src/`, use the current environment as is. Otherwise, if Nix is available, run commands through the development shell with `nix develop -c <cmd>` (never a bare `nix develop`, which starts an interactive shell). Otherwise, ask the user. Both setups (Nix and manual) are described in `docs/dev/setup.rst`.
 
 ```bash
-# Build the C extensions (ORDB core etc.): once after cloning (Nix development
-# shell), and again after changing or pulling C sources
+# Build the C extensions (ORDB core etc.): once per checkout or git worktree
+# (Nix development shell), and again after changing or pulling C sources
 python3 setup.py build_ext --inplace
 
 # Install frontend dependencies (first time only)
@@ -74,7 +74,8 @@ pytest -m "not web"
 
 # Editor grammar tests: pytest.ini has --ignore=support, so they need an
 # explicit path and are not part of a plain 'pytest' run. Their extra
-# dependencies are the 'test-editors' extra (pip3 install -e .[test-editors]).
+# dependencies are the 'test-editors' extra (pip3 install -e .[test-editors];
+# not needed in the Nix development shell).
 pytest support/editors/tests
 ```
 
@@ -84,7 +85,7 @@ Keep test runs short: never run multi-minute measurement commands; use the small
 
 ### Web UI Development
 
-In an editable install (as in the Nix development shell), `ordec` runs the Vite dev server of `web/` behind its own server (`src/ordec/vite.py`), so frontend changes show up instantly under the usual `ordec` URL; `npm ci` in `web/` must have been run once.
+In an editable install and in the Nix development shell, `ordec` runs the Vite dev server of `web/` behind its own server (`src/ordec/vite.py`), so frontend changes show up instantly under the usual `ordec` URL; `npm ci` in `web/` must have been run once.
 ```bash
 ordec
 # Local mode example (opening mymodule.py and displaying MyCell().schematic):
