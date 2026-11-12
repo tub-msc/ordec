@@ -1032,7 +1032,7 @@ class StaticHandler:
             if self.vite and not path.startswith('/api/'):
                 if request.headers.get('Sec-WebSocket-Protocol') in self.vite.subprotocols:
                     return None # --> for Vite's HMR websocket (see serve_web)
-                return self.process_request_vite(request)
+                return self.process_request_vite(request, req_path)
             return self.process_request_static(req_path)
         except Exception:
             traceback.print_exc()
@@ -1228,7 +1228,21 @@ class StaticHandler:
 
         return build_response(http.HTTPStatus.OK, mime_type=mime_type, data=data)    
 
-    def process_request_vite(self, request):
+    # Pages that links from other sites may lead to, e.g. the launch page
+    # of secure_url_open (a file: URL, which counts as cross-site).
+    vite_entry_paths = (Path('index.html'), Path('app.html'), Path(''))
+
+    def process_request_vite(self, request, req_path):
+        # Requests from other sites, including other localhost ports
+        # ('same-site'), are refused except for the entry pages. Otherwise,
+        # any website could trigger Vite's /__open-in-editor (opens files in
+        # the user's editor), and localhost pages could read responses
+        # through Vite's CORS default. Sec-Fetch-Site is 'same-origin' for
+        # the frontend's own requests, 'none' for typed URLs and bookmarks,
+        # and absent for clients other than browsers.
+        cross_site = request.headers.get('Sec-Fetch-Site') in ('cross-site', 'same-site')
+        if cross_site and req_path not in self.vite_entry_paths:
+            return build_response(http.HTTPStatus.FORBIDDEN)
         conn = self.vite.http_connection()
         # Forwarded with the full path, as Vite serves under base_path, too.
         # The Host header is passed on unchanged, so that Vite's check

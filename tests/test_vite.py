@@ -33,9 +33,9 @@ def test_vite_behind_server():
         assert startup_queue.get() is None
         port = server_queue.get().socket.getsockname()[1]
 
-        def get(path):
+        def get(path, headers={}):
             conn = http.client.HTTPConnection('127.0.0.1', port)
-            conn.request('GET', path)
+            conn.request('GET', path, headers=headers)
             resp = conn.getresponse()
             return resp.status, resp.read()
 
@@ -45,6 +45,10 @@ def test_vite_behind_server():
         assert b'/pre/@vite/client' in body
         # api/ stays with ordec, also where ordec has no handler.
         assert get('/pre/api/token')[0] == 404
+        # Other sites reach the entry pages only (not e.g. __open-in-editor).
+        cross_site = {'Sec-Fetch-Site': 'cross-site'}
+        assert get('/pre/app.html', cross_site)[0] == 200
+        assert get('/pre/__open-in-editor?file=x', cross_site)[0] == 403
 
         # The HMR websocket is relayed to Vite.
         token = re.search(rb'const wsToken = "([^"]+)"', get('/pre/@vite/client')[1])[1]
