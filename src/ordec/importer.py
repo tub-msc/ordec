@@ -65,7 +65,10 @@ class OrdFileLoader(FileLoader):
     def _cached_code(self, fullname):
         """Return (code, py_source), served from __pycache__ when valid."""
         source = self.get_data(self.path)
-        header = (MAGIC_NUMBER + source_hash(source)
+        # The code carries the path of its source (co_filename), so the path
+        # is hashed too: a cache file copied or moved with its directory is
+        # not used.
+        header = (MAGIC_NUMBER + source_hash(os.fsencode(self.path) + b'\0' + source)
             + struct.pack('<Q', _transpiler_mtime_ns) + _version_header)
         cache_path = cache_from_source(self.path, optimization='ord')
         try:

@@ -421,7 +421,8 @@ once per source change. Cache files are named like
 ``demo.cpython-313.opt-ord.pyc`` (the ``ord`` tag keeps them distinct from
 the cache of a shadowing ``demo.py``) and start with a header encoding
 everything their validity depends on: the interpreter version, a hash of the
-``.ord`` source (content-based, not mtime-based), the modification time of
+``.ord`` source and its path (content-based, not mtime-based; the path
+because the compiled code carries it), the modification time of
 the transpiler sources (so that editing the transpiler in a development
 install invalidates the cache), and the ordec version. On any mismatch —
 including an ordec upgrade — the module is transpiled from source again and

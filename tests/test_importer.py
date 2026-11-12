@@ -3,6 +3,7 @@
 
 import sys
 import struct
+import shutil
 import importlib
 
 import ordec.importer
@@ -43,6 +44,14 @@ def test_pycache_roundtrip(tmp_path, monkeypatch):
     assert import_fresh("ord_cache_demo").MARKER == "b"
     assert len(transpiles) == 2
     assert len(list((tmp_path / "__pycache__").iterdir())) == 1
+    # The cached code carries the path of its source, so a copy of the
+    # directory does not use the copied cache file.
+    copy = tmp_path / "copy"
+    shutil.copytree(tmp_path / "__pycache__", copy / "__pycache__")
+    shutil.copy(src, copy)
+    monkeypatch.syspath_prepend(str(copy))
+    mod = import_fresh("ord_cache_demo")
+    assert mod.__loader__.get_code(mod.__name__).co_filename == mod.__file__
 
 def test_init_ord_package(tmp_path, monkeypatch):
     """A directory with __init__.ord is a regular package."""
