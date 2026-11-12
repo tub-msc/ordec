@@ -3,6 +3,7 @@
 
 import io
 import json
+import os
 import queue
 import subprocess
 import sys
@@ -1171,8 +1172,22 @@ def test_lsp_shutdown_and_unknown_method(tmp_path):
         assert exc.code == 0
 
 
-def test_lsp_subprocess_exit_does_not_abort():
+def test_lsp_subprocess_exit_does_not_abort(tmp_path):
+    # Resolving the import runs the package, which prints.
+    package_path = tmp_path / "site" / "noisy"
+    package_path.mkdir(parents=True)
+    (package_path / "__init__.py").write_text("print('noise', flush=True)\n")
+    (package_path / "sub.py").write_text("")
     messages = [
+        {
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": {"textDocument": {
+                "uri": (tmp_path / "top.ord").as_uri(),
+                "version": 1,
+                "text": "import noisy.sub\n",
+            }},
+        },
         {"jsonrpc": "2.0", "id": 1, "method": "shutdown"},
         {"jsonrpc": "2.0", "method": "exit"},
     ]
@@ -1186,13 +1201,18 @@ def test_lsp_subprocess_exit_does_not_abort():
         input=framed,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        env=dict(os.environ, PYTHONPATH=str(tmp_path / "site")),
         timeout=10,
         check=False,
     )
 
     assert result.returncode == 0
     assert b"fatal python error" not in result.stderr.lower()
-    assert b"Content-Length:" in result.stdout
+    # The print reaches stderr, not the framed messages on stdout.
+    assert b"noise" in result.stderr
+    published, response = decode_messages(result.stdout)
+    assert published["params"]["diagnostics"] == []
+    assert response["id"] == 1
 
 
 def decode_messages(data):

@@ -1406,6 +1406,12 @@ def main():
     and newer edits become visible to serve() while earlier messages are
     still being handled.
     """
+    # Messages go to a copy of stdout. Resolving imports can run package
+    # code, which writes to stderr instead, so it cannot garble them.
+    output_stream = os.fdopen(os.dup(1), "wb")
+    os.dup2(2, 1)
+    sys.stdout = sys.stderr
+
     server = OrdLanguageServer()
     message_queue = queue.SimpleQueue()
     reader = threading.Thread(
@@ -1415,7 +1421,7 @@ def main():
     )
     reader.start()
     try:
-        serve(server, message_queue, sys.stdout.buffer)
+        serve(server, message_queue, output_stream)
     except SystemExit as exc:
         # The reader thread usually blocks on stdin holding the buffer
         # lock, which makes interpreter finalization abort with a fatal
