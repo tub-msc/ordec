@@ -6,6 +6,8 @@ const { LanguageClient } = require("vscode-languageclient/node");
 
 let client;
 let startPromise;
+let outputChannel;
+let fileWatcher;
 
 async function startLanguageServer() {
   if (client) {
@@ -38,14 +40,15 @@ async function startLanguageServer() {
     args,
   };
   const clientOptions = {
+    // A client that fails to start keeps its own channel, so restarts
+    // share this one.
+    outputChannel,
     documentSelector: [
       { scheme: "file", language: "ord" },
       { scheme: "untitled", language: "ord" },
     ],
     synchronize: {
-      // .py is watched because ORD imports Python modules, whose edits
-      // must invalidate the server's Python module index.
-      fileEvents: vscode.workspace.createFileSystemWatcher("**/*.{ord,py}"),
+      fileEvents: fileWatcher,
     },
   };
 
@@ -72,7 +75,30 @@ function startLanguageServerWithGuidance() {
   });
 }
 
+async function restartLanguageServer() {
+  await deactivate();
+  await startLanguageServerWithGuidance();
+}
+
 async function activate(context) {
+  outputChannel = vscode.window.createOutputChannel("ORD Language Server");
+  context.subscriptions.push(outputChannel);
+
+  // .py is watched because ORD imports Python modules, whose edits
+  // must invalidate the server's Python module index. The client does
+  // not dispose the watcher it is given, so restarts share this one.
+  fileWatcher = vscode.workspace.createFileSystemWatcher("**/*.{ord,py}");
+  context.subscriptions.push(fileWatcher);
+
+  // Changed settings take effect when the server restarts.
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (vscode.workspace.isTrusted && event.affectsConfiguration("ord.languageServer")) {
+        void restartLanguageServer();
+      }
+    })
+  );
+
   // In Restricted Mode only the declarative features (grammar and
   // language configuration) stay active. The server spawns a workspace
   // configured executable, so it starts only once trust is granted.

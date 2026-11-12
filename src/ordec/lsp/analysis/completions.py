@@ -137,18 +137,19 @@ def completion_type_names(session, uri: str, position: AnalysisPosition, context
     if base_name.startswith("."):
         return []
 
+    member_path = ""
     identifier = leading_identifier(base_name)
     if identifier is not None:
-        # A member result type is unknown without deeper inference.
-        # Reusing the root type for `pd.d.` offers `pd` members in the
-        # wrong context, while subscripts such as `I[0].` stay valid.
-        if "." in base_name[len(identifier):]:
-            return []
+        # `I[0].` keeps the root type, `a.b.` makes a member path.
+        member_path = re.sub(r"\[[^\]]+\]", "", base_name[len(identifier):])
         base_name = identifier
 
     for binding in session.visible_bindings(uri, position):
-        if binding["name"] == base_name:
-            return session.normalize_type_names(binding.get("type_names"))
+        if binding.name == base_name:
+            return [
+                type_name + member_path
+                for type_name in session.normalize_type_names(binding.type_names)
+            ]
 
     return []
 
@@ -185,20 +186,20 @@ def member_completion_items(session, uri: str, position: AnalysisPosition, conte
                 continue
             if prefix and not name.startswith(prefix):
                 continue
-            if context["mode"] == "parameter" and member["kind"] != "parameter":
+            if context["mode"] == "parameter" and member.kind != "parameter":
                 continue
 
-            detail = "{} of {}".format(member["kind"], type_name)
-            if member.get("default"):
-                detail = "{}, default {}".format(detail, member["default"])
+            detail = "{} of {}".format(member.kind, type_name)
+            if member.default:
+                detail = "{}, default {}".format(detail, member.default)
 
             item = {
                 "label": name,
-                "kind": member["kind"],
+                "kind": member.kind,
                 "detail": detail,
             }
-            if member.get("docstring"):
-                item["documentation"] = member["docstring"]
+            if member.docstring:
+                item["documentation"] = member.docstring
             items.setdefault(name, item)
 
     return items
@@ -227,13 +228,13 @@ def completions(session, uri: str, position: AnalysisPosition):
         ]
 
     for binding in session.visible_bindings(uri, position):
-        if not is_identifier(binding["name"]):
+        if not is_identifier(binding.name):
             continue
 
-        items.setdefault(binding["name"], {
-            "label": binding["name"],
-            "kind": binding["kind"],
-            "detail": binding["kind"],
+        items.setdefault(binding.name, {
+            "label": binding.name,
+            "kind": binding.kind,
+            "detail": binding.kind,
         })
 
     for symbol in analysis.symbols:
@@ -248,6 +249,17 @@ def completions(session, uri: str, position: AnalysisPosition):
 
     for import_entry in reversed(analysis.import_entries):
         if import_entry.local_name == "*":
+            detail = "from {} import *".format(import_entry.module)
+            definitions = session.star_import_definitions(uri, import_entry.module)
+            for name, definition in definitions.items():
+                item = {
+                    "label": name,
+                    "kind": "variable" if definition is None else definition.kind,
+                    "detail": detail,
+                }
+                if definition is not None and definition.docstring:
+                    item["documentation"] = definition.docstring
+                items.setdefault(name, item)
             continue
 
         if import_entry.kind == "from":
@@ -256,7 +268,7 @@ def completions(session, uri: str, position: AnalysisPosition):
                 import_entry.module,
                 import_entry.export_name,
             )
-            import_kind = "module" if match is None else match["kind"]
+            import_kind = "module" if match is None else match.kind
 
             detail = "from {} import {}".format(import_entry.module, import_entry.export_name)
             if import_entry.local_name != import_entry.export_name:
@@ -267,8 +279,8 @@ def completions(session, uri: str, position: AnalysisPosition):
                 "kind": import_kind,
                 "detail": detail,
             }
-            if match is not None and match.get("docstring"):
-                item["documentation"] = match["docstring"]
+            if match is not None and match.docstring:
+                item["documentation"] = match.docstring
             items.setdefault(import_entry.local_name, item)
 
         else:

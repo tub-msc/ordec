@@ -31,6 +31,7 @@ import queue
 import sys
 import threading
 import traceback
+from typing import Optional
 
 # ordec imports
 from .analysis import AnalysisPosition, AnalysisRange, AnalysisSession, file_uri_to_path, source_line_table, split_source_lines
@@ -110,6 +111,9 @@ class OrdLanguageServer:
         self.hover_markdown_support = False
         self.hierarchical_symbol_support = False
         self.session = AnalysisSession()
+        # The last semantic token data sent per document, for deltas.
+        self.semantic_token_results = dict()
+        self.semantic_token_result_count = 0
         self.handlers = {
             "initialize": self.handle_initialize,
             "initialized": self.handle_noop,
@@ -133,6 +137,7 @@ class OrdLanguageServer:
             "textDocument/foldingRange": self.handle_folding_range,
             "textDocument/selectionRange": self.handle_selection_range,
             "textDocument/semanticTokens/full": self.handle_semantic_tokens_full,
+            "textDocument/semanticTokens/full/delta": self.handle_semantic_tokens_delta,
             "textDocument/inlayHint": self.handle_inlay_hint,
             "textDocument/prepareCallHierarchy": self.handle_prepare_call_hierarchy,
             "callHierarchy/incomingCalls": self.handle_incoming_calls,
@@ -269,7 +274,7 @@ class OrdLanguageServer:
                         "tokenTypes": list(SEMANTIC_TOKEN_TYPES),
                         "tokenModifiers": list(SEMANTIC_TOKEN_MODIFIERS),
                     },
-                    "full": True,
+                    "full": {"delta": True},
                 },
                 "inlayHintProvider": True,
                 "callHierarchyProvider": True,
@@ -292,7 +297,7 @@ class OrdLanguageServer:
             text_document["text"],
             version=text_document.get("version"),
         )
-        return [self.publish_diagnostics(uri)]
+        return self.publish_outdated_diagnostics(uri)
 
     def handle_did_change(self, message):
         params = message.get("params", {})
@@ -303,7 +308,7 @@ class OrdLanguageServer:
             return []
 
         doc = self.session.documents.get(uri)
-        text = doc["text"] if doc is not None else None
+        text = doc.text if doc is not None else None
         for change in content_changes:
             if "range" not in change:
                 text = change["text"]
@@ -320,7 +325,7 @@ class OrdLanguageServer:
             text,
             version=text_document.get("version"),
         )
-        return [self.publish_diagnostics(uri)]
+        return self.publish_outdated_diagnostics(uri)
 
     def apply_incremental_change(self, text: str, change):
         """Apply one range-based LSP content change to document text."""
@@ -356,6 +361,7 @@ class OrdLanguageServer:
     def handle_did_close(self, message):
         uri = self.message_text_document_uri(message)
         self.session.close_document(uri)
+        self.semantic_token_results.pop(uri, None)
         return [{
             "jsonrpc": "2.0",
             "method": "textDocument/publishDiagnostics",
@@ -363,7 +369,7 @@ class OrdLanguageServer:
                 "uri": uri,
                 "diagnostics": [],
             },
-        }]
+        }] + self.publish_outdated_diagnostics()
 
     def handle_did_save(self, message):
         params = message.get("params", {})
@@ -378,67 +384,23 @@ class OrdLanguageServer:
             self.session.update_document(uri, params["text"], version=version)
         else:
             self.session.invalidate_uri(uri)
-        return [self.publish_diagnostics(uri)]
+        return self.publish_outdated_diagnostics(uri)
 
     def open_document_uris(self):
         """Return open document URIs currently tracked by the analysis session."""
         return {
             uri
             for uri, doc in self.session.documents.items()
-            if doc.get("is_open")
+            if doc.is_open
         }
-
-    def is_python_uri(self, uri: str):
-        """Return whether a URI points to a Python source file."""
-        return self.session.file_uri_suffix(uri) == ".py"
 
     def handle_did_change_watched_files(self, message):
-        affected_uris = set()
-        open_uris = self.open_document_uris()
-        changes = message.get("params", {}).get("changes", [])
-        ord_uris = {
-            self.file_change_uri(change)
-            for change in changes
-            if self.session.is_ord_uri(change["uri"])
-        }
-
-        # A file that comes or goes can change any import, and the import
-        # graph has no edges to deleted files: refresh every open document.
-        if any(change.get("type") != FILE_CHANGE_TYPE_CHANGED for change in changes):
-            affected_uris.update(open_uris)
-
-        for uri in ord_uris:
-            if uri in open_uris:
-                affected_uris.add(uri)
-            affected_uris.update(self.session.workspace_dependents(uri))
-
-        python_changed = False
-        canonical_ord_uris = set()
-        for change in changes:
-            uri = self.file_change_uri(change)
-
-            canonical_invalidated_uri = self.session.invalidate_uri(
-                uri,
+        for change in message.get("params", {}).get("changes", []):
+            self.session.invalidate_uri(
+                self.file_change_uri(change),
                 created_or_deleted=change.get("type") != FILE_CHANGE_TYPE_CHANGED,
             )
-            if canonical_invalidated_uri is not None:
-                if canonical_invalidated_uri in open_uris:
-                    affected_uris.add(canonical_invalidated_uri)
-                if self.session.is_ord_uri(canonical_invalidated_uri):
-                    canonical_ord_uris.add(canonical_invalidated_uri)
-            elif self.is_python_uri(uri):
-                python_changed = True
-
-        for uri in canonical_ord_uris:
-            affected_uris.update(self.session.workspace_dependents(uri))
-
-        if python_changed:
-            affected_uris.update(open_uris)
-
-        return [
-            self.publish_diagnostics(uri)
-            for uri in sorted(affected_uris & open_uris)
-        ]
+        return self.publish_outdated_diagnostics()
 
     def handle_document_symbol(self, message):
         uri = self.message_text_document_uri(message)
@@ -526,8 +488,8 @@ class OrdLanguageServer:
         result = None
         if definition is not None:
             result = {
-                "uri": definition["uri"],
-                "range": self.lsp_range(definition["uri"], definition["selection_range"]),
+                "uri": definition.uri,
+                "range": self.lsp_range(definition.uri, definition.selection_range),
             }
         return self.result_response(message, result)
 
@@ -583,11 +545,11 @@ class OrdLanguageServer:
     def lsp_hierarchy_item(self, item):
         """Convert an analysis call hierarchy item to LSP shape."""
         return {
-            "name": item["name"],
-            "kind": self.symbol_kind(item["kind"]),
-            "uri": item["uri"],
-            "range": self.lsp_range(item["uri"], item["range"]),
-            "selectionRange": self.lsp_range(item["uri"], item["selection_range"]),
+            "name": item.name,
+            "kind": self.symbol_kind(item.kind),
+            "uri": item.uri,
+            "range": self.lsp_range(item.uri, item.range),
+            "selectionRange": self.lsp_range(item.uri, item.selection_range),
         }
 
     def hierarchy_request_location(self, message):
@@ -615,7 +577,7 @@ class OrdLanguageServer:
             result.append({
                 "from": self.lsp_hierarchy_item(item),
                 "fromRanges": [
-                    self.lsp_range(item["uri"], from_range)
+                    self.lsp_range(item.uri, from_range)
                     for from_range in call["from_ranges"]
                 ],
             })
@@ -727,8 +689,41 @@ class OrdLanguageServer:
                 action = self.missing_symbol_port_action(uri, diagnostic)
                 if action is not None:
                     actions.append(action)
+            elif code in ("unresolved-name", "unresolved-node-type"):
+                actions.extend(self.import_actions(uri, diagnostic))
 
-        return actions
+        # Several diagnostics can ask for the same fix.
+        unique_actions = dict()
+        for action in actions:
+            unique_actions.setdefault((action["title"], json.dumps(action["edit"])), action)
+        return list(unique_actions.values())
+
+    def import_actions(self, uri: str, diagnostic):
+        """Build quick-fix actions that import an unresolved name."""
+        start = self.analysis_position(uri, diagnostic["range"]["start"])
+        end = self.analysis_position(uri, diagnostic["range"]["end"])
+        line = self.document_line(uri, start.line)
+        if line is None or start.line != end.line:
+            return []
+        name = line[start.character - 1:end.character - 1]
+        if not name.isidentifier():
+            return []
+
+        choices = self.session.import_choices(uri, name)
+        return [{
+            "title": "Import `{}` from `{}`".format(name, choice.module),
+            "kind": "quickfix",
+            "diagnostics": [diagnostic],
+            "isPreferred": len(choices) == 1,
+            "edit": {
+                "changes": {
+                    uri: [{
+                        "range": self.lsp_range(uri, choice.range),
+                        "newText": choice.text,
+                    }],
+                },
+            },
+        } for choice in choices]
 
     def missing_symbol_port_action(self, uri: str, diagnostic):
         """Build a quick-fix action that declares a missing port in the symbol view."""
@@ -862,6 +857,48 @@ class OrdLanguageServer:
 
     def handle_semantic_tokens_full(self, message):
         uri = self.message_text_document_uri(message)
+        result_id, data = self.semantic_token_result(uri)
+        return self.result_response(message, {
+            "resultId": result_id,
+            "data": data,
+        })
+
+    def handle_semantic_tokens_delta(self, message):
+        uri = self.message_text_document_uri(message)
+        previous = self.semantic_token_results.get(uri)
+        previous_id = message.get("params", {}).get("previousResultId")
+        result_id, data = self.semantic_token_result(uri)
+        if previous is None or previous[0] != previous_id:
+            return self.result_response(message, {
+                "resultId": result_id,
+                "data": data,
+            })
+
+        # One edit replaces the part between the common prefix and suffix.
+        old_data = previous[1]
+        prefix = 0
+        while prefix < min(len(old_data), len(data)) and old_data[prefix] == data[prefix]:
+            prefix += 1
+        suffix = 0
+        while (
+            suffix < min(len(old_data), len(data)) - prefix
+            and old_data[-1 - suffix] == data[-1 - suffix]
+        ):
+            suffix += 1
+        edits = []
+        if old_data != data:
+            edits.append({
+                "start": prefix,
+                "deleteCount": len(old_data) - prefix - suffix,
+                "data": data[prefix:len(data) - suffix],
+            })
+        return self.result_response(message, {
+            "resultId": result_id,
+            "edits": edits,
+        })
+
+    def semantic_token_result(self, uri: str):
+        """Encode a document's semantic tokens and remember them under a new result id."""
         tokens = self.session.semantic_tokens(uri)
         data = []
         prev_line = 0
@@ -872,6 +909,9 @@ class OrdLanguageServer:
             line = start["line"]
             char = start["character"]
             length = end["character"] - char
+            # A stale analysis of a broken document can point past a line end.
+            if length <= 0 or end["line"] != line:
+                continue
             token_type = SEMANTIC_TOKEN_TYPE_MAP.get(token["type"], 0)
             modifier_bits = 0
             for modifier in token["modifiers"]:
@@ -885,20 +925,21 @@ class OrdLanguageServer:
             prev_line = line
             prev_char = char
 
-        return self.result_response(message, {
-            "data": data,
-        })
+        self.semantic_token_result_count += 1
+        result_id = str(self.semantic_token_result_count)
+        self.semantic_token_results[uri] = (result_id, data)
+        return result_id, data
 
     def handle_workspace_symbol(self, message):
         params = message.get("params", {})
         result = []
         for symbol in self.session.workspace_symbols(params.get("query", "")):
             result.append({
-                "name": symbol["name"],
-                "kind": self.symbol_kind(symbol["kind"]),
+                "name": symbol.name,
+                "kind": self.symbol_kind(symbol.kind),
                 "location": {
-                    "uri": symbol["uri"],
-                    "range": self.lsp_range(symbol["uri"], symbol["selection_range"]),
+                    "uri": symbol.uri,
+                    "range": self.lsp_range(symbol.uri, symbol.selection_range),
                 },
             })
         return self.result_response(message, result)
@@ -939,6 +980,16 @@ class OrdLanguageServer:
                 ),
             }
         return self.result_response(message, result)
+
+    def publish_outdated_diagnostics(self, uri: Optional[str] = None):
+        """Publish ``uri`` first, then open documents whose diagnostics changed."""
+        uris = [] if uri is None else [uri]
+        uris.extend(
+            open_uri
+            for open_uri in sorted(self.open_document_uris())
+            if open_uri != uri and self.session.diagnostics_outdated(open_uri)
+        )
+        return [self.publish_diagnostics(publish_uri) for publish_uri in uris]
 
     def publish_diagnostics(self, uri: str):
         """Build a publishDiagnostics notification for a document URI."""
@@ -1049,24 +1100,24 @@ class OrdLanguageServer:
     def lsp_definition_result(self, source_uri: str, definition):
         """Convert an analysis definition to the client-supported LSP shape."""
         target_selection_range = self.lsp_range(
-            definition["uri"],
-            definition["selection_range"],
+            definition.uri,
+            definition.selection_range,
         )
         if not self.definition_link_support:
             return {
-                "uri": definition["uri"],
+                "uri": definition.uri,
                 "range": target_selection_range,
             }
 
         result = {
-            "targetUri": definition["uri"],
-            "targetRange": self.lsp_range(definition["uri"], definition["range"]),
+            "targetUri": definition.uri,
+            "targetRange": self.lsp_range(definition.uri, definition.range),
             "targetSelectionRange": target_selection_range,
         }
-        if definition.get("origin_range") is not None:
+        if definition.origin_range is not None:
             result["originSelectionRange"] = self.lsp_range(
                 source_uri,
-                definition["origin_range"],
+                definition.origin_range,
             )
 
         return [result]
@@ -1175,17 +1226,35 @@ def did_change_replaces_document(message):
     )
 
 
+def outdated_uri(message):
+    """Return the URI of the document whose changes outdate a request, or None.
+
+    Notifications have no response to outdate. A completion request stays
+    valid: the editor does not ask again when the text changes, it filters
+    the result by the text typed since.
+    """
+    if not isinstance(message, dict) or message.get("id") is None:
+        return None
+    if message.get("method") == "textDocument/completion":
+        return None
+    params = message.get("params")
+    if not isinstance(params, dict) or not isinstance(params.get("textDocument"), dict):
+        return None
+    return params["textDocument"].get("uri")
+
+
 def serve(server, message_queue, output_stream):
     """Dispatch queued messages until EOF, then return.
 
     Messages are dispatched strictly in arrival order by this single
-    consumer. Draining the queue backlog before dispatching enables two
+    consumer. Draining the queue backlog before dispatching enables three
     shortcuts that preserve observable ordering: $/cancelRequest marks
-    still-queued requests as canceled before they are computed, and a
-    consecutive run of didChange notifications for one document collapses
-    onto a newer full-document replacement, which supersedes whatever came
-    before it. Incremental changes are never skipped because each one
-    builds on the document state left by its predecessor.
+    still-queued requests as canceled before they are computed, a request
+    on a document that a queued didChange modifies is answered with
+    ContentModified, as its result would be outdated (see outdated_uri for
+    the exception), and the didChange notifications for one document that
+    only such requests separate are applied as one, with all their changes
+    in order (a full-document replacement drops the changes before it).
     """
     pending = deque()
     canceled_ids = set()
@@ -1240,13 +1309,55 @@ def serve(server, message_queue, output_stream):
             continue
 
         uri = did_change_uri(message)
+        outdated = []
         if uri is not None:
-            while (
-                pending
-                and did_change_uri(pending[0]) == uri
-                and did_change_replaces_document(pending[0])
-            ):
-                message = pending.popleft()
+            while pending:
+                if did_change_uri(pending[0]) == uri:
+                    if did_change_replaces_document(pending[0]):
+                        message = pending.popleft()
+                        continue
+                    changes = message["params"].get("contentChanges")
+                    following = pending[0]["params"]
+                    following_changes = following.get("contentChanges")
+                    if not isinstance(changes, list) or not isinstance(following_changes, list):
+                        break
+                    pending.popleft()
+                    message = {
+                        "jsonrpc": "2.0",
+                        "method": "textDocument/didChange",
+                        "params": {
+                            "textDocument": following["textDocument"],
+                            "contentChanges": changes + following_changes,
+                        },
+                    }
+                elif outdated_uri(pending[0]) == uri and any(
+                    did_change_uri(queued) == uri for queued in pending
+                ):
+                    # Requests between the changes, such as the editor's
+                    # semantic token requests while typing, are outdated.
+                    outdated.append(pending.popleft())
+                else:
+                    break
+        elif outdated_uri(message) is not None and any(
+            did_change_uri(queued) == outdated_uri(message) for queued in pending
+        ):
+            outdated.append(message)
+            message = None
+
+        for request in outdated:
+            request_id = request.get("id")
+            canceled = request_id in canceled_ids
+            canceled_ids.discard(request_id)
+            write_message(output_stream, {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "error": {
+                    "code": -32800 if canceled else -32801,
+                    "message": "Request canceled" if canceled else "Content modified",
+                },
+            })
+        if message is None:
+            continue
 
         message_id = message.get("id")
         if message_id is not None and message_id in canceled_ids:
@@ -1265,7 +1376,10 @@ def serve(server, message_queue, output_stream):
             responses = server.handle_message(message)
         except SystemExit as exc:
             raise exc
-        except Exception as exc:  # pragma: no cover - safety net for stdio server
+        except Exception as exc:
+            # The safety net of the stdio server: the traceback goes to
+            # stderr, as a notification has no response to carry the error.
+            traceback.print_exc(file=sys.stderr)
             if message_id is not None:
                 responses = [{
                     "jsonrpc": "2.0",
@@ -1292,6 +1406,12 @@ def main():
     and newer edits become visible to serve() while earlier messages are
     still being handled.
     """
+    # Messages go to a copy of stdout. Resolving imports can run package
+    # code, which writes to stderr instead, so it cannot garble them.
+    output_stream = os.fdopen(os.dup(1), "wb")
+    os.dup2(2, 1)
+    sys.stdout = sys.stderr
+
     server = OrdLanguageServer()
     message_queue = queue.SimpleQueue()
     reader = threading.Thread(
@@ -1301,7 +1421,7 @@ def main():
     )
     reader.start()
     try:
-        serve(server, message_queue, sys.stdout.buffer)
+        serve(server, message_queue, output_stream)
     except SystemExit as exc:
         # The reader thread usually blocks on stdin holding the buffer
         # lock, which makes interpreter finalization abort with a fatal

@@ -8,6 +8,7 @@ import pytest
 
 from ordec.lsp.analysis import (
     AnalysisPosition,
+    AnalysisRange,
     AnalysisSession,
     analyze_ord,
     file_uri_to_path,
@@ -92,7 +93,12 @@ def test_structure_and_syntax_errors():
         cell Inv:
             viewgen layout("""))
     assert broken.symbols == []
-    assert broken.diagnostics[0].code == "unexpected-token"
+    assert broken.diagnostics[0].code == "syntax-error"
+
+    # The message and the range of the offending token are the compiler's.
+    [diagnostic] = analyze_ord("x = (1,\ny = 2\n").diagnostics
+    assert diagnostic.message == "unexpected token '=' (expected: ')', ',')"
+    assert diagnostic.range == AnalysisRange(AnalysisPosition(2, 3), AnalysisPosition(2, 4))
 
     dedented = analyze_ord(dedent("""\
         cell Inv:
@@ -126,9 +132,26 @@ def test_document_versions():
 
     analysis = session.analyze(uri)
     assert analysis.version == 2
-    assert analysis.diagnostics[0].code == "unexpected-token"
-    assert [symbol.name for symbol in analysis.symbols] == ["Inv", "symbol", "a"]
-    assert session.definition(uri, position_at("cell Inv:\n", "Inv"))["name"] == "Inv"
+    assert analysis.diagnostics[0].code == "syntax-error"
+    # The broken line stands in as pass, so the analysis matches the
+    # current lines rather than the last error-free text.
+    assert [symbol.name for symbol in analysis.symbols] == ["Inv"]
+    assert session.definition(uri, position_at("cell Inv:\n", "Inv")).name == "Inv"
+
+    # A broken line inserted above keeps the ranges below it right.
+    source = "cell Inv:\n    pass\n\ncell Buf:\n    pass\n"
+    session.update_document(uri, source, version=3)
+    session.analyze(uri)
+    broken = source.replace("\ncell Buf", "\nx.\ncell Buf")
+    session.update_document(uri, broken, version=4)
+    assert session.definition(uri, position_at(broken, "Buf")).selection_range.start.line == 5
+    # So does a deleted line with a broken one added below, at the same
+    # line count.
+    session.update_document(uri, source, version=5)
+    session.analyze(uri)
+    broken = source.replace("\n\ncell Buf", "\ncell Buf") + "x.\n"
+    session.update_document(uri, broken, version=6)
+    assert session.definition(uri, position_at(broken, "Buf")).selection_range.start.line == 3
 
     session.close_document(uri)
     assert session.documents == {}
@@ -156,7 +179,7 @@ def test_error_snapshots_not_aliased():
     broken.symbols.clear()
 
     assert [symbol.name for symbol in good.symbols] == ["Inv", "symbol", "a"]
-    assert [symbol.name for symbol in session.documents[uri]["last_good_analysis"].symbols] == [
+    assert [symbol.name for symbol in session.documents[uri].last_good_analysis.symbols] == [
         "Inv",
         "symbol",
         "a",
@@ -180,10 +203,30 @@ def test_semantic_diagnostics(tmp_path):
         cell Other:
             viewgen symbol(self) -> Symbol:
                 input a
+
+        cell Late:
+            n = Parameter(int)
+            q = core.Parameter(int)
+        """))
+    (tmp_path / "pycells.py").write_text(dedent("""\
+        from ordec import core
+        from ordec.core import Cell, Parameter
+        from ordec.core import Parameter as P
+        from elsewhere import Mixin
+
+        class Qualified(Cell):
+            a = Parameter(int)
+            b = core.Parameter(int)
+            d: int = Parameter(int)
+            e = P(int)
+
+        class Mixed(Mixin, Cell):
+            a = Parameter(int)
         """))
     source = dedent("""\
         from .missing import Foo
-        from .helper import Missing
+        from .helper import Missing, Late
+        from .pycells import Qualified, Mixed
         from ordec.lib.generic_mos import Nmos
 
         cell Inv:
@@ -197,13 +240,48 @@ def test_semantic_diagnostics(tmp_path):
                 Nmos pd:
                     .missing -- b
                     .$bogus = 1u
+                Nmos(w=1u, nf=2) pd2
+                Flexible(width=1) f
+                Wide(w=1u, extra=2) wide
+                Late(n=1, k=2, q=3) late
+                Qualified(a=1, b=2, c=3, d=4, e=5) qualified
+                Mixed(a=1, m=2) mixed
             viewgen bad(self) -> Nmos:
                 pass
+
+        class Wide(Nmos):
+            extra = Parameter(R)
+
+        cell Flexible:
+            w = Parameter(R)
+
+            @classmethod
+            def params_preprocess(cls, args, kwargs):
+                return args, {"w": kwargs.get("width")}
+
+            viewgen symbol(self) -> Symbol:
+                input a
         """)
 
     session = AnalysisSession(workspace_root=str(tmp_path))
     uri = (tmp_path / "broken.ord").resolve().as_uri()
     session.open_document(uri, source)
+    messages = [diagnostic.message for diagnostic in session.diagnostics(uri)]
+    assert "Unknown parameter `nf` for `Nmos`." in messages
+    assert "Unknown parameter `w` for `Nmos`." not in messages
+    # A cell with its own params_preprocess may accept other keywords, and a
+    # class with bases may inherit parameters.
+    assert "Unknown parameter `width` for `Flexible`." not in messages
+    assert "Unknown parameter `w` for `Wide`." not in messages
+    # Parameters count under a qualified name too, and a base that the index
+    # cannot read may declare more.
+    assert "Unknown parameter `c` for `Qualified`." in messages
+    assert "Unknown parameter `b` for `Qualified`." not in messages
+    # A member that the index does not recognize as a parameter may be one.
+    assert "Unknown parameter `d` for `Qualified`." not in messages
+    assert "Unknown parameter `e` for `Qualified`." not in messages
+    assert "Unknown parameter `q` for `Late`." not in messages
+    assert "Unknown parameter `m` for `Mixed`." not in messages
 
     assert set(diagnostic_codes(session, uri)) == {
         "unresolved-import",
@@ -214,6 +292,14 @@ def test_semantic_diagnostics(tmp_path):
         "unknown-parameter",
         "unknown-symbol-port",
     }
+
+    # A broken imported document keeps its last good analysis, whose
+    # ranges can lie past the end of its shortened text.
+    assert "Unknown parameter `k` for `Late`." in messages
+    helper_uri = (tmp_path / "helper.ord").resolve().as_uri()
+    session.open_document(helper_uri, "cell Late\n    n = Parameter(int)\n")
+    messages = [diagnostic.message for diagnostic in session.diagnostics(uri)]
+    assert "Unknown parameter `k` for `Late`." in messages
 
 
 def test_ord_imports(tmp_path):
@@ -254,8 +340,8 @@ def test_ord_imports(tmp_path):
         (tmp_path / "mux2.ord").resolve().as_uri(),
         (package_path / "__init__.ord").resolve().as_uri(),
     ]
-    assert session.definition(uri, position_at(top_source, "Stage child"))["name"] == "Mux2"
-    assert session.definition(uri, position_at(top_source, "Exported exp"))["name"] == "Exported"
+    assert session.definition(uri, position_at(top_source, "Stage child")).name == "Mux2"
+    assert session.definition(uri, position_at(top_source, "Exported exp")).name == "Exported"
 
 
 def test_ord_star_imports(tmp_path):
@@ -263,9 +349,26 @@ def test_ord_star_imports(tmp_path):
         cell Mux2:
             viewgen symbol(self) -> Symbol:
                 input a
+
+        cell _Hidden:
+            pass
+        """))
+    (tmp_path / "gates.py").write_text(dedent("""\
+        __all__ = ["Nand"]
+        __all__.extend(["Nor"])
+
+        class Nand:
+            pass
+
+        class Nor:
+            pass
+
+        class _Base:
+            pass
         """))
     star_source = dedent("""\
         from .mux2 import *
+        from .gates import *
 
         cell Top:
             viewgen schematic(self) -> Schematic:
@@ -278,13 +381,32 @@ def test_ord_star_imports(tmp_path):
     session = AnalysisSession(workspace_root=str(tmp_path))
     star_uri = session.open_path(str(star_path))
 
+    # Star imports bind public names only, of ORD and of Python modules.
+    assert session.resolve_name(star_uri, "Nand") is not None
+    # A method call on __all__ is not evaluated, which leaves the public names.
+    assert session.resolve_name(star_uri, "Nor") is not None
+    assert session.resolve_name(star_uri, "_Hidden") is None
+    assert session.resolve_name(star_uri, "_Base") is None
     assert session.diagnostics(star_uri) == []
-    assert session.definition(star_uri, position_at(star_source, "Mux2 child"))["name"] == "Mux2"
+    assert session.definition(star_uri, position_at(star_source, "Mux2 child")).name == "Mux2"
+    labels = completion_labels(session, star_uri, position_at(star_source, "Mux2 child"))
+    assert {"Mux2", "Nand"} <= labels and not {"_Hidden", "_Base"} & labels
 
 
 def test_python_import_variants(tmp_path):
+    (tmp_path / "pkg" / "sub").mkdir(parents=True)
+    (tmp_path / "pkg" / "__init__.py").write_text("")
+    (tmp_path / "pkg" / "sub" / "__init__.py").write_text("")
+    (tmp_path / "pkg" / "sub" / "base.py").write_text("class Base:\n    level = Parameter(int)\n")
+    (tmp_path / "plain").mkdir()
+    (tmp_path / "plain" / "values.py").write_text("WIDTH = 4\n")
     (tmp_path / "counter_yosys.py").write_text(dedent("""\
+        import pkg.sub.base
+
         class ExtLib:
+            pass
+
+        class Leveled(pkg.sub.base.Base):
             pass
 
         def report_digital_design():
@@ -292,7 +414,13 @@ def test_python_import_variants(tmp_path):
         """))
     source = dedent("""\
         import math
-        from counter_yosys import ExtLib, report_digital_design
+        import os
+        import ordec.core
+        import ordec.lib.base
+        import plain.values
+        from collections import deque
+        from os import listdir
+        from counter_yosys import ExtLib, Leveled, report_digital_design
         from ordec.layout import helpers
         from ordec.lib.generic_mos import Nmos
 
@@ -301,6 +429,8 @@ def test_python_import_variants(tmp_path):
                 value = math.log(2)
                 Nmos m:
                     .d -- net_a
+                Leveled lev:
+                    .level = 1
 
         def helper(x=ExtLib):
             return helpers, report_digital_design
@@ -312,9 +442,25 @@ def test_python_import_variants(tmp_path):
     uri = session.open_path(str(path))
 
     assert session.diagnostics(uri) == []
-    assert session.resolve_name(uri, "ExtLib")["kind"] == "class"
-    assert session.resolve_name(uri, "helpers")["kind"] == "module"
-    assert session.definition(uri, position_at(source, "Nmos m"))["name"] == "Nmos"
+    assert session.resolve_name(uri, "ExtLib").kind == "class"
+    assert session.resolve_name(uri, "helpers").kind == "module"
+    # import ordec.lib.base binds the package ordec.
+    assert session.resolve_name(uri, "ordec").name == "ordec"
+    # A package without __init__ has no source file of its own.
+    assert session.resolve_name(uri, "plain").kind == "module"
+    # Frozen stdlib modules resolve to their source file.
+    assert session.resolve_name(uri, "os").uri.endswith("/os.py")
+    # Imported names and their uses are tokens of the kind they resolve to.
+    lines = source.splitlines()
+    token_types = dict()
+    for token in session.semantic_tokens(uri):
+        start, end = token["range"]
+        token_types[lines[start.line - 1][start.character - 1:end.character - 1]] = token["type"]
+    assert token_types["Nmos"] == "class"
+    assert token_types["Leveled"] == "class"
+    assert token_types["report_digital_design"] == "function"
+    assert token_types["helpers"] == "namespace"
+    assert session.definition(uri, position_at(source, "Nmos m")).name == "Nmos"
 
 
 def test_python_members_and_completions():
@@ -337,10 +483,16 @@ def test_python_members_and_completions():
     session.open_document(uri, source, version=1)
 
     assert session.diagnostics(uri) == []
-    assert session.definition(uri, position_at(source, "s --"))["name"] == "s"
-    assert session.definition(uri, position_after(source, "$"))["name"] == "l"
-    assert session.definition(uri, position_at(source, "pos"))["name"] == "pos"
-    assert session.definition(uri, position_at(source, "g --"))["name"] == "g"
+    # The star import binds the names of ordec.core's __all__, which
+    # leaves out its submodules, both for resolution and completion.
+    assert session.resolve_name(uri, "__init__") is None
+    assert session.resolve_name(uri, "rational") is None
+    labels = completion_labels(session, uri, position_at(source, "for inst"))
+    assert "Pin" in labels and "rational" not in labels
+    assert session.definition(uri, position_at(source, "s --")).name == "s"
+    assert session.definition(uri, position_after(source, "$")).name == "l"
+    assert session.definition(uri, position_at(source, "pos")).name == "pos"
+    assert session.definition(uri, position_at(source, "g --")).name == "g"
 
     edited = source.replace(".s -- vss", ".")
     session.update_document(uri, edited, version=2)
@@ -370,8 +522,33 @@ def test_reused_symbol_members():
     session.open_document(uri, source)
 
     assert session.diagnostics(uri) == []
-    assert session.definition(uri, position_at(source, "Nmos(w"))["name"] == "Nmos"
-    assert session.definition(uri, position_at(source, "g --"))["name"] == "g"
+    assert session.definition(uri, position_at(source, "Nmos(w")).name == "Nmos"
+    assert session.definition(uri, position_at(source, "g --")).name == "g"
+
+
+def test_layer_stack_members():
+    source = dedent("""\
+        from ordec.core import *
+        from ordec.lib.ihp130 import SG13G2
+
+        cell Top:
+            viewgen layout(self) -> Layout:
+                .ref_layers = SG13G2().layers
+                layers = .ref_layers
+                r = LayoutRect(layer=layers.Metal1)
+                t = layers.Metal1.text
+        """)
+    session = AnalysisSession()
+    uri = "file:///tmp/layer_stack.ord"
+    session.open_document(uri, source)
+
+    # `text` is attached in a loop over the metals.
+    metal1 = session.definition(uri, position_at(source, "Metal1)"))
+    assert (metal1.name, Path(metal1.uri).name) == ("Metal1", "ihp130.py")
+    assert session.definition(uri, position_at(source, "text")).name == "text"
+    layer_labels = completion_labels(session, uri, position_after(source, "layers."))
+    assert {"Metal1", "TopMetal2"} <= layer_labels
+    assert {"text", "pin"} <= completion_labels(session, uri, position_after(source, "Metal1."))
 
 
 def test_net_path_statement_bodies():
@@ -394,8 +571,8 @@ def test_net_path_statement_bodies():
 
     assert session.diagnostics(uri) == []
     # References inside and after a statement body resolve to the net targets.
-    assert session.definition(uri, position_at(source, "vss.auto_wire"))["name"] == "vss"
-    assert session.definition(uri, position_at(source, "clk.auto_wire = True"))["name"] == "clk"
+    assert session.definition(uri, position_at(source, "vss.auto_wire")).name == "vss"
+    assert session.definition(uri, position_at(source, "clk.auto_wire = True")).name == "clk"
 
 
 def test_cell_member_sources():
@@ -426,9 +603,9 @@ def test_cell_member_sources():
     session.open_document(uri, source)
 
     assert session.diagnostics(uri) == []
-    assert session.definition(uri, position_at(source, "schematic", 2))["name"] == "schematic"
-    assert session.definition(uri, position_at(source, "q -- out"))["name"] == "q"
-    assert session.definition(uri, position_at(source, "bodybar"))["name"] == "bodybar"
+    assert session.definition(uri, position_at(source, "schematic", 2)).name == "schematic"
+    assert session.definition(uri, position_at(source, "q -- out")).name == "q"
+    assert session.definition(uri, position_at(source, "bodybar")).name == "bodybar"
 
 
 def test_relative_python_cells(tmp_path):
@@ -443,7 +620,10 @@ def test_relative_python_cells(tmp_path):
         class DFF(Cell):
             @generate
             def symbol(self) -> Symbol:
-                s = Symbol(cell=self)
+                if self.wide:
+                    s = Symbol(cell=self, outline=Rect4R(0, 0, 8, 4))
+                else:
+                    s = Symbol(cell=self)
                 s.d = Pin()
                 s.q = Pin()
                 return s
@@ -515,7 +695,7 @@ def test_navigation_and_rename(tmp_path):
     uri = session.open_path(str(user_path))
     position = position_at(source, "Stage", 2)
 
-    assert session.definition(uri, position)["name"] == "Mux2"
+    assert session.definition(uri, position).name == "Mux2"
     assert "Mux2" in session.hover(uri, position)["contents"]
     # Three Stage tokens, the imported Mux2 token, and the definition.
     assert len(session.references(uri, position)) == 5
@@ -545,8 +725,8 @@ def test_python_scopes(tmp_path):
 
     for name in ("left", "right", "idx", "pin", "handle", "exc"):
         definition = session.definition(uri, position_at(source, name, 2))
-        assert definition["name"] == name
-        assert definition["uri"] == uri
+        assert definition.name == name
+        assert definition.uri == uri
 
     assert "current" in completion_labels(session, uri, position_at(source, "return"))
 
@@ -564,7 +744,7 @@ def test_assignment_targets_not_bindings(tmp_path):
     session = AnalysisSession(workspace_root=str(tmp_path))
     uri = path.resolve().as_uri()
 
-    assert session.definition(uri, position_at(source, "idx]"))["name"] == "idx"
+    assert session.definition(uri, position_at(source, "idx]")).name == "idx"
     assert session.definition(uri, position_at(source, "unknown", 2)) is None
     assert session.definition(uri, position_at(source, "target", 2)) is None
 
@@ -587,7 +767,7 @@ def test_workspace_cache(tmp_path):
     session = AnalysisSession(workspace_root=str(tmp_path))
     uri = session.open_path(str(path))
 
-    assert [symbol["name"] for symbol in session.workspace_symbols("mux")] == ["Mux2"]
+    assert [symbol.name for symbol in session.workspace_symbols("mux")] == ["Mux2"]
     assert session.folding_ranges(uri)
     assert session.selection_ranges(uri, [position_at(source, "symbol")])[0] is not None
     assert {
@@ -597,10 +777,10 @@ def test_workspace_cache(tmp_path):
 
     path.write_text(source.replace("Mux2", "Mux4"))
     session.invalidate_path(str(path))
-    assert [symbol["name"] for symbol in session.workspace_symbols("mux")] == ["Mux4"]
+    assert [symbol.name for symbol in session.workspace_symbols("mux")] == ["Mux4"]
 
 
-def test_dirty_rows_refresh_without_rescan(tmp_path, monkeypatch):
+def test_import_rows_refresh_without_rescan(tmp_path, monkeypatch):
     (tmp_path / "a.ord").write_text(dedent("""\
         cell A:
             viewgen symbol(self) -> Symbol:
@@ -628,7 +808,7 @@ def test_dirty_rows_refresh_without_rescan(tmp_path, monkeypatch):
     assert (tmp_path / "a.ord").resolve().as_uri() in first_index["imports"][uri]
 
     def fail_workspace_uris():
-        raise AssertionError("workspace_uris should not run for dirty-row refresh")
+        raise AssertionError("workspace_uris should not run for a row refresh")
 
     monkeypatch.setattr(session, "workspace_uris", fail_workspace_uris)
     edited = source.replace("from .a import A", "from .b import B").replace("A inst", "B inst")
@@ -674,7 +854,7 @@ def test_simulation_alias():
     session.open_document(uri, source)
 
     assert session.diagnostics(uri) == []
-    assert session.definition(uri, position_at(source, "Simulation"))["name"] == "SimHierarchy"
+    assert session.definition(uri, position_at(source, "Simulation")).name == "SimHierarchy"
 
 
 def test_windows_drive_uri():
@@ -733,6 +913,11 @@ def test_rename_refuses_python_symbols(tmp_path):
         class Stage:
             pass
         """))
+    cells_source = "cell Inv:\n    pass\n"
+    (tmp_path / "cells.ord").write_text(cells_source)
+    (tmp_path / "wrapper.py").write_text("from cells import Inv\n")
+    (tmp_path / "gates.ord").write_text(cells_source)
+    (tmp_path / "gate_wrapper.py").write_text("def build():\n    import gates\n")
     source = dedent("""\
         from extlib import Stage
 
@@ -746,9 +931,18 @@ def test_rename_refuses_python_symbols(tmp_path):
     uri = session.open_path(str(path))
     position = position_at(source, "Stage", occurrence=2)
 
-    assert session.definition(uri, position)["uri"].endswith("extlib.py")
+    assert session.definition(uri, position).uri.endswith("extlib.py")
     assert session.prepare_rename(uri, position) is None
     assert session.rename(uri, position, "Driver") is None
+
+    # ORD symbols that a Python module imports, also below its top level,
+    # whose use rename would not rewrite either.
+    cells_uri = session.open_path(str(tmp_path / "cells.ord"))
+    inv_position = position_at(cells_source, "Inv")
+    assert session.prepare_rename(cells_uri, inv_position) is None
+    assert session.rename(cells_uri, inv_position, "Buf") is None
+    gates_uri = session.open_path(str(tmp_path / "gates.ord"))
+    assert session.prepare_rename(gates_uri, inv_position) is None
 
 
 def test_symlinked_workspace_uris(tmp_path):
@@ -779,6 +973,13 @@ def test_symlinked_workspace_uris(tmp_path):
     user_uri = session.open_path(str(linked_root / "user.ord"))
     assert diagnostic_codes(session, user_uri) == []
 
+    # Retargeting the symlink changes the module.
+    (tmp_path / "lib2.py").write_text("class B:\n    pass\n")
+    (real_root / "pkg" / "lib.py").unlink()
+    (real_root / "pkg" / "lib.py").symlink_to(tmp_path / "lib2.py")
+    session.invalidate_path(str(linked_root / "pkg" / "lib.py"))
+    assert diagnostic_codes(session, user_uri) == ["unresolved-import-member"]
+
 
 def test_imports_follow_runtime_rules(tmp_path):
     # foo.py shadows foo.ord like in ordec.importer. Without a workspace
@@ -801,7 +1002,7 @@ def test_imports_follow_runtime_rules(tmp_path):
     assert diagnostic_codes(session, uri) == []
     for name, module in [("Shadow", "foo.py"), ("Helper", "helper.py"), ("Lib", "lib.py")]:
         definition = session.definition(uri, position_at(source, name))
-        assert definition["uri"] == (tmp_path / module).resolve().as_uri()
+        assert definition.uri == (tmp_path / module).resolve().as_uri()
 
     # Deleting the shadowing foo.py makes foo.ord the imported document.
     foo_uri = (tmp_path / "foo.ord").as_uri()
@@ -827,7 +1028,7 @@ def test_imports_follow_runtime_rules(tmp_path):
     uri = session.open_path(str(package_path / "top.ord"))
     assert diagnostic_codes(session, uri) == ["unresolved-import"]
     definition = session.definition(uri, position_at(source, "A"))
-    assert definition["uri"] == (package_path / "a.py").resolve().as_uri()
+    assert definition.uri == (package_path / "a.py").resolve().as_uri()
 
     # One module name names a different file for each directory, also
     # next to a same-named module in the workspace root.
@@ -841,7 +1042,7 @@ def test_imports_follow_runtime_rules(tmp_path):
         uri = session.open_path(str(doc_path / "top.ord"))
         assert diagnostic_codes(session, uri) == []
         definition = session.definition(uri, position_at(source, name))
-        assert definition["uri"] == (doc_path / "helper.py").resolve().as_uri()
+        assert definition.uri == (doc_path / "helper.py").resolve().as_uri()
 
     # Untitled documents have no directory of their own, only the
     # workspace root to import from.
@@ -886,7 +1087,7 @@ def test_init_ord_packages(tmp_path, monkeypatch):
     session = AnalysisSession(workspace_root=str(tmp_path))
     uri = session.open_path(str(top_path))
     assert session.diagnostics(uri) == []
-    assert session.definition(uri, position_at(source, "sub"))["uri"] == sub_path.as_uri()
+    assert session.definition(uri, position_at(source, "sub")).uri == sub_path.as_uri()
 
 
 def test_imports_match_runtime_importer(tmp_path):
@@ -920,11 +1121,11 @@ def test_imports_match_runtime_importer(tmp_path):
 
     # The runtime importer searches the script's own directory, so the
     # sibling import must resolve and appear in the import graph.
-    assert session.definition(top_uri, position_at(top_source, "Inv"))["uri"] == lib_uri
+    assert session.definition(top_uri, position_at(top_source, "Inv")).uri == lib_uri
     assert top_uri in session.workspace_dependents(lib_uri)
 
     # "from . import X" names the package, never the sibling sub.ord.
-    assert session.definition(top_uri, position_at(top_source, "Inner"))["uri"] == init_uri
+    assert session.definition(top_uri, position_at(top_source, "Inner")).uri == init_uri
 
 
 def test_export_ranges_avoid_keywords(tmp_path):
@@ -940,15 +1141,9 @@ def test_export_ranges_avoid_keywords(tmp_path):
     index = PythonModuleIndex(ImportResolver(str(tmp_path)))
 
     # A short name must not match inside the def or class keyword.
-    assert index.definition(path, export_name="f")[
-        "selection_range"
-    ].start == AnalysisPosition(line=1, character=5)
-    assert index.definition(path, export_name="C")[
-        "selection_range"
-    ].start == AnalysisPosition(line=4, character=7)
-    assert index.class_members(path, "C")["d"][
-        "selection_range"
-    ].start == AnalysisPosition(line=5, character=9)
+    assert index.definition(path, export_name="f").selection_range.start == AnalysisPosition(1, 5)
+    assert index.definition(path, export_name="C").selection_range.start == AnalysisPosition(4, 7)
+    assert index.class_members(path, "C")["d"].selection_range.start == AnalysisPosition(5, 9)
 
 
 def test_port_action_refuses_stale():
@@ -1093,7 +1288,7 @@ def test_dotted_viewgen_returns(tmp_path):
 
     # The rightmost name is the return type, so the constraint inside
     # the schematic viewgen is valid and no false error is reported.
-    assert [record["return_type"] for record in analysis.viewgen_returns] == [
+    assert [record.return_type for record in analysis.viewgen_returns] == [
         "Schematic",
         "CustomView",
     ]
@@ -1169,7 +1364,7 @@ def test_rename_preserves_import_alias(tmp_path):
 
     # The exported-name token of an aliased from-import resolves to the
     # cell definition, like the alias token does.
-    assert session.definition(top_uri, export_position)["uri"] == lib_uri
+    assert session.definition(top_uri, export_position).uri == lib_uri
 
     # Renaming the cell must rewrite the exported name but keep the alias,
     # yielding "from lib import Nand as I".
@@ -1195,13 +1390,13 @@ def test_subtree_bindings():
     session.open_document(uri, source)
     analysis = session.analyze(uri)
 
-    assert session.definition(uri, position_at(source, "width", occurrence=2))["name"] == "width"
-    assert session.definition(uri, position_at(source, "lib", occurrence=2))["name"] == "lib"
+    assert session.definition(uri, position_at(source, "width", occurrence=2)).name == "width"
+    assert session.definition(uri, position_at(source, "lib", occurrence=2)).name == "lib"
     item_definition = session.definition(uri, position_at(source, "item for"))
-    assert item_definition["selection_range"].start == position_at(source, "item in")
-    i1_binding = next(binding for binding in analysis.bindings if binding["name"] == "i1")
-    assert i1_binding["type_names"] == ["Inv"]
-    assert any(member["name"] == "Inv" for member in analysis.member_occurrences)
+    assert item_definition.selection_range.start == position_at(source, "item in")
+    i1_binding = next(binding for binding in analysis.bindings if binding.name == "i1")
+    assert i1_binding.type_names == ["Inv"]
+    assert any(member.name == "Inv" for member in analysis.member_occurrences)
 
 
 def test_relative_from_imports(tmp_path):
@@ -1238,8 +1433,8 @@ def test_relative_from_imports(tmp_path):
         uri,
         position_at(source, "device", occurrence=2),
     )
-    assert device_definition["uri"] == device_path.as_uri()
-    assert session.definition(uri, position_at(source, "Root", occurrence=2))["uri"] == (
+    assert device_definition.uri == device_path.as_uri()
+    assert session.definition(uri, position_at(source, "Root", occurrence=2)).uri == (
         package_path / "__init__.ord"
     ).as_uri()
     assert set(session.resolve_import_uris(uri)) == {
@@ -1313,7 +1508,7 @@ def test_indexed_member_navigation():
     session.open_document(uri, source, version=1)
 
     definition = session.definition(uri, position_at(source, "q -- out", occurrence=2))
-    assert definition["name"] == "q"
+    assert definition.name == "q"
 
     completion_source = dedent("""\
         from ordec.lib.generic_mos import Nmos
@@ -1353,10 +1548,10 @@ def test_lambda_and_with_bindings():
 
     for name in ("first", "second", "kwargs"):
         definition = session.definition(uri, position_at(source, name, occurrence=2))
-        assert definition["name"] == name
-        assert definition["kind"] == "parameter"
+        assert definition.name == name
+        assert definition.kind == "parameter"
     for name in ("handle", "first_handle", "group", "grouped"):
-        assert session.definition(uri, position_at(source, name, occurrence=2))["name"] == name
+        assert session.definition(uri, position_at(source, name, occurrence=2)).name == name
 
 
 def test_python_index_edge_cases(tmp_path, monkeypatch):
@@ -1387,7 +1582,7 @@ def test_python_index_edge_cases(tmp_path, monkeypatch):
         from second import Choice as Selected
         """))
     index = PythonModuleIndex(ImportResolver(str(tmp_path)))
-    assert index.definition(bridge_path, export_name="Selected")["uri"] == second_path.as_uri()
+    assert index.definition(bridge_path, export_name="Selected").uri == second_path.as_uri()
 
     ord_path = tmp_path / "celllib.ord"
     ord_path.write_text(dedent("""\
@@ -1434,19 +1629,19 @@ def test_function_header_bindings():
 
     outer_x = session.definition(uri, position_at(source, "x", occurrence=1))
     parameter_x = session.definition(uri, position_at(source, "x", occurrence=2))
-    assert parameter_x["binding_id"] != outer_x["binding_id"]
+    assert parameter_x.binding_id != outer_x.binding_id
     for occurrence in (3, 4):
         definition = session.definition(uri, position_at(source, "x", occurrence))
-        assert definition["binding_id"] == outer_x["binding_id"]
+        assert definition.binding_id == outer_x.binding_id
 
     outer_t = session.definition(uri, position_at(source, "T"))
     for occurrence in range(2, 6):
         definition = session.definition(uri, position_at(source, "T", occurrence))
-        assert definition["binding_id"] == outer_t["binding_id"]
+        assert definition.binding_id == outer_t.binding_id
 
     for name in ("args", "kwargs"):
         definition = session.definition(uri, position_at(source, name, occurrence=2))
-        assert definition["kind"] == "parameter"
+        assert definition.kind == "parameter"
 
 
 def test_lone_carriage_returns():
@@ -1457,7 +1652,7 @@ def test_lone_carriage_returns():
 
     assert session.diagnostics(uri) == []
     definition = session.definition(uri, AnalysisPosition(3, 12))
-    assert definition["selection_range"].start == AnalysisPosition(1, 1)
+    assert definition.selection_range.start == AnalysisPosition(1, 1)
 
 
 def test_definition_at_identifier_end():
@@ -1474,8 +1669,8 @@ def test_definition_at_identifier_end():
         uri,
         position_after(source, "local", occurrence=2),
     )
-    assert definition["kind"] == "variable"
-    assert definition["selection_range"].start == position_at(source, "local")
+    assert definition.kind == "variable"
+    assert definition.selection_range.start == position_at(source, "local")
 
 
 def test_rename_collision():
@@ -1523,13 +1718,14 @@ def test_python_index_unicode_attribute_ranges(tmp_path, suffix):
             def build(self):
                 root = Symbol()
                 root.élé = Pin()
+                return root
         """)
     path = tmp_path / ("device" + suffix)
     path.write_text(source)
     member = PythonModuleIndex(ImportResolver()).class_members(path, "Device")["élé"]
 
-    assert member["selection_range"].start == AnalysisPosition(4, 14)
-    assert member["selection_range"].end == AnalysisPosition(4, 17)
+    assert member.selection_range.start == AnalysisPosition(4, 14)
+    assert member.selection_range.end == AnalysisPosition(4, 17)
 
 
 def test_close_keeps_import_index(tmp_path):
@@ -1546,7 +1742,7 @@ def test_close_keeps_import_index(tmp_path):
 
     session.close_document(uri)
 
-    assert session.documents[uri]["is_open"] is False
+    assert session.documents[uri].is_open is False
     assert session.workspace_import_index() is workspace_index
 
 
@@ -1556,16 +1752,16 @@ def test_workspace_symbols_reuse_scan(tmp_path, monkeypatch):
             pass
         """))
     session = AnalysisSession(workspace_root=str(tmp_path))
-    original = session.workspace_ord_paths
+    original = session.workspace_source_paths
     calls = []
 
     def counted_paths(root_path):
         calls.append(root_path)
         yield from original(root_path)
 
-    monkeypatch.setattr(session, "workspace_ord_paths", counted_paths)
-    assert [item["name"] for item in session.workspace_symbols()] == ["First"]
-    assert [item["name"] for item in session.workspace_symbols()] == ["First"]
+    monkeypatch.setattr(session, "workspace_source_paths", counted_paths)
+    assert [item.name for item in session.workspace_symbols()] == ["First"]
+    assert [item.name for item in session.workspace_symbols()] == ["First"]
     assert len(calls) == 1
 
     second_path = tmp_path / "second.ord"
@@ -1574,7 +1770,7 @@ def test_workspace_symbols_reuse_scan(tmp_path, monkeypatch):
             pass
         """))
     session.invalidate_path(str(second_path))
-    assert {item["name"] for item in session.workspace_symbols()} == {
+    assert {item.name for item in session.workspace_symbols()} == {
         "First",
         "Second",
     }
@@ -1626,7 +1822,7 @@ def test_multi_target_node_statements():
         ("context", "port b"),
     ]
     assert [
-        statement["target_name"] for statement in analysis.node_statements
+        statement.target_name for statement in analysis.node_statements
     ] == ["a", "b", "a", "b"]
 
     # Pin extraction reads the per-target node statements, so both names

@@ -3,6 +3,7 @@
 
 import io
 import json
+import os
 import queue
 import subprocess
 import sys
@@ -214,11 +215,18 @@ def test_lsp_watched_file_changes_republish_dependent_diagnostics(tmp_path):
         """)
     top_path = tmp_path / "top.ord"
     top_path.write_text(top_source)
+    # The import graph has no edges through Python modules.
+    (tmp_path / "helper.py").write_text("from device import Device\n")
+    via_python_source = top_source.replace("from .device", "from helper")
+    via_python_path = tmp_path / "via_python.ord"
+    via_python_path.write_text(via_python_source)
 
     server = initialize_server(tmp_path)
     top_uri = top_path.resolve().as_uri()
+    via_python_uri = via_python_path.resolve().as_uri()
     device_uri = device_path.resolve().as_uri()
     assert open_document(server, top_uri, top_source) == []
+    assert open_document(server, via_python_uri, via_python_source) == []
 
     device_path.write_text(dedent("""\
         cell Other:
@@ -236,11 +244,27 @@ def test_lsp_watched_file_changes_republish_dependent_diagnostics(tmp_path):
         },
     )
 
-    assert [response["params"]["uri"] for response in responses] == [top_uri]
-    assert "unresolved-import-member" in {
-        diagnostic["code"]
-        for diagnostic in responses[0]["params"]["diagnostics"]
-    }
+    published_uris = [response["params"]["uri"] for response in responses]
+    assert published_uris == sorted([top_uri, via_python_uri])
+    for response in responses:
+        assert "unresolved-import-member" in {
+            diagnostic["code"]
+            for diagnostic in response["params"]["diagnostics"]
+        }
+
+    # An unsaved edit of the imported document refreshes its open importer.
+    # Python modules read the file on disk, which keeps the old cell.
+    open_document(server, device_uri, device_path.read_text())
+    responses = notify(
+        server,
+        "textDocument/didChange",
+        {
+            "textDocument": {"uri": device_uri, "version": 2},
+            "contentChanges": [{"text": device_path.read_text().replace("Other", "Device")}],
+        },
+    )
+    assert [response["params"]["uri"] for response in responses] == [device_uri, top_uri]
+    assert responses[1]["params"]["diagnostics"] == []
 
 
 def test_lsp_deleted_file_with_cold_index_refreshes_open_documents(tmp_path):
@@ -528,6 +552,13 @@ def test_lsp_completion_and_code_actions(tmp_path):
           viewgen schematic(self) -> Schematic:
             port a
             port y
+
+        cell Buf:
+          viewgen symbol(self) -> Symbol:
+            input a
+          viewgen schematic(self) -> Schematic:
+            port a
+            port y
         """)
     broken_uri = (tmp_path / "missing_symbol_port.ord").resolve().as_uri()
     diagnostics = open_document(server, broken_uri, broken_symbol)
@@ -542,8 +573,95 @@ def test_lsp_completion_and_code_actions(tmp_path):
             },
         },
     )
-    assert [action["title"] for action in actions] == ["Declare `y` in symbol view"]
-    assert actions[0]["edit"]["changes"][broken_uri][0]["newText"] == "    input y\n"
+    # Each cell keeps its fix, although both fixes have the same title.
+    assert [action["title"] for action in actions] == ["Declare `y` in symbol view"] * 2
+    edits = [action["edit"]["changes"][broken_uri][0] for action in actions]
+    assert [edit["newText"] for edit in edits] == ["    input y\n"] * 2
+    assert edits[0]["range"] != edits[1]["range"]
+
+    # Unresolved names get imports from workspace and ordec modules; an
+    # existing one-line import of the same module is extended.
+    (tmp_path / "cells.ord").write_text(dedent("""\
+        cell Buf:
+            viewgen symbol(self) -> Symbol:
+                input a
+
+        cell Other:
+            viewgen symbol(self) -> Symbol:
+                input a
+        """))
+    top_source = dedent("""\
+        from ordec.core import *
+        from cells import Other
+
+        cell Top:
+            viewgen schematic(self) -> Schematic:
+                Nmos pd
+                Nmos pd2
+                Buf b
+        """)
+    top_uri = (tmp_path / "top.ord").resolve().as_uri()
+    diagnostics = open_document(server, top_uri, top_source)
+    actions = request(server, "textDocument/codeAction", {
+        "textDocument": text_document(top_uri),
+        "context": {"diagnostics": diagnostics},
+    })
+    edits = {
+        action["title"]: action["edit"]["changes"][top_uri][0]
+        for action in actions
+    }
+    assert len(edits) == len(actions)
+    nmos_edit = edits["Import `Nmos` from `ordec.lib.generic_mos`"]
+    assert nmos_edit["range"]["start"] == {"line": 2, "character": 0}
+    assert nmos_edit["newText"] == "from ordec.lib.generic_mos import Nmos\n"
+    assert edits["Import `Buf` from `cells`"]["newText"] == ", Buf"
+
+    # Without imports, the new one goes below the module docstring, whose
+    # lines are not imports.
+    plain_source = dedent("""\
+        # Top level.
+
+        \"\"\"Top.
+
+        from the cell library.
+        \"\"\"
+        cell Top:
+            viewgen schematic(self) -> Schematic:
+                Buf b
+        """)
+    plain_uri = (tmp_path / "plain.ord").resolve().as_uri()
+    [action] = request(server, "textDocument/codeAction", {
+        "textDocument": text_document(plain_uri),
+        "context": {"diagnostics": open_document(server, plain_uri, plain_source)},
+    })
+    assert action["edit"]["changes"][plain_uri][0]["range"]["start"] == {"line": 6, "character": 0}
+
+    # Below an import in the last line, which has no line break, the new
+    # import is appended with the line break first.
+    late_uri = (tmp_path / "late.ord").resolve().as_uri()
+    [action] = request(server, "textDocument/codeAction", {
+        "textDocument": text_document(late_uri),
+        "context": {"diagnostics": open_document(server, late_uri, plain_source + "import os")},
+    })
+    late_edit = action["edit"]["changes"][late_uri][0]
+    assert late_edit["range"]["start"] == {"line": 9, "character": 9}
+    assert late_edit["newText"] == "\nfrom cells import Buf"
+
+    # The names that a changed file defines are read again.
+    (tmp_path / "cells.ord").write_text(dedent("""\
+        cell Buf2:
+            viewgen symbol(self) -> Symbol:
+                input a
+        """))
+    notify(server, "workspace/didChangeWatchedFiles", {
+        "changes": [{"uri": (tmp_path / "cells.ord").resolve().as_uri(), "type": 2}],
+    })
+    plain_source = plain_source.replace("Buf", "Buf2")
+    [action] = request(server, "textDocument/codeAction", {
+        "textDocument": text_document(plain_uri),
+        "context": {"diagnostics": change_document(server, plain_uri, plain_source, version=2)},
+    })
+    assert action["title"] == "Import `Buf2` from `cells`"
 
 
 def test_lsp_applies_incremental_did_change(tmp_path):
@@ -597,7 +715,7 @@ def test_lsp_applies_incremental_did_change(tmp_path):
 
     assert responses[0]["method"] == "textDocument/publishDiagnostics"
     assert responses[0]["params"]["diagnostics"] == []
-    assert server.session.documents[uri]["text"] == dedent("""\
+    assert server.session.documents[uri].text == dedent("""\
         cell Buf:
             viewgen symbol(self) -> Symbol:
                 input a
@@ -974,6 +1092,42 @@ def test_lsp_workspace_folding_selection_and_semantic_tokens(tmp_path):
     workspace_symbols = request(server, "workspace/symbol", {"query": "mux"})
     assert [symbol["name"] for symbol in workspace_symbols] == ["Mux4"]
 
+    # Deltas against the previous result reproduce the full token data.
+    delta = request(server, "textDocument/semanticTokens/full/delta", {
+        "textDocument": text_document(uri),
+        "previousResultId": semantic_tokens["resultId"],
+    })
+    assert delta["edits"] == []
+    # An outdated previous result is answered with the full data.
+    full = request(server, "textDocument/semanticTokens/full/delta", {
+        "textDocument": text_document(uri),
+        "previousResultId": semantic_tokens["resultId"],
+    })
+    assert full["data"] == semantic_tokens["data"]
+    # An edit in the middle keeps the token data before and after it.
+    extended_source = new_source.replace("def helper", "def extra():\n    pass\n\ndef helper")
+    change_document(server, uri, extended_source, version=3)
+    delta = request(server, "textDocument/semanticTokens/full/delta", {
+        "textDocument": text_document(uri),
+        "previousResultId": full["resultId"],
+    })
+    full = request(server, "textDocument/semanticTokens/full", {
+        "textDocument": text_document(uri),
+    })
+    data = list(semantic_tokens["data"])
+    [edit] = delta["edits"]
+    assert 0 < edit["start"] and edit["start"] + edit["deleteCount"] < len(data)
+    data[edit["start"]:edit["start"] + edit["deleteCount"]] = edit["data"]
+    assert data == full["data"]
+
+    # A broken edit keeps the last good analysis; its tokens past the
+    # shortened line end are dropped instead of encoding no length.
+    change_document(server, uri, extended_source.replace(".orient = East", "("), version=4)
+    full = request(server, "textDocument/semanticTokens/full", {
+        "textDocument": text_document(uri),
+    })
+    assert all(length > 0 for length in full["data"][2::5])
+
 
 def test_lsp_workspace_scan_skips_hidden_and_dependency_dirs(tmp_path):
     def cell_source(name):
@@ -1018,8 +1172,22 @@ def test_lsp_shutdown_and_unknown_method(tmp_path):
         assert exc.code == 0
 
 
-def test_lsp_subprocess_exit_does_not_abort():
+def test_lsp_subprocess_exit_does_not_abort(tmp_path):
+    # Resolving the import runs the package, which prints.
+    package_path = tmp_path / "site" / "noisy"
+    package_path.mkdir(parents=True)
+    (package_path / "__init__.py").write_text("print('noise', flush=True)\n")
+    (package_path / "sub.py").write_text("")
     messages = [
+        {
+            "jsonrpc": "2.0",
+            "method": "textDocument/didOpen",
+            "params": {"textDocument": {
+                "uri": (tmp_path / "top.ord").as_uri(),
+                "version": 1,
+                "text": "import noisy.sub\n",
+            }},
+        },
         {"jsonrpc": "2.0", "id": 1, "method": "shutdown"},
         {"jsonrpc": "2.0", "method": "exit"},
     ]
@@ -1033,13 +1201,18 @@ def test_lsp_subprocess_exit_does_not_abort():
         input=framed,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        env=dict(os.environ, PYTHONPATH=str(tmp_path / "site")),
         timeout=10,
         check=False,
     )
 
     assert result.returncode == 0
     assert b"fatal python error" not in result.stderr.lower()
-    assert b"Content-Length:" in result.stdout
+    # The print reaches stderr, not the framed messages on stdout.
+    assert b"noise" in result.stderr
+    published, response = decode_messages(result.stdout)
+    assert published["params"]["diagnostics"] == []
+    assert response["id"] == 1
 
 
 def decode_messages(data):
@@ -1184,7 +1357,7 @@ def test_lsp_serve_coalesces_did_change_bursts():
     assert published[1]["params"]["diagnostics"] == []
 
 
-def test_lsp_serve_keeps_incremental_did_change_bursts():
+def test_lsp_serve_merges_did_change_bursts():
     uri = "file:///tmp/burst.ord"
 
     def did_change(version, changes):
@@ -1195,6 +1368,14 @@ def test_lsp_serve_keeps_incremental_did_change_bursts():
                 "textDocument": {"uri": uri, "version": version},
                 "contentChanges": changes,
             },
+        }
+
+    def document_symbols(message_id):
+        return {
+            "jsonrpc": "2.0",
+            "id": message_id,
+            "method": "textDocument/documentSymbol",
+            "params": {"textDocument": {"uri": uri}},
         }
 
     start_of_document = {
@@ -1214,29 +1395,54 @@ def test_lsp_serve_keeps_incremental_did_change_bursts():
                 },
             },
         },
+        document_symbols(1),
+        {
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "textDocument/completion",
+            "params": {
+                "textDocument": {"uri": uri},
+                "position": {"line": 0, "character": 0},
+            },
+        },
         did_change(2, [{"text": ""}]),
+        document_symbols(4),
         did_change(3, [{"range": start_of_document, "text": "cell (\n"}]),
+        document_symbols(2),
     ])
 
     published = [
         message for message in output
         if message.get("method") == "textDocument/publishDiagnostics"
     ]
-    # The incremental change builds on the full replacement before it, so
-    # neither may be skipped: broken open, clean replacement, broken edit.
-    assert len(published) == 3
-    assert published[0]["params"]["diagnostics"] != []
-    assert published[1]["params"]["diagnostics"] == []
-    assert published[2]["params"]["diagnostics"] != []
+    # The incremental change builds on the full replacement before it;
+    # both apply in order, as one change, also with a request between them.
+    assert len(published) == 2
+    assert published[1]["params"]["version"] == 3
+    assert published[1]["params"]["diagnostics"] != []
+    # The queued changes outdate the requests before and between them,
+    # which are not computed.
+    responses = {message.get("id"): message for message in output if "id" in message}
+    assert responses[1]["error"]["code"] == -32801
+    assert responses[4]["error"]["code"] == -32801
+    assert "result" in responses[2]
+    # A completion is answered all the same: the editor does not ask again,
+    # it filters the result by the text typed since.
+    assert "result" in responses[3]
 
 
-def test_lsp_malformed_frame_reports_parse_error_and_keeps_serving():
+def test_lsp_malformed_frame_reports_parse_error_and_keeps_serving(capsys):
     body = b"{not json}"
+    failing = json.dumps(
+        {"jsonrpc": "2.0", "method": "textDocument/didOpen"}
+    ).encode("utf-8")
     shutdown = json.dumps(
         {"jsonrpc": "2.0", "id": 2, "method": "shutdown"}
     ).encode("utf-8")
     stream = io.BytesIO(
         "Content-Length: {}\r\n\r\n".format(len(body)).encode("ascii") + body
+        + "Content-Length: {}\r\n\r\n".format(len(failing)).encode("ascii")
+        + failing
         + "Content-Length: {}\r\n\r\n".format(len(shutdown)).encode("ascii")
         + shutdown
     )
@@ -1253,6 +1459,9 @@ def test_lsp_malformed_frame_reports_parse_error_and_keeps_serving():
     assert responses[0]["id"] is None
     assert responses[0]["error"]["code"] == -32700
     assert responses[1]["id"] == 2
+    # A notification whose handler fails has no response to carry the
+    # error, so its traceback goes to stderr.
+    assert "KeyError: 'textDocument'" in capsys.readouterr().err
 
 
 def test_lsp_incremental_change_handles_cr_line_breaks():
