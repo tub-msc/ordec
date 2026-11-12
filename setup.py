@@ -11,8 +11,8 @@ class NpmBuildPy(build_py):
     build_py that additionally builds the web frontend and places
     webdist.tar directly into the build directory, keeping the source
     tree free of build artifacts. Editable installs skip the frontend
-    build (as before): they have no webdist.tar, which ordec.server
-    reports with a pointer to the dev workflow.
+    build: they have no webdist.tar, and ordec.server runs the Vite dev
+    server of web/ instead (see ordec.vite).
     """
     def run(self):
         super().run()
