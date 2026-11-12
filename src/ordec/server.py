@@ -65,6 +65,7 @@ import sys
 import os
 import select
 import errno
+import shutil
 
 import inotify_simple
 import numpy as np
@@ -1419,6 +1420,10 @@ def main():
         static_handler = StaticHandler(tarfile.open(webdist_tar),
             base_path=base_path, hub=hub, key=key)
     elif vite.available():
+        if not shutil.which('node'):
+            print("ERROR: Node.js ('node') not found on PATH, which the Vite "
+                "dev server needs in an editable installation.")
+            raise SystemExit(1)
         if not (vite.web_path / 'node_modules' / 'vite').is_dir():
             print(f"ERROR: Vite not found. Install the frontend dependencies "
                 f"with 'npm ci' in {vite.web_path}.")
