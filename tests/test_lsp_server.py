@@ -1411,13 +1411,18 @@ def test_lsp_serve_merges_did_change_bursts():
     assert "result" in responses[3]
 
 
-def test_lsp_malformed_frame_reports_parse_error_and_keeps_serving():
+def test_lsp_malformed_frame_reports_parse_error_and_keeps_serving(capsys):
     body = b"{not json}"
+    failing = json.dumps(
+        {"jsonrpc": "2.0", "method": "textDocument/didOpen"}
+    ).encode("utf-8")
     shutdown = json.dumps(
         {"jsonrpc": "2.0", "id": 2, "method": "shutdown"}
     ).encode("utf-8")
     stream = io.BytesIO(
         "Content-Length: {}\r\n\r\n".format(len(body)).encode("ascii") + body
+        + "Content-Length: {}\r\n\r\n".format(len(failing)).encode("ascii")
+        + failing
         + "Content-Length: {}\r\n\r\n".format(len(shutdown)).encode("ascii")
         + shutdown
     )
@@ -1434,6 +1439,9 @@ def test_lsp_malformed_frame_reports_parse_error_and_keeps_serving():
     assert responses[0]["id"] is None
     assert responses[0]["error"]["code"] == -32700
     assert responses[1]["id"] == 2
+    # A notification whose handler fails has no response to carry the
+    # error, so its traceback goes to stderr.
+    assert "KeyError: 'textDocument'" in capsys.readouterr().err
 
 
 def test_lsp_incremental_change_handles_cr_line_breaks():

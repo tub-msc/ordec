@@ -1376,7 +1376,10 @@ def serve(server, message_queue, output_stream):
             responses = server.handle_message(message)
         except SystemExit as exc:
             raise exc
-        except Exception as exc:  # pragma: no cover - safety net for stdio server
+        except Exception as exc:
+            # The safety net of the stdio server: the traceback goes to
+            # stderr, as a notification has no response to carry the error.
+            traceback.print_exc(file=sys.stderr)
             if message_id is not None:
                 responses = [{
                     "jsonrpc": "2.0",
