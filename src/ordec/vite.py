@@ -118,10 +118,13 @@ class Vite:
         """Relay a websocket connection of Vite's HMR client to Vite."""
         request = websocket.request
         # The Host header is passed on unchanged, so that Vite's check
-        # against DNS rebinding (server.allowedHosts) still applies.
+        # against DNS rebinding (server.allowedHosts) still applies. Same
+        # for Origin: Vite checks the HMR token (against cross-site
+        # websocket hijacking) only for connections that carry an Origin.
         try:
             upstream = unix_connect(self.socket_path,
                 uri=f"ws://{request.headers['Host']}{request.path}",
+                origin=request.headers.get('Origin'),
                 subprotocols=[websocket.subprotocol])
         except (OSError, InvalidHandshake):
             return # Closes the connection to the browser.
