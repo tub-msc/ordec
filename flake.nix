@@ -278,25 +278,14 @@
     };
 
     devShells.${system} = {
-      # Python packages from Nix; ordec itself is imported from src/ of the
-      # checkout (PYTHONPATH), with the C extensions built in place there
-      # (setup.py build_ext --inplace). Entering the shell thus changes
-      # nothing in the checkout, and any number of shells can run at once.
-      default = let
-        # In place of the scripts an installation would create. -P: like
-        # those, without the current directory first on sys.path (ordec puts
-        # it there itself where needed, see ordec.server.resolve_local).
-        scripts = [
-          (pkgs.writeShellScriptBin "ordec" ''
-            exec ${py.devPython}/bin/python -P -m ordec "$@"
-          '')
-          (pkgs.writeShellScriptBin "ordec-lsp" ''
-            exec ${py.devPython}/bin/python -P -c "import sys; from ordec.lsp import main; sys.exit(main())" "$@"
-          '')
-        ];
-      in pkgs.mkShell ({
+      # Python packages from Nix, with ordec installed in editable mode
+      # pointing to src/ of the checkout (see devPython), where the C
+      # extensions are built in place (setup.py build_ext --inplace).
+      # Entering the shell thus changes nothing in the checkout, and any
+      # number of shells can run at once.
+      default = pkgs.mkShell ({
         # graphviz: for the inheritance diagrams in the documentation.
-        packages = tools ++ scripts ++ [ py.devPython pkgs.nodejs pkgs.chromium pkgs.chromedriver pkgs.graphviz ];
+        packages = tools ++ [ py.devPython pkgs.nodejs pkgs.chromium pkgs.chromedriver pkgs.graphviz ];
         # Otherwise, ChromeDriver picks up a system Chromium of another version.
         ORDEC_CHROME = "${pkgs.chromium}/bin/chromium";
         # Outside NixOS, the glibc of Nix cannot read the locales of the
@@ -307,7 +296,7 @@
         shellHook = ''
           root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
           if [ -f "$root/src/ordec/__init__.py" ]; then
-            export PYTHONPATH="$root/src''${PYTHONPATH:+:$PYTHONPATH}"
+            export ORDEC_CHECKOUT="$root"
             if ! compgen -G "$root/src/ordec/core/ordb/_ordb*.so" > /dev/null; then
               echo "nix develop: The C extensions of ordec are not built yet. In $root, run: python3 setup.py build_ext --inplace" >&2
             fi
@@ -326,9 +315,6 @@
         packages = runtimeTools ++ [ py.testPython pkgs.chromedriver ];
         ORDEC_CHROME = "${pkgs.chromium.browser}/libexec/chromium/chromium";
         FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = [ pkgs.dejavu_fonts ]; };
-        # Entered from the development shell, its PYTHONPATH would make the
-        # tests import ordec from the checkout instead of the package.
-        shellHook = "unset PYTHONPATH";
       } // pdkEnv);
     };
   };

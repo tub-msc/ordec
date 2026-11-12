@@ -88,10 +88,19 @@ let
 in {
   inherit python web ordec;
 
-  # For the development shell, which imports ordec from the checkout
-  # (PYTHONPATH); setuptools for building its C extensions in place.
+  # For the development shell, with ordec installed in editable mode: its .pth
+  # file points to src/ of the checkout, which the shell hook exports as
+  # ORDEC_CHECKOUT (expanded at Python startup). A fixed version, as the version
+  # of the checkout would rebuild the environment on every commit.
+  # setuptools for building the C extensions in place.
   devPython = python.withPackages (ps: runtimeDeps ps ++ extraDeps ps ++ docsDeps ps
-    ++ [ ps.setuptools ps.setuptools-scm ]);
+    ++ [ ps.setuptools ps.setuptools-scm ]
+    ++ [ (ps.mkPythonEditablePackage {
+      pname = "ordec";
+      version = "0.dev0";
+      root = "$ORDEC_CHECKOUT/src";
+      inherit (pyproject.project) scripts;
+    }) ]);
 
   # The installed ordec with the test dependencies, for running the tests
   # against the package as users get it.

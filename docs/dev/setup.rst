@@ -26,9 +26,9 @@ Setup with Nix (recommended)
        python3 setup.py build_ext --inplace
        (cd web && npm ci)
 
-The shell sets the ``ORDEC_PDK_*`` variables and makes ORDeC importable from *src/* of the checkout (``PYTHONPATH``); its ``ordec`` and ``ordec-lsp`` commands run it from there. Entering the shell changes nothing in the checkout, so any number of shells can be open at once. As ORDeC is not installed as a package, ``ordec --version`` reports ``unknown``. The C extensions are not under version control, so every checkout and git worktree needs the build once. ``PYTHONPATH`` applies to all Python programs started in the shell, so an ``ordec`` from ``nix run`` started there also imports ORDeC from the checkout. A *.venv* left over from earlier versions of the shell is no longer used and can be deleted.
+The shell sets the ``ORDEC_PDK_*`` variables and has ORDeC installed in editable mode, pointing to *src/* of the checkout. Entering the shell changes nothing in the checkout, so any number of shells can be open at once. The installed version is always ``0.dev0``, so ``ordec --version`` reports that. The C extensions are not under version control, so every checkout and git worktree needs the build once. A *.venv* left over from earlier versions of the shell is no longer used and can be deleted.
 
-The shell finds the checkout through the current directory, so start ``nix develop`` inside it. ``ordec`` itself works on files anywhere, e.g. ``nix develop -c ordec ~/designs/my_design.ord``. Programs started outside the shell, such as an editor running ``ordec-lsp``, do not see the checkout; start them from within the shell.
+The shell finds the checkout through the current directory and sets ``ORDEC_CHECKOUT`` to it, so start ``nix develop`` inside it. ``ordec`` itself works on files anywhere, e.g. ``nix develop -c ordec ~/designs/my_design.ord``. Programs started outside the shell, such as an editor running ``ordec-lsp``, do not see the checkout; start them from within the shell.
 
 .. _manual_setup:
 
