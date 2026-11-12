@@ -88,8 +88,8 @@ let
 in {
   inherit python web ordec;
 
-  # For the development shell, with the editable install of ordec in a venv
-  # on top (pip install -e . --no-build-isolation).
+  # For the development shell, which imports ordec from the checkout
+  # (PYTHONPATH); setuptools for building its C extensions in place.
   devPython = python.withPackages (ps: runtimeDeps ps ++ extraDeps ps ++ docsDeps ps
     ++ [ ps.setuptools ps.setuptools-scm ]);
 

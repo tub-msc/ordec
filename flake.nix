@@ -278,50 +278,41 @@
     };
 
     devShells.${system} = {
-      # Python packages from Nix; ordec itself is installed editable into the
-      # venv .venv in the repository root, which uses the Nix packages
-      # (--system-site-packages). The venv is recreated when they change
-      # (marker file .nix-python) and removed when its setup fails; a venv
-      # not made here is left alone.
-      default = pkgs.mkShell ({
+      # Python packages from Nix; ordec itself is imported from src/ of the
+      # checkout (PYTHONPATH), with the C extensions built in place there
+      # (setup.py build_ext --inplace). Entering the shell thus changes
+      # nothing in the checkout, and any number of shells can run at once.
+      default = let
+        # In place of the scripts an installation would create. -P: like
+        # those, without the current directory first on sys.path (ordec puts
+        # it there itself where needed, see ordec.server.resolve_local).
+        scripts = [
+          (pkgs.writeShellScriptBin "ordec" ''
+            exec ${py.devPython}/bin/python -P -m ordec "$@"
+          '')
+          (pkgs.writeShellScriptBin "ordec-lsp" ''
+            exec ${py.devPython}/bin/python -P -c "import sys; from ordec.lsp import main; sys.exit(main())" "$@"
+          '')
+        ];
+      in pkgs.mkShell ({
         # graphviz: for the inheritance diagrams in the documentation.
-        packages = tools ++ [ py.devPython pkgs.nodejs pkgs.chromium pkgs.chromedriver pkgs.graphviz ];
+        packages = tools ++ scripts ++ [ py.devPython pkgs.nodejs pkgs.chromium pkgs.chromedriver pkgs.graphviz ];
         # Otherwise, ChromeDriver picks up a system Chromium of another version.
         ORDEC_CHROME = "${pkgs.chromium}/bin/chromium";
         # Outside NixOS, the glibc of Nix cannot read the locales of the
         # system, and setlocale fails for them (e.g. in sphinx-build).
         LOCALE_ARCHIVE = "${pkgs.glibcLocales}/lib/locale/locale-archive";
+        # Nix does not tell where the checkout is (the flake is evaluated from
+        # a copy in the Nix store), hence the current directory.
         shellHook = ''
           root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-          venv="$root/.venv"
-          if [ -d "$venv" ] && [ ! -f "$venv/.nix-python" ]; then
-            echo "nix develop: $venv exists, but was not set up by nix develop (it lacks .nix-python)." >&2
-            echo "nix develop: It is left untouched and not activated, so ordec is not installed in this shell." >&2
-            echo "nix develop: To have nix develop set it up, delete it (rm -rf $venv) and enter the shell again." >&2
+          if [ -f "$root/src/ordec/__init__.py" ]; then
+            export PYTHONPATH="$root/src''${PYTHONPATH:+:$PYTHONPATH}"
+            if ! compgen -G "$root/src/ordec/core/ordb/_ordb*.so" > /dev/null; then
+              echo "nix develop: The C extensions of ordec are not built yet. In $root, run: python3 setup.py build_ext --inplace" >&2
+            fi
           else
-            if [ "$(cat "$venv/.nix-python" 2>/dev/null)" != "${py.devPython}" ]; then
-              echo "nix develop: setting up $venv with an editable install of ordec" >&2
-              rm -rf "$venv"
-              # The pytest and sphinx-build of the Nix environment run
-              # with the Python of that environment, which does not see
-              # the venv, hence their scripts in the venv. On failure,
-              # the venv is removed, so that the next shell retries the
-              # setup.
-              if ! { python -m venv --system-site-packages "$venv" \
-                && printf '#!%s\nimport sys, pytest\nsys.exit(pytest.console_main())\n' "$venv/bin/python" > "$venv/bin/pytest" \
-                && printf '#!%s\nimport sys\nfrom sphinx.cmd.build import main\nsys.exit(main())\n' "$venv/bin/python" > "$venv/bin/sphinx-build" \
-                && chmod +x "$venv/bin/pytest" "$venv/bin/sphinx-build" \
-                && "$venv/bin/pip" install -q --disable-pip-version-check --no-deps --no-build-isolation -e "$root" \
-                && echo "${py.devPython}" > "$venv/.nix-python"; }
-              then
-                rm -rf "$venv"
-                echo "nix develop: setting up $venv failed (see above), so ordec is not installed in this shell." >&2
-                echo "nix develop: Enter the shell again to retry." >&2
-              fi
-            fi
-            if [ -f "$venv/bin/activate" ]; then
-              source "$venv/bin/activate"
-            fi
+            echo "nix develop: $root is not an ORDeC checkout, so ordec is not available in this shell. Enter the shell in the checkout." >&2
           fi
         '';
       } // pdkEnv);

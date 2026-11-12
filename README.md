@@ -66,9 +66,10 @@ This makes the `ordec` command available in your shell.
 git clone https://github.com/tub-msc/ordec.git
 cd ordec
 nix develop
+python3 setup.py build_ext --inplace
 ```
 
-The shell provides all tools and PDKs and activates a venv with ORDeC installed in editable mode. See [docs/dev/setup.rst](docs/dev/setup.rst) for details.
+The shell provides all tools and PDKs and runs ORDeC from the checkout; the second command builds its C extensions. See [docs/dev/setup.rst](docs/dev/setup.rst) for details.
 
 ## Motivation
 

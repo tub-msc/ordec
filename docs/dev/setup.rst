@@ -20,12 +20,15 @@ Setup with Nix (recommended)
        extra-trusted-public-keys = ordec.cachix.org-1:vYjSnOZ3z10QWY3r6xEHibmzSXvCVsSwcLN7UmxbgbQ=
 
    Then restart the Nix daemon: ``sudo systemctl restart nix-daemon``. Without the cache, the first build takes one to two hours.
-3. In the repository root, enter the development shell and install the frontend dependencies::
+3. In the repository root, enter the development shell, build the C extensions (see :doc:`c_extensions`) and install the frontend dependencies::
 
        nix develop
+       python3 setup.py build_ext --inplace
        (cd web && npm ci)
 
-The shell sets the ``ORDEC_PDK_*`` variables and activates the venv *.venv* in the repository root, which has ORDeC installed in editable mode. The venv is set up on first use and again whenever the Python packages from Nix change; anything you install into it with pip is lost then.
+The shell sets the ``ORDEC_PDK_*`` variables and makes ORDeC importable from *src/* of the checkout (``PYTHONPATH``); its ``ordec`` and ``ordec-lsp`` commands run it from there. Entering the shell changes nothing in the checkout, so any number of shells can be open at once. As ORDeC is not installed as a package, ``ordec --version`` reports ``unknown``. A *.venv* left over from earlier versions of the shell is no longer used and can be deleted.
+
+The shell finds the checkout through the current directory, so start ``nix develop`` inside it. ``ordec`` itself works on files anywhere, e.g. ``nix develop -c ordec ~/designs/my_design.ord``. Programs started outside the shell, such as an editor running ``ordec-lsp``, do not see the checkout; start them from within the shell.
 
 .. _manual_setup:
 

@@ -18,11 +18,13 @@ The ordec package contains four C extensions, all defined in ``setup.py``:
 Building
 --------
 
-The editable install of ORDeC builds the extensions into the source tree
+The extensions are built into the source tree
 (``src/ordec/core/ordb/_ordb.abi3.so``, ``src/ordec/layout/_gdsrecords.abi3.so``,
 ``src/ordec/schematic/_auto_wire.abi3.so``,
-``src/ordec/schematic/_annotate.abi3.so``). After changing the C sources, or
-after pulling changes to them, rebuild them with::
+``src/ordec/schematic/_annotate.abi3.so``): by the editable install in the
+manual setup, and explicitly in the Nix development shell (see
+:ref:`nix_setup`). After changing the C sources, or after pulling changes to
+them, rebuild them with::
 
     python3 setup.py build_ext --inplace
 
