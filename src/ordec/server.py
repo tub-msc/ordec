@@ -1307,7 +1307,6 @@ def build_argparser():
     parser.add_argument('-e', '--view', action='append', default=[], metavar='VIEW', help="Preselect a view, e.g. \"MyCell().schematic\". May be given several times; each view opens in its own result viewer, side by side. FILE:VIEW and MODULE:VIEW are shorthand for one --view.")
     parser.add_argument('-l', '--hostname', default="127.0.0.1", help="Hostname to listen on (default 127.0.0.1).")
     parser.add_argument('-p', '--port', default=8100, type=int, help="Port to listen on (default 8100).")
-    parser.add_argument('-r', '--static-root', help="Path for static web resources. If not specified, the webdist.tar file included in the ORDeC installation is used; in an editable installation, the Vite dev server of the checkout.", nargs='?')
     parser.add_argument('-b', '--backend-only', action='store_true', help="Serve backend only. Requires a separate server (e.g. Vite) to serve the frontend.")
     parser.add_argument('-n', '--no-browser', action='store_true', help="Show URL, but do not launch browser.")
     parser.add_argument('-j', '--jobs', default=4, type=int, help="Maximum number of concurrently generated views (default 4). With 0, views are generated inline in the connection handler (no progress reporting or cancellation).")
@@ -1416,9 +1415,6 @@ def main():
     dev_server = None
     if args.backend_only:
         static_handler = StaticHandler(base_path=base_path, hub=hub, key=key)
-    elif args.static_root:
-        static_handler = StaticHandler(anonymous_tar(args.static_root),
-            base_path=base_path, hub=hub, key=key)
     elif webdist_tar.is_file():
         static_handler = StaticHandler(tarfile.open(webdist_tar),
             base_path=base_path, hub=hub, key=key)
@@ -1431,12 +1427,8 @@ def main():
         static_handler = StaticHandler(base_path=base_path, hub=hub, key=key,
             vite=dev_server)
     else:
-        print(
-            "ERROR: webdist.tar not found. -- This is likely an editable "
-            "installation. Please use variant (2) or (3) outlined below to "
-            "run the server.\n"
-            )
-        parser.print_help()
+        print("ERROR: Neither webdist.tar nor the web/ directory of a "
+            "checkout (for the Vite dev server) was found.")
         raise SystemExit(1)
 
     if hub:
