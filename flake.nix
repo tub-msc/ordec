@@ -80,7 +80,7 @@
       cmakeFlags = old.cmakeFlags ++ [ (lib.cmakeBool "YOSYS_WITHOUT_READLINE" true) ];
       doCheck = false;
     });
-    inherit (pkgs) openvaf;
+    inherit (pkgs) openvaf magic-vlsi;
 
     # OpenVAF with only the runtime part of LLVM: the llvm "lib" output it
     # references is 550 MiB, mostly static archives; only libLLVM.so (184 MiB)
@@ -180,9 +180,9 @@
     };
 
     # For development: with yosys-config and the OpenVAF build dependencies.
-    tools = [ ngspice klayout yosys openvaf ];
+    tools = [ ngspice klayout magic-vlsi yosys openvaf ];
     # For the ordec package, the images and tests.yaml.
-    runtimeTools = [ ngspice klayout yosys-slim openvaf-slim ];
+    runtimeTools = [ ngspice klayout magic-vlsi yosys-slim openvaf-slim ];
 
     # Python
     # ======
@@ -273,7 +273,7 @@
     };
   in {
     packages.${system} = {
-      inherit ngspice klayout yosys yosys-slim openvaf openvaf-slim pdk-sky130 pdk-ihp-sg13g2;
+      inherit ngspice klayout magic-vlsi yosys yosys-slim openvaf openvaf-slim pdk-sky130 pdk-ihp-sg13g2;
       inherit ordec image-env image hub-image;
       inherit (py) web;
       default = ordec;

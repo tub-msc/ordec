@@ -10,7 +10,7 @@ To just try out ORDeC, the Docker image or ``nix run`` from the Readme is enough
 Setup with Nix (recommended)
 ----------------------------
 
-*flake.nix* provides everything needed for development: Ngspice, KLayout, Yosys, OpenVAF (as ``openvaf-r``), the PDKs (SKY130, IHP-Open-PDK with compiled Verilog-A models), the Python packages including those for building the documentation, Graphviz, Node.js and Chromium. *flake.lock* pins their versions, so you get the same as the Docker image and the automated tests. It supports x86_64 Linux, including WSL2 on Windows.
+*flake.nix* provides everything needed for development: Ngspice, KLayout, Magic, Yosys, OpenVAF (as ``openvaf-r``), the PDKs (SKY130, IHP-Open-PDK with compiled Verilog-A models), the Python packages including those for building the documentation, Graphviz, Node.js and Chromium. *flake.lock* pins their versions, so you get the same as the Docker image and the automated tests. It supports x86_64 Linux, including WSL2 on Windows.
 
 1. `Install Nix <https://nixos.org/download>`_.
 2. Enable flakes and the binary cache of ORDeC in */etc/nix/nix.conf* (or *~/.config/nix/nix.conf* with a single-user installation)::

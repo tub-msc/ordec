@@ -3,7 +3,7 @@
 Packaging and CI
 ================
 
-*flake.nix* defines how ORDeC is built with Nix: the ordec package, the tools (Ngspice, KLayout, Yosys, OpenVAF), the PDKs (SKY130, IHP-Open-PDK), the development shells (see :ref:`dev_setup`) and the Docker images. *flake.lock* pins the nixpkgs revision and with it the versions of everything.
+*flake.nix* defines how ORDeC is built with Nix: the ordec package, the tools (Ngspice, KLayout, Magic, Yosys, OpenVAF), the PDKs (SKY130, IHP-Open-PDK), the development shells (see :ref:`dev_setup`) and the Docker images. *flake.lock* pins the nixpkgs revision and with it the versions of everything.
 
 The ordec package
 -----------------
