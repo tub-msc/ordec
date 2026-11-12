@@ -1470,6 +1470,7 @@ def main():
         try:
             if dev_server:
                 dev_server.start()
+                print(f"Using the Vite dev server of {vite.web_path} for the frontend.")
 
             if hub:
                 hub.start_activity_reporter()

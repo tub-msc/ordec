@@ -4,7 +4,7 @@
 """
 Vite dev server for editable installations (``pip install -e``), which lack
 the packaged frontend (webdist.tar). ``ordec`` then runs Vite from the
-checkout's web/ directory as child process (web/dev-server.mjs) and forwards
+checkout's web/ directory as child process (web/dev-server.js) and forwards
 static file requests (see StaticHandler in ordec.server) and the websocket
 connections of Vite's hot module replacement (HMR) client to it. The browser
 thus talks to ordec only, and frontend changes show up instantly.
@@ -61,9 +61,9 @@ class Vite:
     def start(self):
         """Start Vite and return once it accepts connections."""
         self.proc = subprocess.Popen(
-            ['node', web_path / 'dev-server.mjs', self.socket_path, self.base_path],
+            ['node', web_path / 'dev-server.js', self.socket_path, self.base_path],
             cwd=web_path,
-            # stdin: Vite exits when ordec closes it (see dev-server.mjs).
+            # stdin: Vite exits when ordec closes it (see dev-server.js).
             # stdout: printed with prefix by print_output.
             stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT, text=True, errors='replace',

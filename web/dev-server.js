@@ -7,7 +7,7 @@
 // The Vite CLI cannot listen on a socket, hence Vite's middleware mode with
 // an own HTTP server.
 //
-// Usage: node dev-server.mjs SOCKET_PATH BASE_PATH
+// Usage: node dev-server.js SOCKET_PATH BASE_PATH
 
 import http from 'node:http';
 import { createServer } from 'vite';
@@ -17,9 +17,6 @@ const [socketPath, base] = process.argv.slice(2);
 const httpServer = http.createServer();
 const vite = await createServer({
     base,
-    // Info messages log every hot update; warnings and errors (e.g. syntax
-    // errors in frontend code) are the ones of interest.
-    logLevel: 'warn',
     clearScreen: false,
     server: {
         middlewareMode: true,
