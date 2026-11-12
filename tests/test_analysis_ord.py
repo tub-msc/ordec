@@ -8,6 +8,7 @@ import pytest
 
 from ordec.lsp.analysis import (
     AnalysisPosition,
+    AnalysisRange,
     AnalysisSession,
     analyze_ord,
     file_uri_to_path,
@@ -92,7 +93,12 @@ def test_structure_and_syntax_errors():
         cell Inv:
             viewgen layout("""))
     assert broken.symbols == []
-    assert broken.diagnostics[0].code == "unexpected-token"
+    assert broken.diagnostics[0].code == "syntax-error"
+
+    # The message and the range of the offending token are the compiler's.
+    [diagnostic] = analyze_ord("x = (1,\ny = 2\n").diagnostics
+    assert diagnostic.message == "unexpected token '=' (expected: ')', ',')"
+    assert diagnostic.range == AnalysisRange(AnalysisPosition(2, 3), AnalysisPosition(2, 4))
 
     dedented = analyze_ord(dedent("""\
         cell Inv:
@@ -126,7 +132,7 @@ def test_document_versions():
 
     analysis = session.analyze(uri)
     assert analysis.version == 2
-    assert analysis.diagnostics[0].code == "unexpected-token"
+    assert analysis.diagnostics[0].code == "syntax-error"
     # The broken line stands in as pass, so the analysis matches the
     # current lines rather than the last error-free text.
     assert [symbol.name for symbol in analysis.symbols] == ["Inv"]

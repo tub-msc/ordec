@@ -78,39 +78,6 @@ class PythonTokenAwareIndenter(PythonIndenter):
         assert self.indent_level == [0], self.indent_level
 
 
-def format_error(code, line, column, window=2):
-    """
-    Function which formats the error message with correct
-    position and window size
-
-    Args:
-        code (str): String containing ORD code
-        line (int): Error line number
-        column (int): Error line column
-        window (int): Window size of the occurred error
-    Returns:
-        Error message
-    """
-    lines = code.splitlines()
-    error_line = line - 1
-    start = error_line - window
-    if start < 0:
-        start = 0
-    end = line + window
-    if end > len(lines):
-        end = len(lines)
-
-    error = []
-    for i in range(start, end):
-        prefix = ">" if i == error_line else " "
-        error.append(f"{prefix} {i+1:4} | {lines[i]}")
-        if i == error_line:
-            # Gutter must be as wide as the "> NNNN " prefix above so the
-            # pipes line up and the caret points at the right column.
-            error.append(f"{'':6} | {'':{column-1}}^")
-    return "\n".join(error)
-
-
 def syntax_error(msg, code, line, column, end_column=None):
     """
     Builds a SyntaxError carrying a structured error position. The filename

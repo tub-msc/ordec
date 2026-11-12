@@ -5,7 +5,6 @@
 from typing import Optional
 
 from lark import Token, Tree
-from lark.exceptions import UnexpectedCharacters, UnexpectedInput, UnexpectedToken
 from lark.indenter import DedentError
 
 # ordec imports
@@ -32,7 +31,7 @@ from .model import (
     normalize_type_names,
     trailing_identifier,
 )
-from ...ord.parser import format_error
+from ...ord.parser import parse_with_errors
 from ...ord.parser import parser
 
 
@@ -1645,60 +1644,17 @@ def analyze_ord(source_data: str, uri: str = "", version: Optional[int] = None):
     """
 
     try:
-        syntax_tree = parser.parse(normalize_line_breaks(source_data) + "\n")
-    except UnexpectedToken as exc:
+        syntax_tree = parse_with_errors(parser, normalize_line_breaks(source_data))
+    except SyntaxError as exc:
+        # Without an end, the range marks the error position only.
         diagnostic = AnalysisDiagnostic(
             range=AnalysisRange(
-                start=AnalysisPosition(exc.line, exc.column),
-                end=AnalysisPosition(exc.line, exc.column),
+                start=AnalysisPosition(exc.lineno, exc.offset),
+                end=AnalysisPosition(exc.lineno, exc.end_offset or exc.offset),
             ),
             severity="error",
-            message=(
-                "Syntax Error: Unexpected token `{}`\n\n"
-                "Expected one of: {}\n"
-                "At line {}, column {}:\n\n{}"
-            ).format(
-                exc.token,
-                ", ".join(sorted(exc.expected)),
-                exc.line,
-                exc.column,
-                format_error(source_data, exc.line, exc.column),
-            ),
-            code="unexpected-token",
-        )
-        return DocumentAnalysis(uri=uri, version=version, diagnostics=[diagnostic], symbols=[])
-    except UnexpectedCharacters as exc:
-        diagnostic = AnalysisDiagnostic(
-            range=AnalysisRange(
-                start=AnalysisPosition(exc.line, exc.column),
-                end=AnalysisPosition(exc.line, exc.column),
-            ),
-            severity="error",
-            message=(
-                "Syntax Error: Unexpected character `{}`\n\n"
-                "At line {}, column {}:\n\n{}"
-            ).format(
-                exc.char,
-                exc.line,
-                exc.column,
-                format_error(source_data, exc.line, exc.column),
-            ),
-            code="unexpected-character",
-        )
-        return DocumentAnalysis(uri=uri, version=version, diagnostics=[diagnostic], symbols=[])
-    except UnexpectedInput as exc:
-        diagnostic = AnalysisDiagnostic(
-            range=AnalysisRange(
-                start=AnalysisPosition(exc.line, exc.column),
-                end=AnalysisPosition(exc.line, exc.column),
-            ),
-            severity="error",
-            message="Syntax Error\n\nAt line {}, column {}:\n\n{}".format(
-                exc.line,
-                exc.column,
-                format_error(source_data, exc.line, exc.column),
-            ),
-            code="unexpected-input",
+            message=exc.msg,
+            code="syntax-error",
         )
         return DocumentAnalysis(uri=uri, version=version, diagnostics=[diagnostic], symbols=[])
     except DedentError as exc:
