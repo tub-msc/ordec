@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import os
+import subprocess
 from pathlib import Path
 from public import public
 import functools
@@ -9,8 +10,8 @@ import functools
 from ..core import *
 from ..schematic import spice_params
 from . import generic_mos, pdk_dirs
-from .pdk_common import PdkDict, check_dir, check_file
-from ..layout import magic
+from .pdk_common import PdkDict, check_dir, check_file, rundir
+from ..layout import magic, write_gds
 
 @functools.cache
 def pdk() -> PdkDict:
@@ -307,3 +308,31 @@ def run_magic(script, cwd, **kwargs):
     """
     # The startup file loads the technology from PDK_ROOT/sky130A.
     magic.run(script, cwd, pdk().magic_rcfile, env={'PDK_ROOT': str(pdk().root.parent)}, **kwargs)
+
+@public
+def run_magic_drc(l: Layout, use_tempdir: bool=True) -> DrcReport:
+    """
+    Run the full DRC of the PDK's magic technology (sky130A.tech) over a
+    layout.
+
+    Args:
+        l: the Layout to check.
+        use_tempdir: run in a temporary directory instead of ./magic_drc.
+    """
+    directory = Directory()
+    with rundir('magic_drc', use_tempdir) as cwd:
+        with open(cwd / "layout.gds", "wb") as f:
+            write_gds(l, f, directory)
+        top = directory.name_subgraph(l)
+        # Remove the report of a previous run in this directory, so a failure
+        # below cannot be mistaken for a fresh result. magic.log goes with the
+        # tempdir, so a failure re-raises with it.
+        (cwd / "drc.txt").unlink(missing_ok=True)
+        try:
+            run_magic(magic.DRC_SCRIPT, cwd, capture="magic.log", gds="layout.gds", top=top, report="drc.txt")
+        except subprocess.CalledProcessError as e:
+            text = (cwd / "magic.log").read_text(errors='replace')
+            raise Exception(f"Magic DRC run failed:\n{text}") from e
+        report = DrcReport(ref_layout=l, top_cell_name=top)
+        magic.parse_drc(cwd / "drc.txt", report, directory)
+        return report
