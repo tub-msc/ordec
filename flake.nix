@@ -279,6 +279,12 @@
       default = ordec;
     };
 
+    # For other flakes: adds ordec and its dependencies missing in nixpkgs to
+    # the Python package sets (Python 3.13 only, see sc-leflib).
+    overlays.default = _: prev: {
+      pythonPackagesExtensions = prev.pythonPackagesExtensions ++ [ py.overlay ];
+    };
+
     devShells.${system} = {
       # Python packages from Nix, with ordec installed in editable mode
       # pointing to src/ of the checkout (see devPython), where the C
