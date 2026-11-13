@@ -3,6 +3,7 @@
 
 import * as d3 from "d3";
 import { View, CoordinateDisplay } from './view.js';
+import { openContextMenu, closeContextMenu } from '../contextmenu.js';
 
 const CROSSING_TITLE = 'How wires crossing without connection are drawn (saved for all schematics)';
 
@@ -181,6 +182,8 @@ export class SvgView extends View {
         this.shown = null;
         this.hovered = null;
         this.hoverTimeout = null;
+        // The open context menu of an instance (see openContextMenu).
+        this.contextMenu = null;
 
         this.onLvsSelect = (data) => {
             if (data && !this.selectionApplies(data.schemView, data.schemWireHash)) {
@@ -268,8 +271,9 @@ export class SvgView extends View {
         this.highlightData = null;
     }
     update(msgData, wireHash) {
-        // The highlight belongs to the replaced SVG.
+        // The highlight and the context menu belong to the replaced SVG.
         this.clearHighlight();
+        this.closeContextMenu();
         this.wireHash = wireHash;
         const viewbox = msgData['viewbox'];
         const [vx, vy, vw, vh] = viewbox;
@@ -446,20 +450,29 @@ export class SvgView extends View {
                 }
             });
 
-        // Descend: a double click opens the schematic of the instance's cell
-        // (data-descend, set in render.py). The propagation is stopped, as
-        // d3-zoom zooms in on double clicks.
+        // Descend: the context menu of an instance offers to open the
+        // schematic of its cell (data-descend, set in render.py). The right
+        // click pins the instance, without click-to-source, to show what the
+        // menu acts on.
         this.g.selectAll('g[data-descend]')
-            .on('dblclick', (event) => {
-                event.stopPropagation();
-                if (this.viewOutdated()) {
-                    return;
-                }
-                this.eventBus.emit('schematic:request-open', {
-                    view: `${this.viewName}${event.currentTarget.dataset.descend}`,
-                    title: event.currentTarget.dataset.descendTitle,
-                    sourceContainer: this.panelContainer,
-                });
+            .on('contextmenu', (event) => {
+                const group = event.currentTarget;
+                this.hovered = group.dataset.nid;
+                this.show(group.dataset.nid);
+                this.setPinned(true);
+                this.contextMenu = openContextMenu(event, [{
+                    label: 'Open schematic',
+                    action: () => {
+                        if (this.viewOutdated()) {
+                            return;
+                        }
+                        this.eventBus.emit('schematic:request-open', {
+                            view: `${this.viewName}${group.dataset.descend}`,
+                            title: group.dataset.descendTitle,
+                            sourceContainer: this.panelContainer,
+                        });
+                    },
+                }]);
             });
 
         const pending = this.takePendingSelection('pendingHighlight');
@@ -592,8 +605,16 @@ export class SvgView extends View {
             this.crossingSelect.value = style;
         }
     }
+    // Closes the context menu if it is open and belongs to this view.
+    closeContextMenu() {
+        if (this.contextMenu?.isConnected) {
+            closeContextMenu();
+        }
+        this.contextMenu = null;
+    }
     destroy() {
         this.busUnsubscribeAll();
+        this.closeContextMenu();
         this.setPinned(false);
         clearTimeout(this.hoverTimeout);
         this.clearHighlight();

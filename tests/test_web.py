@@ -1165,8 +1165,8 @@ def test_schematic_viewer(web, tmp_path, monkeypatch):
 
 @pytest.mark.web
 def test_schematic_descend(web):
-    """A double click on an instance whose cell has a schematic opens that
-    schematic in a new viewer, from where the next level opens the same way."""
+    """The context menu of an instance opens the schematic of its cell in a
+    new viewer, from where the next level opens the same way."""
     qs_local = web.key.query_string_local("tests.lib.ord.d_ff_soc", ["D_flip_flop().schematic"])
     web.navigate(f'app.html#refreshall=true&{qs_local}')
     web.wait_for_ready()
@@ -1177,7 +1177,8 @@ def test_schematic_descend(web):
             const rv = window.ordecApp.client.resultViewers.find(rv => rv.viewSelected === {json.dumps(view)});
             const group = [...(rv?.resContent.querySelectorAll('g[data-descend]') ?? [])]
                 .find(g => g.querySelector('.instanceName').textContent === '{inst}');
-            group?.dispatchEvent(new MouseEvent('dblclick', {{bubbles: true}}));
+            group?.dispatchEvent(new MouseEvent('contextmenu', {{bubbles: true, cancelable: true}}));
+            document.querySelector('.context-menu button')?.click();
             return group;
         """)
         view += f"['{inst}'].symbol.cell.schematic"
