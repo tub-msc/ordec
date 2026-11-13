@@ -468,7 +468,6 @@ export class SvgView extends View {
                         }
                         this.eventBus.emit('schematic:request-open', {
                             view: `${this.viewName}${group.dataset.descend}`,
-                            title: group.dataset.descendTitle,
                             sourceContainer: this.panelContainer,
                         });
                     },

@@ -1182,12 +1182,10 @@ def test_schematic_descend(web):
             return group;
         """)
         view += f"['{inst}'].symbol.cell.schematic"
-    # The viewer is titled by the cell.
-    assert web.wait_until(f"""
+    web.wait_until(f"""
         const rv = window.ordecApp.client.resultViewers.find(rv => rv.viewSelected === {json.dumps(view)});
-        return rv?.resContent.querySelector('.schem-svg')
-            && rv.resViewHead.querySelector('.direct-view-label').textContent;
-    """) == 'Inv().schematic'
+        return rv?.resContent.querySelector('.schem-svg');
+    """)
 
 @pytest.mark.web
 def test_report_plot_controls(web, tmp_path, monkeypatch):

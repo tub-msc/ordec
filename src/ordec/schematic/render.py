@@ -541,7 +541,6 @@ class SchematicRenderer(Renderer):
                     else:
                         ref = f".subgraph.cursor_at({inst.nid})"
                     self.cur_group.attrib['data-descend'] = f"{ref}.symbol.cell.schematic"
-                    self.cur_group.attrib['data-descend-title'] = f"{inst.symbol.cell!r}.schematic"
                 self.draw_symbol(inst.symbol, inst.loc_transform(), inst)
 
         for port in s.all(SchemPort):
