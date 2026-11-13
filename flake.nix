@@ -280,7 +280,7 @@
     };
 
     # For other flakes: adds ordec and its dependencies missing in nixpkgs to
-    # the Python package sets (Python 3.13 only, see sc-leflib).
+    # the Python package sets.
     overlays.default = _: prev: {
       pythonPackagesExtensions = prev.pythonPackagesExtensions ++ [ py.overlay ];
     };

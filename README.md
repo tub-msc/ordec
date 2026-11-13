@@ -62,7 +62,7 @@ This makes the `ordec` command available in your shell.
 
 ### Python library in another flake
 
-The overlay `overlays.default` adds `ordec` to the Python package sets of nixpkgs (Python 3.13 only), so that it can be used next to the other Python packages of a project. It includes the PDKs; the tools (Ngspice, KLayout, ...) are in `ordec.tools`:
+The overlay `overlays.default` adds `ordec` to the Python package sets of nixpkgs, so that it can be used next to the other Python packages of a project. It includes the PDKs; the tools (Ngspice, KLayout, ...) are in `ordec.tools`:
 
 ```nix
 {
@@ -72,8 +72,8 @@ The overlay `overlays.default` adds `ordec` to the Python package sets of nixpkg
     pkgs = import nixpkgs { system = "x86_64-linux"; overlays = [ ordec.overlays.default ]; };
   in {
     devShells.x86_64-linux.default = pkgs.mkShell {
-      packages = [ (pkgs.python313.withPackages (ps: [ ps.ordec ])) ]
-        ++ pkgs.python313Packages.ordec.tools;
+      packages = [ (pkgs.python3.withPackages (ps: [ ps.ordec ])) ]
+        ++ pkgs.python3Packages.ordec.tools;
     };
   };
 }

@@ -52,14 +52,29 @@ let
     python-gdsii = wheel "python-gdsii" "0.2.3"
       "https://files.pythonhosted.org/packages/py3/p/python_gdsii/python_gdsii-0.2.3-py3-none-any.whl"
       "sha256-vCysPK1BiCp0fA2IN3kYK558BmwJXIqWqfMdXvegGU8=" { };
-    # No sdist on PyPI; the manylinux wheel needs the Nix libstdc++. Only for
-    # Python 3.13, and thus ordec as well.
-    sc-leflib = wheel "sc-leflib" "0.5.2"
-      "https://files.pythonhosted.org/packages/cp313/s/sc_leflib/sc_leflib-0.5.2-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl"
-      "sha256-+qtii+mO3PPuOXSrhB4SNGK7T81Lrz7wPg1wM5Y119Y=" {
-        nativeBuildInputs = [ ps.pkgs.autoPatchelfHook ];
-        buildInputs = [ ps.pkgs.stdenv.cc.cc.lib ];
+    # CMake modules for Cython, for building sc-leflib.
+    cython-cmake = wheel "cython-cmake" "0.3.0"
+      "https://files.pythonhosted.org/packages/py3/c/cython_cmake/cython_cmake-0.3.0-py3-none-any.whl"
+      "sha256-Z6xceQMWsOf48ZYyjPdkeaLxgaZyBfMFs25E4VWZeLo=" { dependencies = [ ps.cython ]; };
+    # From the GitHub sources, as PyPI has wheels only. Their CMake build is
+    # run by scikit-build-core, not by the CMake hook of nixpkgs.
+    sc-leflib = ps.buildPythonPackage rec {
+      pname = "sc-leflib";
+      version = "0.5.2";
+      pyproject = true;
+      src = ps.pkgs.fetchFromGitHub {
+        owner = "siliconcompiler";
+        repo = "sc-leflib";
+        tag = "v${version}";
+        hash = "sha256-+b4sFy4jQZpAg6hPW03LeVnt5s+0jRKeL3HUjCUTOgg=";
       };
+      build-system = [ ps.scikit-build-core ps.setuptools-scm ps.cython ps.cython-cmake ];
+      nativeBuildInputs = [ ps.pkgs.cmake ps.pkgs.ninja ps.pkgs.bison ];
+      buildInputs = [ ps.pkgs.zlib ];
+      dontUseCmakeConfigure = true;
+      env.SETUPTOOLS_SCM_PRETEND_VERSION = version;
+      pythonImportsCheck = [ "sc_leflib" ];
+    };
 
     # The ordec executable finds the tools without further setup (PATH in the
     # wrapper); for imports, they must be on PATH (passthru.tools). The PDK
