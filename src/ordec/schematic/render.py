@@ -526,21 +526,14 @@ class SchematicRenderer(Renderer):
 
         for inst in s.all(SchemInstance):
             with self.subgroup(node=inst, data_nid=inst.nid):
+                # The web UI gives all instances a context menu (see svg.js).
+                if self.include_nids:
+                    self.cur_group.attrib['class'] = 'schemInstance'
                 # Source location for click-to-source
                 if self.include_nids and inst.src_loc is not None:
                     self.cur_group.attrib['data-srcfile'] = str(inst.src_loc.filename)
                     self.cur_group.attrib['data-srcline'] = str(inst.src_loc.line)
                     self.cur_group.attrib['data-srccol'] = str(inst.src_loc.column)
-                # Descend: suffix to the view expression of this schematic. The
-                # path is given as subscripts, since attribute access finds the
-                # attributes and methods of the node before a path of the same
-                # name.
-                if self.include_nids and hasattr(type(inst.symbol.cell), 'schematic'):
-                    if inst.npath_nid:
-                        ref = ''.join(f"[{k!r}]" for k in inst.full_path_list())
-                    else:
-                        ref = f".subgraph.cursor_at({inst.nid})"
-                    self.cur_group.attrib['data-descend'] = f"{ref}.symbol.cell.schematic"
                 self.draw_symbol(inst.symbol, inst.loc_transform(), inst)
 
         for port in s.all(SchemPort):

@@ -1173,15 +1173,15 @@ def test_schematic_descend(web):
     view = 'D_flip_flop().schematic'
     for inst in ['m1', 'i1']:
         # Waits for the viewer of the previous level, then descends.
-        web.wait_until(f"""
+        nid = web.wait_until(f"""
             const rv = window.ordecApp.client.resultViewers.find(rv => rv.viewSelected === {json.dumps(view)});
-            const group = [...(rv?.resContent.querySelectorAll('g[data-descend]') ?? [])]
+            const group = [...(rv?.resContent.querySelectorAll('g.schemInstance') ?? [])]
                 .find(g => g.querySelector('.instanceName').textContent === '{inst}');
             group?.dispatchEvent(new MouseEvent('contextmenu', {{bubbles: true, cancelable: true}}));
             document.querySelector('.context-menu button')?.click();
-            return group;
+            return group?.dataset.nid;
         """)
-        view += f"['{inst}'].symbol.cell.schematic"
+        view += f".subgraph.cursor_at({nid}).symbol.cell.schematic"
     web.wait_until(f"""
         const rv = window.ordecApp.client.resultViewers.find(rv => rv.viewSelected === {json.dumps(view)});
         return rv?.resContent.querySelector('.schem-svg');

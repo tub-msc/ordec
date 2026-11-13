@@ -450,11 +450,13 @@ export class SvgView extends View {
                 }
             });
 
-        // Descend: the context menu of an instance offers to open the
-        // schematic of its cell (data-descend, set in render.py). The right
+        // Descend: the context menu of an instance (class schemInstance, set
+        // in render.py) offers to open the schematic of its cell. Like the
+        // LVS viewer, the view name addresses the instance by nid. Where the
+        // cell has no schematic, the new viewer shows the error. The right
         // click pins the instance, without click-to-source, to show what the
         // menu acts on.
-        this.g.selectAll('g[data-descend]')
+        this.g.selectAll('g.schemInstance')
             .on('contextmenu', (event) => {
                 const group = event.currentTarget;
                 this.hovered = group.dataset.nid;
@@ -467,7 +469,7 @@ export class SvgView extends View {
                             return;
                         }
                         this.eventBus.emit('schematic:request-open', {
-                            view: `${this.viewName}${group.dataset.descend}`,
+                            view: `${this.viewName}.subgraph.cursor_at(${group.dataset.nid}).symbol.cell.schematic`,
                             sourceContainer: this.panelContainer,
                         });
                     },
