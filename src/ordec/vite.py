@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Vite dev server for editable installations (``pip install -e``), which lack
-the packaged frontend (webdist.tar). ``ordec`` then runs Vite from the
-checkout's web/ directory as child process (web/dev-server.js) and forwards
-static file requests (see StaticHandler in ordec.server) and the websocket
+Vite dev server for editable installations (``pip install -e``, the Nix
+development shell), which lack the packaged frontend (webdist.tar). ``ordec``
+then runs Vite from the checkout's web/ directory as child process
+(web/dev-server.js) and forwards static file requests (see StaticHandler in ordec.server) and the websocket
 connections of Vite's hot module replacement (HMR) client to it. The browser
 thus talks to ordec only, and frontend changes show up instantly.
 
