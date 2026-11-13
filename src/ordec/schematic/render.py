@@ -526,6 +526,9 @@ class SchematicRenderer(Renderer):
 
         for inst in s.all(SchemInstance):
             with self.subgroup(node=inst, data_nid=inst.nid):
+                # The web UI gives all instances a context menu (see svg.js).
+                if self.include_nids:
+                    self.cur_group.attrib['class'] = 'schemInstance'
                 # Source location for click-to-source
                 if self.include_nids and inst.src_loc is not None:
                     self.cur_group.attrib['data-srcfile'] = str(inst.src_loc.filename)
