@@ -34,8 +34,8 @@ mirrors the ``python`` command line:
 In an editable installation (``pip install -e``, the Nix development shell),
 the packaged frontend (webdist.tar) is not available; ``ordec`` then runs the
 Vite dev server of the checkout's *web/* directory behind its own server, so
-that frontend changes show up instantly (see ordec.vite and the development setup in the
-documentation).
+that frontend changes show up instantly (see ordec.vite and the development
+setup in the documentation).
 """
 
 import argparse

@@ -12,7 +12,7 @@ The ordec package
 
 The package is defined in an overlay of the Python package set (``overlay`` in *support/nix/python.nix*), together with the dependencies nixpkgs lacks. The flake applies it to its own Python and exports it as ``overlays.default`` (via ``pythonPackagesExtensions``), so that other flakes can add ``ordec`` to their Python, as shown in the Readme. Within the overlay, the nixpkgs of the user provides the Python packages and the build tools; the frontend, the tools and the PDKs are always those of this flake, so they are not rebuilt against another nixpkgs.
 
-*support/nix/python.nix* reads the Python dependencies from *pyproject.toml* and takes them from nixpkgs. The few packages nixpkgs lacks are fetched as wheels from PyPI. The build checks all versions against *pyproject.toml*. Installations with pip get the newest versions *pyproject.toml* allows instead, which the automated tests do not cover.
+*support/nix/python.nix* reads the Python dependencies from *pyproject.toml* and takes them from nixpkgs. The few packages nixpkgs lacks are fetched as wheels from PyPI; sc-leflib, of which PyPI has only wheels per Python version and platform, is built from its GitHub sources. The build checks all versions against *pyproject.toml*. Installations with pip get the newest versions *pyproject.toml* allows instead, which the automated tests do not cover.
 
 The frontend is built separately, as flake output *web* from *web/package-lock.json*, because the Nix build has no network access for ``npm ci``. *setup.py* takes it from ``ORDEC_WEBDIST``.
 
