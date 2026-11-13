@@ -482,7 +482,7 @@ class ConnectionHandler:
             msg_ret['type'] = viewtype
             msg_ret['data'] = data
             if isinstance(view, SubgraphRoot):
-                # Best-effort: user-defined Node classes may lack a wire_id;
+                # Best-effort: user-defined subgraph types may lack a wire_id;
                 # a hashing failure must not break view delivery.
                 try:
                     msg_ret['wire_hash'] = view.subgraph.wire_hash(ept).hex()

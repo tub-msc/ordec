@@ -72,18 +72,21 @@ ntype_dealloc(NType *nt)
     obj_free(nt);
 }
 
-// NType(tuple_cls, cursor_type, attrs, uses, checks)
+// NType(tuple_cls, cursor_type, attrs, uses, checks, wire)
 //   attrs: [(name, kind, width, vtype, optional, attr, read_mode, ref_kind,
 //       ext, fmode, ftype, fdefault, subfn)]
 //   ext: None or (start, tuple of SubgraphRef attributes)
 //   uses: [(index, key_positions, sort_position, unique, combined, sortfn)]
 //   checks: [(kind, i)], in the order in which they are run
+//   wire: whether the node type declares a wire_id
 static PyObject *
 ntype_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 {
     PyObject *tuple_cls, *cursor_type, *attrs, *uses, *checks;
-    if (!PyArg_ParseTuple(args, "OOO!O!O!", &tuple_cls, &cursor_type,
-            &PyList_Type, &attrs, &PyList_Type, &uses, &PyList_Type, &checks))
+    int wire;
+    if (!PyArg_ParseTuple(args, "OOO!O!O!p", &tuple_cls, &cursor_type,
+            &PyList_Type, &attrs, &PyList_Type, &uses, &PyList_Type, &checks,
+            &wire))
         return NULL;
     NType *nt = (NType *)PyType_GenericAlloc(type, 0);
     if (!nt)
@@ -91,6 +94,7 @@ ntype_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
     nt->tuple_cls = Py_NewRef(tuple_cls);
     nt->cursor_type = Py_NewRef(cursor_type);
     nt->permitted = PyDict_New();
+    nt->wire = wire;
     nt->nattr = (int)PyList_Size(attrs);
     nt->ref_attr = -1;
     nt->nuse = (int)PyList_Size(uses);
@@ -206,7 +210,8 @@ ntype_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
             return NULL;
         }
         int limit = c->kind == CHK_UNIQUE ? nt->nuse : nt->nattr;
-        if (c->i < 0 || c->i >= limit) {
+        if (c->i < 0 || c->i >= limit || (c->kind == CHK_SUBGRAPH
+                && nt->attrs[c->i].kind != K_OBJ)) {
             Py_DECREF(nt);
             PyErr_SetString(PyExc_ValueError, "bad check item");
             return NULL;

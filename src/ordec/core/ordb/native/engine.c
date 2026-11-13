@@ -1282,6 +1282,19 @@ txn_check(Sg *sg, Txn *tx, PyObject *sgu)
                     continue;
                 }
                 AttrInfo *ai = &nt->attrs[ci->i];
+                if (ci->kind == CHK_SUBGRAPH) {
+                    // Under a root that declares a wire_id, the roots of
+                    // referenced subgraphs must declare one, too.
+                    PyObject *o = (PyObject *)p[ai->slot];
+                    int tti;
+                    if (root_nt->wire && o && PyObject_TypeCheck(o, Sg_Type)
+                            && st_row(&((Sg *)o)->st, 0, &tti)
+                            && !((Sg *)o)->st.tabs[tti].nt->wire
+                            && call_check(CB_SUBGRAPHREF, sgu, nid,
+                                ai->attr) < 0)
+                        return -1;
+                    continue;
+                }
                 slot_t v = p[ai->slot];
                 if (v == SLOT_NONE)
                     continue;
