@@ -1166,8 +1166,9 @@ def test_schematic_viewer(web, tmp_path, monkeypatch):
 @pytest.mark.web
 def test_schematic_descend(web):
     """The context menu of an instance opens the schematic of its cell in a
-    new viewer, from where the next level opens the same way. Another
-    instance of the same cell focuses that viewer instead."""
+    new viewer on top of the old one, from where the next level opens the
+    same way. Another instance of the same cell focuses that viewer
+    instead."""
     qs_local = web.key.query_string_local("tests.lib.ord.d_ff_soc", ["D_flip_flop().schematic"])
     web.navigate(f'app.html#refreshall=true&{qs_local}')
     web.wait_for_ready()
@@ -1194,6 +1195,9 @@ def test_schematic_descend(web):
     descend(top, 'm2')
     assert web.driver.execute_script(
         "return document.querySelectorAll('.direct-view-label').length") == 2
+    # All viewers are tabs of one stack.
+    assert web.driver.execute_script(
+        "return new Set(window.ordecApp.client.resultViewers.map(rv => rv.container.parent.parent)).size") == 1
 
 @pytest.mark.web
 def test_report_plot_controls(web, tmp_path, monkeypatch):

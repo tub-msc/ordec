@@ -455,10 +455,11 @@ export class SvgView extends View {
         // LVS viewer, the view name addresses the instance by nid, and the
         // request carries the wire hash of the schematic (descend_hash of the
         // view data), so that a viewer already showing it is focused instead
-        // (e.g. reached from another instance of the same cell). Where the
-        // cell has no schematic, the new viewer shows the error. The right
-        // click pins the instance, without click-to-source, to show what the
-        // menu acts on.
+        // (e.g. reached from another instance of the same cell). Unlike the
+        // LVS viewer, the new viewer opens as a tab on top of this one
+        // (stacked). Where the cell has no schematic, it shows the error. The
+        // right click pins the instance, without click-to-source, to show
+        // what the menu acts on.
         this.g.selectAll('g.schemInstance')
             .on('contextmenu', (event) => {
                 const group = event.currentTarget;
@@ -474,6 +475,7 @@ export class SvgView extends View {
                         this.eventBus.emit('schematic:request-open', {
                             view: `${this.viewName}.subgraph.cursor_at(${group.dataset.nid}).symbol.cell.schematic`,
                             wireHash: msgData.descend_hash?.[group.dataset.nid],
+                            stacked: true,
                             sourceContainer: this.panelContainer,
                         });
                     },
