@@ -63,6 +63,9 @@ class WNoWireArray(Node):
     arrayable = True
     val = Attr(int)
 
+class WSubNoWire(WSub):
+    pass # wire_ids are not inherited
+
 class WPair(SubgraphRoot):
     wire_id = WIRE_DOMAIN | 4
     label = Attr(str)
@@ -242,17 +245,22 @@ def test_missing_dep(ept):
         wire_decode(orig.subgraph.wire_encode(ept), ept, deps={})
 
 def test_missing_wire_id(ept):
+    # A subgraph whose root declares a wire_id takes neither node types nor
+    # referenced subgraphs without one:
     h = WHead(obj=live_obj)
-    h % WNoWire(label='x')
-    with pytest.raises(WireError, match="WNoWire"):
-        h.freeze().subgraph.wire_encode(ept)
+    with pytest.raises(ModelViolation, match="WNoWire declares no wire_id"):
+        h % WNoWire(label='x')
+    with pytest.raises(ModelViolation, match="WNoWireArray"):
+        with h.updater() as u:
+            u.insert_array(WNoWireArray, val=[1, 2, 3])
+    sub = WSubNoWire(label='x').freeze()
+    with pytest.raises(ModelViolation, match="WSubNoWire"):
+        h.sub = sub
+    assert h.subgraph.count() == 1 and h.sub is None
 
-    # Array rows of a type without wire_id must not be silently left out:
-    h = WHead(obj=live_obj)
-    with h.updater() as u:
-        u.insert_array(WNoWireArray, val=[1, 2, 3])
-    with pytest.raises(WireError, match="WNoWireArray"):
-        h.freeze().subgraph.wire_encode(ept)
+    # A root without wire_id cannot be encoded:
+    with pytest.raises(WireError, match="WSubNoWire"):
+        sub.subgraph.wire_encode(ept)
 
 def test_wire_id_uniqueness():
     class WFresh(Node):

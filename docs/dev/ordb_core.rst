@@ -122,11 +122,11 @@ Transactions
 
 A :class:`~ordec.core.ordb.SubgraphUpdater` is one transaction. Changes are
 visible through the subgraph immediately. On exit, the core checks the
-touched nodes (permitted in the subgraph, required attributes, LocalRef and
-ExternalRef targets, unique indices) and the removed ones (no LocalRef left
-pointing at them). The checks run in C; when one fails, the core calls
-``base._check_callback``, which repeats the check in Python and raises the
-exact exception.
+touched nodes (permitted in the subgraph, required attributes, wire_id of
+SubgraphRef targets, LocalRef and ExternalRef targets, unique indices) and
+the removed ones (no LocalRef left pointing at them). The checks run in C;
+when one fails, the core calls ``base._check_callback``, which repeats the
+check in Python and raises the exact exception.
 
 Updaters of one subgraph nest and must be closed in reverse order of
 opening; aborting an outer updater also undoes committed inner ones. An
