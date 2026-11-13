@@ -171,10 +171,12 @@
       installPhase = "cp -r ihp-sg13g2 $out";
     };
 
-    pdkEnv = {
-      ORDEC_PDK_SKY130A = "${pdk-sky130}/sky130A";
-      ORDEC_PDK_SKY130B = "${pdk-sky130}/sky130B";
-      ORDEC_PDK_IHP_SG13G2 = "${pdk-ihp-sg13g2}";
+    # Written into ordec.lib.pdk_dirs by the ordec build
+    # (support/nix/python.nix).
+    pdkDirs = {
+      sky130a = "${pdk-sky130}/sky130A";
+      sky130b = "${pdk-sky130}/sky130B";
+      ihp_sg13g2 = "${pdk-ihp-sg13g2}";
     };
 
     # For development: with yosys-config and the OpenVAF build dependencies.
@@ -202,7 +204,7 @@
       else "${at 0}.${toString (lib.toInt (at 1) + 1)}.0.dev${at 4}+${at 5}";
 
     py = import ./support/nix/python.nix {
-      inherit pkgs lib pdkEnv version;
+      inherit pkgs lib pdkDirs version;
       tools = runtimeTools;
     };
     inherit (py) ordec;
@@ -243,7 +245,7 @@
           # customizations in ~/.config/ordec) are lost with it; the web UI
           # warns about this. Set to 0 when ~/.config/ordec is a volume.
           "ORDEC_CONFIG_EPHEMERAL=1"
-        ] ++ lib.mapAttrsToList (n: v: "${n}=${v}") pdkEnv ++ env;
+        ] ++ env;
         Cmd = cmd;
         ExposedPorts."8100/tcp" = { };
         Labels = {
@@ -277,13 +279,19 @@
       default = ordec;
     };
 
+    # For other flakes: adds ordec and its dependencies missing in nixpkgs to
+    # the Python package sets.
+    overlays.default = _: prev: {
+      pythonPackagesExtensions = prev.pythonPackagesExtensions ++ [ py.overlay ];
+    };
+
     devShells.${system} = {
-      # Python packages from Nix; ordec itself is installed editable into the
-      # venv .venv in the repository root, which uses the Nix packages
-      # (--system-site-packages). The venv is recreated when they change
-      # (marker file .nix-python) and removed when its setup fails; a venv
-      # not made here is left alone.
-      default = pkgs.mkShell ({
+      # Python packages from Nix, with ordec installed in editable mode
+      # pointing to src/ of the checkout (see devPython), where the C
+      # extensions are built in place (setup.py build_ext --inplace).
+      # Entering the shell thus changes nothing in the checkout, and any
+      # number of shells can run at once.
+      default = pkgs.mkShell {
         # graphviz: for the inheritance diagrams in the documentation.
         packages = tools ++ [ py.devPython pkgs.nodejs pkgs.chromium pkgs.chromedriver pkgs.graphviz ];
         # Otherwise, ChromeDriver picks up a system Chromium of another version.
@@ -291,51 +299,39 @@
         # Outside NixOS, the glibc of Nix cannot read the locales of the
         # system, and setlocale fails for them (e.g. in sphinx-build).
         LOCALE_ARCHIVE = "${pkgs.glibcLocales}/lib/locale/locale-archive";
+        # The editable install of ordec runs from the checkout, whose pdk_dirs
+        # has no directories.
+        ORDEC_PDK_SKY130A = pdkDirs.sky130a;
+        ORDEC_PDK_SKY130B = pdkDirs.sky130b;
+        ORDEC_PDK_IHP_SG13G2 = pdkDirs.ihp_sg13g2;
+        # Nix does not tell where the checkout is (the flake is evaluated from
+        # a copy in the Nix store), hence the current directory.
         shellHook = ''
           root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-          venv="$root/.venv"
-          if [ -d "$venv" ] && [ ! -f "$venv/.nix-python" ]; then
-            echo "nix develop: $venv exists, but was not set up by nix develop (it lacks .nix-python)." >&2
-            echo "nix develop: It is left untouched and not activated, so ordec is not installed in this shell." >&2
-            echo "nix develop: To have nix develop set it up, delete it (rm -rf $venv) and enter the shell again." >&2
+          if [ -f "$root/src/ordec/__init__.py" ]; then
+            export ORDEC_CHECKOUT="$root"
+            if ! compgen -G "$root/src/ordec/core/ordb/_ordb*.so" > /dev/null; then
+              echo "nix develop: The C extensions of ordec are not built yet. In $root, run: python3 setup.py build_ext --inplace" >&2
+            fi
           else
-            if [ "$(cat "$venv/.nix-python" 2>/dev/null)" != "${py.devPython}" ]; then
-              echo "nix develop: setting up $venv with an editable install of ordec" >&2
-              rm -rf "$venv"
-              # The pytest and sphinx-build of the Nix environment run
-              # with the Python of that environment, which does not see
-              # the venv, hence their scripts in the venv. On failure,
-              # the venv is removed, so that the next shell retries the
-              # setup.
-              if ! { python -m venv --system-site-packages "$venv" \
-                && printf '#!%s\nimport sys, pytest\nsys.exit(pytest.console_main())\n' "$venv/bin/python" > "$venv/bin/pytest" \
-                && printf '#!%s\nimport sys\nfrom sphinx.cmd.build import main\nsys.exit(main())\n' "$venv/bin/python" > "$venv/bin/sphinx-build" \
-                && chmod +x "$venv/bin/pytest" "$venv/bin/sphinx-build" \
-                && "$venv/bin/pip" install -q --disable-pip-version-check --no-deps --no-build-isolation -e "$root" \
-                && echo "${py.devPython}" > "$venv/.nix-python"; }
-              then
-                rm -rf "$venv"
-                echo "nix develop: setting up $venv failed (see above), so ordec is not installed in this shell." >&2
-                echo "nix develop: Enter the shell again to retry." >&2
-              fi
-            fi
-            if [ -f "$venv/bin/activate" ]; then
-              source "$venv/bin/activate"
-            fi
+            echo "nix develop: $root is not an ORDeC checkout, so ordec is not available in this shell. Enter the shell in the checkout." >&2
           fi
         '';
-      } // pdkEnv);
+      };
 
       # For tests.yaml: the ordec package and the tools as in the images, the
       # test dependencies and Chromium, with fonts of its own (without any,
       # it crashes when rendering pages). Chromium without its wrapper, which
       # adds GTK 4 and GStreamer (about 700 MiB) that headless runs do not
-      # need.
-      test = pkgs.mkShellNoCC ({
+      # need. Without ORDEC_PDK_*, so that the tests use the PDK directories
+      # written into the ordec package.
+      test = pkgs.mkShellNoCC {
         packages = runtimeTools ++ [ py.testPython pkgs.chromedriver ];
         ORDEC_CHROME = "${pkgs.chromium.browser}/libexec/chromium/chromium";
         FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = [ pkgs.dejavu_fonts ]; };
-      } // pdkEnv);
+        # Entered from the development shell, its ORDEC_PDK_* would be used.
+        shellHook = "unset ORDEC_PDK_SKY130A ORDEC_PDK_SKY130B ORDEC_PDK_IHP_SG13G2";
+      };
     };
   };
 }

@@ -31,11 +31,11 @@ mirrors the ``python`` command line:
   ``mydesign.ord:MyCell().schematic`` and ``-m mydesign:MyCell().schematic``
   are shorthand for a single ``--view``.
 
-In an editable installation (``pip install -e``), the packaged frontend
-(webdist.tar) is not available; ``ordec`` then runs the Vite dev server of
-the checkout's *web/* directory behind its own server, so that frontend
-changes show up instantly (see ordec.vite and the development setup in the
-documentation).
+In an editable installation (``pip install -e``, the Nix development shell),
+the packaged frontend (webdist.tar) is not available; ``ordec`` then runs the
+Vite dev server of the checkout's *web/* directory behind its own server, so
+that frontend changes show up instantly (see ordec.vite and the development
+setup in the documentation).
 """
 
 import argparse

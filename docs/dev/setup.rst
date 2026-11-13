@@ -20,12 +20,15 @@ Setup with Nix (recommended)
        extra-trusted-public-keys = ordec.cachix.org-1:vYjSnOZ3z10QWY3r6xEHibmzSXvCVsSwcLN7UmxbgbQ=
 
    Then restart the Nix daemon: ``sudo systemctl restart nix-daemon``. Without the cache, the first build takes one to two hours.
-3. In the repository root, enter the development shell and install the frontend dependencies::
+3. In the repository root, enter the development shell, build the C extensions (see :doc:`c_extensions`) and install the frontend dependencies::
 
        nix develop
+       python3 setup.py build_ext --inplace
        (cd web && npm ci)
 
-The shell sets the ``ORDEC_PDK_*`` variables and activates the venv *.venv* in the repository root, which has ORDeC installed in editable mode. The venv is set up on first use and again whenever the Python packages from Nix change; anything you install into it with pip is lost then.
+The shell sets the ``ORDEC_PDK_*`` variables and has ORDeC installed in editable mode, pointing to *src/* of the checkout. Entering the shell changes nothing in the checkout, so any number of shells can be open at once. The installed version is always ``0.dev0``, so ``ordec --version`` reports that. The C extensions are not under version control, so every checkout and git worktree needs the build once. A *.venv* left over from earlier versions of the shell is no longer used and can be deleted.
+
+The shell finds the checkout through the current directory and sets ``ORDEC_CHECKOUT`` to it, so start ``nix develop`` inside it. ``ordec`` itself works on files anywhere, e.g. ``nix develop -c ordec ~/designs/my_design.ord``. Programs started outside the shell, such as an editor running ``ordec-lsp``, do not see the checkout; start them from within the shell.
 
 .. _manual_setup:
 
@@ -68,7 +71,7 @@ Launch webinterface
 There are three setups to run the ``ordec`` web UI:
 
 1. **Combined frontend + backend server with regular installation:** A regular installation of ORDeC (with Nix, from PyPI or in the Docker image) includes a compiled version of the frontend (*webdist.tar*). In this case, ORDeC is started through a simple ``ordec``. This is the setup for users; see :doc:`/guides/webui_design_organization`.
-2. **Editable installation:** An editable installation ("develop mode", ``pip install -e``, as in the development shell) lacks *webdist.tar*. Instead, ``ordec`` runs the Vite_ dev server of the checkout's *web/* directory (*web/dev-server.js*) as child process, listening on a Unix domain socket. ``ordec`` forwards static file requests and the websocket connections of Vite's hot module replacement (HMR) client to it. The browser uses the usual URL of ``ordec`` only, and frontend changes show up instantly. Vite's messages (e.g. on hot updates and errors in frontend code) are shown prefixed with ``vite:``. The frontend dependencies must be installed once through ``npm ci`` in the *web/* directory. Vite's dev endpoints have no authentication: listening beyond localhost (``ordec -l``) exposes them, e.g. the frontend sources, to the network.
+2. **Editable installation or Nix development shell:** An editable installation ("develop mode", ``pip install -e``) or the Nix development shell lacks *webdist.tar*. Instead, ``ordec`` runs the Vite_ dev server of the checkout's *web/* directory (*web/dev-server.js*) as child process, listening on a Unix domain socket. ``ordec`` forwards static file requests and the websocket connections of Vite's hot module replacement (HMR) client to it. The browser uses the usual URL of ``ordec`` only, and frontend changes show up instantly. Vite's messages (e.g. on hot updates and errors in frontend code) are shown prefixed with ``vite:``. The frontend dependencies must be installed once through ``npm ci`` in the *web/* directory. Vite's dev endpoints have no authentication: listening beyond localhost (``ordec -l``) exposes them, e.g. the frontend sources, to the network.
 3. **Separate frontend + backend server (fallback):** If the Vite integration of setup 2 fails, e.g. after a Vite upgrade, ``npm run dev`` in *web/* starts Vite on its own (port 5173), which acts as proxy to the backend started by ``ordec -b`` (port 8100). Use the browser only to connect to the Vite server / port.
 
 Run tests

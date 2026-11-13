@@ -5,37 +5,9 @@
 # lists are read from pyproject.toml, the versions are those of nixpkgs:
 # building ordec checks them against the version constraints in
 # pyproject.toml.
-{ pkgs, lib, version, tools, pdkEnv }:
+{ pkgs, lib, version, tools, pdkDirs }:
 let
   pyproject = builtins.fromTOML (builtins.readFile ../../pyproject.toml);
-
-  # From PyPI, as nixpkgs lacks them. Packages nixpkgs has are not replaced
-  # here: that changes the hashes of all packages depending on them, which
-  # then are not on cache.nixos.org and get built locally.
-  wheel = ps: pname: version: url: hash: args: ps.buildPythonPackage ({
-    inherit pname version;
-    format = "wheel";
-    src = pkgs.fetchurl { inherit url hash; };
-  } // args);
-
-  python = pkgs.python313.override {
-    self = python;
-    packageOverrides = ps: _: {
-      notcl = wheel ps "notcl" "0.5.1"
-        "https://files.pythonhosted.org/packages/py3/n/notcl/notcl-0.5.1-py3-none-any.whl"
-        "sha256-DfkqqQGslfMeHuViyG2ant9256IyMMDc6ToIoN/DDfQ=" { };
-      python-gdsii = wheel ps "python-gdsii" "0.2.3"
-        "https://files.pythonhosted.org/packages/py3/p/python_gdsii/python_gdsii-0.2.3-py3-none-any.whl"
-        "sha256-vCysPK1BiCp0fA2IN3kYK558BmwJXIqWqfMdXvegGU8=" { };
-      # No sdist on PyPI; the manylinux wheel needs the Nix libstdc++.
-      sc-leflib = wheel ps "sc-leflib" "0.5.2"
-        "https://files.pythonhosted.org/packages/cp313/s/sc_leflib/sc_leflib-0.5.2-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl"
-        "sha256-+qtii+mO3PPuOXSrhB4SNGK7T81Lrz7wPg1wM5Y119Y=" {
-          nativeBuildInputs = [ pkgs.autoPatchelfHook ];
-          buildInputs = [ pkgs.stdenv.cc.cc.lib ];
-        };
-    };
-  };
 
   # Requirements like "numpy>=1.24.2" to nixpkgs packages.
   deps = ps: map (req: ps.${lib.toLower (lib.replaceStrings [ "_" "." ] [ "-" "-" ]
@@ -59,41 +31,108 @@ let
     installPhase = "cp -r dist $out";
   };
 
-  # The ordec executable finds the tools and PDKs without further setup;
-  # ORDEC_PDK_* set by the user take precedence.
-  ordec = python.pkgs.buildPythonPackage {
-    pname = "ordec";
-    inherit version;
-    pyproject = true;
-    src = lib.fileset.toSource {
-      root = ../..;
-      fileset = lib.fileset.unions [
-        ../../src ../../setup.py ../../pyproject.toml ../../MANIFEST.in
-        ../../README.md ../../REUSE.toml ../../LICENSES
-      ];
+  # Python packages for the Python package set: ordec and those of its
+  # dependencies that nixpkgs lacks. Exported as flake output
+  # overlays.default, so that other flakes can add ordec to their Python.
+  # Within the package set, ps.pkgs is the nixpkgs of the user; the frontend,
+  # the tools and the PDKs are the ones of this flake.
+  overlay = ps: _: let
+    # From PyPI, as nixpkgs lacks them. Packages nixpkgs has are not replaced
+    # here: that changes the hashes of all packages depending on them, which
+    # then are not on cache.nixos.org and get built locally.
+    wheel = pname: version: url: hash: args: ps.buildPythonPackage ({
+      inherit pname version;
+      format = "wheel";
+      src = ps.pkgs.fetchurl { inherit url hash; };
+    } // args);
+  in {
+    notcl = wheel "notcl" "0.5.1"
+      "https://files.pythonhosted.org/packages/py3/n/notcl/notcl-0.5.1-py3-none-any.whl"
+      "sha256-DfkqqQGslfMeHuViyG2ant9256IyMMDc6ToIoN/DDfQ=" { };
+    python-gdsii = wheel "python-gdsii" "0.2.3"
+      "https://files.pythonhosted.org/packages/py3/p/python_gdsii/python_gdsii-0.2.3-py3-none-any.whl"
+      "sha256-vCysPK1BiCp0fA2IN3kYK558BmwJXIqWqfMdXvegGU8=" { };
+    # CMake modules for Cython, for building sc-leflib.
+    cython-cmake = wheel "cython-cmake" "0.3.0"
+      "https://files.pythonhosted.org/packages/py3/c/cython_cmake/cython_cmake-0.3.0-py3-none-any.whl"
+      "sha256-Z6xceQMWsOf48ZYyjPdkeaLxgaZyBfMFs25E4VWZeLo=" { dependencies = [ ps.cython ]; };
+    # From the GitHub sources, as PyPI has wheels only. Their CMake build is
+    # run by scikit-build-core, not by the CMake hook of nixpkgs.
+    sc-leflib = ps.buildPythonPackage rec {
+      pname = "sc-leflib";
+      version = "0.5.2";
+      pyproject = true;
+      src = ps.pkgs.fetchFromGitHub {
+        owner = "siliconcompiler";
+        repo = "sc-leflib";
+        tag = "v${version}";
+        hash = "sha256-+b4sFy4jQZpAg6hPW03LeVnt5s+0jRKeL3HUjCUTOgg=";
+      };
+      build-system = [ ps.scikit-build-core ps.setuptools-scm ps.cython ps.cython-cmake ];
+      nativeBuildInputs = [ ps.pkgs.cmake ps.pkgs.ninja ps.pkgs.bison ];
+      buildInputs = [ ps.pkgs.zlib ];
+      dontUseCmakeConfigure = true;
+      env.SETUPTOOLS_SCM_PRETEND_VERSION = version;
+      pythonImportsCheck = [ "sc_leflib" ];
     };
-    build-system = [ python.pkgs.setuptools python.pkgs.setuptools-scm ];
-    dependencies = runtimeDeps python.pkgs;
-    env = {
-      SETUPTOOLS_SCM_PRETEND_VERSION = version;
-      ORDEC_WEBDIST = web;
+
+    # The ordec executable finds the tools without further setup (PATH in the
+    # wrapper); for imports, they must be on PATH (passthru.tools). The PDK
+    # directories are written into ordec.lib.pdk_dirs, so that any Python
+    # importing this ordec finds them; ORDEC_PDK_* set by the user take
+    # precedence.
+    ordec = ps.buildPythonPackage {
+      pname = "ordec";
+      inherit version;
+      pyproject = true;
+      src = lib.fileset.toSource {
+        root = ../..;
+        fileset = lib.fileset.unions [
+          ../../src ../../setup.py ../../pyproject.toml ../../MANIFEST.in
+          ../../README.md ../../REUSE.toml ../../LICENSES
+        ];
+      };
+      build-system = [ ps.setuptools ps.setuptools-scm ];
+      dependencies = runtimeDeps ps;
+      env = {
+        SETUPTOOLS_SCM_PRETEND_VERSION = version;
+        ORDEC_WEBDIST = web;
+      };
+      postPatch = lib.concatStrings (lib.mapAttrsToList (n: v: ''
+        substituteInPlace src/ordec/lib/pdk_dirs.py --replace-fail '${n} = None' '${n} = "${v}"'
+      '') pdkDirs);
+      makeWrapperArgs = [ "--prefix" "PATH" ":" (lib.makeBinPath tools) ];
+      # _gdsrecords is optional in setup.py, i.e. silently left out when it
+      # fails to build.
+      pythonImportsCheck = [ "ordec" "ordec.layout._gdsrecords" ];
+      passthru = { inherit tools; };
+      meta.mainProgram = "ordec";
     };
-    makeWrapperArgs = [ "--prefix" "PATH" ":" (lib.makeBinPath tools) ]
-      ++ lib.concatLists (lib.mapAttrsToList (n: v: [ "--set-default" n v ]) pdkEnv);
-    # _gdsrecords is optional in setup.py, i.e. silently left out when it
-    # fails to build.
-    pythonImportsCheck = [ "ordec" "ordec.layout._gdsrecords" ];
-    meta.mainProgram = "ordec";
+  };
+
+  python = pkgs.python313.override {
+    self = python;
+    packageOverrides = overlay;
   };
 in {
-  inherit python web ordec;
+  inherit python web overlay;
+  inherit (python.pkgs) ordec;
 
-  # For the development shell, with the editable install of ordec in a venv
-  # on top (pip install -e . --no-build-isolation).
+  # For the development shell, with ordec installed in editable mode: its .pth
+  # file points to src/ of the checkout, which the shell hook exports as
+  # ORDEC_CHECKOUT (expanded at Python startup). A fixed version, as the version
+  # of the checkout would rebuild the environment on every commit.
+  # setuptools for building the C extensions in place.
   devPython = python.withPackages (ps: runtimeDeps ps ++ extraDeps ps ++ docsDeps ps
-    ++ [ ps.setuptools ps.setuptools-scm ]);
+    ++ [ ps.setuptools ps.setuptools-scm ]
+    ++ [ (ps.mkPythonEditablePackage {
+      pname = "ordec";
+      version = "0.dev0";
+      root = "$ORDEC_CHECKOUT/src";
+      inherit (pyproject.project) scripts;
+    }) ]);
 
   # The installed ordec with the test dependencies, for running the tests
   # against the package as users get it.
-  testPython = python.withPackages (ps: [ ordec ] ++ extraDeps ps);
+  testPython = python.withPackages (ps: [ ps.ordec ] ++ extraDeps ps);
 }

@@ -15,7 +15,7 @@ from ..schematic.spice_in import DeviceMapping
 from ..core import *
 from ..schematic import spice_params, Netlister
 from ..sim.ngspice import NgspiceSetup
-from . import base, generic_mos
+from . import base, generic_mos, pdk_dirs
 from .pdk_common import PdkDict, check_dir, check_file, rundir
 from ..layout import makevias, write_gds, flatten
 from ..layout.style import read_layout_style
@@ -26,9 +26,8 @@ from ..layout.pnr import GridConfig
 @functools.cache
 def pdk() -> PdkDict:
     """Returns dictionary-like object with import PDK paths."""
-    try:
-        root = os.environ["ORDEC_PDK_IHP_SG13G2"]
-    except KeyError:
+    root = os.environ.get("ORDEC_PDK_IHP_SG13G2", pdk_dirs.ihp_sg13g2)
+    if root is None:
         raise Exception("PDK requires environment variable ORDEC_PDK_IHP_SG13G2 to be set.")
     pdk = PdkDict(root=check_dir(Path(root).resolve()))
 

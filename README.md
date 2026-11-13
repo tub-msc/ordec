@@ -60,15 +60,37 @@ nix profile add github:tub-msc/ordec
 
 This makes the `ordec` command available in your shell.
 
+### Python library in another flake
+
+The overlay `overlays.default` adds `ordec` to the Python package sets of nixpkgs, so that it can be used next to the other Python packages of a project. It includes the PDKs; the tools (Ngspice, KLayout, ...) are in `ordec.tools`. Like the rest of the flake, it is for x86_64-linux only:
+
+```nix
+{
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+  inputs.ordec.url = "github:tub-msc/ordec";
+  outputs = { nixpkgs, ordec, ... }: let
+    pkgs = import nixpkgs { system = "x86_64-linux"; overlays = [ ordec.overlays.default ]; };
+  in {
+    devShells.x86_64-linux.default = pkgs.mkShell {
+      packages = [ (pkgs.python3.withPackages (ps: [ ps.ordec ])) ]
+        ++ pkgs.python3Packages.ordec.tools;
+    };
+  };
+}
+```
+
+With a nixpkgs other than ORDeC's, `ordec` itself is built locally against it; the tools and PDKs still come from the binary cache. Do not set `inputs.ordec.inputs.nixpkgs.follows`, as that rebuilds the tools.
+
 ### Development environment
 
 ```
 git clone https://github.com/tub-msc/ordec.git
 cd ordec
 nix develop
+python3 setup.py build_ext --inplace
 ```
 
-The shell provides all tools and PDKs and activates a venv with ORDeC installed in editable mode. See [docs/dev/setup.rst](docs/dev/setup.rst) for details.
+The shell provides all tools and PDKs and runs ORDeC from the checkout; the second command builds its C extensions. See [docs/dev/setup.rst](docs/dev/setup.rst) for details.
 
 ## Motivation
 

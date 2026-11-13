@@ -8,15 +8,14 @@ import functools
 
 from ..core import *
 from ..schematic import spice_params
-from . import generic_mos
+from . import generic_mos, pdk_dirs
 from .pdk_common import PdkDict, check_dir, check_file
 
 @functools.cache
 def pdk() -> PdkDict:
     """Returns dictionary-like object with import PDK paths."""
-    try:
-        root = os.environ["ORDEC_PDK_SKY130A"]
-    except KeyError:
+    root = os.environ.get("ORDEC_PDK_SKY130A", pdk_dirs.sky130a)
+    if root is None:
         raise Exception("PDK requires environment variable ORDEC_PDK_SKY130A to be set.")
     pdk = PdkDict(root=check_dir(Path(root).resolve()))
 
