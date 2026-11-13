@@ -1166,13 +1166,14 @@ def test_schematic_viewer(web, tmp_path, monkeypatch):
 @pytest.mark.web
 def test_schematic_descend(web):
     """The context menu of an instance opens the schematic of its cell in a
-    new viewer, from where the next level opens the same way."""
+    new viewer, from where the next level opens the same way. Another
+    instance of the same cell focuses that viewer instead."""
     qs_local = web.key.query_string_local("tests.lib.ord.d_ff_soc", ["D_flip_flop().schematic"])
     web.navigate(f'app.html#refreshall=true&{qs_local}')
     web.wait_for_ready()
-    view = 'D_flip_flop().schematic'
-    for inst in ['m1', 'i1']:
-        # Waits for the viewer of the previous level, then descends.
+
+    def descend(view, inst):
+        # Waits for the viewer of view, then descends into inst.
         nid = web.wait_until(f"""
             const rv = window.ordecApp.client.resultViewers.find(rv => rv.viewSelected === {json.dumps(view)});
             const group = [...(rv?.resContent.querySelectorAll('g.schemInstance') ?? [])]
@@ -1181,11 +1182,18 @@ def test_schematic_descend(web):
             document.querySelector('.context-menu button')?.click();
             return group?.dataset.nid;
         """)
-        view += f".subgraph.cursor_at({nid}).symbol.cell.schematic"
+        return f"{view}.subgraph.cursor_at({nid}).symbol.cell.schematic"
+
+    top = 'D_flip_flop().schematic'
+    inv = descend(descend(top, 'm1'), 'i1')
     web.wait_until(f"""
-        const rv = window.ordecApp.client.resultViewers.find(rv => rv.viewSelected === {json.dumps(view)});
+        const rv = window.ordecApp.client.resultViewers.find(rv => rv.viewSelected === {json.dumps(inv)});
         return rv?.resContent.querySelector('.schem-svg');
     """)
+    # m2 is another Mux2().
+    descend(top, 'm2')
+    assert web.driver.execute_script(
+        "return document.querySelectorAll('.direct-view-label').length") == 2
 
 @pytest.mark.web
 def test_report_plot_controls(web, tmp_path, monkeypatch):

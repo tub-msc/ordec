@@ -452,7 +452,10 @@ export class SvgView extends View {
 
         // Descend: the context menu of an instance (class schemInstance, set
         // in render.py) offers to open the schematic of its cell. Like the
-        // LVS viewer, the view name addresses the instance by nid. Where the
+        // LVS viewer, the view name addresses the instance by nid, and the
+        // request carries the wire hash of the schematic (descend_hash of the
+        // view data), so that a viewer already showing it is focused instead
+        // (e.g. reached from another instance of the same cell). Where the
         // cell has no schematic, the new viewer shows the error. The right
         // click pins the instance, without click-to-source, to show what the
         // menu acts on.
@@ -470,6 +473,7 @@ export class SvgView extends View {
                         }
                         this.eventBus.emit('schematic:request-open', {
                             view: `${this.viewName}.subgraph.cursor_at(${group.dataset.nid}).symbol.cell.schematic`,
+                            wireHash: msgData.descend_hash?.[group.dataset.nid],
                             sourceContainer: this.panelContainer,
                         });
                     },
