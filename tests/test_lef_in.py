@@ -1,16 +1,15 @@
 # SPDX-FileCopyrightText: 2026 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
-import os
-from pathlib import Path
 import pytest
 
 from ordec.core import *
 from ordec.extlibrary import ExtLibrary
+from ordec.lib import ihp130
 
 @pytest.mark.ihp130
 def test_read_lef_symbol():
-    lef = Path(os.getenv("ORDEC_PDK_IHP_SG13G2")) / "libs.ref/sg13g2_stdcell/lef/sg13g2_stdcell.lef"
+    lef = ihp130.pdk().stdcell_lef
 
     lib = ExtLibrary()
     lib.read_lef(lef)

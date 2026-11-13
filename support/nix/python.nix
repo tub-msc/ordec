@@ -5,7 +5,7 @@
 # lists are read from pyproject.toml, the versions are those of nixpkgs:
 # building ordec checks them against the version constraints in
 # pyproject.toml.
-{ pkgs, lib, version, tools, pdkEnv }:
+{ pkgs, lib, version, tools, pdkDirs }:
 let
   pyproject = builtins.fromTOML (builtins.readFile ../../pyproject.toml);
 
@@ -59,8 +59,10 @@ let
     installPhase = "cp -r dist $out";
   };
 
-  # The ordec executable finds the tools and PDKs without further setup;
-  # ORDEC_PDK_* set by the user take precedence.
+  # The ordec executable finds the tools without further setup (PATH in the
+  # wrapper). The PDK directories are written into ordec.lib.pdk_dirs, so that
+  # any Python importing this ordec finds them; ORDEC_PDK_* set by the user
+  # take precedence.
   ordec = python.pkgs.buildPythonPackage {
     pname = "ordec";
     inherit version;
@@ -78,8 +80,10 @@ let
       SETUPTOOLS_SCM_PRETEND_VERSION = version;
       ORDEC_WEBDIST = web;
     };
-    makeWrapperArgs = [ "--prefix" "PATH" ":" (lib.makeBinPath tools) ]
-      ++ lib.concatLists (lib.mapAttrsToList (n: v: [ "--set-default" n v ]) pdkEnv);
+    postPatch = lib.concatStrings (lib.mapAttrsToList (n: v: ''
+      substituteInPlace src/ordec/lib/pdk_dirs.py --replace-fail '${n} = None' '${n} = "${v}"'
+    '') pdkDirs);
+    makeWrapperArgs = [ "--prefix" "PATH" ":" (lib.makeBinPath tools) ];
     # _gdsrecords is optional in setup.py, i.e. silently left out when it
     # fails to build.
     pythonImportsCheck = [ "ordec" "ordec.layout._gdsrecords" ];

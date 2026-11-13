@@ -41,7 +41,7 @@ jobs:
             test "$(id -un)" = app && touch ~/x /tmp/x
             python3 -c "import ordec.layout._gdsrecords"
             ngspice -v && klayout -b -v && yosys -V && openvaf-r --version
-            ls $ORDEC_PDK_SKY130A $ORDEC_PDK_SKY130B $ORDEC_PDK_IHP_SG13G2/libs.tech/ngspice/osdi/psp103.osdi'
+            ls $(python3 -c "from ordec.lib import sky130, ihp130; sky130.pdk(); print(ihp130.pdk().ngspice_osdi_dir)")/psp103.osdi'
           docker run -d --name ordec-test -p 8100:8100 ordec:latest
           for i in $(seq 30); do curl -sf http://127.0.0.1:8100/app.html > /dev/null && break; sleep 1; done
           curl -sf http://127.0.0.1:8100/app.html > /dev/null

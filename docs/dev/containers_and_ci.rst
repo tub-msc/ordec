@@ -8,7 +8,7 @@ Packaging and CI
 The ordec package
 -----------------
 
-``nix build`` builds the default package *ordec*, which is also what ``nix run`` and ``nix profile add`` use. It includes the C extensions and the frontend. Its ``ordec`` executable has the tools on ``PATH`` and defaults for the ``ORDEC_PDK_*`` variables, so it needs no further setup. Variables set by the user take precedence.
+``nix build`` builds the default package *ordec*, which is also what ``nix run`` and ``nix profile add`` use. It includes the C extensions and the frontend. Its ``ordec`` executable has the tools on ``PATH``, so it needs no further setup. The PDK directories are written into the package (*ordec/lib/pdk_dirs.py*), so that any Python importing it finds them, for example ``python`` in ``nix shell .#image-env``. ``ORDEC_PDK_*`` variables set by the user take precedence.
 
 *support/nix/python.nix* reads the Python dependencies from *pyproject.toml* and takes them from nixpkgs. The few packages nixpkgs lacks are fetched as wheels from PyPI. The build checks all versions against *pyproject.toml*. Installations with pip get the newest versions *pyproject.toml* allows instead, which the automated tests do not cover.
 
