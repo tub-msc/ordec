@@ -797,7 +797,8 @@ def _build_ntype(cls, ntuple, layout, attrdesc_by_attr, indices):
             fmode, attr.type, attr.default, ext_fn))
 
     uses = []
-    checks = []
+    # SubgraphRef targets are checked first (wire_id of the target's root).
+    checks = [(3, ad.index) for ad in layout if isinstance(ad.attr, SubgraphRef)]
     position = {attr: ad.index for attr, ad in attrdesc_by_attr.items()}
     for ns in indices:
         if isinstance(ns, LocalRefIndex):
@@ -817,12 +818,18 @@ def _build_ntype(cls, ntuple, layout, attrdesc_by_attr, indices):
             if ns.unique:
                 checks.append((0, len(uses)))
             uses.append((ns, tuple(position[a] for a in key_attrs), sort, ns.unique, combined, sortfn))
-    return _ordb.NType(ntuple, cls, attrs, uses, checks)
+    return _ordb.NType(ntuple, cls, attrs, uses, checks, _declares_wire_id(cls))
 
 #: Maps declared wire_ids to their Node classes (see ordec.core.wire). Node
 #: classes opt into wire serialization by declaring wire_id = WIRE_DOMAIN | n
-#: in their class body, with WIRE_DOMAIN a per-module constant.
+#: in their class body, with WIRE_DOMAIN a per-module constant. A subgraph
+#: whose root declares a wire_id only takes nodes of types that declare one
+#: and SubgraphRefs to subgraphs whose root declares one (commit check).
 wire_registry = {}
+
+def _declares_wire_id(cls) -> bool:
+    # Inherited wire_ids do not count.
+    return cls.__dict__.get('wire_id') is not None
 
 WIRE_DOMAIN = 1 << 16 # ordb-internal node types (NPath)
 
@@ -1975,6 +1982,8 @@ def _check_callback(kind: int, sgu: SubgraphUpdater, nid: int, obj):
             root_cls = sg.row(0)._cursor_type
             if not any(issubclass(root_cls, cls) for cls in node._cursor_type.in_subgraphs):
                 raise ModelViolation(f"{node._cursor_type.__name__} is not permitted in subgraph {root_cls.__name__}.")
+            if _declares_wire_id(root_cls) and not _declares_wire_id(node._cursor_type):
+                raise ModelViolation(f"{node._cursor_type.__name__} declares no wire_id (required in subgraph {root_cls.__name__}).")
         elif kind == 1:
             raise ModelViolation(f"{node._attrdesc_by_attr[obj].name!r} is not optional (but set to None).")
         elif kind in (2, 3):
@@ -1982,11 +1991,17 @@ def _check_callback(kind: int, sgu: SubgraphUpdater, nid: int, obj):
                 .check_constraints(sgu, node, nid)
         elif kind == 4:
             obj.check_constraints(sgu, node, nid)
+        elif kind == 7:
+            root_cls = sg.row(0)._cursor_type
+            ad = node._attrdesc_by_attr[obj]
+            target_cls = node[ad.index].row(0)._cursor_type
+            if _declares_wire_id(root_cls) and not _declares_wire_id(target_cls):
+                raise ModelViolation(f"{ad.name!r} references subgraph {target_cls.__name__}, which declares no wire_id (required in subgraph {root_cls.__name__}).")
     except ModelViolation as e:
         # Checks run when the updater exits, possibly long after the
         # statement that caused the violation: name the node.
         where = f"{node._cursor_type.__name__}(nid={nid})"
-        if kind in (1, 2, 3):
+        if kind in (1, 2, 3, 7):
             where += f", attribute {node._attrdesc_by_attr[obj].name!r}"
         e.add_note(f"Found by the commit check of {where}.")
         raise

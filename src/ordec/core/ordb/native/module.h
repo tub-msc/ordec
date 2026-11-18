@@ -71,6 +71,7 @@
 #define CHK_UNIQUE 0
 #define CHK_LOCAL 1
 #define CHK_EXTERNAL 2
+#define CHK_SUBGRAPH 3
 
 // Kinds of the check callback into base.py (_check_callback).
 #define CB_PERMITTED 0
@@ -80,6 +81,7 @@
 #define CB_UNIQUE 4
 #define CB_DANGLING 5
 #define CB_MISSING_ROOT 6
+#define CB_SUBGRAPHREF 7
 
 #define MAXKEY 4
 #define MAXUSE 32 // indices per node type
@@ -151,6 +153,7 @@ typedef struct {
     PyObject *cursor_type; // X
     PyObject *cur_mut, *cur_frz; // X.Mutable, X.Frozen
     PyObject *permitted; // dict: root NType -> True
+    int wire; // the node type declares a wire_id
     int nattr, rec, nuse, ncheck;
     int ref_attr; // position of the attribute named 'ref' or -1
     uint64_t objmask;

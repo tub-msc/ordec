@@ -6,6 +6,14 @@
 Node classes opt in by declaring ``wire_id = WIRE_DOMAIN | n`` in their
 class body (inherited wire_ids do not count; uniqueness is asserted at
 class registration, and serializing a class without one is an error).
+
+A subgraph whose root declares a wire_id only takes nodes of types that
+declare one, and SubgraphRefs to subgraphs whose root declares one;
+anything else raises :class:`~ordec.core.ordb.ModelViolation` at commit.
+Such a subgraph thus cannot fail to encode for a missing wire_id, neither
+its own nor one in the subgraphs it references. Attribute values are not
+covered: a value without wire encoding still fails at encoding.
+
 Domain prefixes:
 
 - 1<<16: ordb (NPath)
