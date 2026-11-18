@@ -658,7 +658,15 @@ function openOrActivateView(data) {
         title,
     };
 
-    openViewsBesideSource(data.sourceContainer, [componentConfig]);
+    const sourceItem = data.sourceContainer?.parent;
+    if (data.stacked && sourceItem?.parent?.isStack) {
+        // On top of the source: as the tab after the source's tab, activated
+        // by addItem.
+        const stack = sourceItem.parent;
+        stack.addItem(componentConfig, stack.contentItems.indexOf(sourceItem) + 1);
+    } else {
+        openViewsBesideSource(data.sourceContainer, [componentConfig]);
+    }
 }
 
 app.eventBus.on('layout:request-open', openOrActivateView);

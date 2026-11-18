@@ -3,6 +3,7 @@
 
 import * as d3 from "d3";
 import { View, CoordinateDisplay } from './view.js';
+import { openContextMenu, closeContextMenu } from '../contextmenu.js';
 
 const CROSSING_TITLE = 'How wires crossing without connection are drawn (saved for all schematics)';
 
@@ -181,6 +182,8 @@ export class SvgView extends View {
         this.shown = null;
         this.hovered = null;
         this.hoverTimeout = null;
+        // The open context menu of an instance (see openContextMenu).
+        this.contextMenu = null;
 
         this.onLvsSelect = (data) => {
             if (data && !this.selectionApplies(data.schemView, data.schemWireHash)) {
@@ -268,8 +271,9 @@ export class SvgView extends View {
         this.highlightData = null;
     }
     update(msgData, wireHash) {
-        // The highlight belongs to the replaced SVG.
+        // The highlight and the context menu belong to the replaced SVG.
         this.clearHighlight();
+        this.closeContextMenu();
         this.wireHash = wireHash;
         const viewbox = msgData['viewbox'];
         const [vx, vy, vw, vh] = viewbox;
@@ -446,6 +450,38 @@ export class SvgView extends View {
                 }
             });
 
+        // Descend: the context menu of an instance (class schemInstance, set
+        // in render.py) offers to open the schematic of its cell. Like the
+        // LVS viewer, the view name addresses the instance by nid, and the
+        // request carries the wire hash of the schematic (descend_hash of the
+        // view data), so that a viewer already showing it is focused instead
+        // (e.g. reached from another instance of the same cell). Unlike the
+        // LVS viewer, the new viewer opens as a tab on top of this one
+        // (stacked). Where the cell has no schematic, it shows the error. The
+        // right click pins the instance, without click-to-source, to show
+        // what the menu acts on.
+        this.g.selectAll('g.schemInstance')
+            .on('contextmenu', (event) => {
+                const group = event.currentTarget;
+                this.hovered = group.dataset.nid;
+                this.show(group.dataset.nid);
+                this.setPinned(true);
+                this.contextMenu = openContextMenu(event, [{
+                    label: 'Open schematic',
+                    action: () => {
+                        if (this.viewOutdated()) {
+                            return;
+                        }
+                        this.eventBus.emit('schematic:request-open', {
+                            view: `${this.viewName}.subgraph.cursor_at(${group.dataset.nid}).symbol.cell.schematic`,
+                            wireHash: msgData.descend_hash?.[group.dataset.nid],
+                            stacked: true,
+                            sourceContainer: this.panelContainer,
+                        });
+                    },
+                }]);
+            });
+
         const pending = this.takePendingSelection('pendingHighlight');
         if (pending) {
             this.setHighlight(pending);
@@ -576,8 +612,16 @@ export class SvgView extends View {
             this.crossingSelect.value = style;
         }
     }
+    // Closes the context menu if it is open and belongs to this view.
+    closeContextMenu() {
+        if (this.contextMenu?.isConnected) {
+            closeContextMenu();
+        }
+        this.contextMenu = null;
+    }
     destroy() {
         this.busUnsubscribeAll();
+        this.closeContextMenu();
         this.setPinned(false);
         clearTimeout(this.hoverTimeout);
         this.clearHighlight();
