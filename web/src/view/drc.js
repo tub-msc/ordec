@@ -9,8 +9,7 @@ const ARROW_EXPANDED = '▼';
 // DRC Report viewer.
 //
 // Event bus protocol:
-//   drc:select {shapes, layoutView, layoutWireHash} - sent when an item is
-//     selected
+//   drc:select {shapes, layoutView} - sent when an item is selected
 //   drc:clear - sent on deselect or destroy
 //
 // Pending mechanism: setPending('drc:select', payload) stores the
@@ -22,10 +21,9 @@ const ARROW_EXPANDED = '▼';
 // View naming: items of the top cell target "<viewName>.ref_layout",
 // items of subcells target
 // "<viewName>.subgraph.cursor_at(<cell_nid>).ref_layout", addressing
-// the DrcCell node by nid. Every payload carries its layoutView plus
-// the cell's subgraph wire hash (layoutWireHash), so only viewers showing
-// that view highlight - matched by name, or by hash for a viewer
-// showing the same subgraph under a different view name: shape
+// the DrcCell node by nid. Its viewer is named by the layout's name in the
+// view list (see openViews in main.js), which every payload carries as
+// layoutView, so only viewers showing that view highlight: shape
 // coordinates are only meaningful in the item's own cell, and an
 // untargeted broadcast would paint them into unrelated layout views.
 // Subcell items whose DrcCell has no resolved ref_layout (e.g. KLayout
@@ -36,10 +34,15 @@ export class DrcView extends View {
         this.el = document.createElement('div');
         this.el.className = 'drc-viewer';
         this.selectedItemNid = null;
+        // Name of the selection's layout view, once known (see
+        // emitSelection), and a count of the selections made, so that a name
+        // arriving for a superseded selection is ignored.
+        this.selectedLayoutView = null;
+        this.selectionCount = 0;
         resContent.appendChild(this.el);
     }
 
-    update(msgData, wireHash) {
+    update(msgData) {
         const catMap = new Map();
         msgData.categories.forEach(cat => {
             catMap.set(cat.nid, { ...cat, items: [], count: 0 });
@@ -112,7 +115,7 @@ export class DrcView extends View {
             itemsEl.className = 'drc-items';
             catData.items.forEach((item, idx) => {
                 itemsEl.appendChild(
-                    this.buildItem(msgData, item, idx, cellMap, deselectBtn));
+                    this.buildItem(item, idx, cellMap, deselectBtn));
             });
             catEl.appendChild(itemsEl);
 
@@ -137,14 +140,14 @@ export class DrcView extends View {
         // the now-disabled Deselect button).
         if (this.selectedItemNid !== null) {
             if (this.el.querySelector('.drc-item.selected')) {
-                this.emitSelection(itemMap.get(this.selectedItemNid), msgData, cellMap, false);
+                this.emitSelection(itemMap.get(this.selectedItemNid), cellMap, false);
             } else {
                 this.deselect();
             }
         }
     }
 
-    buildItem(data, item, idx, cellMap, deselectBtn) {
+    buildItem(item, idx, cellMap, deselectBtn) {
         let label = item.shapes.length > 0 ? item.shapes[0].type : 'item';
         const cell = cellMap.get(item.cell_nid);
         const itemEl = document.createElement('div');
@@ -185,7 +188,7 @@ export class DrcView extends View {
             itemEl.classList.add('selected');
             deselectBtn.disabled = false;
             this.selectedItemNid = item.nid;
-            this.emitSelection(item, data, cellMap, true);
+            this.emitSelection(item, cellMap, true);
         });
         return itemEl;
     }
@@ -195,30 +198,41 @@ export class DrcView extends View {
     // 'drc:select' so a viewer opened/re-rendered later re-applies it). With
     // open=true (a fresh click) the target layout view is focused or opened;
     // on a re-render refresh (open=false) it is left as-is.
-    emitSelection(item, data, cellMap, open) {
-        const cell = cellMap.get(item.cell_nid);
-        const isTop = !cell || cell.is_top;
-        const layoutView = this.viewName
-            ? (isTop
-                ? `${this.viewName}.ref_layout`
-                : `${this.viewName}.subgraph.cursor_at(${item.cell_nid}).ref_layout`)
-            : null;
-        const layoutWireHash = (isTop ? data.layout_wire_hash : cell.layout_wire_hash) || null;
+    emitSelection(item, cellMap, open) {
         // Clear the previous selection everywhere: its highlight may sit in a
         // viewer the new selection does not target.
         this.eventBus.emit('drc:clear');
-        const payload = { shapes: item.shapes, layoutView, layoutWireHash };
-        this.eventBus.setPending('drc:select', payload);
-        this.eventBus.emit('drc:select', payload);
-        if (open && layoutView) {
-            // Focuses the target view if open (matched by name or wire hash),
-            // opens it otherwise.
-            this.eventBus.emit('layout:request-open', {
-                view: layoutView,
-                wireHash: layoutWireHash,
-                sourceContainer: this.panelContainer,
-            });
+        const select = layoutView => {
+            const payload = { shapes: item.shapes, layoutView };
+            this.eventBus.setPending('drc:select', payload);
+            this.eventBus.emit('drc:select', payload);
+        };
+        if (!open) {
+            // Without a name, it is still to come for the click.
+            if (this.selectedLayoutView) {
+                select(this.selectedLayoutView);
+            }
+            return;
         }
+        this.eventBus.clearPending('drc:select');
+        const cell = cellMap.get(item.cell_nid);
+        const isTop = !cell || cell.is_top;
+        const layoutView = isTop
+            ? `${this.viewName}.ref_layout`
+            : `${this.viewName}.subgraph.cursor_at(${item.cell_nid}).ref_layout`;
+        const selection = ++this.selectionCount;
+        this.selectedLayoutView = null;
+        // Focuses a viewer of the layout view, opens one otherwise. The name
+        // comes first, so that a new viewer finds the selection pending.
+        this.eventBus.emit('view:request-open', {
+            views: [layoutView],
+            sourceContainer: this.panelContainer,
+            onNames: ([name]) => {
+                if (selection !== this.selectionCount) return;
+                this.selectedLayoutView = name;
+                select(name);
+            },
+        });
     }
 
     // Clears the current selection: unmarks the selected row, disables the
@@ -230,6 +244,8 @@ export class DrcView extends View {
             el.classList.remove('selected');
         });
         this.selectedItemNid = null;
+        this.selectedLayoutView = null;
+        this.selectionCount++;
         const deselectBtn = this.el.querySelector('.drc-deselect');
         if (deselectBtn) {
             deselectBtn.disabled = true;

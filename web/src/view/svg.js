@@ -186,7 +186,7 @@ export class SvgView extends View {
         this.contextMenu = null;
 
         this.onLvsSelect = (data) => {
-            if (data && !this.selectionApplies(data.schemView, data.schemWireHash)) {
+            if (data && !this.selectionApplies(data.schemView)) {
                 return;
             }
             this.setHighlight(data);
@@ -204,11 +204,11 @@ export class SvgView extends View {
         });
 
         // A selection made before this view was opened; taken by update(),
-        // once there is an SVG to highlight in and a wire hash to match.
+        // once there is an SVG to highlight in.
         this.pendingHighlight = this.eventBus.getPending('lvs:select') || null;
     }
     pendingApplies(pending) {
-        return this.selectionApplies(pending.schemView, pending.schemWireHash);
+        return this.selectionApplies(pending.schemView);
     }
     zoomed({transform}) {
         this.transform = transform;
@@ -270,11 +270,10 @@ export class SvgView extends View {
         this.mark('markLvs', []);
         this.highlightData = null;
     }
-    update(msgData, wireHash) {
+    update(msgData) {
         // The highlight and the context menu belong to the replaced SVG.
         this.clearHighlight();
         this.closeContextMenu();
-        this.wireHash = wireHash;
         const viewbox = msgData['viewbox'];
         const [vx, vy, vw, vh] = viewbox;
         const zoomExtent = [[vx, vy], [vx + vw, vy + vh]];
@@ -452,10 +451,10 @@ export class SvgView extends View {
 
         // Descend: the context menu of an instance (class schemInstance, set
         // in render.py) offers to open the schematic of its cell. Like the
-        // LVS viewer, the view name addresses the instance by nid, and the
-        // request carries the wire hash of the schematic (descend_hash of the
-        // view data), so that a viewer already showing it is focused instead
-        // (e.g. reached from another instance of the same cell). Unlike the
+        // LVS viewer, the view expression addresses the instance by nid; the
+        // viewer is named by the schematic's name in the view list, and a
+        // viewer of that name is focused instead (e.g. reached from another
+        // instance of the same cell; see openViews in main.js). Unlike the
         // LVS viewer, the new viewer opens as a tab on top of this one
         // (stacked). Where the cell has no schematic, it shows the error. The
         // right click pins the instance, without click-to-source, to show
@@ -472,9 +471,8 @@ export class SvgView extends View {
                         if (this.viewOutdated()) {
                             return;
                         }
-                        this.eventBus.emit('schematic:request-open', {
-                            view: `${this.viewName}.subgraph.cursor_at(${group.dataset.nid}).symbol.cell.schematic`,
-                            wireHash: msgData.descend_hash?.[group.dataset.nid],
+                        this.eventBus.emit('view:request-open', {
+                            views: [`${this.viewName}.subgraph.cursor_at(${group.dataset.nid}).symbol.cell.schematic`],
                             stacked: true,
                             sourceContainer: this.panelContainer,
                         });

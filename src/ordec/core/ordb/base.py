@@ -1380,8 +1380,8 @@ class SubgraphRoot(NonLeafNode):
         """
         Web representation as (viewtype, data), rendered for the endpoint
         owning the given ExportTable. The default implementation delegates to
-        webdata_static(); views whose webdata depends on the endpoint (e.g.
-        wire hashes in LVS/DRC reports) override this method instead.
+        webdata_static(); views whose webdata depends on the endpoint
+        override this method instead.
         """
         return self.webdata_static()
 
