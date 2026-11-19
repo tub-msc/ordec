@@ -16,6 +16,9 @@ export class OrdecClient {
         // may be in flight at once; the server's pass manager decides how
         // many run concurrently.
         this.inflight = new Map();
+        // View requests of openView(), waiting for their viewer: req id ->
+        // {resolve, msgs} (see there).
+        this.opening = new Map();
         // In-flight setlayoutstyle and setconfig requests: req id -> callback.
         this.saveRequests = new Map();
         // The user's configuration file (see src/ordec/config.py), as sent
@@ -81,6 +84,7 @@ export class OrdecClient {
         this.sock.onclose = (ev) => this.wsOnClose(ev);
         this.sock.onerror = (ev) => this.wsOnError(ev);
         this.inflight.clear();
+        this.opening.clear();
         this.failSaveRequests();
         this.buildPending = true;
         this.updateStatus();
@@ -92,6 +96,15 @@ export class OrdecClient {
         }
         const msg = cbor.decode(new Uint8Array(messageEvent.data));
         //console.log(msg)
+        const opening = this.opening.get(msg['req']);
+        if (opening) {
+            if (msg['msg'] == 'viewname') {
+                opening.resolve(msg['name']);
+            } else {
+                opening.msgs.push(msg);
+            }
+            return;
+        }
         if (msg['msg'] == 'viewlist') {
             this.buildPending = false;
             this.exception = null;
@@ -118,24 +131,12 @@ export class OrdecClient {
             // Build errors annotate the failing line in the editor (main.js).
             this.app?.eventBus.emit('editor:build-exception', this.exception);
             this.resultViewers.forEach(rv => rv.updateViewListAndException());
-        } else if (msg['msg'] == 'view') {
-            // Terminal message: exactly one per request. Always remove the
-            // request and advance, even if a viewer throws while rendering:
-            // otherwise one broken view (e.g. a report probe) would wedge
-            // the requests of all viewers.
-            const rv = this.inflight.get(msg['req']);
-            this.inflight.delete(msg['req']);
-            try {
-                rv?.updateView(msg);
-            } finally {
-                this.requestViews();
-            }
+        } else if (msg['msg'] == 'view' || msg['msg'] == 'viewprogress') {
+            this.onViewMessage(msg);
         } else if (msg['msg'] == 'setlayoutstyle' || msg['msg'] == 'setconfig') {
             const onReply = this.saveRequests.get(msg['req']);
             this.saveRequests.delete(msg['req']);
             onReply?.(msg.exception ?? null);
-        } else if (msg['msg'] == 'viewprogress') {
-            this.inflight.get(msg['req'])?.updateProgress(msg);
         } else if (msg['msg'] == 'localmodule_changed') {
             if (this.autoRefreshEnabled) {
                 console.log("ordecClient.connect() triggered by localmodule_changed message.");
@@ -143,6 +144,24 @@ export class OrdecClient {
             } else {
                 console.log("localmodule_changed ignored (auto-refresh disabled).");
             }
+        }
+    }
+
+    onViewMessage(msg) {
+        if (msg['msg'] == 'viewprogress') {
+            this.inflight.get(msg['req'])?.updateProgress(msg);
+            return;
+        }
+        // Terminal message: exactly one per request. Always remove the
+        // request and advance, even if a viewer throws while rendering:
+        // otherwise one broken view (e.g. a report probe) would wedge the
+        // requests of all viewers.
+        const rv = this.inflight.get(msg['req']);
+        this.inflight.delete(msg['req']);
+        try {
+            rv?.updateView(msg);
+        } finally {
+            this.requestViews();
         }
     }
 
@@ -156,6 +175,7 @@ export class OrdecClient {
         // reconnect doesn't get stuck waiting for responses that will never
         // arrive.
         this.inflight.clear();
+        this.opening.clear();
         this.failSaveRequests();
         this.buildPending = false;
         if (session.hubMode && !this.sockOpened) {
@@ -245,6 +265,54 @@ export class OrdecClient {
         this.updateStatus();
     }
 
+    // Requests the view expression view for a viewer yet to be chosen: views
+    // opened from other views (descend, LVS, DRC; see openViews in main.js)
+    // are expressions addressing nodes by nid, while their viewers are named
+    // by the view's name in the view list, which comes with the request's
+    // viewname message (see eval_view in server.py). Returns a Promise of
+    // {name, attach}, resolved on that message, or null if not connected.
+    // attach(rv) hands the request over to the ResultViewer rv, attach(null)
+    // cancels it; the request's other messages are held back until then.
+    openView(view) {
+        if (this.exception || !this.sock || this.sock.readyState != WebSocket.OPEN) {
+            return null;
+        }
+        const req = ++this.reqCounter;
+        const promise = new Promise(resolve => {
+            this.opening.set(req, {
+                msgs: [],
+                resolve: name => resolve({name, attach: rv => this.attachView(req, rv)}),
+            });
+        });
+        this.sock.send(cbor.encode({msg: 'getview', view: view, req: req}));
+        this.updateStatus();
+        return promise;
+    }
+
+    attachView(req, rv) {
+        const opening = this.opening.get(req);
+        if (!opening) {
+            return; // The socket was replaced meanwhile.
+        }
+        this.opening.delete(req);
+        if (rv && !this.inflight.has(rv.currentReq)) {
+            // A viewer opened just now may not be registered yet (see
+            // registerResultViewers), but needs the client for the view
+            // messages replayed below.
+            if (!rv.client) {
+                rv.registerClient(this);
+            }
+            rv.beginRequest(req);
+            this.inflight.set(req, rv);
+            opening.msgs.forEach(msg => this.onViewMessage(msg));
+        } else if (!opening.msgs.some(msg => msg['msg'] == 'view')) {
+            // Messages of the request still to come are dropped, being
+            // neither in opening nor in inflight.
+            this.sock.send(cbor.encode({msg: 'cancelview', req: req}));
+        }
+        this.updateStatus();
+    }
+
     // Pending save requests get no answer once the socket is gone.
     failSaveRequests() {
         this.saveRequests.forEach(onReply =>
@@ -312,7 +380,7 @@ export class OrdecClient {
             // Without an 'exception' message on the current socket, the
             // exception is the connection error set by wsOnClose.
             this.setStatus(this.sockException ? 'exception' : 'disconnected');
-        } else if (this.inflight.size > 0) {
+        } else if (this.inflight.size > 0 || this.opening.size > 0) {
             this.setStatus('busy');
         } else {
             this.setStatus('ready');

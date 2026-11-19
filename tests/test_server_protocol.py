@@ -45,13 +45,18 @@ def with_progress():
     return "progressed"
 
 @viewgen_noctx
-def sym():
-    from ordec.lib import Res
-    return Res(r=100).symbol
-
-@viewgen_noctx
 def failing():
     raise ValueError("boom")
+
+class Named(Cell):
+    @viewgen_noctx
+    def symbol(self):
+        progress("generating", 0.5)
+        return Symbol(cell=self)
+
+# The view list names the views by the variable, not by the class name.
+Alias = Named
+del Named
 '''
 
 @pytest.fixture(scope="module")
@@ -105,16 +110,20 @@ class Client:
     def cancelview(self, req):
         self.send({'msg': 'cancelview', 'req': req})
 
-    def recv_until_terminal(self, req):
-        """Collects viewprogress messages until the terminal 'view'
-        message for req arrives; returns (progress_msgs, terminal)."""
-        progress_msgs = []
-        while True:
+    def recv_req(self, req):
+        """Collects the messages for req until its terminal 'view'
+        message."""
+        msgs = []
+        while not msgs or msgs[-1]['msg'] != 'view':
             msg = self.recv()
-            if msg['msg'] == 'viewprogress' and msg['req'] == req:
-                progress_msgs.append(msg)
-            elif msg['msg'] == 'view' and msg['req'] == req:
-                return progress_msgs, msg
+            if msg.get('req') == req:
+                msgs.append(msg)
+        return msgs
+
+    def recv_until_terminal(self, req):
+        """Returns (progress_msgs, terminal) of req."""
+        msgs = self.recv_req(req)
+        return [m for m in msgs if m['msg'] == 'viewprogress'], msgs[-1]
 
     def close(self):
         self.sock.close()
@@ -197,18 +206,29 @@ def test_cancel_infinite_loop(proto_server):
     finally:
         c2.close()
 
-def test_view_wire_hash(proto_server):
-    """Subgraph views carry a stable wire hash on the terminal message."""
+def test_viewname(proto_server):
+    """A viewname message precedes each view message, with the view's name
+    in the view list, also where the view is requested by another
+    expression. For a view generator of a cell, it comes before the
+    generation; a cached view is answered at once."""
     url, key = proto_server
     c = Client(url, key)
     try:
-        c.getview('sym()', req=50)
-        _, terminal1 = c.recv_until_terminal(50)
-        c.getview('sym()', req=51)
-        _, terminal2 = c.recv_until_terminal(51)
-        assert len(terminal1['wire_hash']) == 64
-        int(terminal1['wire_hash'], 16)
-        assert terminal1['wire_hash'] == terminal2['wire_hash']
+        assert 'Alias().symbol' in c.views
+        assert not any(v.startswith('Named(') for v in c.views)
+        c.getview('Alias(**{}).symbol', req=50)
+        msgs = c.recv_req(50)
+        assert [m['msg'] for m in msgs] == ['viewname', 'viewprogress', 'view']
+        assert msgs[0]['name'] == 'Alias().symbol'
+        # Cached, and not ending in a view generator: named through the
+        # view's cell.
+        c.getview('[Alias().symbol][0]', req=51)
+        msgs = c.recv_req(51)
+        assert [m['msg'] for m in msgs] == ['viewname', 'view']
+        assert msgs[0]['name'] == 'Alias().symbol'
+        # Not a view of a cell: named by the request.
+        c.getview('quick()', req=52)
+        assert c.recv_req(52)[0]['name'] == 'quick()'
     finally:
         c.close()
 

@@ -218,10 +218,8 @@ export class LayoutView extends View {
 
         this.onDrcSelect = (data) => {
             // DRC selections target the view of the violation's cell; they
-            // apply to viewers showing that view: matched by name, or by
-            // wire hash for a viewer showing the same subgraph under a
-            // different view name.
-            if (data && !this.selectionApplies(data.layoutView, data.layoutWireHash)) {
+            // apply to viewers showing that view.
+            if (data && !this.selectionApplies(data.layoutView)) {
                 return;
             }
             this.setHighlight(data.shapes);
@@ -232,9 +230,8 @@ export class LayoutView extends View {
 
         this.onLvsSelect = (data) => {
             // Selections targeted at a specific layout view (items of LVS
-            // subcircuit pairs) apply to viewers showing that view, matched
-            // by name or by wire hash.
-            if (data && !this.selectionApplies(data.layoutView, data.layoutWireHash)) {
+            // subcircuit pairs) apply to viewers showing that view.
+            if (data && !this.selectionApplies(data.layoutView)) {
                 return;
             }
             this.highlightPos(data.pos);
@@ -255,7 +252,7 @@ export class LayoutView extends View {
         this.busSubscribe('layoutstyle:change', this.onLayoutStyleChange);
 
         // Selections made before this view was opened; taken by update(),
-        // once there is layout data to highlight in and a wire hash to match.
+        // once there is layout data to highlight in.
         this.pendingDrc = this.eventBus.getPending('drc:select');
         this.pendingLvs = this.eventBus.getPending('lvs:select');
 
@@ -342,12 +339,11 @@ export class LayoutView extends View {
     }
 
     pendingApplies(pending) {
-        return this.selectionApplies(pending.layoutView, pending.layoutWireHash);
+        return this.selectionApplies(pending.layoutView);
     }
 
-    update(msgData, wireHash) {
+    update(msgData) {
         this.data = msgData;
-        this.wireHash = wireHash;
         applyStyle(this.style, msgData.style);
         this.stylePanel.sync();
         this.loadPatterns();

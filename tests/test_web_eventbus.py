@@ -219,7 +219,8 @@ def get_layout_states_by_view(web):
 def test_drc_subcell_item_select(web):
     """Selecting a DRC item opens the layout view of the violation's cell
     and highlights it only there: the subcell item in the subcell's view
-    (cell-local coordinates), the top item in the top layout view."""
+    (cell-local coordinates), the top item in the top layout view. The
+    viewers are renamed to the names of the view list."""
     qs_local = web.key.query_string_local(
         "tests.lib.drc_example_hier", ["Top().drc_report"])
     web.navigate(f'app.html#refreshall=true&{qs_local}')
@@ -235,17 +236,9 @@ def test_drc_subcell_item_select(web):
     assert clicked, "Should find and click the subcell violation item"
     web.wait_until("""
         return window.ordecApp.client.resultViewers.some(rv =>
-            rv.view && rv.view.testState && rv.viewSelected
-            && rv.viewSelected.includes('cursor_at')
-            && rv.viewSelected.endsWith('.ref_layout')
+            rv.viewSelected === 'Sub().layout' && rv.view?.testState
             && rv.view.testState().highlightNumVertices > 0);
     """)
-
-    states = get_layout_states_by_view(web)
-    sub_views = [v for v in states if 'cursor_at' in v and v.endswith('.ref_layout')]
-    assert sub_views, f"Expected the subcell's layout view to open, got {list(states)}"
-    assert states[sub_views[0]]['highlightNumVertices'] > 0, \
-        "Violation should be highlighted in the subcell's layout view"
 
     # Now select the top-level item: the top layout view opens and gets the
     # highlight, while the subcell viewer's highlight is cleared (top-cell
@@ -259,18 +252,12 @@ def test_drc_subcell_item_select(web):
     assert clicked, "Should find and click the top-level violation item"
     web.wait_until("""
         return window.ordecApp.client.resultViewers.some(rv =>
-            rv.view && rv.view.testState && rv.viewSelected
-            && !rv.viewSelected.includes('cursor_at')
-            && rv.viewSelected.endsWith('.ref_layout')
+            rv.viewSelected === 'Top().layout' && rv.view?.testState
             && rv.view.testState().highlightNumVertices > 0);
     """)
 
     states = get_layout_states_by_view(web)
-    top_views = [v for v in states if 'cursor_at' not in v and v.endswith('.ref_layout')]
-    assert top_views, f"Expected the top layout view to open, got {list(states)}"
-    assert states[top_views[0]]['highlightNumVertices'] > 0, \
-        "Violation should be highlighted in the top layout view"
-    assert states[sub_views[0]]['highlightNumVertices'] == 0, \
+    assert states['Sub().layout']['highlightNumVertices'] == 0, \
         "Top-level selection must not leave a highlight in the subcell's view"
 
 
@@ -475,15 +462,9 @@ def test_lvs_circuit_links_open_views(web):
         'document.querySelector(\'.lvs-circuit-link[data-kind="layout"]\').click();')
     web.wait_until("""
         return window.ordecApp.client.resultViewers.some(rv =>
-            rv.view && rv.view.testState && rv.viewSelected
-            && rv.viewSelected.includes('cursor_at')
-            && rv.viewSelected.endsWith('.ref_layout'));
+            rv.viewSelected === "LvsTestInv(variant='clean').layout"
+            && rv.view?.testState);
     """)
-
-    views = web.driver.execute_script(
-        "return window.ordecApp.client.resultViewers.map(rv => rv.viewSelected);")
-    assert any(v and 'cursor_at' in v and v.endswith('.ref_layout') for v in views), \
-        f"Expected a per-circuit ref_layout view, got {views}"
     state = get_layout_state(web)
     assert state is not None, "Layout viewer should have opened and rendered"
     assert state['highlightNumVertices'] == 0, "Nothing should be highlighted"
@@ -492,71 +473,12 @@ def test_lvs_circuit_links_open_views(web):
         'document.querySelector(\'.lvs-circuit-link[data-kind="schem"]\').click();')
     web.wait_until("""
         return window.ordecApp.client.resultViewers.some(rv =>
-            rv.viewSelected && rv.viewSelected.endsWith('.ref_schematic')
+            rv.viewSelected === "LvsTestInv(variant='clean').schematic"
             && rv.viewUpToDate);
     """)
-
-    views = web.driver.execute_script(
-        "return window.ordecApp.client.resultViewers.map(rv => rv.viewSelected);")
-    assert any(v and 'cursor_at' in v and v.endswith('.ref_schematic') for v in views), \
-        f"Expected a per-circuit ref_schematic view, got {views}"
     svg_count = web.driver.execute_script(
         "return document.querySelectorAll('.rescontent svg').length;")
     assert svg_count > 0, "Schematic viewer should have opened and rendered"
-
-
-@pytest.mark.ihp130
-@pytest.mark.web
-def test_lvs_layout_link_dedup(web):
-    """A circuit-row layout link must focus an already-open panel showing the
-    same subgraph under a different view name instead of opening a duplicate
-    (hash-based fetch-before-open dedup)."""
-    load_lvs_report_view(web)
-
-    # Open the same Layout under its plain view name first.
-    web.driver.execute_script(
-        "window.ordecApp.eventBus.emit('layout:request-open', {view: 'layout()'});")
-    web.wait_until("""
-        return window.ordecApp.client.resultViewers.some(
-            rv => rv.viewSelected === 'layout()' && rv.wireHash);
-    """)
-
-    views_before = web.views_opened()
-    assert 'layout()' in views_before
-    hashes = web.driver.execute_script(
-        "return window.ordecApp.client.resultViewers.map(rv => rv.wireHash);")
-    assert any(hashes), f"Expected wire hashes on open panels, got {hashes}"
-
-    # The link addresses the same subgraph as an lvs_report()-derived name.
-    web.driver.execute_script(
-        'document.querySelector(\'.lvs-circuit-link[data-kind="layout"]\').click();')
-
-    views_after = web.views_opened()
-    assert views_after == views_before, \
-        f"Layout link must not open a duplicate panel: {views_after}"
-
-    # Selecting an item must land its highlight in the hash-matched layout
-    # panel (highlight events target by name or wire hash) and must not open
-    # a duplicate ref_layout panel either. The item's schematic view is not
-    # open yet, so a new panel for it is expected.
-    web.driver.execute_script("""
-        document.querySelector(
-            '.lvs-item-link[title="Highlight in layout and schematic"]')
-            .closest('.lvs-item-row').click();
-    """)
-    web.wait_until("""
-        const rv = window.ordecApp.client.resultViewers.find(
-            rv => rv.view && rv.view.testState);
-        return rv && rv.view.testState().highlightNumVertices > 0;
-    """)
-
-    views = web.views_opened()
-    assert not any(v and v.endswith('.ref_layout') for v in views), \
-        f"Item select must not open a duplicate layout panel: {views}"
-    state = get_layout_state(web)
-    assert state is not None, "Layout viewer not found"
-    assert state['highlightNumVertices'] > 0, \
-        "Item highlight should land in the hash-matched layout panel"
 
 
 @pytest.mark.ihp130
@@ -590,39 +512,20 @@ def test_lvs_subcircuit_item_select(web):
         return true;
     """)
     assert clicked, "Should find and click an item row of the A_Default pair"
+    # The pair's viewers are renamed to the names of the view list.
     web.wait_until("""
-        return window.ordecApp.client.resultViewers.some(rv =>
-            rv.view && rv.view.testState && rv.viewSelected
-            && rv.viewSelected.includes('cursor_at')
-            && rv.viewSelected.endsWith('.ref_layout')
+        const rvs = window.ordecApp.client.resultViewers;
+        const schem = rvs.find(rv => rv.viewSelected === 'A_Default().schematic');
+        return rvs.some(rv =>
+            rv.viewSelected === 'A_Default().layout' && rv.view?.testState
             && rv.view.testState().highlightNumVertices > 0)
-            && !!document.querySelector('[data-nid].markLvs');
+            && !!schem?.resContent.querySelector('[data-nid].markLvs');
     """)
-
-    views = web.driver.execute_script(
-        "return window.ordecApp.client.resultViewers.map(rv => rv.viewSelected);")
-    assert any(v and 'cursor_at' in v and v.endswith('.ref_layout') for v in views), \
-        f"Expected the pair's layout view to open, got {views}"
-    assert any(v and 'cursor_at' in v and v.endswith('.ref_schematic') for v in views), \
-        f"Expected the pair's schematic view to open, got {views}"
-
-    state = get_layout_state(web)
-    assert state is not None, "Layout viewer should have opened and rendered"
-    assert state['highlightNumVertices'] > 0, \
-        "Item should be highlighted in the pair's layout view"
-
-    highlight_groups = web.driver.execute_script(
-        "return document.querySelectorAll('[data-nid].markLvs').length;")
-    assert highlight_groups > 0, \
-        "Item should be highlighted in the pair's schematic view"
 
     # Now select a device item of the top-level pair: the report-level
     # layout view opens and gets the highlight, while the subcircuit
     # viewer's highlight is cleared (top-level positions must not be
     # painted into the subcircuit's view).
-    states = get_layout_states_by_view(web)
-    sub_views = [v for v in states if 'cursor_at' in v and v.endswith('.ref_layout')]
-    assert sub_views, f"Expected the pair's layout view among {list(states)}"
 
     clicked = web.driver.execute_script("""
         const circuits = Array.from(document.querySelectorAll('.lvs-circuit'));
@@ -638,18 +541,12 @@ def test_lvs_subcircuit_item_select(web):
     assert clicked, "Should find and click an item row of the C_Hier pair"
     web.wait_until("""
         return window.ordecApp.client.resultViewers.some(rv =>
-            rv.view && rv.view.testState && rv.viewSelected
-            && !rv.viewSelected.includes('cursor_at')
-            && rv.viewSelected.endsWith('.ref_layout')
+            rv.viewSelected === 'C_Hier().layout' && rv.view?.testState
             && rv.view.testState().highlightNumVertices > 0);
     """)
 
     states = get_layout_states_by_view(web)
-    top_views = [v for v in states if 'cursor_at' not in v and v.endswith('.ref_layout')]
-    assert top_views, f"Expected the report-level layout view to open, got {list(states)}"
-    assert states[top_views[0]]['highlightNumVertices'] > 0, \
-        "Item should be highlighted in the report-level layout view"
-    assert states[sub_views[0]]['highlightNumVertices'] == 0, \
+    assert states['A_Default().layout']['highlightNumVertices'] == 0, \
         "Top-level selection must not leave a highlight in the subcircuit's view"
 
 
