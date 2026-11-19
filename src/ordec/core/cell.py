@@ -535,13 +535,14 @@ class Cell(metaclass=MetaCell):
         case, a Cell subclass could override this method and return a list
         of one or multiple of its instances created from valid parameters.
 
-        The web UI uses each instance's repr as the view name and resolves
-        a selected view by evaluating that name in the user's namespace
-        (see server.py). The repr must therefore be a valid expression
-        referencing nothing but the Cell class itself, and evaluating it
-        must yield the instance again. This holds automatically as long as
-        parameter values coerce back from their repr form (see
-        :meth:`Parameter.value_repr` and the factory argument).
+        The web UI names each instance's views by the name the Cell class is
+        bound to in the user's namespace, called with the instance's
+        parameters in their repr form (see :meth:`params_list`), and
+        resolves a selected view by evaluating that name (see server.py).
+        Evaluating it must yield the instance again. This holds
+        automatically as long as parameter values coerce back from their
+        repr form (see :meth:`Parameter.value_repr` and the factory
+        argument).
         """
         if cls.__abstractmethods__:
             return []
