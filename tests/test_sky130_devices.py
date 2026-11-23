@@ -236,9 +236,10 @@ def test_mos_op(cell, expected_i):
 
 
 @pytest.mark.parametrize("cell,conn,expected_i", [
-    (sky130.RfMos(device="rf_nfet_01v8_aM02W1p65L0p15"), dict(drain=1, gate=1, source=0, substrate=0), 2.56e-4),
-    (sky130.Npn(device="npn_05v5_W1p00L1p00"), dict(c=1, b=1, e=0, s=0), None),
-    (sky130.Pnp(device="pnp_05v5_W0p68L0p68"), dict(collector=0, base=0, emitter=1), 2.22e-4),
+    (sky130.RfNmos(device="rf_nfet_01v8_aM02W1p65L0p15"), dict(d=1, g=1, s=0, b=0), 2.56e-4),
+    (sky130.RfPmos(device="rf_pfet_01v8_aM02W1p65L0p15"), dict(d=0, g=0, s=1, b=1), None),
+    (sky130.Npn(device="npn_05v5_W1p00L1p00"), dict(c=1, b=1, e=0, sub=0), None),
+    (sky130.Pnp(device="pnp_05v5_W0p68L0p68"), dict(c=0, b=0, e=1), 2.22e-4),
     (sky130.Inductor(device="ind_03_90"), dict(a=1, b=0, ct=0, sub=0), None),
 ])
 def test_fixed_device_op(cell, conn, expected_i):

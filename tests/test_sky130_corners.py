@@ -57,8 +57,8 @@ def test_read_spice_device_map(tmp_path):
     spice.write_text(".subckt t a b\n"
         "X1 a a b b sky130_fd_pr__nfet_01v8 w=2u l=150n nf=2 m=3\n"
         "R1 a b sky130_fd_pr__res_generic_po w=1u l=2u m=2\n"
-        "X2 a b b sky130_fd_pr__res_high_po_0p35 l=2u\n"
-        "X3 a b b sky130_fd_pr__cap_var_lvt w=1u l=180n vm=2\n"
+        "X2 a b b sky130_fd_pr__res_high_po_0p35 l=2.12u\n"
+        "X3 a b b sky130_fd_pr__cap_var_lvt w=1u l=180n vm=2 m=3\n"
         "X4 a a b b b sky130_fd_pr__nfet_20v0_iso w=60u l=2u\n"
         "X5 a a b b sky130_fd_pr__npn_05v5_W1p00L1p00 m=2\n"
         ".ends\n")
@@ -69,8 +69,9 @@ def test_read_spice_device_map(tmp_path):
     assert (mos.w, mos.l, mos.nf, mos.m) == (R("2u"), R("150n"), 2, 3)
     res = cells[sky130.Rpoly]
     assert (res.w, res.l, res.m) == (R("1u"), R("2u"), 2)
-    # Cards that size the device other than the cell does, or not at all.
-    assert cells[sky130.RhighPo0p35].w == R("0.35u")
-    assert (cells[sky130.CapVarLvt].w, cells[sky130.CapVarLvt].nf) == (R("2u"), 2)
+    # Cards that size the device other than the cell does: they give the
+    # length of the model, the width of a varactor finger, or no width.
+    assert (cells[sky130.RhighPo0p35].w, cells[sky130.RhighPo0p35].l) == (R("0.35u"), R("2u"))
+    assert (cells[sky130.CapVarLvt].w, cells[sky130.CapVarLvt].nf, cells[sky130.CapVarLvt].m) == (R("2u"), 2, 3)
     assert cells[sky130.Nmos20v0Iso].w == R("60u")
     assert (cells[sky130.Npn].device, cells[sky130.Npn].m) == ("npn_05v5_W1p00L1p00", 2)

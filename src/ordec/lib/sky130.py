@@ -1380,6 +1380,11 @@ class Varactor(Mos):
     #: Enclose the gate poly and its contact pads in the N-well by the 0.15 µm of varac.5, unlike the generator
     well_enclosure = Parameter(bool, default=True)
 
+    @classmethod
+    def from_card(cls, l, w, vm=1, m=1):
+        """The varactor of a SPICE card, whose w is the width of one of its vm fingers."""
+        return cls(l=l, w=w * vm, nf=vm, m=m)
+
     def ngspice_save_params(self):
         # The models are capacitors and resistors, without a MOS device.
         return []
@@ -1896,6 +1901,11 @@ class ResPrecision(ResPoly):
     bulk = "sub"
     spice_prefix = "x"
     min_l = R("0.5u")
+
+    @classmethod
+    def from_card(cls, l, m=1):
+        """The resistor of a SPICE card, whose l is the model's (lvs_length)."""
+        return cls(l=l - 2 * R(f"{cls.rules.lvs_extend}n"), w=cls.width, m=m)
 
     def spice_params(self) -> dict:
         # mult only scales the model's mismatch, m is ngspice's parallel count.
@@ -2600,21 +2610,21 @@ class HvSubconn(Subconn):
     def layout(self) -> Layout:
         return layoutgen_subconn(self, "mvpsc", "mvpsd")
 
-def well_sides(p: Paint, r: tuple, extra: int):
+def well_sides(p: Paint, r: tuple, extra: int, full_last: bool):
     """
-    The contact strips along the sides of the well rect, as sky130::nwell_draw,
-    except that the last side's diffusion is as long as the others: the
-    generator's shorter one fails difftap.3 against their corners.
+    The contact strips along the sides of the well rect, as sky130::nwell_draw
+    and deep_nwell_draw, whose last side's diffusion only covers its contact.
+    full_last makes it as long as the others.
     """
-    for lx, ly, ux, uy in ((r[0], r[1], r[0], r[3]), (r[0], r[1], r[2], r[1]),
-            (r[0], r[3], r[2], r[3]), (r[2], r[1], r[2], r[3])):
+    sides = ((r[0], r[1], r[0], r[3]), (r[0], r[1], r[2], r[1]), (r[0], r[3], r[2], r[3]), (r[2], r[1], r[2], r[3]))
+    for i, (lx, ly, ux, uy) in enumerate(sides):
         strip = (lx - 85, ly - 85, ux + 85, uy + 85)
         p.paint("li", strip)
         vertical = lx == ux
         cut = (strip[0], strip[1] + 300, strip[2], strip[3] - 300) if vertical \
             else (strip[0] + 300, strip[1], strip[2] - 300, strip[3])
         p.paint("nsc", cut)
-        p.paint("nsd", rect_grow(strip, extra))
+        p.paint("nsd", rect_grow(cut if i == len(sides) - 1 and not full_last else strip, extra))
 
 @public
 class NwellRing(Cell):
@@ -2630,7 +2640,8 @@ class NwellRing(Cell):
         hw, hh = int(self.w / R("2n")), int(self.h / R("2n"))
         r = (-hw, -hh, hw, hh)
         p.paint("nwell", rect_grow(r, 265))
-        well_sides(p, r, 0)
+        # The generator's shorter last diffusion fails difftap.3 against the corners.
+        well_sides(p, r, 0, full_last=True)
         p.draw(l)
         return l
 
@@ -2646,9 +2657,10 @@ class DeepNwell(Cell):
 
     @classmethod
     def params_check(cls, params):
-        # Below this, the hole of the ring fails nwell.2a (the generator allows 3u).
-        if params['w'] < R("3.5u") or params['h'] < R("3.5u"):
-            raise ParameterError("w and h must be at least 3.5u.")
+        # Below this, the hole of the ring is narrower than the 1.27 um of
+        # nwell.2a (the generator allows 3u).
+        if params['w'] < R("3.34u") or params['h'] < R("3.34u"):
+            raise ParameterError("w and h must be at least 3.34u.")
 
     @viewgen_noctx
     def layout(self) -> Layout:
@@ -2660,7 +2672,7 @@ class DeepNwell(Cell):
         p.paint("dnwell", r)
         for rect in rects_subtract([rect_grow(r, 400)], [rect_grow(r, 400 - 1430)]):
             p.paint("nwell", rect)
-        well_sides(p, rect_grow(r, 30), 100)
+        well_sides(p, rect_grow(r, 30), 100, full_last=False)
         p.draw(l)
         return l
 
@@ -2778,17 +2790,17 @@ def spice_include(path: Path):
 def layoutgen_fixed(cell: Cell) -> Layout:
     """
     The fixed cell of the PDK's sky130_fd_pr.gds, with pins at the labels
-    naming them.
+    naming them, as subckt pins or as symbol pins.
     """
     layers = SKY130().layers
     l = Layout(ref_layers=layers, cell=cell, symbol=cell.symbol)
     l % LayoutInstance(ref=pr_library()[cell.gds_name()].layout, pos=Vec2I(0, 0))
     flatten(l)
-    pins = {cell.pin_aliases.get(str(p.npath.name), str(p.npath.name)): p for p in cell.symbol.all(Pin)}
+    pins = {str(p.npath.name): p for p in cell.symbol.all(Pin)}
     metals = {m.gdslayer_shapes.layer: m for m in (layers.li1, layers.met1, layers.met2, layers.met3, layers.met4, layers.met5)}
     done = set()
     for label in list(l.all(LayoutLabel)):
-        name = label.text.lower()
+        name = cell.pin_names.get(label.text.lower(), label.text.lower())
         text = label.layer.gdslayer_text
         metal = layers.pwell if label.layer == layers.pwell.pin else metals.get(text.layer)
         if name in pins and name not in done and metal is not None:
@@ -2801,11 +2813,11 @@ class FixedDevice(SimLeafCell):
     """
     Shared base class of the devices with a fixed cell in sky130_fd_pr.gds,
     selected by the parameter ``device``. Their pins are the ones of the PDK's
-    .subckt. Magic's generators place these same cells.
+    .subckt, renamed by pin_names. Magic's generators place these same cells.
     """
     device = Parameter(str)
     m = Parameter(int, default=1)
-    pin_aliases = {}
+    pin_names = {}  # subckt pin -> symbol pin, where they differ
     lvs_prefix = "X"
     prefixes = ()  # the names of the family's devices start with one of these
 
@@ -2835,7 +2847,8 @@ class FixedDevice(SimLeafCell):
     def symbol(self) -> Symbol:
         s = Symbol(cell=self)
         for name in self.pins():
-            s[name] = Pin(pintype=PinType.Inout, orient=South if name in ("b", "s", "sub", "substrate") else North)
+            name = self.pin_names.get(name, name)
+            s[name] = Pin(pintype=PinType.Inout, orient=South if name == "sub" else North)
         s.place_pins()
         return s
 
@@ -2843,7 +2856,7 @@ class FixedDevice(SimLeafCell):
         if not self.pins():
             raise ParameterError(f"The PDK has no subcircuit of {self.device}.")
         netlister.require_netlist_setup(netlist_setup)
-        pins = [inst.symbol[p] for p in self.pins()]
+        pins = [inst.symbol[self.pin_names.get(p, p)] for p in self.pins()]
         if netlister.lvs:
             netlister.add(netlister.name_obj(inst, prefix=self.lvs_prefix),
                 netlister.portmap(inst, pins), self.model())
@@ -2869,16 +2882,31 @@ class CapVpp(FixedDevice):
     example = "cap_vpp_11p5x11p7_m1m2_noshield"
     prefixes = ("cap_vpp_",)
     lvs_prefix = "C"
-    pin_aliases = {"b": "sub"}
+    pin_names = {"b": "sub"}
 
     def model_file(self) -> Path:
         return pdk().root / "libs.tech/ngspice/capacitors/sky130_fd_pr__model__cap_vpp.model.spice"
 
-@public
 class RfMos(FixedDevice):
-    """RF MOS, e.g. ``device="rf_nfet_01v8_aM02W1p65L0p15"``. The LVS deck extracts no devices from these cells."""
+    """
+    Shared base class of the RF MOS devices, with the pins and symbol of the
+    MOS devices. The LVS deck extracts no devices from these cells.
+    """
+    pin_names = {"drain": "d", "gate": "g", "source": "s", "substrate": "b", "bulk": "b", "psub": "b"}
+
+@public
+class RfNmos(RfMos):
+    """RF NMOS, e.g. ``device="rf_nfet_01v8_aM02W1p65L0p15"``."""
     example = "rf_nfet_01v8_aM02W1p65L0p15"
-    prefixes = ("rf_nfet_", "rf_pfet_")
+    prefixes = ("rf_nfet_",)
+    symbol = generic_mos.Nmos.symbol
+
+@public
+class RfPmos(RfMos):
+    """RF PMOS, e.g. ``device="rf_pfet_01v8_aM02W1p65L0p15"``."""
+    example = "rf_pfet_01v8_aM02W1p65L0p15"
+    prefixes = ("rf_pfet_",)
+    symbol = generic_mos.Pmos.symbol
 
 def netlist_setup_npn(netlister):
     """
@@ -2903,9 +2931,10 @@ class Bjt(FixedDevice):
 
 @public
 class Npn(Bjt):
-    """NPN transistor, e.g. ``device="npn_05v5_W1p00L1p00"``, pins c, b, e, s."""
+    """NPN transistor, e.g. ``device="npn_05v5_W1p00L1p00"``."""
     example = "npn_05v5_W1p00L1p00"
     prefixes = ("npn_",)
+    pin_names = {"s": "sub"}
 
     def model_file(self) -> Path:
         return None
@@ -2919,7 +2948,7 @@ class Pnp(Bjt):
     """PNP transistor, e.g. ``device="pnp_05v5_W0p68L0p68"``."""
     example = "pnp_05v5_W0p68L0p68"
     prefixes = ("pnp_",)
-    pin_aliases = {"collector": "c", "base": "b", "emitter": "e"}
+    pin_names = {"collector": "c", "base": "b", "emitter": "e"}
 
     def model_file(self) -> Path:
         return None
@@ -3104,47 +3133,87 @@ class Or2(Cell):
 
         return s
 
-def varcap_of_card(cell, l, w, vm=1):
-    """The varactor of a SPICE card, whose w is the width of one of its vm fingers."""
-    return cell(l=l, w=w * vm, nf=vm)
-
-MOS_PINS = ("d", "g", "s", "b")
-MOS_PARAMS = dict(real_params=("l", "w"), int_params=("nf", "m"))
-RES_PARAMS = dict(real_params=("l", "w"), int_params=("m",))
 #: Device map for spice_in. Netlists must give sizes in meters (magic's and
 #: xschem's assume ".option scale=1.0u").
 device_map = {
-    cell.model_name: DeviceMapping(cell, getattr(cell, "subckt_pins", MOS_PINS), **MOS_PARAMS)
-    for cell in (Nmos, NmosLvt, NmosHv, Nmos05v0Nvt, Nmos03v3Nvt, Pmos, PmosLvt, PmosHvt, PmosHv, PmosMvt,
-        NmosG5v0d16v0, PmosG5v0d16v0, Nmos20v0, Pmos20v0, Nmos20v0Nvt, Nmos20v0Zvt, Nmos20v0Iso,
-        Nmos20v0ReverseIso, EsdNmos, EsdNmosHv, EsdPmosHv, NmosLatch, NmosPass, NmosPassFlash,
-        NmosPassLvt, PmosPass)
-} | {
-    cell.model_name: DeviceMapping(cell, ("p", "n"), **RES_PARAMS) for cell in (Rpoly, Rl1, Rm1, Rm2, Rm3, Rm4, Rm5)
-} | {
-    cell.model_name: DeviceMapping(cell, ("p", "n", cell.bulk), **RES_PARAMS) for cell in (Rnd, Rpd, RndHv, RpdHv, RisoPw)
-} | {
+    Nmos.model_name: DeviceMapping(Nmos, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("nf", "m")),
+    NmosLvt.model_name: DeviceMapping(NmosLvt, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("nf", "m")),
+    NmosHv.model_name: DeviceMapping(NmosHv, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("nf", "m")),
+    Nmos05v0Nvt.model_name: DeviceMapping(Nmos05v0Nvt, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("nf", "m")),
+    Nmos03v3Nvt.model_name: DeviceMapping(Nmos03v3Nvt, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("nf", "m")),
+    Pmos.model_name: DeviceMapping(Pmos, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("nf", "m")),
+    PmosLvt.model_name: DeviceMapping(PmosLvt, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("nf", "m")),
+    PmosHvt.model_name: DeviceMapping(PmosHvt, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("nf", "m")),
+    PmosHv.model_name: DeviceMapping(PmosHv, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("nf", "m")),
+    PmosMvt.model_name: DeviceMapping(PmosMvt, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("nf", "m")),
+    NmosG5v0d16v0.model_name: DeviceMapping(NmosG5v0d16v0, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("nf", "m")),
+    PmosG5v0d16v0.model_name: DeviceMapping(PmosG5v0d16v0, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("nf", "m")),
+    Nmos20v0.model_name: DeviceMapping(Nmos20v0, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("nf", "m")),
+    Pmos20v0.model_name: DeviceMapping(Pmos20v0, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("nf", "m")),
+    Nmos20v0Nvt.model_name: DeviceMapping(Nmos20v0Nvt, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("nf", "m")),
+    Nmos20v0Zvt.model_name: DeviceMapping(Nmos20v0Zvt, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("nf", "m")),
+    Nmos20v0Iso.model_name: DeviceMapping(Nmos20v0Iso, ("d", "g", "s", "b", "sub"), real_params=("l", "w"),
+        int_params=("nf", "m")),
+    Nmos20v0ReverseIso.model_name: DeviceMapping(Nmos20v0ReverseIso, ("d", "g", "s", "b", "sub"), real_params=("l", "w"),
+        int_params=("nf", "m")),
+    EsdNmos.model_name: DeviceMapping(EsdNmos, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("nf", "m")),
+    EsdNmosHv.model_name: DeviceMapping(EsdNmosHv, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("nf", "m")),
+    EsdPmosHv.model_name: DeviceMapping(EsdPmosHv, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("nf", "m")),
+    NmosLatch.model_name: DeviceMapping(NmosLatch, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("nf", "m")),
+    NmosPass.model_name: DeviceMapping(NmosPass, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("nf", "m")),
+    NmosPassFlash.model_name: DeviceMapping(NmosPassFlash, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("nf", "m")),
+    NmosPassLvt.model_name: DeviceMapping(NmosPassLvt, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("nf", "m")),
+    PmosPass.model_name: DeviceMapping(PmosPass, ("d", "g", "s", "b"), real_params=("l", "w"), int_params=("nf", "m")),
+    Rpoly.model_name: DeviceMapping(Rpoly, ("p", "n"), real_params=("l", "w"), int_params=("m",)),
+    Rl1.model_name: DeviceMapping(Rl1, ("p", "n"), real_params=("l", "w"), int_params=("m",)),
+    Rm1.model_name: DeviceMapping(Rm1, ("p", "n"), real_params=("l", "w"), int_params=("m",)),
+    Rm2.model_name: DeviceMapping(Rm2, ("p", "n"), real_params=("l", "w"), int_params=("m",)),
+    Rm3.model_name: DeviceMapping(Rm3, ("p", "n"), real_params=("l", "w"), int_params=("m",)),
+    Rm4.model_name: DeviceMapping(Rm4, ("p", "n"), real_params=("l", "w"), int_params=("m",)),
+    Rm5.model_name: DeviceMapping(Rm5, ("p", "n"), real_params=("l", "w"), int_params=("m",)),
+    Rnd.model_name: DeviceMapping(Rnd, ("p", "n", "sub"), real_params=("l", "w"), int_params=("m",)),
+    Rpd.model_name: DeviceMapping(Rpd, ("p", "n", "nw"), real_params=("l", "w"), int_params=("m",)),
+    RndHv.model_name: DeviceMapping(RndHv, ("p", "n", "sub"), real_params=("l", "w"), int_params=("m",)),
+    RpdHv.model_name: DeviceMapping(RpdHv, ("p", "n", "nw"), real_params=("l", "w"), int_params=("m",)),
+    RisoPw.model_name: DeviceMapping(RisoPw, ("p", "n", "nw"), real_params=("l", "w"), int_params=("m",)),
     # The cards of the precision poly resistors have no w: the model fixes it.
-    cell.model_name: DeviceMapping(functools.partial(cell, w=cell.width), ("p", "n", cell.bulk), **RES_PARAMS)
-    for cell in (RhighPo0p35, RhighPo0p69, RhighPo1p41, RhighPo2p85, RhighPo5p73,
-        RxhighPo0p35, RxhighPo0p69, RxhighPo1p41, RxhighPo2p85, RxhighPo5p73)
-} | {
-    cell.model_name: DeviceMapping(cell, ("p", "n"), real_params=("l", "w"), int_params=("m",)) for cell in (Cmim, Cmim2)
-} | {
-    cell.model_name: DeviceMapping(functools.partial(varcap_of_card, cell), ("g", "nw", "sub"),
-        real_params=("l", "w"), int_params=("vm",))
-    for cell in (CapVarLvt, CapVarHvt)
-} | {
-    f"sky130_fd_pr__{device}": DeviceMapping(functools.partial(cell, device=device), pins, int_params=("m",))
-    for cell, pins, devices in (
-        (Npn, ("c", "b", "e", "s"), ("npn_05v5_W1p00L1p00", "npn_05v5_W1p00L2p00", "npn_11v0_W1p00L1p00")),
-        (Pnp, ("collector", "base", "emitter"), ("pnp_05v5_W0p68L0p68", "pnp_05v5_W3p40L3p40")),
-        (Inductor, ("a", "b", "ct", "sub"), tuple(Inductor.COILS)))
-    for device in devices
+    RhighPo0p35.model_name: DeviceMapping(RhighPo0p35.from_card, ("p", "n", "sub"), real_params=("l",), int_params=("m",)),
+    RhighPo0p69.model_name: DeviceMapping(RhighPo0p69.from_card, ("p", "n", "sub"), real_params=("l",), int_params=("m",)),
+    RhighPo1p41.model_name: DeviceMapping(RhighPo1p41.from_card, ("p", "n", "sub"), real_params=("l",), int_params=("m",)),
+    RhighPo2p85.model_name: DeviceMapping(RhighPo2p85.from_card, ("p", "n", "sub"), real_params=("l",), int_params=("m",)),
+    RhighPo5p73.model_name: DeviceMapping(RhighPo5p73.from_card, ("p", "n", "sub"), real_params=("l",), int_params=("m",)),
+    RxhighPo0p35.model_name: DeviceMapping(RxhighPo0p35.from_card, ("p", "n", "sub"), real_params=("l",), int_params=("m",)),
+    RxhighPo0p69.model_name: DeviceMapping(RxhighPo0p69.from_card, ("p", "n", "sub"), real_params=("l",), int_params=("m",)),
+    RxhighPo1p41.model_name: DeviceMapping(RxhighPo1p41.from_card, ("p", "n", "sub"), real_params=("l",), int_params=("m",)),
+    RxhighPo2p85.model_name: DeviceMapping(RxhighPo2p85.from_card, ("p", "n", "sub"), real_params=("l",), int_params=("m",)),
+    RxhighPo5p73.model_name: DeviceMapping(RxhighPo5p73.from_card, ("p", "n", "sub"), real_params=("l",), int_params=("m",)),
+    Cmim.model_name: DeviceMapping(Cmim, ("p", "n"), real_params=("l", "w"), int_params=("m",)),
+    Cmim2.model_name: DeviceMapping(Cmim2, ("p", "n"), real_params=("l", "w"), int_params=("m",)),
+    CapVarLvt.model_name: DeviceMapping(CapVarLvt.from_card, ("g", "nw", "sub"), real_params=("l", "w"),
+        int_params=("vm", "m")),
+    CapVarHvt.model_name: DeviceMapping(CapVarHvt.from_card, ("g", "nw", "sub"), real_params=("l", "w"),
+        int_params=("vm", "m")),
+    "sky130_fd_pr__npn_05v5_W1p00L1p00": DeviceMapping(functools.partial(Npn, device="npn_05v5_W1p00L1p00"),
+        ("c", "b", "e", "sub"), int_params=("m",)),
+    "sky130_fd_pr__npn_05v5_W1p00L2p00": DeviceMapping(functools.partial(Npn, device="npn_05v5_W1p00L2p00"),
+        ("c", "b", "e", "sub"), int_params=("m",)),
+    "sky130_fd_pr__npn_11v0_W1p00L1p00": DeviceMapping(functools.partial(Npn, device="npn_11v0_W1p00L1p00"),
+        ("c", "b", "e", "sub"), int_params=("m",)),
+    "sky130_fd_pr__pnp_05v5_W0p68L0p68": DeviceMapping(functools.partial(Pnp, device="pnp_05v5_W0p68L0p68"),
+        ("c", "b", "e"), int_params=("m",)),
+    "sky130_fd_pr__pnp_05v5_W3p40L3p40": DeviceMapping(functools.partial(Pnp, device="pnp_05v5_W3p40L3p40"),
+        ("c", "b", "e"), int_params=("m",)),
+    "sky130_fd_pr__ind_03_90": DeviceMapping(functools.partial(Inductor, device="ind_03_90"),
+        ("a", "b", "ct", "sub"), int_params=("m",)),
+    "sky130_fd_pr__ind_05_125": DeviceMapping(functools.partial(Inductor, device="ind_05_125"),
+        ("a", "b", "ct", "sub"), int_params=("m",)),
+    "sky130_fd_pr__ind_05_220": DeviceMapping(functools.partial(Inductor, device="ind_05_220"),
+        ("a", "b", "ct", "sub"), int_params=("m",)),
 }
 # Diodes are left out on purpose: their SPICE cards size them through area and
-# pj, which do not map back to l and w. The many fixed cells of CapVpp and
-# RfMos are left to the caller, as partial(CapVpp, device=...) with their pins.
+# pj, which do not map back to l and w. The many fixed cells of CapVpp, RfNmos
+# and RfPmos are left to the caller, as partial(CapVpp, device=...) with their
+# pins.
 
 @public
 def run_drc(l: Layout, use_tempdir: bool=True, feol: bool=True,

@@ -121,7 +121,7 @@ CASES = [
 ]
 
 # Drawn layers that differ on purpose, see the sky130 docs.
-DEVIATIONS = {"nwell_draw": {"65/44", "93/44"}, "deep_nwell_draw": {"65/44", "93/44"}, "photodiode": {"64/20"}}
+DEVIATIONS = {"nwell_draw": {"65/44", "93/44"}, "photodiode": {"64/20"}}
 
 PIN_PURPOSE = 16  # Pin shapes are not compared: the generators draw none.
 
