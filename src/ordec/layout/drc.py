@@ -7,14 +7,13 @@ from ..core.schema import (
 )
 
 
-def webdata(report: DrcReport, ept):
-    def wire_hash_hex(cursor):
-        # Wire hashes exist only relative to an endpoint's export table;
-        # this is why DrcReport overrides webdata() and has no
-        # endpoint-independent webdata_static().
-        if cursor is None:
-            return None
-        return cursor.subgraph.wire_hash(ept).hex()
+def webdata(report: DrcReport, viewnamer):
+    def view_name(view):
+        # Name of a referenced layout in the view list, where it offers the
+        # layout: the web UI opens and addresses the layout by it, instead
+        # of by an expression through this report (see openViews in
+        # web/src/main.js).
+        return None if view is None else viewnamer.view_name(view)
 
     cells = []
     for cell in report.all(DrcCell):
@@ -24,10 +23,7 @@ def webdata(report: DrcReport, ept):
             'has_layout_ref': cell.ref_layout is not None,
             'is_top': cell.ref_layout is not None
                 and cell.ref_layout == report.ref_layout,
-            # Wire hash of the cell's layout: highlight events use it to
-            # target viewers that show the same subgraph under a different
-            # view name (see hash-based dedup in web/src/main.js).
-            'layout_wire_hash': wire_hash_hex(cell.ref_layout),
+            'layout_view': view_name(cell.ref_layout),
         })
 
     items_dict = {}
@@ -94,7 +90,6 @@ def webdata(report: DrcReport, ept):
         'cells': cells,
         'items': list(items_dict.values()),
         'unit': float(report.ref_layout.ref_layers.unit),
-        # Report-level wire hash, used for top-cell item selections (their
-        # view is addressed relative to the report, not a DrcCell).
-        'layout_wire_hash': wire_hash_hex(report.ref_layout),
+        # Report-level layout, for item selections of the top cell.
+        'layout_view': view_name(report.ref_layout),
     }

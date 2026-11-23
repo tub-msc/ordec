@@ -310,28 +310,24 @@ class Schematic(MixinRenderable, SubgraphRoot):
     default_supply = LocalRef('Net', refcheck_custom=lambda val: issubclass(val, Net))
     default_ground = LocalRef('Net', refcheck_custom=lambda val: issubclass(val, Net))
 
-    def webdata(self, ept):
+    def webdata(self, viewnamer):
         """
-        Adds to webdata_static the wire hashes of the schematics of the
-        instances' cells, by instance nid: the web UI opens these schematics
-        (descend) and focuses an open viewer of the same schematic instead of
-        opening another one (see resolveExistingViewer in web/src/main.js).
-        Wire hashes are relative to the endpoint's ExportTable, hence not
-        part of webdata_static.
-
-        This generates the schematics one level down with every view of this
-        schematic. Generated schematics are cached, failed ones are not: a
-        cell whose schematic fails (or that has none) is tried again each
-        time and gets no hash.
+        Adds to webdata_static the names of the schematics of the instances'
+        cells (descend_view), by instance nid, where the view list offers
+        them: the web UI opens these schematics (descend) under this name,
+        and focuses a viewer of it instead of opening another one (see
+        openViews in web/src/main.js). The schematics are not generated for
+        this.
         """
         viewtype, data = self.webdata_static()
-        descend_hash = {}
+        descend_view = {}
         for inst in self.all(SchemInstance):
-            try:
-                descend_hash[inst.nid] = inst.symbol.cell.schematic.subgraph.wire_hash(ept).hex()
-            except Exception:
-                pass
-        data['descend_hash'] = descend_hash
+            cell = inst.symbol.cell
+            viewgen = getattr(type(cell), 'schematic', None)
+            name = viewnamer.viewgen_name(cell, viewgen)
+            if name is not None:
+                descend_view[inst.nid] = name
+        data['descend_view'] = descend_view
         return viewtype, data
 
     def auto_wire(self):

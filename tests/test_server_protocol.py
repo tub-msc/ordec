@@ -45,13 +45,39 @@ def with_progress():
     return "progressed"
 
 @viewgen_noctx
-def sym():
-    from ordec.lib import Res
-    return Res(r=100).symbol
-
-@viewgen_noctx
 def failing():
     raise ValueError("boom")
+
+@viewgen_noctx
+def layers():
+    layers = LayerStack()
+    layers.unit = R('1n')
+    return layers
+
+# Returns the layout of a cell, and precedes it in the view list.
+@viewgen_noctx
+def wrapped():
+    return Alias().layout
+
+@viewgen_noctx
+def sub_layout():
+    return Layout(ref_layers=layers())
+
+class Named(Cell):
+    @viewgen_noctx
+    def layout(self):
+        return Layout(ref_layers=layers(), cell=self)
+
+# The view list names the views by the variable, not by the class name.
+Alias = Named
+del Named
+
+@viewgen_noctx
+def drc_report():
+    from ordec.core.schema import DrcReport, DrcCell
+    report = DrcReport(ref_layout=wrapped(), top_cell_name='top')
+    report % DrcCell(name='sub', ref_layout=sub_layout())
+    return report
 '''
 
 @pytest.fixture(scope="module")
@@ -197,18 +223,20 @@ def test_cancel_infinite_loop(proto_server):
     finally:
         c2.close()
 
-def test_view_wire_hash(proto_server):
-    """Subgraph views carry a stable wire hash on the terminal message."""
+def test_linked_view_names(proto_server):
+    """A view that links to other views names them as the view list does:
+    by the view generator whose result they are, of the view's own cell
+    rather than of one returning the same view."""
     url, key = proto_server
     c = Client(url, key)
     try:
-        c.getview('sym()', req=50)
-        _, terminal1 = c.recv_until_terminal(50)
-        c.getview('sym()', req=51)
-        _, terminal2 = c.recv_until_terminal(51)
-        assert len(terminal1['wire_hash']) == 64
-        int(terminal1['wire_hash'], 16)
-        assert terminal1['wire_hash'] == terminal2['wire_hash']
+        assert 'Alias().layout' in c.views
+        assert not any(v.startswith('Named(') for v in c.views)
+        c.getview('drc_report()', req=50)
+        _, terminal = c.recv_until_terminal(50)
+        data = terminal['data']
+        assert data['layout_view'] == 'Alias().layout'
+        assert [cell['layout_view'] for cell in data['cells']] == ['sub_layout()']
     finally:
         c.close()
 

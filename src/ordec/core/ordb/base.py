@@ -1376,20 +1376,20 @@ class SubgraphRoot(NonLeafNode):
     def __copy__(self) -> 'Self':
         return self.copy()
 
-    def webdata(self, ept):
+    def webdata(self, viewnamer):
         """
-        Web representation as (viewtype, data), rendered for the endpoint
-        owning the given ExportTable. The default implementation delegates to
-        webdata_static(); views whose webdata depends on the endpoint (e.g.
-        wire hashes in LVS/DRC reports) override this method instead.
+        Web representation as (viewtype, data) for a connection of the web
+        UI, whose view list names views as viewnamer does (a ViewNamer, see
+        ordec.server). The default implementation delegates to
+        webdata_static(); views that link to other views (e.g. LVS/DRC
+        reports) override this method instead, to name them.
         """
         return self.webdata_static()
 
     def webdata_static(self):
         """
-        Endpoint-independent web representation, same (viewtype, data) shape
-        as webdata(). Exists only for views whose output cannot depend on an
-        ExportTable, so it may be called without a connection (e.g. by
+        Connection-independent web representation, same (viewtype, data)
+        shape as webdata(). It may be called without a connection (e.g. by
         Svg.from_view at report construction time).
         """
         from ..schema import Report

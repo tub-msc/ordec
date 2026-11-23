@@ -107,7 +107,7 @@ export class ReportView extends View {
         };
     }
 
-    update(msgData, wireHash) {
+    update(msgData) {
         const elements = msgData.elements || [];
         const oldRenderers = this.renderers;
         this.renderers = [];

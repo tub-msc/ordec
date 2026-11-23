@@ -74,6 +74,24 @@ class ViewGenerator:
             )
         return self.eval_cached(self.cache, self.cache_lock)
 
+    def cached_result(self, cell=None):
+        """
+        Returns the cached view of this view generator, or None if there is
+        none; nothing is generated. For a view generator bound as Cell class
+        attribute, cell is the cell instance.
+        """
+        if cell is None:
+            cache, cache_lock = self.cache, self.cache_lock
+        else:
+            cache, cache_lock = cell.cached_results, cell.cached_results_lock
+        with cache_lock:
+            fut = cache.get(self)
+            # Failed generations are removed from the cache (see
+            # eval_cached), so a done Future in it holds a result.
+            if fut is not None and fut.done():
+                return fut.result()
+        return None
+
     def _finalize(self, ret):
         # Freeze if not already frozen:
         if isinstance(ret, MutableNode):
@@ -535,13 +553,14 @@ class Cell(metaclass=MetaCell):
         case, a Cell subclass could override this method and return a list
         of one or multiple of its instances created from valid parameters.
 
-        The web UI uses each instance's repr as the view name and resolves
-        a selected view by evaluating that name in the user's namespace
-        (see server.py). The repr must therefore be a valid expression
-        referencing nothing but the Cell class itself, and evaluating it
-        must yield the instance again. This holds automatically as long as
-        parameter values coerce back from their repr form (see
-        :meth:`Parameter.value_repr` and the factory argument).
+        The web UI names each instance's views by the name the Cell class is
+        bound to in the user's namespace, called with the instance's
+        parameters in their repr form (see :meth:`params_list`), and
+        resolves a selected view by evaluating that name (see server.py).
+        Evaluating it must yield the instance again. This holds
+        automatically as long as parameter values coerce back from their
+        repr form (see :meth:`Parameter.value_repr` and the factory
+        argument).
         """
         if cls.__abstractmethods__:
             return []

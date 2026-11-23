@@ -128,9 +128,6 @@ export class ResultViewer {
         this.resViewHead = container.element.querySelector(".resviewhead");
         this.viewUpToDate = false;
         this.viewSelected = null;
-        // Wire hash of the currently displayed subgraph view, for result viewer
-        // reuse.
-        this.wireHash = null;
         // Id of the getview request currently in flight for this viewer, or
         // null before the first one was dispatched.
         this.currentReq = null;
@@ -303,12 +300,9 @@ export class ResultViewer {
     }
 
     // Called by the client when it dispatches a getview request for this
-    // viewer, after requestsView() said one is wanted. The displayed content
-    // is stale from here until the terminal view message arrives, so it must
-    // not be hash-matched against (see main.js).
+    // viewer, after requestsView() said one is wanted.
     beginRequest(req) {
         this.currentReq = req;
-        this.wireHash = null;
     }
 
     viewInfo() {
@@ -665,8 +659,8 @@ export class ResultViewer {
     updateView(msg) {
         if (msg.view !== this.viewSelected) {
             // Terminal of a request dispatched for a view that is no longer
-            // selected in this viewer: its content, cancelled state and wire
-            // hash all describe the old selection. Drop it; the client's
+            // selected in this viewer: its content and cancelled state both
+            // describe the old selection. Drop it; the client's
             // requestViews() call following every terminal then dispatches
             // the request for the current selection.
             return;
@@ -687,7 +681,6 @@ export class ResultViewer {
 
         //this.resContent.replaceChildren();
         this.viewUpToDate = true;
-        this.wireHash = msg.exception ? null : (msg.wire_hash || null);
         this.showRefreshOverlay(null);
 
         try {
@@ -708,7 +701,7 @@ export class ResultViewer {
                     pre.innerText = 'no handler found for type ' + msg.type;
                     this.resContent.replaceChildren(pre);
                 } else if(this.view instanceof viewClass) {
-                    this.view.update(msg.data, this.wireHash);
+                    this.view.update(msg.data);
                 } else {
                     // A view of another type may still be in place (the view
                     // generator's result type changed); it holds event bus
@@ -716,7 +709,7 @@ export class ResultViewer {
                     this.view?.destroy?.();
                     this.view = new viewClass(this.resContent,
                         this.viewSelected, this, this.container);
-                    this.view.update(msg.data, this.wireHash);
+                    this.view.update(msg.data);
                 }
                 this.updateOverlay();
             }

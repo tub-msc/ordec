@@ -1166,9 +1166,9 @@ def test_schematic_viewer(web, tmp_path, monkeypatch):
 @pytest.mark.web
 def test_schematic_descend(web):
     """The context menu of an instance opens the schematic of its cell in a
-    new viewer on top of the old one, from where the next level opens the
-    same way. Another instance of the same cell focuses that viewer
-    instead."""
+    new viewer on top of the old one, named by the name of the view list
+    where there is one, from where the next level opens the same way.
+    Another instance of the same cell focuses that viewer instead."""
     qs_local = web.key.query_string_local("tests.lib.ord.d_ff_soc", ["D_flip_flop().schematic"])
     web.navigate(f'app.html#refreshall=true&{qs_local}')
     web.wait_for_ready()
@@ -1186,15 +1186,19 @@ def test_schematic_descend(web):
         return f"{view}.subgraph.cursor_at({nid}).symbol.cell.schematic"
 
     top = 'D_flip_flop().schematic'
-    inv = descend(descend(top, 'm1'), 'i1')
+    descend(top, 'm1')
+    # The viewer of m1 is named by the name of the view list. The Inv() in
+    # Mux2 is not reachable from the module, so its viewer keeps its name.
+    mux = 'Mux2().schematic'
+    inv = descend(mux, 'i1')
     web.wait_until(f"""
         const rv = window.ordecApp.client.resultViewers.find(rv => rv.viewSelected === {json.dumps(inv)});
         return rv?.resContent.querySelector('.schem-svg');
     """)
     # m2 is another Mux2().
     descend(top, 'm2')
-    assert web.driver.execute_script(
-        "return document.querySelectorAll('.direct-view-label').length") == 2
+    assert set(web.driver.execute_script(
+        "return [...document.querySelectorAll('.direct-view-label')].map(l => l.textContent)")) == {mux, inv}
     # All viewers are tabs of one stack.
     assert web.driver.execute_script(
         "return new Set(window.ordecApp.client.resultViewers.map(rv => rv.container.parent.parent)).size") == 1

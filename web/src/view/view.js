@@ -15,21 +15,15 @@ export class View {
         // The view-event bus, owned by OrdecApp and reached through the client.
         // Resolved once here so subclasses (which run after super()) can use it.
         this.eventBus = resultViewer.client.app.eventBus;
-        // Wire hash of the subgraph currently shown; set by each update().
-        this.wireHash = null;
         // (event, handler) pairs registered via busSubscribe(), torn down
         // together by busUnsubscribeAll().
         this.busSubscriptions = [];
     }
 
-    // A selection targeting targetView (optionally carrying a wire hash)
-    // applies to this viewer when it is untargeted, when it names this view,
-    // or when targetWireHash matches this viewer's shown subgraph - the same
-    // subgraph is often reachable under several view names.
-    selectionApplies(targetView, targetWireHash) {
-        if (!targetView) return true;
-        if (targetView === this.viewName) return true;
-        return Boolean(targetWireHash && targetWireHash === this.wireHash);
+    // A selection targeting targetView applies to this viewer when it is
+    // untargeted or when it names this view.
+    selectionApplies(targetView) {
+        return !targetView || targetView === this.viewName;
     }
 
     // Subscribes to a view-event-bus event and remembers the (event, handler)

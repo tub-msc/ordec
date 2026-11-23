@@ -357,8 +357,7 @@ def test_bode_plot():
     mag_plot, phase_plot = report.bode_plot(h.inp, h.out)
     assert [s.name for s in mag_plot.series()] == ["inp", "out"]
     assert mag_plot.group == phase_plot.group
-    from ordec.core.wire import ExportTable
-    _, data = report.webdata(ExportTable())
+    _, data = report.webdata_static()
 
     mag, phase = data["elements"]
     assert mag["ylabel"] == "Magnitude (dB)"
@@ -386,8 +385,7 @@ def test_bode_plot_ref():
     h = lib_test.AcRC().sim_ac
     report = Report()
     bode_plot(report, h.out, ref=h.inp)
-    from ordec.core.wire import ExportTable
-    _, data = report.webdata(ExportTable())
+    _, data = report.webdata_static()
 
     mag = data["elements"][0]
     expected = [
@@ -407,8 +405,7 @@ def test_plot2d_simnet_series():
     report = Report()
     report.plot2d(h.time, h.out)
     report.plot2d(h.time, h.out, h.res.p)
-    from ordec.core.wire import ExportTable
-    _, data = report.webdata(ExportTable())
+    _, data = report.webdata_static()
     plot = data["elements"][0]
     assert plot["element_type"] == "plot2d"
     assert plot["x"] == pytest.approx(list(h.time))

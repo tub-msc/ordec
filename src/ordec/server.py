@@ -79,7 +79,6 @@ from .hub import HubIntegration, HubAuthError
 from .version import version, doc_url
 from .core import Cell, SubgraphRoot, Layout
 from .core.cell import ViewGenerator
-from .core.wire import ExportTable
 from .language import compile_ord
 from .layout.style import default_style, update_customization
 from .config import read_config, update_config
@@ -116,10 +115,74 @@ class ServerKey:
         digest = hmac.digest(self.key, message.encode('utf8'), digest=hashlib.sha256)
         return f"local={quote_plus(message)}&hmac={digest.hex()}"
 
-def discover_views(conn_globals, recursive=True, modules_visited=None):
+class ViewNamer:
+    """
+    Names views as the view list of a connection does. Views that link to
+    other views (descend, LVS, DRC) name them by it in their webdata (see
+    SubgraphRoot.webdata), so that the web UI opens and finds them under
+    the name the view list offers. Filled by discover_views.
+    """
+    def __init__(self):
+        # (view list entry, view generator or SubgraphRoot variable, cell of
+        # the view generator or None), in view list order. The names are
+        # read from the entries on lookup only, as discover_views prefixes
+        # the module path after recording them.
+        self.listed = []
+        # (cell, view generator) -> the first view list entry of it.
+        self.cell_views = {}
+
+    def add(self, entry, source, cell=None):
+        self.listed.append((entry, source, cell))
+        if cell is not None:
+            self.cell_views.setdefault((cell, source), entry)
+
+    def viewgen_name(self, cell, viewgen):
+        """
+        Returns the name of the view of cell's view generator viewgen, or
+        None if the view list does not offer it. The view is not generated.
+        """
+        entry = self.cell_views.get((cell, viewgen))
+        return None if entry is None else entry['name']
+
+    def view_name(self, view):
+        """
+        Returns the name of a view in the view list that is the given view
+        (a SubgraphRoot), or None: of a view generator whose cached result
+        it is, or of a variable holding it. Nothing is generated.
+
+        This can hold for several, as a view generator may return the view
+        of another one. The view generator of the view's own cell then comes
+        first, else the first one in the view list.
+        """
+        cell = getattr(view, 'cell', None)
+        first = None
+        for entry, source, source_cell in self.listed:
+            if isinstance(source, ViewGenerator):
+                source = source.cached_result(source_cell)
+            if not isinstance(source, SubgraphRoot):
+                continue
+            if source.subgraph is not view.subgraph:
+                continue
+            if source_cell is not None and source_cell is cell:
+                return entry['name']
+            if first is None:
+                first = entry['name']
+        return first
+
+def discover_views(conn_globals, viewnamer=None, recursive=True, modules_visited=None):
+    """
+    Returns the view list of the namespace conn_globals. If viewnamer (a
+    ViewNamer) is given, the views are recorded in it.
+    """
     if modules_visited is None:
         modules_visited = set()
     views = []
+
+    def add_view(name, info, source, cell=None):
+        view = {'name': name} | info
+        views.append(view)
+        if viewnamer is not None:
+            viewnamer.add(view, source, cell)
 
     for k, v in conn_globals.items():
         if k.startswith("__"):
@@ -128,28 +191,32 @@ def discover_views(conn_globals, recursive=True, modules_visited=None):
             if v in modules_visited:
                 continue
             modules_visited.add(v)
-            for subview in discover_views(v.__dict__, recursive=recursive, modules_visited=modules_visited):
+            for subview in discover_views(v.__dict__, viewnamer, recursive=recursive, modules_visited=modules_visited):
                 subview['name'] = f"{k}.{subview['name']}"
                 views.append(subview)
         elif isinstance(v, ViewGenerator):
-            views.append({'name': f"{k}()"} | v.info_dict())
+            add_view(f"{k}()", v.info_dict(), v)
         elif isinstance(v, type) and issubclass(v, Cell) and v!=Cell:
             generate_members = []
             for member_name in dir(v):
                 member = getattr(v, member_name)
                 if isinstance(member, ViewGenerator):
                     generate_members.append((member_name, member))
-                    
+
+            # Named by k rather than by the instance's repr, which names the
+            # class by its __name__: the class may be bound under another
+            # name only (e.g. imported with "as").
             for instance in v.discoverable_instances():
+                args = ','.join(instance.params_list(use_repr=True))
                 for member_name, member in generate_members:
-                    views.append({'name': f'{instance!r}.{member_name}'} | member.info_dict())
+                    add_view(f'{k}({args}).{member_name}', member.info_dict(), member, instance)
         elif isinstance(v, Cell):
             for member_name in dir(type(v)):
                 member = getattr(type(v), member_name)
                 if isinstance(member, ViewGenerator):
-                    views.append({'name': f"{k}.{member_name}"} | member.info_dict())
+                    add_view(f"{k}.{member_name}", member.info_dict(), member, v)
         elif isinstance(v, SubgraphRoot):
-            views.append({'name': k, 'auto_refresh': True})
+            add_view(k, {'auto_refresh': True}, v)
         elif isinstance(v, ExtLibrary):
             view_maps = {}
             for view_name, attr in (
@@ -173,7 +240,7 @@ def discover_views(conn_globals, recursive=True, modules_visited=None):
                         continue
                     member = getattr(type(cell), view_name, None)
                     if isinstance(member, ViewGenerator):
-                        views.append({'name': f"{cell_expr}.{view_name}"} | member.info_dict())
+                        add_view(f"{cell_expr}.{view_name}", member.info_dict(), member, cell)
 
     if "__ord_py_source__" in conn_globals:
         views.append({"name": "__ord_py_source__", "auto_refresh": True})
@@ -459,7 +526,7 @@ class ConnectionHandler:
         # set_layout_style).
         self.layout_styles = {}
 
-    def query_view(self, view_name, conn_globals, ept):
+    def query_view(self, view_name, conn_globals, viewnamer):
         msg_ret = {
             'msg':'view',
             'view':view_name,
@@ -474,20 +541,13 @@ class ConnectionHandler:
                     report = Report()
                     report.pre(view)
                     view = report
-                viewtype, data = view.webdata(ept)
+                viewtype, data = view.webdata(viewnamer)
                 if isinstance(view, Layout):
                     style = default_style(view.ref_layers)
                     if style is not None:
                         self.layout_styles[style.key] = style
             msg_ret['type'] = viewtype
             msg_ret['data'] = data
-            if isinstance(view, SubgraphRoot):
-                # Best-effort: user-defined Node classes may lack a wire_id;
-                # a hashing failure must not break view delivery.
-                try:
-                    msg_ret['wire_hash'] = view.subgraph.wire_hash(ept).hex()
-                except Exception:
-                    pass
         except Exception as e:
             msg_ret['exception'] = format_user_exception(e)
 
@@ -671,6 +731,8 @@ class ConnectionHandler:
             send_exception_info(f"malformed first message: missing key {e}")
             return
         
+        # Stays empty if the build failed.
+        viewnamer = ViewNamer()
         if exc:
             websocket.send(ws_encode({
                 'msg': 'exception',
@@ -685,7 +747,7 @@ class ConnectionHandler:
                 config = {}
             websocket.send(ws_encode({
                 'msg': 'viewlist',
-                'views': discover_views(conn_globals),
+                'views': discover_views(conn_globals, viewnamer),
                 'config': config,
             }))
 
@@ -706,12 +768,6 @@ class ConnectionHandler:
                     websocket.send(ws_encode(payload))
                 except ConnectionClosed:
                     pass  # late progress/terminal after disconnect
-
-        # Per-connection export table: wire hashes are only ever compared
-        # client-locally, so their scope is the websocket connection, and
-        # the objects the table pins are released when the connection ends
-        # (see ordec.core.wire).
-        ept = ExportTable()
 
         # In-flight view-generation jobs of this connection: req id -> Job.
         # Entries are inserted as None before submit so that an on_done
@@ -742,7 +798,7 @@ class ConnectionHandler:
             with jobs_lock:
                 jobs[req] = None
             job = self.jobrunner.submit(
-                lambda: self.query_view(view_name, conn_globals, ept),
+                lambda: self.query_view(view_name, conn_globals, viewnamer),
                 on_progress=progress_sender(send_msg, req, view_name),
                 on_done=on_done)
             with jobs_lock:

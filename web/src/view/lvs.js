@@ -26,24 +26,23 @@ function toggleSpan() {
 // LVS Report viewer.
 //
 // Event bus protocol:
-//   lvs:layout-select {pos, layoutView, layoutWireHash} - sent when item with layout_pos selected
-//   lvs:schem-select {schem_nid, item_type, schemView, schemWireHash} - sent when item with schem_nid selected
+//   lvs:layout-select {pos, layoutView} - sent when item with layout_pos selected
+//   lvs:schem-select {schem_nid, item_type, schemView} - sent when item with schem_nid selected
 //   lvs:clear - sent on deselect or destroy
-//   lvs:request-open-views {layoutView, schemView, layoutWireHash, schemWireHash} - requests new viewer panels
 //
 // Pending mechanism: setPending('lvs:select', payload) stores selection for
 // viewers opened later. Layout/schematic viewers call getPending on init.
 //
-// View naming: for the top-level circuit pair, layoutView/schemView use
+// View naming: the layout and schematic of a circuit pair are addressed by
+// their names in the view list (layout_view/schem_view in the report data).
+// Where the view list does not offer them, the top-level circuit pair uses
 // "<viewName>.ref_layout" and "<viewName>.ref_schematic", matching
-// LvsReport SubgraphRef attributes. Circuit rows and item selections of
-// subcircuit pairs use the per-pair views
+// LvsReport SubgraphRef attributes, and circuit rows and item selections
+// of subcircuit pairs use the per-pair views
 // "<viewName>.subgraph.cursor_at(<nid>).ref_layout|ref_schematic",
-// addressing the LvsCircuitPair node by nid. Every select payload
-// carries its target views plus their subgraph wire hashes
-// (layoutWireHash/schemWireHash), so only the viewers showing those views
-// highlight - matched by name, or by hash for a viewer showing the
-// same subgraph under a different view name: nids/positions are only
+// addressing the LvsCircuitPair node by nid (see viewsOf). Every select
+// payload carries its target views, so only the viewers showing those
+// views highlight: nids/positions are only
 // meaningful in the pair's own subgraphs, and an untargeted broadcast
 // would paint them into unrelated layout/schematic views.
 export class LvsView extends View {
@@ -55,7 +54,7 @@ export class LvsView extends View {
         resContent.appendChild(this.el);
     }
 
-    update(msgData, wireHash) {
+    update(msgData) {
         const circuitMap = new Map();
         msgData.circuits.forEach(circuit => {
             circuitMap.set(circuit.nid, { ...circuit, itemsByType: { pin: [], net: [], device: [], subcircuit: [] } });
@@ -335,24 +334,16 @@ export class LvsView extends View {
         });
 
         // Open the circuit pair's layout/schematic view (without
-        // selecting/highlighting anything in it). The view expression
-        // addresses the LvsCircuitPair node by nid relative to this
-        // report view; the wire hash lets the open request focus a
-        // panel showing the same subgraph under a different name.
+        // selecting/highlighting anything in it).
         this.el.querySelectorAll('.lvs-circuit-link').forEach(linkEl => {
             linkEl.addEventListener('click', (e) => {
                 e.stopPropagation();  // don't toggle circuit expansion
                 if (this.viewOutdated()) return;
-                if (!this.viewName) return;
                 const nid = parseInt(linkEl.dataset.nid, 10);
-                const kind = linkEl.dataset.kind;
-                const circuit = circuitMap.get(nid);
-                const ref = kind === 'layout' ? 'ref_layout' : 'ref_schematic';
-                const event = kind === 'layout' ? 'layout:request-open' : 'schematic:request-open';
-                this.eventBus.emit(event, {
-                    view: `${this.viewName}.subgraph.cursor_at(${nid}).${ref}`,
-                    wireHash: (circuit && (kind === 'layout'
-                        ? circuit.layout_wire_hash : circuit.schem_wire_hash)) || null,
+                const views = this.viewsOf(nid, circuitMap, data);
+                this.eventBus.emit('view:request-open', {
+                    views: [linkEl.dataset.kind === 'layout'
+                        ? views.layoutView : views.schemView],
                     sourceContainer: this.panelContainer,
                 });
             });
@@ -390,6 +381,23 @@ export class LvsView extends View {
         });
     }
 
+    // The views of the circuit pair circuitNid: their names in the view list,
+    // or else view expressions through this report, at report level for the
+    // top pair and addressing the LvsCircuitPair node by nid for subcircuit
+    // pairs.
+    viewsOf(circuitNid, circuitMap, data) {
+        const circuit = circuitMap.get(circuitNid);
+        const isTop = !circuit || circuit.is_top;
+        const names = isTop ? data : circuit;
+        const viewBase = isTop
+            ? this.viewName
+            : `${this.viewName}.subgraph.cursor_at(${circuitNid})`;
+        return {
+            layoutView: names.layout_view ?? `${viewBase}.ref_layout`,
+            schemView: names.schem_view ?? `${viewBase}.ref_schematic`,
+        };
+    }
+
     // Pushes the given item's selection to the layout/schematic viewers:
     // replaces any previous highlight with this item's position/net (also
     // stashed as the pending 'lvs:select' so a viewer opened/re-rendered later
@@ -397,18 +405,8 @@ export class LvsView extends View {
     // focused or opened; on a re-render refresh (open=false) they are left
     // as-is.
     emitSelection(item, circuitMap, data, open) {
-        // Item positions/nids refer to the item's circuit pair: report-level
-        // views for the top pair, per-pair views (addressed by circuit nid)
-        // for subcircuit pairs.
-        const circuit = circuitMap.get(item.circuit_nid);
-        const isTop = !circuit || circuit.is_top;
-        const viewBase = this.viewName
-            ? (isTop ? this.viewName : `${this.viewName}.subgraph.cursor_at(${item.circuit_nid})`)
-            : null;
-        const layoutView = viewBase ? `${viewBase}.ref_layout` : null;
-        const schemView = viewBase ? `${viewBase}.ref_schematic` : null;
-        const layoutWireHash = (isTop ? data.layout_wire_hash : circuit.layout_wire_hash) || null;
-        const schemWireHash = (isTop ? data.schem_wire_hash : circuit.schem_wire_hash) || null;
+        // Item positions/nids refer to the views of the item's circuit pair.
+        const { layoutView, schemView } = this.viewsOf(item.circuit_nid, circuitMap, data);
 
         const payload = {
             pos: item.layout_pos,
@@ -417,8 +415,6 @@ export class LvsView extends View {
             schem_name: item.schem_name || '',
             layoutView,
             schemView,
-            layoutWireHash,
-            schemWireHash,
         };
         const hasLayoutPos = item.layout_pos !== null && item.layout_pos !== undefined;
         const hasSchemNid = item.schem_nid !== undefined && item.schem_nid !== null;
@@ -435,14 +431,17 @@ export class LvsView extends View {
             this.eventBus.emit('lvs:schem-select', payload);
         }
 
-        // Focuses the target views if open (matched by name or wire hash),
-        // opens them otherwise.
-        if (open && ((hasLayoutPos && layoutView) || (hasSchemNid && schemView))) {
-            this.eventBus.emit('lvs:request-open-views', {
-                layoutView: hasLayoutPos ? layoutView : null,
-                schemView: hasSchemNid ? schemView : null,
-                layoutWireHash: hasLayoutPos ? layoutWireHash : null,
-                schemWireHash: hasSchemNid ? schemWireHash : null,
+        // Focuses viewers of the target views, opens them otherwise.
+        const views = [];
+        if (hasLayoutPos) {
+            views.push(layoutView);
+        }
+        if (hasSchemNid) {
+            views.push(schemView);
+        }
+        if (open && views.length > 0) {
+            this.eventBus.emit('view:request-open', {
+                views,
                 sourceContainer: this.panelContainer,
             });
         }

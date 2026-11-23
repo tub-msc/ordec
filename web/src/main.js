@@ -323,21 +323,6 @@ function findResultViewerByView(viewName) {
         .find(item => item.component.viewSelected === viewName);
 }
 
-function findResultViewerByWireHash(wireHash) {
-    return componentItems('result')
-        .find(item => item.component.wireHash === wireHash);
-}
-
-function resolveExistingViewer(viewName, wireHash) {
-    // Name match first; otherwise match by subgraph wire hash: the same
-    // subgraph is often reachable under several names (e.g. X().layout vs
-    // X().lvs.ref_layout), and opening it twice should be avoided. The hash
-    // comes with the requesting view's data (e.g. layout_wire_hash in report
-    // webdata), so the lookup is purely local.
-    return findResultViewerByView(viewName)
-        || (wireHash ? findResultViewerByWireHash(wireHash) : null);
-}
-
 function getEditor() {
     return componentItems('editor')[0]?.component;
 }
@@ -637,40 +622,45 @@ function openViewsBesideSource(sourceContainer, componentConfigs) {
     }
 }
 
-function openOrActivateView(data) {
-    const view = data.view;
-
-    if (view) {
-        const existing = resolveExistingViewer(view, data.wireHash);
+// Opens viewers for data.views, views that other views link to (descend, LVS,
+// DRC): their names in the view list, or view expressions where the view
+// list does not offer them. A viewer of the view is focused, and loaded if
+// it is not; otherwise a new one is opened: beside the source viewer
+// (several in a column), or with data.stacked as the tab after it.
+function openViews(data) {
+    const configs = [];
+    data.views.forEach(view => {
+        const existing = findResultViewerByView(view);
         if (existing) {
             existing.focus();
-            return;
+            const rv = existing.component;
+            if (!rv.viewUpToDate && !rv.requestsView()) {
+                // Neither shown nor on its way (generation cancelled, or a
+                // view that is not refreshed automatically).
+                rv.refreshOnClick();
+            }
+        } else {
+            configs.push({
+                type: 'component',
+                componentName: 'result',
+                componentState: { view, directView: true },
+                title: view,
+            });
         }
-    }
-
-    const componentState = view ? { view, directView: true } : undefined;
-    const title = view || 'Result View';
-
-    const componentConfig = {
-        type: 'component',
-        componentName: 'result',
-        componentState,
-        title,
-    };
+    });
 
     const sourceItem = data.sourceContainer?.parent;
-    if (data.stacked && sourceItem?.parent?.isStack) {
+    if (data.stacked && configs.length == 1 && sourceItem?.parent?.isStack) {
         // On top of the source: as the tab after the source's tab, activated
         // by addItem.
         const stack = sourceItem.parent;
-        stack.addItem(componentConfig, stack.contentItems.indexOf(sourceItem) + 1);
+        stack.addItem(configs[0], stack.contentItems.indexOf(sourceItem) + 1);
     } else {
-        openViewsBesideSource(data.sourceContainer, [componentConfig]);
+        openViewsBesideSource(data.sourceContainer, configs);
     }
 }
 
-app.eventBus.on('layout:request-open', openOrActivateView);
-app.eventBus.on('schematic:request-open', openOrActivateView);
+app.eventBus.on('view:request-open', openViews);
 
 // Click-to-source: jump the editor to a clicked instance's definition line.
 // In local mode the user edits files externally, so we just log.
@@ -720,45 +710,6 @@ app.eventBus.on('editor:build-exception', (exc) => {
         type: 'error',
         text: excSummary(exc),
     }] : []);
-});
-
-app.eventBus.on('lvs:request-open-views', (data) => {
-    const { layoutView, schemView, layoutWireHash, schemWireHash, sourceContainer } = data;
-
-    const layoutExisting = layoutView
-        ? resolveExistingViewer(layoutView, layoutWireHash) : null;
-    const schemExisting = schemView
-        ? resolveExistingViewer(schemView, schemWireHash) : null;
-
-    const columnContent = [];
-
-    if (layoutView) {
-        if (layoutExisting) {
-            layoutExisting.focus();
-        } else {
-            columnContent.push({
-                type: 'component',
-                componentName: 'result',
-                componentState: { view: layoutView, directView: true },
-                title: layoutView,
-            });
-        }
-    }
-
-    if (schemView) {
-        if (schemExisting) {
-            schemExisting.focus();
-        } else {
-            columnContent.push({
-                type: 'component',
-                componentName: 'result',
-                componentState: { view: schemView, directView: true },
-                title: schemView,
-            });
-        }
-    }
-
-    openViewsBesideSource(sourceContainer, columnContent);
 });
 
 schematicCss.then(css => {
