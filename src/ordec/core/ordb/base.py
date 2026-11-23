@@ -1376,10 +1376,10 @@ class SubgraphRoot(NonLeafNode):
     def __copy__(self) -> 'Self':
         return self.copy()
 
-    def webdata(self, view_names):
+    def webdata(self, viewnamer):
         """
         Web representation as (viewtype, data) for a connection of the web
-        UI, whose view list names views by view_names (ViewNames in
+        UI, whose view list names views as viewnamer does (a ViewNamer, see
         ordec.server). The default implementation delegates to
         webdata_static(); views that link to other views (e.g. LVS/DRC
         reports) override this method instead, to name them.

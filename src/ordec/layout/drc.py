@@ -7,13 +7,13 @@ from ..core.schema import (
 )
 
 
-def webdata(report: DrcReport, view_names):
+def webdata(report: DrcReport, viewnamer):
     def view_name(view):
         # Name of a referenced layout in the view list, where it offers the
         # layout: the web UI opens and addresses the layout by it, instead
         # of by an expression through this report (see openViews in
         # web/src/main.js).
-        return None if view is None else view_names.of_view(view)
+        return None if view is None else viewnamer.view_name(view)
 
     cells = []
     for cell in report.all(DrcCell):

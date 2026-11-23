@@ -115,12 +115,12 @@ class ServerKey:
         digest = hmac.digest(self.key, message.encode('utf8'), digest=hashlib.sha256)
         return f"local={quote_plus(message)}&hmac={digest.hex()}"
 
-class ViewNames:
+class ViewNamer:
     """
-    The names of a connection's view list, by what the views show. Views
-    that link to other views (descend, LVS, DRC) name them by it in their
-    webdata (see SubgraphRoot.webdata), so that the web UI opens and finds
-    them under the name the view list offers. Filled by discover_views.
+    Names views as the view list of a connection does. Views that link to
+    other views (descend, LVS, DRC) name them by it in their webdata (see
+    SubgraphRoot.webdata), so that the web UI opens and finds them under
+    the name the view list offers. Filled by discover_views.
     """
     def __init__(self):
         # (view list entry, view generator or SubgraphRoot variable, cell of
@@ -136,7 +136,7 @@ class ViewNames:
         if cell is not None:
             self.cell_views.setdefault((cell, source), entry)
 
-    def of_viewgen(self, cell, viewgen):
+    def viewgen_name(self, cell, viewgen):
         """
         Returns the name of the view of cell's view generator viewgen, or
         None if the view list does not offer it. The view is not generated.
@@ -144,7 +144,7 @@ class ViewNames:
         entry = self.cell_views.get((cell, viewgen))
         return None if entry is None else entry['name']
 
-    def of_view(self, view):
+    def view_name(self, view):
         """
         Returns the name of a view in the view list that is the given view
         (a SubgraphRoot), or None: of a view generator whose cached result
@@ -169,10 +169,10 @@ class ViewNames:
                 first = entry['name']
         return first
 
-def discover_views(conn_globals, view_names=None, recursive=True, modules_visited=None):
+def discover_views(conn_globals, viewnamer=None, recursive=True, modules_visited=None):
     """
-    Returns the view list of the namespace conn_globals. If view_names (a
-    ViewNames) is given, the views are recorded in it.
+    Returns the view list of the namespace conn_globals. If viewnamer (a
+    ViewNamer) is given, the views are recorded in it.
     """
     if modules_visited is None:
         modules_visited = set()
@@ -181,8 +181,8 @@ def discover_views(conn_globals, view_names=None, recursive=True, modules_visite
     def add_view(name, info, source, cell=None):
         view = {'name': name} | info
         views.append(view)
-        if view_names is not None:
-            view_names.add(view, source, cell)
+        if viewnamer is not None:
+            viewnamer.add(view, source, cell)
 
     for k, v in conn_globals.items():
         if k.startswith("__"):
@@ -191,7 +191,7 @@ def discover_views(conn_globals, view_names=None, recursive=True, modules_visite
             if v in modules_visited:
                 continue
             modules_visited.add(v)
-            for subview in discover_views(v.__dict__, view_names, recursive=recursive, modules_visited=modules_visited):
+            for subview in discover_views(v.__dict__, viewnamer, recursive=recursive, modules_visited=modules_visited):
                 subview['name'] = f"{k}.{subview['name']}"
                 views.append(subview)
         elif isinstance(v, ViewGenerator):
@@ -526,7 +526,7 @@ class ConnectionHandler:
         # set_layout_style).
         self.layout_styles = {}
 
-    def query_view(self, view_name, conn_globals, view_names):
+    def query_view(self, view_name, conn_globals, viewnamer):
         msg_ret = {
             'msg':'view',
             'view':view_name,
@@ -541,7 +541,7 @@ class ConnectionHandler:
                     report = Report()
                     report.pre(view)
                     view = report
-                viewtype, data = view.webdata(view_names)
+                viewtype, data = view.webdata(viewnamer)
                 if isinstance(view, Layout):
                     style = default_style(view.ref_layers)
                     if style is not None:
@@ -732,7 +732,7 @@ class ConnectionHandler:
             return
         
         # Stays empty if the build failed.
-        view_names = ViewNames()
+        viewnamer = ViewNamer()
         if exc:
             websocket.send(ws_encode({
                 'msg': 'exception',
@@ -747,7 +747,7 @@ class ConnectionHandler:
                 config = {}
             websocket.send(ws_encode({
                 'msg': 'viewlist',
-                'views': discover_views(conn_globals, view_names),
+                'views': discover_views(conn_globals, viewnamer),
                 'config': config,
             }))
 
@@ -798,7 +798,7 @@ class ConnectionHandler:
             with jobs_lock:
                 jobs[req] = None
             job = self.jobrunner.submit(
-                lambda: self.query_view(view_name, conn_globals, view_names),
+                lambda: self.query_view(view_name, conn_globals, viewnamer),
                 on_progress=progress_sender(send_msg, req, view_name),
                 on_done=on_done)
             with jobs_lock:

@@ -310,7 +310,7 @@ class Schematic(MixinRenderable, SubgraphRoot):
     default_supply = LocalRef('Net', refcheck_custom=lambda val: issubclass(val, Net))
     default_ground = LocalRef('Net', refcheck_custom=lambda val: issubclass(val, Net))
 
-    def webdata(self, view_names):
+    def webdata(self, viewnamer):
         """
         Adds to webdata_static the names of the schematics of the instances'
         cells (descend_view), by instance nid, where the view list offers
@@ -324,7 +324,7 @@ class Schematic(MixinRenderable, SubgraphRoot):
         for inst in self.all(SchemInstance):
             cell = inst.symbol.cell
             viewgen = getattr(type(cell), 'schematic', None)
-            name = view_names.of_viewgen(cell, viewgen)
+            name = viewnamer.viewgen_name(cell, viewgen)
             if name is not None:
                 descend_view[inst.nid] = name
         data['descend_view'] = descend_view

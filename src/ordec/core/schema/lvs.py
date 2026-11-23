@@ -71,9 +71,9 @@ class LvsReport(SubgraphRoot):
     def clean(self):
         return self.status in (LvsStatus.Match, LvsStatus.MatchWarning)
 
-    def webdata(self, view_names):
+    def webdata(self, viewnamer):
         from ...layout.lvs import webdata
-        return webdata(self, view_names)
+        return webdata(self, viewnamer)
 
 
 @public

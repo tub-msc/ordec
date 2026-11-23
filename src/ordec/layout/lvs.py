@@ -28,13 +28,13 @@ def item_schem_name(item: LvsItem):
     return item.schem_name
 
 
-def webdata(report: LvsReport, view_names):
+def webdata(report: LvsReport, viewnamer):
     def view_name(view):
         # Name of a referenced view in the view list, where it offers the
         # view: the web UI opens and addresses the view by it, instead of by
         # an expression through this report (see openViews in
         # web/src/main.js).
-        return None if view is None else view_names.of_view(view)
+        return None if view is None else viewnamer.view_name(view)
 
     # KLayout emits circuit pairs in bottom-up topological order (every callee
     # precedes its callers); report.all() preserves that insertion order.
