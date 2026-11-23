@@ -318,17 +318,17 @@ def rnd(v) -> int:
     """A distance rounded to the 5 nm grid, half away from zero, as magic's box commands do."""
     return int(math.copysign(5 * ((abs(v) + 2.5) // 5), v))
 
-def rect_grow(r: tuple, d: int) -> tuple:
-    return (r[0] - d, r[1] - d, r[2] + d, r[3] + d)
+def rect_grow(r: Rect4I, d: int) -> Rect4I:
+    return Rect4I(r.lx - d, r.ly - d, r.ux + d, r.uy + d)
 
 def rects_cells(rects: list) -> tuple:
     """Coordinates and the covered cells of the grid they span."""
-    xs = sorted({r[0] for r in rects} | {r[2] for r in rects})
-    ys = sorted({r[1] for r in rects} | {r[3] for r in rects})
+    xs = sorted({r.lx for r in rects} | {r.ux for r in rects})
+    ys = sorted({r.ly for r in rects} | {r.uy for r in rects})
     xi, yi = {x: i for i, x in enumerate(xs)}, {y: j for j, y in enumerate(ys)}
     cells = set()
     for r in rects:
-        cells.update((i, j) for i in range(xi[r[0]], xi[r[2]]) for j in range(yi[r[1]], yi[r[3]]))
+        cells.update((i, j) for i in range(xi[r.lx], xi[r.ux]) for j in range(yi[r.ly], yi[r.uy]))
     return xs, ys, cells
 
 def rects_of_cells(xs: list, ys: list, cells: set) -> list:
@@ -348,7 +348,7 @@ def rects_of_cells(xs: list, ys: list, cells: set) -> list:
         i0 = prev = columns[0]
         for i in columns[1:] + [None]:
             if i != prev + 1 if i is not None else True:
-                rects.append((xs[i0], ly, xs[prev + 1], uy))
+                rects.append(Rect4I(xs[i0], ly, xs[prev + 1], uy))
                 i0 = i
             prev = i
     return rects
@@ -359,7 +359,7 @@ def rects_subtract(a: list, b: list) -> list:
     xs, ys, _ = rects_cells(a + b)
     def cover(rects):
         xi, yi = {x: i for i, x in enumerate(xs)}, {y: j for j, y in enumerate(ys)}
-        return {(i, j) for r in rects for i in range(xi[r[0]], xi[r[2]]) for j in range(yi[r[1]], yi[r[3]])}
+        return {(i, j) for r in rects for i in range(xi[r.lx], xi[r.ux]) for j in range(yi[r.ly], yi[r.uy])}
     return rects_of_cells(xs, ys, cover(a) - cover(b))
 
 def slots_along(lo: int, hi: int, size: int, sep: int) -> tuple:
@@ -402,26 +402,26 @@ def rects_grow_min(rects: list, d: int) -> list:
             lx, ux = int((lx + ux - d) / 2), int((lx + ux + d) / 2)
         if uy - ly < d:
             ly, uy = int((ly + uy - d) / 2), int((ly + uy + d) / 2)
-        return (lx - lx % 5, ly - ly % 5, ux + -ux % 5, uy + -uy % 5)
+        return Rect4I(lx - lx % 5, ly - ly % 5, ux + -ux % 5, uy + -uy % 5)
 
     grown = []
     for ly, lx, uy, ux in rects_of_cells(ys, xs, {(j, i) for i, j in cells}):
         width, height = ux - lx, uy - ly
         below, above = neighbours(yi[ly] - 1, lx, ux), neighbours(yi[uy], lx, ux)
-        area = (lx, ly, ux, uy)
+        area = Rect4I(lx, ly, ux, uy)
         if width < d:
             grow_x = (d - width) // 2
-            area = (lx - grow_x, ly, ux + grow_x, uy)
+            area = Rect4I(lx - grow_x, ly, ux + grow_x, uy)
             if height < d:
                 free_bot, free_top = not any(n[0] for n in below), not any(n[0] for n in above)
                 step = int(math.sqrt(d*d - 0.25*(d + width)**2 + 0.5))
                 grow_y = (d - height) // 2
                 if free_top and not free_bot:
-                    area = (area[0], ly - step, area[2], uy)
+                    area = Rect4I(area.lx, ly - step, area.ux, uy)
                 elif free_bot and not free_top:
-                    area = (area[0], ly, area[2], uy + step)
+                    area = Rect4I(area.lx, ly, area.ux, uy + step)
                 else:
-                    area = (area[0], ly - grow_y, area[2], uy + grow_y)
+                    area = Rect4I(area.lx, ly - grow_y, area.ux, uy + grow_y)
                 area = min_box(*area)
         grown.append(area)
         # What runs between the same type of tile above and below, on its own.
@@ -448,7 +448,7 @@ def rects_close(rects: list, gap: int) -> list:
     d = (gap - 1) // 2
     grown = [rect_grow(r, d) for r in rects]
     xs, ys, cells = rects_cells(grown)
-    outer = (xs[0] - 2*d, ys[0] - 2*d, xs[-1] + 2*d, ys[-1] + 2*d)
+    outer = Rect4I(xs[0] - 2*d, ys[0] - 2*d, xs[-1] + 2*d, ys[-1] + 2*d)
     # Shrink: grow the complement of the grown rects.
     complement = rects_subtract([outer], grown)
     return rects_subtract([outer], [rect_grow(r, d) for r in complement])
@@ -471,7 +471,7 @@ class Paint:
     def __init__(self):
         self.types = {}
 
-    def paint(self, type: str, rect: tuple) -> tuple:
+    def paint(self, type: str, rect: Rect4I) -> Rect4I:
         self.types.setdefault(type, []).append(rect)
         return rect
 
@@ -483,16 +483,16 @@ class Paint:
 
         def shapes(layer, rects):
             for r in rects:
-                l % LayoutRect(layer=layer, rect=Rect4I(*r))
+                l % LayoutRect(layer=layer, rect=r)
 
         def cuts(layer, rects, border, size, sep):
             # Overlapping contacts form one area, as in magic's plane.
             for r in rects_of_cells(*rects_cells(rects)) if rects else []:
                 # squares-grid: as many cuts as fit, centered
-                nx = (r[2] - r[0] - 2*border + sep) // (size + sep)
-                ny = (r[3] - r[1] - 2*border + sep) // (size + sep)
-                x0 = r[0] + 5 * ((r[2] - r[0] - nx*size - (nx - 1)*sep) // 10)
-                y0 = r[1] + 5 * ((r[3] - r[1] - ny*size - (ny - 1)*sep) // 10)
+                nx = (r.width - 2*border + sep) // (size + sep)
+                ny = (r.height - 2*border + sep) // (size + sep)
+                x0 = r.lx + 5 * ((r.width - nx*size - (nx - 1)*sep) // 10)
+                y0 = r.ly + 5 * ((r.height - ny*size - (ny - 1)*sep) // 10)
                 for i in range(nx):
                     for j in range(ny):
                         x, y = x0 + i*(size + sep), y0 + j*(size + sep)
@@ -604,13 +604,13 @@ class Paint:
         # swaps where a 2 um slot fits across in both directions (xpc_horiz), and
         # lies across the contact, along its smaller side if only one row fits.
         for r in rects_of_cells(*rects_cells(self.of("xpc"))) if self.of("xpc") else []:
-            width, height = r[2] - r[0], r[3] - r[1]
+            width, height = r.width, r.height
             short, long = ((2000, 350), (190, 520)) if min(width, height) > 2014 else ((190, 520), (2000, 350))
             strip = short[0] + 160 <= min(width, height) < 2*short[0] + short[1] + 160
             vertical = height > width if strip else height >= width
             along_x, along_y = (short, long) if vertical else (long, short)
-            nx, x0 = slots_along(r[0], r[2], *along_x)
-            ny, y0 = slots_along(r[1], r[3], *along_y)
+            nx, x0 = slots_along(r.lx, r.ux, *along_x)
+            ny, y0 = slots_along(r.ly, r.uy, *along_y)
             for i in range(nx):
                 for j in range(ny):
                     x, y = x0 + i*sum(along_x), y0 + j*sum(along_y)
@@ -619,11 +619,11 @@ class Paint:
         # NPC
         npc = []
         for r in self.of("pc_cut"):
-            nx = (r[2] - r[0] + 170) // 340
-            ny = (r[3] - r[1] + 170) // 340
-            x0 = r[0] + 5 * ((r[2] - r[0] - nx*170 - (nx - 1)*170) // 10)
-            y0 = r[1] + 5 * ((r[3] - r[1] - ny*170 - (ny - 1)*170) // 10)
-            npc += [rect_grow((x0 + i*340, y0 + j*340, x0 + i*340 + 170, y0 + j*340 + 170), 100)
+            nx = (r.width + 170) // 340
+            ny = (r.height + 170) // 340
+            x0 = r.lx + 5 * ((r.width - nx*170 - (nx - 1)*170) // 10)
+            y0 = r.ly + 5 * ((r.height - ny*170 - (ny - 1)*170) // 10)
+            npc += [rect_grow(Rect4I(x0 + i*340, y0 + j*340, x0 + i*340 + 170, y0 + j*340 + 170), 100)
                 for i in range(nx) for j in range(ny)]
         diffcut = [rect_grow(r, 90) for r in self.of(*self.DIFFCUT)]
         npc = rects_close(rects_subtract(rects_close(npc, 270), diffcut), 270)
@@ -672,12 +672,12 @@ class MosRules(GuardRules):
     id_surround: int = 0
     poly_sub_surround: int = 0
 
-def box(x: int, y: int, e: int, w: int, n: int, s: int) -> tuple:
+def box(x: int, y: int, e: int, w: int, n: int, s: int) -> Rect4I:
     """Box at (x, y) grown by the given amounts, as magic's box grow."""
-    return (x - w, y - s, x + e, y + n)
+    return Rect4I(x - w, y - s, x + e, y + n)
 
-def bbox_of(rects: list) -> tuple:
-    return (min(e[0] for e in rects), min(e[1] for e in rects), max(e[2] for e in rects), max(e[3] for e in rects))
+def bbox_of(rects: list) -> Rect4I:
+    return Rect4I(min(r.lx for r in rects), min(r.ly for r in rects), max(r.ux for r in rects), max(r.uy for r in rects))
 
 def via_extent(full: int, via_size: int, coverage: str) -> tuple:
     """Length of a via row of coverage percent of full and its offset from
@@ -691,19 +691,19 @@ def via_extent(full: int, via_size: int, coverage: str) -> tuple:
         return length, end - length / 2
     return length, 0
 
-def mcon_draw(p: Paint, r: tuple, vert: bool) -> tuple:
+def mcon_draw(p: Paint, r: Rect4I, vert: bool) -> Rect4I:
     """As sky130::mcon_draw, returns the m1 rect."""
     p.paint("mcon", r)
-    if vert or r[2] - r[0] < r[3] - r[1]:
-        return p.paint("m1", (r[0] - 30, r[1] - 60, r[2] + 30, r[3] + 60))
-    return p.paint("m1", (r[0] - 60, r[1] - 30, r[2] + 60, r[3] + 30))
+    if vert or r.width < r.height:
+        return p.paint("m1", Rect4I(r.lx - 30, r.ly - 60, r.ux + 30, r.uy + 60))
+    return p.paint("m1", Rect4I(r.lx - 60, r.ly - 30, r.ux + 60, r.uy + 30))
 
 def draw_contact(p: Paint, x: int, y: int, w: int, h: int, s: int, o: int, size: int,
-    atype: str, ctype: str, vert: bool) -> tuple:
+    atype: str, ctype: str, vert: bool) -> Rect4I:
     """As sky130::draw_contact, returns the rect of atype. Contacts on substrate
     diffusions are surrounded along their length only."""
     w, h = rnd(max(w, size) / 2), rnd(max(h, size) / 2)
-    p.paint(ctype, (x - w, y - h, x + w, y + h))
+    p.paint(ctype, Rect4I(x - w, y - h, x + w, y + h))
     if atype in ("psd", "nsd"):
         ext = p.paint(atype, box(x, y, w, w, h + s, h + s) if vert else box(x, y, w + s, w + s, h, h))
     else:
@@ -756,9 +756,9 @@ def guard_ring(p: Paint, cell: Cell, r, gw: int, gh: int, x: int = 0, y: int = 0
                 mcon_draw(p, box(vx + rnd(offset), vy, half, half, rnd(r.via_size / 2), rnd(r.via_size / 2)), False)
 
     # The boundary is a property of the cell, the last ring drawn sets it.
-    p.types["boundary"] = [(x - hw, y - hh, x + hw, y + hh)]
+    p.types["boundary"] = [Rect4I(x - hw, y - hh, x + hw, y + hh)]
     if r.sub_type not in ("psub", "space"):
-        p.paint(r.sub_type, rect_grow((x - hw, y - hh, x + hw, y + hh), hx + ds + r.sub_surround))
+        p.paint(r.sub_type, rect_grow(p.types["boundary"][0], hx + ds + r.sub_surround))
     return ring
 
 M1_MIN_AREA = 83000  # m1.6, in nm²
@@ -825,7 +825,7 @@ def mos_device(p: Paint, cell: Cell, r: MosRules, x: int, y: int, w: int, l: int
             top = mcon_draw(p, box(cx, y + rnd(offset), size_half, size_half, half, half), True)
         ext.append(draw_contact(p, cx, y, 0, cdw, r.diff_surround, r.metal_surround, r.contact_size,
             r.diff_type, r.diff_contact_type, True))
-        li = (cx - rnd(r.contact_size / 2), y - rnd(max(cdw, r.contact_size) / 2) - r.metal_surround,
+        li = Rect4I(cx - rnd(r.contact_size / 2), y - rnd(max(cdw, r.contact_size) / 2) - r.metal_surround,
             cx + rnd(r.contact_size / 2), y + rnd(max(cdw, r.contact_size) / 2) + r.metal_surround)
         sd[side] = ("met1", top) if top is not None else ("li1", li)
 
@@ -842,18 +842,18 @@ def mos_device(p: Paint, cell: Cell, r: MosRules, x: int, y: int, w: int, l: int
             top = mcon_draw(p, box(x + rnd(offset), cy, half, half, size_half, size_half), False)
             if cell.gate_min_area:
                 # The generator's pad fails m1.6 until routed.
-                width = 5 * -(-M1_MIN_AREA // (5 * (top[3] - top[1])))
-                if width > top[2] - top[0]:
-                    grow = 5 * -(-(width - (top[2] - top[0])) // 10)
-                    top = p.paint("m1", (top[0] - grow, top[1], top[2] + grow, top[3]))
+                width = 5 * -(-M1_MIN_AREA // (5 * top.height))
+                if width > top.width:
+                    grow = 5 * -(-(width - top.width) // 10)
+                    top = p.paint("m1", Rect4I(top.lx - grow, top.ly, top.ux + grow, top.uy))
         w_half, h_half = rnd(max(cpl, r.contact_size) / 2), rnd(r.contact_size / 2)
-        p.paint("pc_cut", (x - w_half, cy - h_half, x + w_half, cy + h_half))
-        polys.append(p.paint("poly", rect_grow((x - w_half, cy - h_half, x + w_half, cy + h_half), r.poly_surround)))
+        cut = p.paint("pc_cut", Rect4I(x - w_half, cy - h_half, x + w_half, cy + h_half))
+        polys.append(p.paint("poly", rect_grow(cut, r.poly_surround)))
         ext.append(polys[-1])
         li = p.paint("li", box(x, cy, w_half + r.metal_surround, w_half + r.metal_surround, h_half, h_half))
         gate.append(top if top is not None else li)
 
-    gaterect = (x - hl, y - hw, x + hl, y + hw)
+    gaterect = Rect4I(x - hl, y - hw, x + hl, y + hw)
     p.paint(r.gate_type, gaterect)
     if r.sub_surround_dev is not None:
         ext.append(p.paint(r.dev_sub_type, rect_grow(gaterect, r.sub_surround_dev)))
@@ -893,8 +893,8 @@ def layoutgen_mos(cell: Cell, r: MosRules) -> Layout:
 
     # Device dimensions, from one device drawn on a scratch Paint.
     bbox = mos_device(Paint(), cell, r, 0, 0, w, L, True, topc, botc)["bbox"]
-    fw, fh = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    lw, lh = bbox[2] + bbox[0], bbox[3] + bbox[1]
+    fw, fh = bbox.width, bbox.height
+    lw, lh = bbox.ux + bbox.lx, bbox.uy + bbox.ly
 
     if r.dev_sub_dist > 0:
         poverlap = doverlap = False
@@ -948,9 +948,9 @@ def layoutgen_mos(cell: Cell, r: MosRules) -> Layout:
                 top, bot = (i + j) % 2 == 1, (i + j) % 2 == 0
             dev = mos_device(p, cell, r, x0 + i*dx, y0 + j*dy, w, L, i % 2 == 1, top, bot)
             if j == 0:
-                l.poly[i] = LayoutRect(layer=layers.poly, rect=Rect4I(*dev["stem"]))
+                l.poly[i] = LayoutRect(layer=layers.poly, rect=dev["stem"])
                 for layer, rect in dev["sd"].values():
-                    sd_by_x[(rect[0] + rect[2]) // 2] = layer, rect
+                    sd_by_x[(rect.lx + rect.ux) // 2] = layer, rect
                 if i == 0:
                     gate_contacted = bool(dev["gate"])
                     gate_pin = dev["gate"][0] if gate_contacted else dev["stem"]
@@ -958,7 +958,7 @@ def layoutgen_mos(cell: Cell, r: MosRules) -> Layout:
     p.draw(l)
     for i, x in enumerate(sorted(sd_by_x)):
         layer, rect = sd_by_x[x]
-        l.sd[i] = LayoutRect(layer=layers[layer], rect=Rect4I(*rect))
+        l.sd[i] = LayoutRect(layer=layers[layer], rect=rect)
     # s on the even regions, d on the odd ones, as in ihp130. (Magic names
     # them the other way around, so its viasrc is our viadrn.) Without
     # doverlap each finger has regions of its own, mirrored from finger to
@@ -970,14 +970,14 @@ def layoutgen_mos(cell: Cell, r: MosRules) -> Layout:
         gate_layer = layers.poly
     else:
         gate_layer = layers.met1 if int(cell.viagate) != 0 else layers.li1
-    (l % LayoutRect(layer=gate_layer, rect=Rect4I(*gate_pin))).create_pin(cell.symbol.g)
+    (l % LayoutRect(layer=gate_layer, rect=gate_pin)).create_pin(cell.symbol.g)
     if r.dev_sub_type == "nwell":
         # The well of the first device, not a side of the guard ring's.
         sd = l.sd[0].rect
-        l.nwell = LayoutRect(layer=layers.nwell, rect=Rect4I(*next(w for w in p.of("nwell")
-            if w[0] <= sd.lx and w[1] <= sd.ly and sd.ux <= w[2] and sd.uy <= w[3])))
+        l.nwell = LayoutRect(layer=layers.nwell, rect=next(w for w in p.of("nwell")
+            if w.lx <= sd.lx and w.ly <= sd.ly and sd.ux <= w.ux and sd.uy <= w.uy))
     if ring:
-        l.guard = LayoutRect(layer=layers.li1, rect=Rect4I(*ring[0]))
+        l.guard = LayoutRect(layer=layers.li1, rect=ring[0])
         l.guard.create_pin(cell.symbol[cell.pin_b])
     elif r.dev_sub_type == "nwell" and cell.pin_b == "b":
         l.nwell.create_pin(cell.symbol.b)
@@ -1516,7 +1516,7 @@ def layoutgen_tap(cell: Cell, length: R, width: R, nwell: bool):
         margin=Vec2I(120, 120),
         )
     # li1 over the licon array, extended for li.5 end enclosure:
-    l.li.rect = (licon_rect.lx, licon_rect.ly - 80, licon_rect.ux, licon_rect.uy + 80)
+    l.li.rect = Rect4I(licon_rect.lx, licon_rect.ly - 80, licon_rect.ux, licon_rect.uy + 80)
 
     # ct.1, ct.2:
     mcon_rect = makevias(l, l.li.rect, layers.mcon,
@@ -1528,7 +1528,7 @@ def layoutgen_tap(cell: Cell, length: R, width: R, nwell: bool):
     # on the 5 nm grid to the m1.6 minimum area:
     height = max(mcon_rect.height + 2*60, 5 * -(-M1_MIN_AREA // (mcon_rect.width + 2*30) // 5))
     grow = (height - mcon_rect.height) // 2 // 5 * 5
-    l.m1.rect = (mcon_rect.lx - 30, mcon_rect.ly - grow, mcon_rect.ux + 30, mcon_rect.ly - grow + height)
+    l.m1.rect = Rect4I(mcon_rect.lx - 30, mcon_rect.ly - grow, mcon_rect.ux + 30, mcon_rect.ly - grow + height)
 
     return l
 
@@ -1610,7 +1610,7 @@ def res_end(p: Paint, cell: Cell, r: ResRules, x: int, y: int, epl: int, cpl: in
     term = (METAL_OF[r.end_type], ext[0]) if r.end_type in METAL_OF else None
     if r.end_contact_type:
         half_w, half_h = rnd(max(cpl, size) / 2) + r.metal_surround, rnd(size / 2)
-        term = ("li1", (x - half_w, y - half_h, x + half_w, y + half_h))
+        term = ("li1", Rect4I(x - half_w, y - half_h, x + half_w, y + half_h))
         if via_side != 0 and cell.vias:
             ch = max(r.res_to_endcont, r.via_size)
             half_w, half_via = rnd(max(epl, r.via_size) / 2), rnd(r.via_size / 2)
@@ -1630,12 +1630,12 @@ def res_device(p: Paint, cell: Cell, r: ResRules, x: int, y: int, w: int, l: int
     if well:
         reach += rnd(r.well_res_overlap + size / 2 + r.end_surround)
     end = r.well_res_type if well else r.end_type
-    ext = [p.paint(end, (x - hw, y + hl, x + hw, y + hl + reach)),
-        p.paint(end, (x - hw, y - hl - reach, x + hw, y - hl))]
+    ext = [p.paint(end, Rect4I(x - hw, y + hl, x + hw, y + hl + reach)),
+        p.paint(end, Rect4I(x - hw, y - hl - reach, x + hw, y - hl))]
     if well:
         # The end of a row overlapping the row below paints over its body.
         p.types[r.res_type] = rects_subtract(p.of(r.res_type), ext)
-    p.paint(r.res_type, (x - hw, y - hl, x + hw, y + hl))
+    p.paint(r.res_type, Rect4I(x - hw, y - hl, x + hw, y + hl))
 
     epl = w - 2*r.end_surround
     if well:
@@ -1677,9 +1677,9 @@ def res_snake_device(p: Paint, cell: Cell, r: ResRules, x: int, y: int, w: int, 
         rects, terms[side] = res_end(p, cell, r, tx, cy, epl, cpl, size, hesz, hepl)
         edge = y + direction*hl
         if mc > 0:
-            p.paint(r.res_type, (tx - hw, min(edge, edge + direction*mc), tx + hw, max(edge, edge + direction*mc)))
+            p.paint(r.res_type, Rect4I(tx - hw, min(edge, edge + direction*mc), tx + hw, max(edge, edge + direction*mc)))
         y0, y1 = edge + direction*mc, edge + direction*(mc + reach + extra)
-        rects.append(p.paint(end, (tx - hw, min(y0, y1), tx + hw, max(y0, y1))))
+        rects.append(p.paint(end, Rect4I(tx - hw, min(y0, y1), tx + hw, max(y0, y1))))
         return rects
 
     ext = terminal(x, -1, -1)
@@ -1689,11 +1689,11 @@ def res_snake_device(p: Paint, cell: Cell, r: ResRules, x: int, y: int, w: int, 
     for i in range(nf):
         tx = x + i*deltax
         # With a negative clearance, the first contact reaches into its stripe.
-        p.paint(r.res_type, (tx - hw, ly - min(mc, 0) if i == 0 else ly, tx + hw, y + hl))
+        p.paint(r.res_type, Rect4I(tx - hw, ly - min(mc, 0) if i == 0 else ly, tx + hw, y + hl))
         if i < nf - 1:
             cy = ly + (deltay if i % 2 == 0 else 0)
-            p.paint(r.res_type, (tx - hw, cy, tx - hw + deltax, cy + w))
-    ext.append((x - hw, ly, x + (nf - 1)*deltax + hw, y + hl))
+            p.paint(r.res_type, Rect4I(tx - hw, cy, tx - hw + deltax, cy + w))
+    ext.append(Rect4I(x - hw, ly, x + (nf - 1)*deltax + hw, y + hl))
     ext += terminal(x + (nf - 1)*deltax, 1 if nf % 2 == 1 else -1, 1)
     return dict(bbox=bbox_of(ext), terms=terms)
 
@@ -1715,8 +1715,8 @@ def layoutgen_res(cell: Cell, r: ResRules) -> Layout:
     if snake and L - w < -r.mask_clearance:
         raise ParameterError("The first link of this snake runs over its first contact (magic then loses the contact's cuts).")
     bbox = device(Paint(), cell, r, 0, 0, w, L)["bbox"]
-    fw, fh = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    lw, lh = bbox[2] + bbox[0], bbox[3] + bbox[1]
+    fw, fh = bbox.width, bbox.height
+    lw, lh = bbox.ux + bbox.lx, bbox.uy + bbox.ly
 
     space = r.end_spacing if r.end_to_end_space is None else r.end_to_end_space
     if cell.roverlap and snake and cell.nx % 2 == 1 and cell.m > 1:
@@ -1750,9 +1750,9 @@ def layoutgen_res(cell: Cell, r: ResRules) -> Layout:
     # own metal, reaching res_to_endcont beyond the body.
     for side, pin in ((1, cell.symbol.p), (-1, cell.symbol.n)):
         if terms[side] is not None:
-            (l % LayoutRect(layer=layers[terms[side][0]], rect=Rect4I(*terms[side][1]))).create_pin(pin)
+            (l % LayoutRect(layer=layers[terms[side][0]], rect=terms[side][1])).create_pin(pin)
     if ring and r.bulk_on_guard:
-        (l % LayoutRect(layer=layers.li1, rect=Rect4I(*ring[0]))).create_pin(cell.symbol[cell.bulk])
+        (l % LayoutRect(layer=layers.li1, rect=ring[0])).create_pin(cell.symbol[cell.bulk])
     return l
 
 
@@ -2167,13 +2167,13 @@ def diode_device(p: Paint, cell: Cell, r: DiodeRules, x: int, y: int, w: int, l:
     gy = l + 2*(r.dev_spacing + r.dev_surround) + r.contact_size
     ring = guard_ring(p, cell, r.end_ring(), gx, gy, x, y)
     ds = 0 if r.end_type in ("psd", "nsd") else r.end_surround
-    ext = rect_grow((x - rnd(gx / 2), y - rnd(gy / 2), x + rnd(gx / 2), y + rnd(gy / 2)),
+    ext = rect_grow(Rect4I(x - rnd(gx / 2), y - rnd(gy / 2), x + rnd(gx / 2), y + rnd(gy / 2)),
         rnd(r.contact_size / 2) + ds + r.sub_surround)
     hw, hl = rnd(w / 2), rnd(l / 2)
-    p.paint(r.dev_type, (x - hw, y - hl, x + hw, y + hl))
+    p.paint(r.dev_type, Rect4I(x - hw, y - hl, x + hw, y + hl))
 
     cw, cl = w - 2*r.dev_surround, l - 2*r.dev_surround
-    term = ("li1", (x - rnd(max(cw, r.contact_size) / 2), y - rnd(max(cl, r.contact_size) / 2),
+    term = ("li1", Rect4I(x - rnd(max(cw, r.contact_size) / 2), y - rnd(max(cl, r.contact_size) / 2),
         x + rnd(max(cw, r.contact_size) / 2), y + rnd(max(cl, r.contact_size) / 2)))
     if cell.vias:
         half_w, half_h = rnd(max(cw, r.via_size) / 2), rnd(max(cl, r.via_size) / 2)
@@ -2190,7 +2190,7 @@ def layoutgen_diode(cell: Cell, r: DiodeRules) -> Layout:
     p = Paint()
     w, L = int(cell.w / R("1n")), int(cell.l / R("1n"))
     bbox = diode_device(Paint(), cell, r, 0, 0, w, L)["bbox"]
-    fw, fh = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    fw, fh = bbox.width, bbox.height
     if cell.doverlap:
         overlap = 2*r.sub_surround + 2*r.end_surround + r.contact_size
         dx, dy = fw - overlap, fh - overlap
@@ -2204,7 +2204,7 @@ def layoutgen_diode(cell: Cell, r: DiodeRules) -> Layout:
         guard_ring(p, cell, r, gx, gy)
     x0, y0 = -rnd(corellx), -rnd(corelly)
     if (cell.nx > 1 or cell.ny > 1) and r.end_sub_type != "psub":
-        p.paint(r.end_sub_type, (x0 - rnd(fw / 2), y0 - rnd(fh / 2), x0 - rnd(fw / 2) + corex, y0 - rnd(fh / 2) + corey))
+        p.paint(r.end_sub_type, Rect4I(x0 - rnd(fw / 2), y0 - rnd(fh / 2), x0 - rnd(fw / 2) + corex, y0 - rnd(fh / 2) + corey))
     first = None
     for i in range(cell.nx):
         for j in range(cell.ny):
@@ -2213,9 +2213,9 @@ def layoutgen_diode(cell: Cell, r: DiodeRules) -> Layout:
     p.draw(l)
 
     # The contact is the anode of Pd2nw, the cathode of Pw2nd, the ring the other terminal.
-    (l % LayoutRect(layer=layers[first["term"][0]], rect=Rect4I(*first["term"][1]))).create_pin(cell.symbol[cell.contact])
+    (l % LayoutRect(layer=layers[first["term"][0]], rect=first["term"][1])).create_pin(cell.symbol[cell.contact])
     if first["ring"]:
-        (l % LayoutRect(layer=layers.li1, rect=Rect4I(*first["ring"][0]))).create_pin(cell.symbol[cell.ring])
+        (l % LayoutRect(layer=layers.li1, rect=first["ring"][0])).create_pin(cell.symbol[cell.ring])
     return l
 
 class Diode(GuardedDevice):
@@ -2363,7 +2363,7 @@ class CapRules:
 def cap_device(p: Paint, cell: Cell, r: CapRules, x: int, y: int, w: int, l: int) -> list:
     """As sky130::cap_device: one capacitor at (x, y), contact to its right. Returns its bounding box and metals."""
     hw, hl = rnd(w / 2), rnd(l / 2)
-    p.paint(r.cap_type, (x - hw, y - hl, x + hw, y + hl))
+    p.paint(r.cap_type, Rect4I(x - hw, y - hl, x + hw, y + hl))
     cmaxw = w - 2*r.cap_surround
     cw = max(cmaxw * abs(int(cell.ccov)) / 100, r.contact_size, r.top_metal_width)
     cdif = cmaxw - cw
@@ -2376,10 +2376,10 @@ def cap_device(p: Paint, cell: Cell, r: CapRules, x: int, y: int, w: int, l: int
     else:
         cdif = cdif / 2
         lx, ux = lx + rnd(cdif), ux - rnd(cdif)
-    cut = (lx, y - hl + r.cap_surround, ux, y + hl - r.cap_surround)
+    cut = Rect4I(lx, y - hl + r.cap_surround, ux, y + hl - r.cap_surround)
     p.paint(r.cap_contact_type, cut)
     top = p.paint(r.top_type, rect_grow(cut, r.top_surround))
-    plate = rect_grow((x - hw, y - hl, x + hw, y + hl), r.bot_surround)
+    plate = rect_grow(Rect4I(x - hw, y - hl, x + hw, y + hl), r.bot_surround)
     bottom = p.paint(r.bot_type, plate)
     p.types["boundary"] = [plate]
 
@@ -2388,7 +2388,7 @@ def cap_device(p: Paint, cell: Cell, r: CapRules, x: int, y: int, w: int, l: int
     if top_met_sep < r.top_metal_space:
         end_spacing += r.top_metal_space - top_met_sep
     chw = rnd(r.contact_size / 2)
-    p.paint(r.bot_type, (plate[0], plate[1], plate[2] + rnd(end_spacing) + chw + r.end_surround, plate[3]))
+    p.paint(r.bot_type, Rect4I(plate.lx, plate.ly, plate.ux + rnd(end_spacing) + chw + r.end_surround, plate.uy))
 
     lcont = l
     if not cell.bconnect and cell.ny > 1 and r.cap_spacing < r.top_metal_space:
@@ -2396,13 +2396,10 @@ def cap_device(p: Paint, cell: Cell, r: CapRules, x: int, y: int, w: int, l: int
     cx = x + hw + r.bot_surround + rnd(end_spacing)
     cl = lcont + 2*r.bot_surround - 2*r.end_surround - r.metal_surround
     half = rnd(max(cl, r.contact_size) / 2)
-    p.paint(r.top_contact_type, (cx - chw, y - half, cx + chw, y + half))
-    p.paint(r.bot_type, (cx - chw - r.end_surround, y - half - r.end_surround, cx + chw + r.end_surround,
-        y + half + r.end_surround))
-    end = p.paint(r.top_type, (cx - chw - r.metal_surround, y - half - r.metal_surround, cx + chw + r.metal_surround,
-        y + half + r.metal_surround))
-    return dict(bbox=bbox_of([top, plate, (cx - chw - r.end_surround, y - half - r.end_surround, cx + chw + r.end_surround,
-        y + half + r.end_surround)]), top=top, end=end, bottom=bottom)
+    contact = p.paint(r.top_contact_type, Rect4I(cx - chw, y - half, cx + chw, y + half))
+    pad = p.paint(r.bot_type, rect_grow(contact, r.end_surround))
+    end = p.paint(r.top_type, rect_grow(contact, r.metal_surround))
+    return dict(bbox=bbox_of([top, plate, pad]), top=top, end=end, bottom=bottom)
 
 def layoutgen_cap(cell: Cell, r: CapRules) -> Layout:
     """Layout generation function of the MiM capacitors, as sky130::cap_draw."""
@@ -2414,8 +2411,8 @@ def layoutgen_cap(cell: Cell, r: CapRules) -> Layout:
     p = Paint()
     w, L = int(cell.w / R("1n")), int(cell.l / R("1n"))
     bbox = cap_device(Paint(), cell, r, 0, 0, w, L)["bbox"]
-    fw, fh = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    lw, lh = bbox[2] + bbox[0], bbox[3] + bbox[1]
+    fw, fh = bbox.width, bbox.height
+    lw, lh = bbox.ux + bbox.lx, bbox.uy + bbox.ly
     # capm.2b: bottom plates 1.2 um apart. The generator leaves less.
     gap_y = max(r.cap_spacing, 1200) if cell.deck_spacing else r.cap_spacing
     gap_x = max(r.end_spacing, 1200) if cell.deck_spacing else r.end_spacing
@@ -2437,12 +2434,12 @@ def layoutgen_cap(cell: Cell, r: CapRules) -> Layout:
                     p.paint(r.top_type, box(x, y, hmw, hmw, hdy, hdy))
                 if cell.bconnect:
                     # The generator's strap misses a contact moved for top_metal_space.
-                    sx = (dev["end"][0] + dev["end"][2]) // 2 if cell.deck_spacing else x + cdx
+                    sx = (dev["end"].lx + dev["end"].ux) // 2 if cell.deck_spacing else x + cdx
                     p.paint(r.top_type, box(sx, y, hmw, hmw, hdy, hdy))
     p.draw(l)
     metal = layers[METAL_OF[r.top_type]]
-    (l % LayoutRect(layer=metal, rect=Rect4I(*first["top"]))).create_pin(cell.symbol.p)
-    (l % LayoutRect(layer=metal, rect=Rect4I(*first["end"]))).create_pin(cell.symbol.n)
+    (l % LayoutRect(layer=metal, rect=first["top"])).create_pin(cell.symbol.p)
+    (l % LayoutRect(layer=metal, rect=first["end"])).create_pin(cell.symbol.n)
     return l
 
 @public
@@ -2535,21 +2532,21 @@ def layoutgen_via(cell: Cell) -> Layout:
     l = Layout(ref_layers=SKY130().layers, cell=cell)
     p = Paint()
     hw, hh = int(cell.w / R("2n")), int(cell.h / R("2n"))
-    r = (-hw, -hh, hw, hh)
+    r = Rect4I(-hw, -hh, hw, hh)
     if cell.via == "mcon":
         mcon_draw(p, r, False)
     elif cell.via == "via":
         p.paint("via1", r)
-        p.paint("m2", (r[0], r[1] - 50, r[2], r[3] + 50))
-        p.paint("m1", (r[0] - 50, r[1], r[2] + 50, r[3]))
+        p.paint("m2", Rect4I(r.lx, r.ly - 50, r.ux, r.uy + 50))
+        p.paint("m1", Rect4I(r.lx - 50, r.ly, r.ux + 50, r.uy))
     elif cell.via == "via2":
         p.paint("via2", r)
-        p.paint("m2", (r[0], r[1] - 50, r[2], r[3] + 50))
-        p.paint("m3", (r[0] - 50, r[1] - 25, r[2] + 50, r[3] + 25))
+        p.paint("m2", Rect4I(r.lx, r.ly - 50, r.ux, r.uy + 50))
+        p.paint("m3", Rect4I(r.lx - 50, r.ly - 25, r.ux + 50, r.uy + 25))
     elif cell.via == "via3":
         p.paint("via3", r)
         p.paint("m4", rect_grow(r, 5))
-        p.paint("m3", (r[0] - 50, r[1], r[2] + 50, r[3]))
+        p.paint("m3", Rect4I(r.lx - 50, r.ly, r.ux + 50, r.uy))
     elif cell.via == "via4":
         p.paint("via4", r)
         p.paint("m5", rect_grow(r, 120))
@@ -2579,13 +2576,13 @@ def layoutgen_subconn(cell: Cell, psc: str, psd: str) -> Layout:
     l = Layout(ref_layers=SKY130().layers, cell=cell)
     p = Paint()
     hw, hh = int(cell.w / R("2n")), int(cell.h / R("2n"))
-    r = p.paint(psc, (-hw, -hh, hw, hh))
+    r = p.paint(psc, Rect4I(-hw, -hh, hw, hh))
     if hw > hh:
-        p.paint("li", (r[0] - 80, r[1], r[2] + 80, r[3]))
-        p.paint(psd, (r[0] - 120, r[1], r[2] + 120, r[3]))
+        p.paint("li", Rect4I(r.lx - 80, r.ly, r.ux + 80, r.uy))
+        p.paint(psd, Rect4I(r.lx - 120, r.ly, r.ux + 120, r.uy))
     else:
-        p.paint("li", (r[0], r[1] - 80, r[2], r[3] + 80))
-        p.paint(psd, (r[0], r[1] - 120, r[2], r[3] + 120))
+        p.paint("li", Rect4I(r.lx, r.ly - 80, r.ux, r.uy + 80))
+        p.paint(psd, Rect4I(r.lx, r.ly - 120, r.ux, r.uy + 120))
     p.draw(l)
     return l
 
@@ -2610,19 +2607,20 @@ class HvSubconn(Subconn):
     def layout(self) -> Layout:
         return layoutgen_subconn(self, "mvpsc", "mvpsd")
 
-def well_sides(p: Paint, r: tuple, extra: int, full_last: bool):
+def well_sides(p: Paint, r: Rect4I, extra: int, full_last: bool):
     """
     The contact strips along the sides of the well rect, as sky130::nwell_draw
     and deep_nwell_draw, whose last side's diffusion only covers its contact.
     full_last makes it as long as the others.
     """
-    sides = ((r[0], r[1], r[0], r[3]), (r[0], r[1], r[2], r[1]), (r[0], r[3], r[2], r[3]), (r[2], r[1], r[2], r[3]))
-    for i, (lx, ly, ux, uy) in enumerate(sides):
-        strip = (lx - 85, ly - 85, ux + 85, uy + 85)
-        p.paint("li", strip)
-        vertical = lx == ux
-        cut = (strip[0], strip[1] + 300, strip[2], strip[3] - 300) if vertical \
-            else (strip[0] + 300, strip[1], strip[2] - 300, strip[3])
+    sides = (Rect4I(r.lx, r.ly, r.lx, r.uy), Rect4I(r.lx, r.ly, r.ux, r.ly), Rect4I(r.lx, r.uy, r.ux, r.uy),
+        Rect4I(r.ux, r.ly, r.ux, r.uy))
+    for i, side in enumerate(sides):
+        strip = p.paint("li", rect_grow(side, 85))
+        if side.width == 0:
+            cut = Rect4I(strip.lx, strip.ly + 300, strip.ux, strip.uy - 300)
+        else:
+            cut = Rect4I(strip.lx + 300, strip.ly, strip.ux - 300, strip.uy)
         p.paint("nsc", cut)
         p.paint("nsd", rect_grow(cut if i == len(sides) - 1 and not full_last else strip, extra))
 
@@ -2638,7 +2636,7 @@ class NwellRing(Cell):
         l = Layout(ref_layers=SKY130().layers, cell=self)
         p = Paint()
         hw, hh = int(self.w / R("2n")), int(self.h / R("2n"))
-        r = (-hw, -hh, hw, hh)
+        r = Rect4I(-hw, -hh, hw, hh)
         p.paint("nwell", rect_grow(r, 265))
         # The generator's shorter last diffusion fails difftap.3 against the corners.
         well_sides(p, r, 0, full_last=True)
@@ -2668,7 +2666,7 @@ class DeepNwell(Cell):
         l = Layout(ref_layers=SKY130().layers, cell=self)
         p = Paint()
         hw, hh = int(self.w / R("2n")), int(self.h / R("2n"))
-        r = (-hw, -hh, hw, hh)
+        r = Rect4I(-hw, -hh, hw, hh)
         p.paint("dnwell", r)
         for rect in rects_subtract([rect_grow(r, 400)], [rect_grow(r, 400 - 1430)]):
             p.paint("nwell", rect)
@@ -2702,7 +2700,7 @@ class Photodiode(GuardedDevice):
     Photodiode (photodiode) with the fixed geometry of sky130::photodiode_draw:
     nx times ny N-well contacts in a deep N-well area, with an N-well ring and a
     guard ring. ``n`` on the N-well contact, ``p`` on the guard ring. The PDK has
-    no simulation model.
+    no simulation model. With ``full_metal=False``, the layout has no ``p`` pin.
     """
     nx = Parameter(int, default=1)
     ny = Parameter(int, default=1)
@@ -2727,7 +2725,7 @@ class Photodiode(GuardedDevice):
         corex, corey = (self.nx - 1)*dx + fw, (self.ny - 1)*dx + fw
         gx, gy = corex + 15965, corey + 15965
         dwx, dwy = rnd(gx / 2 + 315), rnd(gy / 2 + 315)
-        outer = (-dwx, -dwy, dwx, dwy)
+        outer = Rect4I(-dwx, -dwy, dwx, dwy)
         inner = rect_grow(outer, -3000)
         for rect in rects_subtract([outer], [inner]):
             p.paint("dnwell", rect)
@@ -2743,14 +2741,15 @@ class Photodiode(GuardedDevice):
         for i in range(self.nx):
             for j in range(self.ny):
                 x, y = -rnd((corex - fw) / 2) + i*dx, -rnd((corey - fw) / 2) + j*dx
-                p.paint("nsd", (x - 205, y - 205, x + 205, y + 205))
-                p.paint("nwell", (x - 420, y - 420, x + 420, y + 420))
-                p.paint("photo", (x - 1500, y - 1500, x + 1500, y + 1500))
+                p.paint("nsd", Rect4I(x - 205, y - 205, x + 205, y + 205))
+                p.paint("nwell", Rect4I(x - 420, y - 420, x + 420, y + 420))
+                p.paint("photo", Rect4I(x - 1500, y - 1500, x + 1500, y + 1500))
                 draw_contact(p, x, y, 170, 170, 0, 80, 170, "nsd", "nsc", False)
-                contact = contact or (x - 165, y - 85, x + 165, y + 85)
+                contact = contact or Rect4I(x - 165, y - 85, x + 165, y + 85)
         p.draw(l)
-        (l % LayoutRect(layer=l.ref_layers.li1, rect=Rect4I(*contact))).create_pin(self.symbol.n)
-        (l % LayoutRect(layer=l.ref_layers.li1, rect=Rect4I(*ring[0]))).create_pin(self.symbol.p)
+        (l % LayoutRect(layer=l.ref_layers.li1, rect=contact)).create_pin(self.symbol.n)
+        if ring:
+            (l % LayoutRect(layer=l.ref_layers.li1, rect=ring[0])).create_pin(self.symbol.p)
         return l
 
     @classmethod

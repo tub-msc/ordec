@@ -94,6 +94,7 @@ CASES = [
     (sky130.SonosFet(w="1u", l="150n"), "special_sonosfet_star", "w 1.0 l 0.15"),
     (sky130.Photodiode(), "photodiode", "nx 1 ny 1"),
     (sky130.Photodiode(nx=2, glc=False), "photodiode", "nx 2 glc 0"),
+    (sky130.Photodiode(full_metal=False), "photodiode", "full_metal 0"),
     (sky130.Via(via="mcon", w="0.17u", h="0.51u"), "mcon_draw", "0.17 0.51"),
     (sky130.Via(via="via", w="0.3u", h="0.3u"), "via1_draw", "0.3 0.3"),
     (sky130.Via(via="via2", w="0.5u", h="0.3u"), "via2_draw", "0.5 0.3"),
@@ -177,6 +178,8 @@ def shapeless_pins(cell) -> set:
         return {"sub"}
     if isinstance(cell, sky130.Res) and cell.bulk and not ring:
         return {cell.bulk}
+    if isinstance(cell, sky130.Photodiode) and not cell.full_metal:
+        return {"p"}
     return set()
 
 
