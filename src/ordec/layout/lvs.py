@@ -28,7 +28,14 @@ def item_schem_name(item: LvsItem):
     return item.schem_name
 
 
-def webdata(report: LvsReport):
+def webdata(report: LvsReport, view_names):
+    def view_name(view):
+        # Name of a referenced view in the view list, where it offers the
+        # view: the web UI opens and addresses the view by it, instead of by
+        # an expression through this report (see openViews in
+        # web/src/main.js).
+        return None if view is None else view_names.of_view(view)
+
     # KLayout emits circuit pairs in bottom-up topological order (every callee
     # precedes its callers); report.all() preserves that insertion order.
     # Reversing yields top-down order (top cell first, leaves last), which is
@@ -57,6 +64,8 @@ def webdata(report: LvsReport):
             # offers opening the layout/schematic of a circuit pair if so.
             'has_layout_ref': circuit.ref_layout is not None,
             'has_schem_ref': circuit.ref_schematic is not None,
+            'layout_view': view_name(circuit.ref_layout),
+            'schem_view': view_name(circuit.ref_schematic),
             # Top-level circuit pair (refs the same layout/schematic as the
             # report itself). Item selections of subcircuit pairs must target
             # the pair's own views instead of the report-level ones.
@@ -89,4 +98,7 @@ def webdata(report: LvsReport):
         'circuits': circuits,
         'items': items,
         'unit': float(report.ref_layout.ref_layers.unit) if report.ref_layout else 1.0,
+        # Report-level views, for item selections of the top pair.
+        'layout_view': view_name(report.ref_layout),
+        'schem_view': view_name(report.ref_schematic),
     }

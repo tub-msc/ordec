@@ -4,7 +4,6 @@
 from abc import ABC, ABCMeta, abstractmethod
 from typing import Self
 from functools import partial
-from contextlib import contextmanager
 from concurrent.futures import Future
 import re
 import threading
@@ -14,30 +13,6 @@ from .ordb import MutableNode
 from .rational import R
 from .genrun import checkpoint, cancelable_wait, GenCancelled
 from .context import run_viewgen_body, run_noctx_body
-
-class NotCached(BaseException):
-    """
-    Raised by view generators in :func:`cache_only` mode where the view would
-    have to be generated or waited for. Subclasses BaseException, so that
-    user-level ``except Exception:`` blocks cannot swallow it.
-    """
-
-_cache_only = threading.local()
-
-@contextmanager
-def cache_only():
-    """
-    Within this context, the view generators of the current thread only
-    return views that are cached already. Instead of generating a view or
-    waiting for another thread's generation of it, they raise
-    :class:`NotCached`. The web UI server uses this to answer requests for
-    cached views right away, without a job (see ordec.server).
-    """
-    _cache_only.active = True
-    try:
-        yield
-    finally:
-        _cache_only.active = False
 
 class ViewGenerator:
     def __new__(cls, func=None, **kwargs):
@@ -99,6 +74,24 @@ class ViewGenerator:
             )
         return self.eval_cached(self.cache, self.cache_lock)
 
+    def cached_result(self, cell=None):
+        """
+        Returns the cached view of this view generator, or None if there is
+        none; nothing is generated. For a view generator bound as Cell class
+        attribute, cell is the cell instance.
+        """
+        if cell is None:
+            cache, cache_lock = self.cache, self.cache_lock
+        else:
+            cache, cache_lock = cell.cached_results, cell.cached_results_lock
+        with cache_lock:
+            fut = cache.get(self)
+            # Failed generations are removed from the cache (see
+            # eval_cached), so a done Future in it holds a result.
+            if fut is not None and fut.done():
+                return fut.result()
+        return None
+
     def _finalize(self, ret):
         # Freeze if not already frozen:
         if isinstance(ret, MutableNode):
@@ -134,11 +127,6 @@ class ViewGenerator:
         while True:
             with cache_lock:
                 fut = cache.get(self)
-                # Failed generations are removed from the cache, so a done
-                # Future in it holds a result.
-                if getattr(_cache_only, 'active', False) \
-                        and (fut is None or not fut.done()):
-                    raise NotCached()
                 if fut is None:
                     fut = Future()
                     # Ad-hoc attribute on Future, used below to detect a
@@ -532,18 +520,6 @@ class Cell(metaclass=MetaCell):
 
     def __repr__(self):
         return f"{type(self).__name__}({','.join(self.params_list(use_repr=True))})"
-
-    def cached_viewgen(self, view):
-        """
-        Returns the view generator of this cell whose cached result is view,
-        or None.
-        """
-        with self.cached_results_lock:
-            for viewgen, fut in self.cached_results.items():
-                # A done Future in the cache holds a result (see eval_cached).
-                if fut.done() and fut.result() is view:
-                    return viewgen
-        return None
 
     def unescaped_name(self):
         """

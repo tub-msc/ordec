@@ -310,6 +310,26 @@ class Schematic(MixinRenderable, SubgraphRoot):
     default_supply = LocalRef('Net', refcheck_custom=lambda val: issubclass(val, Net))
     default_ground = LocalRef('Net', refcheck_custom=lambda val: issubclass(val, Net))
 
+    def webdata(self, view_names):
+        """
+        Adds to webdata_static the names of the schematics of the instances'
+        cells (descend_view), by instance nid, where the view list offers
+        them: the web UI opens these schematics (descend) under this name,
+        and focuses a viewer of it instead of opening another one (see
+        openViews in web/src/main.js). The schematics are not generated for
+        this.
+        """
+        viewtype, data = self.webdata_static()
+        descend_view = {}
+        for inst in self.all(SchemInstance):
+            cell = inst.symbol.cell
+            viewgen = getattr(type(cell), 'schematic', None)
+            name = view_names.of_viewgen(cell, viewgen)
+            if name is not None:
+                descend_view[inst.nid] = name
+        data['descend_view'] = descend_view
+        return viewtype, data
+
     def auto_wire(self):
         from ...schematic import auto_wire
         auto_wire(self)

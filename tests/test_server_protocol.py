@@ -48,15 +48,36 @@ def with_progress():
 def failing():
     raise ValueError("boom")
 
+@viewgen_noctx
+def layers():
+    layers = LayerStack()
+    layers.unit = R('1n')
+    return layers
+
+# Returns the layout of a cell, and precedes it in the view list.
+@viewgen_noctx
+def wrapped():
+    return Alias().layout
+
+@viewgen_noctx
+def sub_layout():
+    return Layout(ref_layers=layers())
+
 class Named(Cell):
     @viewgen_noctx
-    def symbol(self):
-        progress("generating", 0.5)
-        return Symbol(cell=self)
+    def layout(self):
+        return Layout(ref_layers=layers(), cell=self)
 
 # The view list names the views by the variable, not by the class name.
 Alias = Named
 del Named
+
+@viewgen_noctx
+def drc_report():
+    from ordec.core.schema import DrcReport, DrcCell
+    report = DrcReport(ref_layout=wrapped(), top_cell_name='top')
+    report % DrcCell(name='sub', ref_layout=sub_layout())
+    return report
 '''
 
 @pytest.fixture(scope="module")
@@ -110,20 +131,16 @@ class Client:
     def cancelview(self, req):
         self.send({'msg': 'cancelview', 'req': req})
 
-    def recv_req(self, req):
-        """Collects the messages for req until its terminal 'view'
-        message."""
-        msgs = []
-        while not msgs or msgs[-1]['msg'] != 'view':
-            msg = self.recv()
-            if msg.get('req') == req:
-                msgs.append(msg)
-        return msgs
-
     def recv_until_terminal(self, req):
-        """Returns (progress_msgs, terminal) of req."""
-        msgs = self.recv_req(req)
-        return [m for m in msgs if m['msg'] == 'viewprogress'], msgs[-1]
+        """Collects viewprogress messages until the terminal 'view'
+        message for req arrives; returns (progress_msgs, terminal)."""
+        progress_msgs = []
+        while True:
+            msg = self.recv()
+            if msg['msg'] == 'viewprogress' and msg['req'] == req:
+                progress_msgs.append(msg)
+            elif msg['msg'] == 'view' and msg['req'] == req:
+                return progress_msgs, msg
 
     def close(self):
         self.sock.close()
@@ -206,29 +223,20 @@ def test_cancel_infinite_loop(proto_server):
     finally:
         c2.close()
 
-def test_viewname(proto_server):
-    """A viewname message precedes each view message, with the view's name
-    in the view list, also where the view is requested by another
-    expression. For a view generator of a cell, it comes before the
-    generation; a cached view is answered at once."""
+def test_linked_view_names(proto_server):
+    """A view that links to other views names them as the view list does:
+    by the view generator whose result they are, of the view's own cell
+    rather than of one returning the same view."""
     url, key = proto_server
     c = Client(url, key)
     try:
-        assert 'Alias().symbol' in c.views
+        assert 'Alias().layout' in c.views
         assert not any(v.startswith('Named(') for v in c.views)
-        c.getview('Alias(**{}).symbol', req=50)
-        msgs = c.recv_req(50)
-        assert [m['msg'] for m in msgs] == ['viewname', 'viewprogress', 'view']
-        assert msgs[0]['name'] == 'Alias().symbol'
-        # Cached, and not ending in a view generator: named through the
-        # view's cell.
-        c.getview('[Alias().symbol][0]', req=51)
-        msgs = c.recv_req(51)
-        assert [m['msg'] for m in msgs] == ['viewname', 'view']
-        assert msgs[0]['name'] == 'Alias().symbol'
-        # Not a view of a cell: named by the request.
-        c.getview('quick()', req=52)
-        assert c.recv_req(52)[0]['name'] == 'quick()'
+        c.getview('drc_report()', req=50)
+        _, terminal = c.recv_until_terminal(50)
+        data = terminal['data']
+        assert data['layout_view'] == 'Alias().layout'
+        assert [cell['layout_view'] for cell in data['cells']] == ['sub_layout()']
     finally:
         c.close()
 

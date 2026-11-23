@@ -39,7 +39,6 @@ setup in the documentation).
 """
 
 import argparse
-import ast
 import http
 import json
 import cbor2
@@ -52,7 +51,7 @@ import mimetypes
 from urllib.parse import urlparse, parse_qs, quote_plus
 import threading
 import importlib
-from contextlib import contextmanager, nullcontext
+from contextlib import contextmanager
 import importlib.resources
 import importlib.util
 import tarfile
@@ -79,8 +78,7 @@ from . import importer, language
 from .hub import HubIntegration, HubAuthError
 from .version import version, doc_url
 from .core import Cell, SubgraphRoot, Layout
-from .core.cell import ViewGenerator, NotCached, cache_only
-from .core.wire import ExportTable
+from .core.cell import ViewGenerator
 from .language import compile_ord
 from .layout.style import default_style, update_customization
 from .config import read_config, update_config
@@ -117,21 +115,74 @@ class ServerKey:
         digest = hmac.digest(self.key, message.encode('utf8'), digest=hashlib.sha256)
         return f"local={quote_plus(message)}&hmac={digest.hex()}"
 
-def discover_views(conn_globals, cell_views=None, recursive=True, modules_visited=None):
+class ViewNames:
     """
-    Returns the view list of the namespace conn_globals. If cell_views is
-    given, it is filled with (cell, view generator) -> view list entry for
-    the views of cells, keeping the first entry of each (see cell_view_names).
+    The names of a connection's view list, by what the views show. Views
+    that link to other views (descend, LVS, DRC) name them by it in their
+    webdata (see SubgraphRoot.webdata), so that the web UI opens and finds
+    them under the name the view list offers. Filled by discover_views.
+    """
+    def __init__(self):
+        # (view list entry, view generator or SubgraphRoot variable, cell of
+        # the view generator or None), in view list order. The names are
+        # read from the entries on lookup only, as discover_views prefixes
+        # the module path after recording them.
+        self.listed = []
+        # (cell, view generator) -> the first view list entry of it.
+        self.cell_views = {}
+
+    def add(self, entry, source, cell=None):
+        self.listed.append((entry, source, cell))
+        if cell is not None:
+            self.cell_views.setdefault((cell, source), entry)
+
+    def of_viewgen(self, cell, viewgen):
+        """
+        Returns the name of the view of cell's view generator viewgen, or
+        None if the view list does not offer it. The view is not generated.
+        """
+        entry = self.cell_views.get((cell, viewgen))
+        return None if entry is None else entry['name']
+
+    def of_view(self, view):
+        """
+        Returns the name of a view in the view list that is the given view
+        (a SubgraphRoot), or None: of a view generator whose cached result
+        it is, or of a variable holding it. Nothing is generated.
+
+        This can hold for several, as a view generator may return the view
+        of another one. The view generator of the view's own cell then comes
+        first, else the first one in the view list.
+        """
+        cell = getattr(view, 'cell', None)
+        first = None
+        for entry, source, source_cell in self.listed:
+            if isinstance(source, ViewGenerator):
+                source = source.cached_result(source_cell)
+            if not isinstance(source, SubgraphRoot):
+                continue
+            if source.subgraph is not view.subgraph:
+                continue
+            if source_cell is not None and source_cell is cell:
+                return entry['name']
+            if first is None:
+                first = entry['name']
+        return first
+
+def discover_views(conn_globals, view_names=None, recursive=True, modules_visited=None):
+    """
+    Returns the view list of the namespace conn_globals. If view_names (a
+    ViewNames) is given, the views are recorded in it.
     """
     if modules_visited is None:
         modules_visited = set()
     views = []
 
-    def add_cell_view(name, cell, member):
-        view = {'name': name} | member.info_dict()
+    def add_view(name, info, source, cell=None):
+        view = {'name': name} | info
         views.append(view)
-        if cell_views is not None:
-            cell_views.setdefault((cell, member), view)
+        if view_names is not None:
+            view_names.add(view, source, cell)
 
     for k, v in conn_globals.items():
         if k.startswith("__"):
@@ -140,11 +191,11 @@ def discover_views(conn_globals, cell_views=None, recursive=True, modules_visite
             if v in modules_visited:
                 continue
             modules_visited.add(v)
-            for subview in discover_views(v.__dict__, cell_views, recursive=recursive, modules_visited=modules_visited):
+            for subview in discover_views(v.__dict__, view_names, recursive=recursive, modules_visited=modules_visited):
                 subview['name'] = f"{k}.{subview['name']}"
                 views.append(subview)
         elif isinstance(v, ViewGenerator):
-            views.append({'name': f"{k}()"} | v.info_dict())
+            add_view(f"{k}()", v.info_dict(), v)
         elif isinstance(v, type) and issubclass(v, Cell) and v!=Cell:
             generate_members = []
             for member_name in dir(v):
@@ -158,14 +209,14 @@ def discover_views(conn_globals, cell_views=None, recursive=True, modules_visite
             for instance in v.discoverable_instances():
                 args = ','.join(instance.params_list(use_repr=True))
                 for member_name, member in generate_members:
-                    add_cell_view(f'{k}({args}).{member_name}', instance, member)
+                    add_view(f'{k}({args}).{member_name}', member.info_dict(), member, instance)
         elif isinstance(v, Cell):
             for member_name in dir(type(v)):
                 member = getattr(type(v), member_name)
                 if isinstance(member, ViewGenerator):
-                    add_cell_view(f"{k}.{member_name}", v, member)
+                    add_view(f"{k}.{member_name}", member.info_dict(), member, v)
         elif isinstance(v, SubgraphRoot):
-            views.append({'name': k, 'auto_refresh': True})
+            add_view(k, {'auto_refresh': True}, v)
         elif isinstance(v, ExtLibrary):
             view_maps = {}
             for view_name, attr in (
@@ -189,54 +240,11 @@ def discover_views(conn_globals, cell_views=None, recursive=True, modules_visite
                         continue
                     member = getattr(type(cell), view_name, None)
                     if isinstance(member, ViewGenerator):
-                        add_cell_view(f"{cell_expr}.{view_name}", cell, member)
+                        add_view(f"{cell_expr}.{view_name}", member.info_dict(), member, cell)
 
     if "__ord_py_source__" in conn_globals:
         views.append({"name": "__ord_py_source__", "auto_refresh": True})
     return views
-
-def eval_view(view_name, conn_globals, view_names, on_name):
-    """
-    Evaluates view_name in conn_globals and calls on_name(name) with the
-    name under which the view list offers the view (view_names, see
-    cell_view_names), if it does. The web UI names viewers opened from
-    other views (descend, LVS, DRC) by this name instead of their view
-    expression, which addresses nodes by nid.
-
-    Where view_name ends in a view generator of a cell (e.g.
-    "...symbol.cell.schematic"), on_name is called before the view is
-    generated, so that the web UI can open a viewer for it right away,
-    with view_name itself if the view list does not offer the view.
-    """
-    body = ast.parse(view_name, mode='eval').body
-    if isinstance(body, ast.Attribute):
-        obj = eval(compile(ast.Expression(body.value), '<string>', 'eval'),
-            conn_globals, conn_globals)
-        if isinstance(obj, Cell):
-            viewgen = getattr(type(obj), body.attr, None)
-            if isinstance(viewgen, ViewGenerator):
-                on_name(view_names.get((obj, viewgen), view_name))
-                return getattr(obj, body.attr)
-        view = getattr(obj, body.attr)
-    else:
-        view = eval(view_name, conn_globals, conn_globals)
-    # Otherwise, the view's cell tells which of its view generators produced
-    # it, e.g. for the ref_layout of an LVS or DRC report.
-    cell = getattr(view, 'cell', None) if isinstance(view, SubgraphRoot) else None
-    if isinstance(cell, Cell):
-        viewgen = cell.cached_viewgen(view)
-        if (cell, viewgen) in view_names:
-            on_name(view_names[cell, viewgen])
-    return view
-
-def cell_view_names(cell_views):
-    """
-    Returns (cell, view generator) -> view name, from the cell_views filled
-    by discover_views. The names are read only now, as discover_views
-    prefixes the module path to the names of views in modules after
-    recording them.
-    """
-    return {key: view['name'] for key, view in cell_views.items()}
 
 class RWLock:
     """
@@ -271,32 +279,19 @@ class RWLock:
             self.rwlock = rwlock
 
         def __enter__(self):
-            self.rwlock.acquire_read()
+            with self.rwlock._lock:
+                # Wait if there are active writers or waiting writers (writer priority)
+                while self.rwlock._writers > 0 or self.rwlock._waiting_writers > 0:
+                    self.rwlock._readers_ok.wait()
+                self.rwlock._readers += 1
             return self
 
         def __exit__(self, exc_type, exc_val, exc_tb):
-            self.rwlock.release_read()
-
-    def acquire_read(self, blocking=True) -> bool:
-        """
-        Acquires a read lock. With blocking=False, returns False instead of
-        waiting if a writer is active or waiting.
-        """
-        with self._lock:
-            # Wait if there are active writers or waiting writers (writer priority)
-            while self._writers > 0 or self._waiting_writers > 0:
-                if not blocking:
-                    return False
-                self._readers_ok.wait()
-            self._readers += 1
-            return True
-
-    def release_read(self):
-        with self._lock:
-            self._readers -= 1
-            # If last reader leaving and writers are waiting, wake one
-            if self._readers == 0 and self._waiting_writers > 0:
-                self._writers_ok.notify()
+            with self.rwlock._lock:
+                self.rwlock._readers -= 1
+                # If last reader leaving and writers are waiting, wake one
+                if self.rwlock._readers == 0 and self.rwlock._waiting_writers > 0:
+                    self.rwlock._writers_ok.notify()
 
     class _WriteContext:
         """Context manager for write lock"""
@@ -531,35 +526,22 @@ class ConnectionHandler:
         # set_layout_style).
         self.layout_styles = {}
 
-    def query_view(self, view_name, conn_globals, ept, view_names, on_name,
-            cached=False):
-        """
-        Evaluates the view view_name and returns the view message. Calls
-        on_name(name) with the name of the view once known (see eval_view),
-        at the latest before returning; on_name must ignore repeated calls.
-
-        With cached=True (in the message loop), nothing is generated or
-        waited for: if the import lock is taken or a view generator's view
-        is not cached yet, NotCached is raised (see cache_only), and the
-        request is to be handed to a job.
-        """
+    def query_view(self, view_name, conn_globals, view_names):
         msg_ret = {
             'msg':'view',
             'view':view_name,
         }
 
-        if not self.import_lock.acquire_read(blocking=not cached):
-            raise NotCached()
         try:
-            with cache_only() if cached else nullcontext():
-                view = eval_view(view_name, conn_globals, view_names, on_name)
+            with self.import_lock.read():
+                view = eval(view_name, conn_globals, conn_globals)
                 if isinstance(view, str):
                     # Mainly for __ord_py_source__:
                     from .core.schema import Report
                     report = Report()
                     report.pre(view)
                     view = report
-                viewtype, data = view.webdata(ept)
+                viewtype, data = view.webdata(view_names)
                 if isinstance(view, Layout):
                     style = default_style(view.ref_layers)
                     if style is not None:
@@ -568,10 +550,7 @@ class ConnectionHandler:
             msg_ret['data'] = data
         except Exception as e:
             msg_ret['exception'] = format_user_exception(e)
-        finally:
-            self.import_lock.release_read()
 
-        on_name(view_name)
         return msg_ret
 
     def set_layout_style(self, msg):
@@ -752,9 +731,8 @@ class ConnectionHandler:
             send_exception_info(f"malformed first message: missing key {e}")
             return
         
-        # (cell, view generator) -> name in the view list, for naming views
-        # (see eval_view); stays empty if the build failed.
-        view_names = {}
+        # Stays empty if the build failed.
+        view_names = ViewNames()
         if exc:
             websocket.send(ws_encode({
                 'msg': 'exception',
@@ -767,12 +745,9 @@ class ConnectionHandler:
                 # An invalid file must not keep the design from showing.
                 print(f"{remote}: ignoring the configuration file: {e}")
                 config = {}
-            cell_views = {}
-            views = discover_views(conn_globals, cell_views)
-            view_names = cell_view_names(cell_views)
             websocket.send(ws_encode({
                 'msg': 'viewlist',
-                'views': views,
+                'views': discover_views(conn_globals, view_names),
                 'config': config,
             }))
 
@@ -794,12 +769,6 @@ class ConnectionHandler:
                 except ConnectionClosed:
                     pass  # late progress/terminal after disconnect
 
-        # Per-connection export table: wire hashes are only ever compared
-        # client-locally, so their scope is the websocket connection, and
-        # the objects the table pins are released when the connection ends
-        # (see ordec.core.wire).
-        ept = ExportTable()
-
         # In-flight view-generation jobs of this connection: req id -> Job.
         # Entries are inserted as None before submit so that an on_done
         # firing during submit (InlineJobRunner) pops the key first and
@@ -807,29 +776,10 @@ class ConnectionHandler:
         jobs = {}
         jobs_lock = threading.Lock()
 
-        def name_sender(req):
-            """
-            Returns the on_name callback of query_view for request req, which
-            sends the viewname message, once. The message loop calls it
-            first, then possibly the job. The lock keeps the viewname message
-            ahead of the view message also where a canceller delivers on_done
-            while the job still runs.
-            """
-            sent = False
-            lock = threading.Lock()
-            def on_name(name):
-                nonlocal sent
-                with lock:
-                    if not sent:
-                        sent = True
-                        send_msg({'msg': 'viewname', 'req': req, 'name': name})
-            return on_name
-
-        def submit_view_job(req, view_name, on_name):
+        def submit_view_job(req, view_name):
             def on_done(job, result, cancelled):
                 with jobs_lock:
                     jobs.pop(req, None)
-                on_name(view_name)
                 # A cancel that kills an external tool subprocess surfaces
                 # as an ordinary exception in query_view; report those as
                 # cancelled, too. A view that completed successfully
@@ -848,8 +798,7 @@ class ConnectionHandler:
             with jobs_lock:
                 jobs[req] = None
             job = self.jobrunner.submit(
-                lambda: self.query_view(view_name, conn_globals, ept,
-                    view_names, on_name),
+                lambda: self.query_view(view_name, conn_globals, view_names),
                 on_progress=progress_sender(send_msg, req, view_name),
                 on_done=on_done)
             with jobs_lock:
@@ -867,17 +816,7 @@ class ConnectionHandler:
                         req = msg['req']
                     except KeyError as e:
                         raise ValueError(f"getview message missing key {e}")
-                    # Cached views are answered right away; anything else
-                    # (generating, waiting for a generation or for the
-                    # import lock) is left to a job.
-                    on_name = name_sender(req)
-                    try:
-                        result = self.query_view(view_name, conn_globals,
-                            ept, view_names, on_name, cached=True)
-                    except NotCached:
-                        submit_view_job(req, view_name, on_name)
-                    else:
-                        send_msg(dict(result, req=req))
+                    submit_view_job(req, view_name)
                 elif msg_type == 'setlayoutstyle':
                     try:
                         req = msg['req']

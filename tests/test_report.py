@@ -8,7 +8,6 @@ import pytest
 from ordec.core.ordb import SubgraphRoot
 from ordec.core.simarray import SimColumn
 from ordec.core.schema import Markdown, PlotGroup, Report
-from ordec.core.wire import ExportTable
 
 
 def test_report_is_ordb_subgraph_root():
@@ -24,8 +23,7 @@ def test_report_is_ordb_subgraph_root():
     frozen = report.freeze()
     assert isinstance(frozen, SubgraphRoot)
     assert frozen.mutable is False
-    ept = ExportTable()
-    assert frozen.webdata(ept) == report.webdata(ept)
+    assert frozen.webdata_static() == report.webdata_static()
 
 
 def test_plot2d_webdata():
@@ -44,7 +42,7 @@ def test_plot2d_webdata():
         group=report.tran,
     )
     assert isinstance(plot, Plot2D)
-    _, data = report.webdata(ExportTable())
+    _, data = report.webdata_static()
     plot_data = data["elements"][0]
     assert plot_data["element_type"] == "plot2d"
     assert plot_data["x"].dtype == np.float64
@@ -77,7 +75,7 @@ def test_plot2d_bad_series():
     # A scalar instead of a sequence keeps its original error message.
     with pytest.raises(TypeError, match="not iterable"):
         report.plot2d([1.0, 2.0], ("v(out)", 5.0))
-    _, data = report.webdata(ExportTable())
+    _, data = report.webdata_static()
     assert data["elements"] == []
 
 
@@ -88,7 +86,7 @@ def test_plot2d_height_none():
         ("v(out)", [0.1, 0.2, 0.3]),
         height=None,
     )
-    _, data = report.webdata(ExportTable())
+    _, data = report.webdata_static()
     assert data["elements"][0]["height"] is None
 
 
@@ -101,7 +99,7 @@ def test_passfail_webdata():
     pf = report.passfail("Check B", False, instructions="Do the thing.",
         hint="Try harder.")
     assert pf.passed is False
-    _, data = report.webdata(ExportTable())
+    _, data = report.webdata_static()
     assert data["elements"][0] == {
         "element_type": "passfail",
         "label": "Check A",
@@ -119,7 +117,7 @@ def test_passfail_webdata():
 def test_markdown_docs_links():
     report = Report()
     report.markdown("See [WebUI](docs:guides/webui_design_organization.html#intermediate-local-mode) for details.")
-    _, data = report.webdata(ExportTable())
+    _, data = report.webdata_static()
     html = data["elements"][0]["html"]
     assert 'target="_blank" rel="noopener" ' \
         'href="https://ordec.readthedocs.io/en/' in html
@@ -132,7 +130,7 @@ def test_markdown_math():
     report.markdown(
         "At $f = \\frac{1}{2*\\pi*\\sqrt{L C}}$ with `.$r=1k` code, "
         "$a<b$ and display: $$x^2 * y$$ Prices like 5 $ stay text.")
-    _, data = report.webdata(ExportTable())
+    _, data = report.webdata_static()
     html = data["elements"][0]["html"]
     # Math spans reach the client verbatim (markdown2 must not parse the
     # *...* as emphasis), HTML-escaped:
@@ -149,7 +147,7 @@ def test_report_fill_height():
     report = Report(fill_height=True)
     report.markdown("hello")
     assert report.fill_height is True
-    view_type, data = report.webdata(ExportTable())
+    view_type, data = report.webdata_static()
     assert view_type == "report"
     assert data["fill_height"] is True
 
@@ -157,5 +155,5 @@ def test_report_fill_height():
 def test_report_fill_height_default():
     report = Report()
     assert report.fill_height is False
-    _, data = report.webdata(ExportTable())
+    _, data = report.webdata_static()
     assert data["fill_height"] is False

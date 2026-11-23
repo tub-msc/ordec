@@ -220,7 +220,7 @@ def test_drc_subcell_item_select(web):
     """Selecting a DRC item opens the layout view of the violation's cell
     and highlights it only there: the subcell item in the subcell's view
     (cell-local coordinates), the top item in the top layout view. The
-    viewers are renamed to the names of the view list."""
+    viewers are named by the names of the view list."""
     qs_local = web.key.query_string_local(
         "tests.lib.drc_example_hier", ["Top().drc_report"])
     web.navigate(f'app.html#refreshall=true&{qs_local}')
@@ -512,7 +512,7 @@ def test_lvs_subcircuit_item_select(web):
         return true;
     """)
     assert clicked, "Should find and click an item row of the A_Default pair"
-    # The pair's viewers are renamed to the names of the view list.
+    # The pair's viewers are named by the names of the view list.
     web.wait_until("""
         const rvs = window.ordecApp.client.resultViewers;
         const schem = rvs.find(rv => rv.viewSelected === 'A_Default().schematic');

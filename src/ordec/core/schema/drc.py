@@ -32,9 +32,9 @@ class DrcReport(SubgraphRoot):
             counts[name] = counts.get(name, 0) + 1
         return counts
 
-    def webdata_static(self):
+    def webdata(self, view_names):
         from ...layout.drc import webdata
-        return webdata(self)
+        return webdata(self, view_names)
 
 
 @public

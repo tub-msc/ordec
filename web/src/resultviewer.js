@@ -129,9 +129,8 @@ export class ResultViewer {
         this.viewUpToDate = false;
         this.viewSelected = null;
         // Id of the getview request currently in flight for this viewer, or
-        // null before the first one was dispatched, and the view it is for.
+        // null before the first one was dispatched.
         this.currentReq = null;
-        this.requestedView = null;
         this.refreshRequestedByUser = false;
         this.directView = state && state.directView;
         // Course mode: the special "Course" panel (see course.js). It shows a
@@ -246,7 +245,7 @@ export class ResultViewer {
     }
 
     updateProgress(msg) {
-        if (this.requestedView !== this.viewSelected) {
+        if (msg.view !== this.viewSelected) {
             // Progress of a request dispatched for a previously selected
             // view (see updateView); it must not overwrite the overlay of
             // the current selection.
@@ -301,11 +300,9 @@ export class ResultViewer {
     }
 
     // Called by the client when it dispatches a getview request for this
-    // viewer, after requestsView() said one is wanted, or hands one over to
-    // it (see openView in client.js).
+    // viewer, after requestsView() said one is wanted.
     beginRequest(req) {
         this.currentReq = req;
-        this.requestedView = this.viewSelected;
     }
 
     viewInfo() {
@@ -660,7 +657,7 @@ export class ResultViewer {
     }
 
     updateView(msg) {
-        if (this.requestedView !== this.viewSelected) {
+        if (msg.view !== this.viewSelected) {
             // Terminal of a request dispatched for a view that is no longer
             // selected in this viewer: its content and cancelled state both
             // describe the old selection. Drop it; the client's

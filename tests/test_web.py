@@ -1166,7 +1166,7 @@ def test_schematic_viewer(web, tmp_path, monkeypatch):
 @pytest.mark.web
 def test_schematic_descend(web):
     """The context menu of an instance opens the schematic of its cell in a
-    new viewer on top of the old one, renamed to the name of the view list
+    new viewer on top of the old one, named by the name of the view list
     where there is one, from where the next level opens the same way.
     Another instance of the same cell focuses that viewer instead."""
     qs_local = web.key.query_string_local("tests.lib.ord.d_ff_soc", ["D_flip_flop().schematic"])
@@ -1187,7 +1187,7 @@ def test_schematic_descend(web):
 
     top = 'D_flip_flop().schematic'
     descend(top, 'm1')
-    # The viewer of m1 is renamed to the name of the view list. The Inv() in
+    # The viewer of m1 is named by the name of the view list. The Inv() in
     # Mux2 is not reachable from the module, so its viewer keeps its name.
     mux = 'Mux2().schematic'
     inv = descend(mux, 'i1')

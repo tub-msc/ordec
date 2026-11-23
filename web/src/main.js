@@ -622,35 +622,30 @@ function openViewsBesideSource(sourceContainer, componentConfigs) {
     }
 }
 
-// Opens viewers for data.views, view expressions from other views (descend,
-// LVS, DRC). The viewers are named by the views' names in the view list (see
-// openView in client.js), with which data.onNames(names) is called first,
-// e.g. to target a highlight at them. A viewer showing a name is focused;
-// otherwise a new one takes over the request: beside the source viewer
+// Opens viewers for data.views, views that other views link to (descend, LVS,
+// DRC): their names in the view list, or view expressions where the view
+// list does not offer them. A viewer of the view is focused, and loaded if
+// it is not; otherwise a new one is opened: beside the source viewer
 // (several in a column), or with data.stacked as the tab after it.
-async function openViews(data) {
-    const openings = data.views.map(view => app.client.openView(view));
-    if (openings.includes(null)) {
-        return; // Not connected.
-    }
-    const opened = await Promise.all(openings);
-    data.onNames?.(opened.map(o => o.name));
-
+function openViews(data) {
     const configs = [];
-    const toAttach = [];
-    opened.forEach(o => {
-        const existing = findResultViewerByView(o.name);
+    data.views.forEach(view => {
+        const existing = findResultViewerByView(view);
         if (existing) {
             existing.focus();
-            o.attach(null);
+            const rv = existing.component;
+            if (!rv.viewUpToDate && !rv.requestsView()) {
+                // Neither shown nor on its way (generation cancelled, or a
+                // view that is not refreshed automatically).
+                rv.refreshOnClick();
+            }
         } else {
             configs.push({
                 type: 'component',
                 componentName: 'result',
-                componentState: { view: o.name, directView: true },
-                title: o.name,
+                componentState: { view, directView: true },
+                title: view,
             });
-            toAttach.push(o);
         }
     });
 
@@ -663,7 +658,6 @@ async function openViews(data) {
     } else {
         openViewsBesideSource(data.sourceContainer, configs);
     }
-    toAttach.forEach(o => o.attach(findResultViewerByView(o.name)?.component ?? null));
 }
 
 app.eventBus.on('view:request-open', openViews);

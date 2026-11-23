@@ -450,11 +450,12 @@ export class SvgView extends View {
             });
 
         // Descend: the context menu of an instance (class schemInstance, set
-        // in render.py) offers to open the schematic of its cell. Like the
-        // LVS viewer, the view expression addresses the instance by nid; the
-        // viewer is named by the schematic's name in the view list, and a
-        // viewer of that name is focused instead (e.g. reached from another
-        // instance of the same cell; see openViews in main.js). Unlike the
+        // in render.py) offers to open the schematic of its cell: by its
+        // name in the view list (descend_view of the view data), so that a
+        // viewer of it is focused instead (e.g. reached from another
+        // instance of the same cell; see openViews in main.js). Where the
+        // view list does not offer the schematic, a view expression
+        // addresses the instance by nid, like in the LVS viewer. Unlike the
         // LVS viewer, the new viewer opens as a tab on top of this one
         // (stacked). Where the cell has no schematic, it shows the error. The
         // right click pins the instance, without click-to-source, to show
@@ -472,7 +473,8 @@ export class SvgView extends View {
                             return;
                         }
                         this.eventBus.emit('view:request-open', {
-                            views: [`${this.viewName}.subgraph.cursor_at(${group.dataset.nid}).symbol.cell.schematic`],
+                            views: [msgData.descend_view?.[group.dataset.nid]
+                                ?? `${this.viewName}.subgraph.cursor_at(${group.dataset.nid}).symbol.cell.schematic`],
                             stacked: true,
                             sourceContainer: this.panelContainer,
                         });
