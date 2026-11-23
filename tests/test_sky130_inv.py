@@ -8,6 +8,8 @@ Tests basic DRC + LVS in SKY130.
 from ordec.core.schema import LvsItem, LvsItemType
 import pytest
 
+import ordec.importer
+
 from ordec.core import *
 from ordec.layout import SRouter
 from ordec.lib import sky130
@@ -43,11 +45,8 @@ def test_drc_violation():
     assert res.summary() == {'m1.1': 2}
 
 def test_mos_two_finger():
-    # The deck's global substrate net must carry the name of the net tying
-    # the substrate tap, here the bulk pin b.
-    cell = Mos2f()
-    assert sky130.run_drc(cell.layout, use_tempdir=True).summary() == {}
-    assert sky130.run_lvs(cell.layout, cell.symbol, substrate_net='b').clean()
+    assert Mos2f().drc.summary() == {}
+    assert Mos2f().lvs.clean()
 
 
 def test_route_stack():

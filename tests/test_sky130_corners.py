@@ -71,6 +71,6 @@ def test_read_spice_device_map(tmp_path):
     assert (res.w, res.l, res.m) == (R("1u"), R("2u"), 2)
     # Cards that size the device other than the cell does, or not at all.
     assert cells[sky130.RhighPo0p35].w == R("0.35u")
-    assert (cells[sky130.VarCapLvt].w, cells[sky130.VarCapLvt].nf) == (R("2u"), 2)
+    assert (cells[sky130.CapVarLvt].w, cells[sky130.CapVarLvt].nf) == (R("2u"), 2)
     assert cells[sky130.Nmos20v0Iso].w == R("60u")
     assert (cells[sky130.Npn].device, cells[sky130.Npn].m) == ("npn_05v5_W1p00L1p00", 2)

@@ -88,9 +88,9 @@ CASES = [
         "w 6.0 l 5.0 ny 2 bconnect 0 tconnect 0"),
     (sky130.Cmim2(l="2u", w="2u"), "cap_mim_m3_2", "w 2.0 l 2.0"),
     (sky130.Cmim2(l="10u", w="8u", nx=2, ny=2), "cap_mim_m3_2", "w 8.0 l 10.0 nx 2 ny 2"),
-    (sky130.VarCapLvt(w="1u", l="180n"), "cap_var_lvt", "w 1.0 l 0.18"),
-    (sky130.VarCapHvt(w="2u", l="500n", nf=2), "cap_var_hvt", "w 1.0 l 0.5 nf 2"),
-    (sky130.VarCap5v(w="1u", l="500n"), "cap_var", "w 1.0 l 0.5"),
+    (sky130.CapVarLvt(w="1u", l="180n"), "cap_var_lvt", "w 1.0 l 0.18"),
+    (sky130.CapVarHvt(w="2u", l="500n", nf=2), "cap_var_hvt", "w 1.0 l 0.5 nf 2"),
+    (sky130.CapVarHv(w="1u", l="500n"), "cap_var", "w 1.0 l 0.5"),
     (sky130.SonosFet(w="1u", l="150n"), "special_sonosfet_star", "w 1.0 l 0.15"),
     (sky130.Photodiode(), "photodiode", "nx 1 ny 1"),
     (sky130.Photodiode(nx=2, glc=False), "photodiode", "nx 2 glc 0"),
@@ -100,13 +100,13 @@ CASES = [
     (sky130.Via(via="via3", w="0.4u", h="0.8u"), "via3_draw", "0.4 0.8"),
     (sky130.Via(via="via4", w="1.2u", h="2.4u"), "via4_draw", "1.2 2.4"),
     (sky130.Subconn(w="0.17u", h="0.51u"), "subconn_draw", "0.17 0.51"),
-    (sky130.MvSubconn(w="1u", h="0.17u"), "mvsubconn_draw", "1.0 0.17"),
+    (sky130.HvSubconn(w="1u", h="0.17u"), "mvsubconn_draw", "1.0 0.17"),
     (sky130.NwellRing(w="5u", h="6u"), "nwell_draw", "5.0 6.0"),
     (sky130.DeepNwell(w="4u", h="4u"), "deep_nwell_draw", "4.0 4.0"),
     # Half-grid rounding of a negative offset
     (sky130.PmosHv(w="2u", l="500n", topc=False), "pfet_g5v0d10v5", "w 2.0 l 0.5 topc 0"),
     # poverlap keeps full poly coverage on devices that cannot overlap
-    (sky130.VarCapLvt(w="2u", l="500n", nf=2, m=2, poverlap=True, polycov=60), "cap_var_lvt",
+    (sky130.CapVarLvt(w="2u", l="500n", nf=2, m=2, poverlap=True, polycov=60), "cap_var_lvt",
         "w 1.0 l 0.5 nf 2 m 2 poverlap 1 polycov 60"),
     # Slots along the long side of merged contacts
     (sky130.RhighPo2p85(l="1.5u", w="2.85u", m=2, roverlap=True), "res_high_po_2p85", "w 2.85 l 1.5 m 2 roverlap 1"),
@@ -128,7 +128,7 @@ PIN_PURPOSE = 16  # Pin shapes are not compared: the generators draw none.
 
 def generator_variant(cell):
     """The cell without the deviations from the generators that can be switched off."""
-    if isinstance(cell, sky130.VarCap):
+    if isinstance(cell, sky130.Varactor):
         return type(cell)(**cell.params | {"gate_min_area": False, "well_enclosure": False})
     if isinstance(cell, sky130.SonosFet):
         return type(cell)(**cell.params | {"gate_min_area": False, "contact_spacing": False})
@@ -170,10 +170,10 @@ def test_pcell_geometry(tmp_path):
 # Symbol pins without a LayoutPin: the common substrate, and a well or
 # substrate terminal only drawn by the guard ring.
 def shapeless_pins(cell) -> set:
-    ring = isinstance(cell, sky130.GuardRing) and cell.guard and cell.full_metal
+    ring = isinstance(cell, sky130.GuardedDevice) and cell.guard and cell.full_metal
     if isinstance(cell, sky130.Mos):
         return set() if ring or (cell.pin_b == "b" and cell.rules.dev_sub_type == "nwell") else {cell.pin_b}
-    if isinstance(cell, (sky130.Rnd, sky130.ResPo)):
+    if isinstance(cell, (sky130.Rnd, sky130.ResPrecision)):
         return {"sub"}
     if isinstance(cell, sky130.Res) and cell.bulk and not ring:
         return {cell.bulk}

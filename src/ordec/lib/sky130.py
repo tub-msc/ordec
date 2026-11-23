@@ -630,8 +630,6 @@ class Paint:
         shapes(layers.npc, rects_close(npc, 265))
         shapes(layers.npc, rects_close([rect_grow(r, 95) for r in self.of("xpc") + polyres], 265))
 
-M1_MIN_AREA = 83000  # m1.6, in nm²
-
 class GuardRules:
     def guard_sides(self, cell: Cell) -> tuple:
         return cell.glc, cell.grc, cell.gtc, cell.gbc
@@ -672,6 +670,7 @@ class MosRules(GuardRules):
     sub_surround_dev: int = None
     id_type: str = ""
     id_surround: int = 0
+    poly_sub_surround: int = 0
 
 def box(x: int, y: int, e: int, w: int, n: int, s: int) -> tuple:
     """Box at (x, y) grown by the given amounts, as magic's box grow."""
@@ -761,6 +760,8 @@ def guard_ring(p: Paint, cell: Cell, r, gw: int, gh: int, x: int = 0, y: int = 0
     if r.sub_type not in ("psub", "space"):
         p.paint(r.sub_type, rect_grow((x - hw, y - hh, x + hw, y + hh), hx + ds + r.sub_surround))
     return ring
+
+M1_MIN_AREA = 83000  # m1.6, in nm²
 
 def mos_device(p: Paint, cell: Cell, r: MosRules, x: int, y: int, w: int, l: int,
     evens: bool, topc: bool, botc: bool) -> dict:
@@ -858,9 +859,8 @@ def mos_device(p: Paint, cell: Cell, r: MosRules, x: int, y: int, w: int, l: int
         ext.append(p.paint(r.dev_sub_type, rect_grow(gaterect, r.sub_surround_dev)))
     if r.dev_sub_type != "":
         sub = rect_grow(diffarea, r.sub_surround)
-        if isinstance(cell, VarCap) and cell.well_enclosure:
-            # varac.5: the well encloses the gate poly, with its contact pads, by 0.15 um.
-            sub = bbox_of([sub, rect_grow(bbox_of(polys), 150)])
+        if r.poly_sub_surround > 0:
+            sub = bbox_of([sub, rect_grow(bbox_of(polys), r.poly_sub_surround)])
         sub = p.paint(r.dev_sub_type, sub)
         if r.dev_sub_dist > 0:
             ext.append(sub)
@@ -983,7 +983,7 @@ def layoutgen_mos(cell: Cell, r: MosRules) -> Layout:
         l.nwell.create_pin(cell.symbol.b)
     return l
 
-class GuardRing(SimLeafCell):
+class GuardedDevice(SimLeafCell):
     """Guard ring options of magic's generators (sky130::guard_ring), with their defaults."""
     guard = Parameter(bool, default=True) #: Guard ring
     glc = Parameter(bool, default=True) #: Guard ring contacts on the left
@@ -999,7 +999,7 @@ class GuardRing(SimLeafCell):
     viagr = Parameter(str, default="0")
     viagl = Parameter(str, default="0")
 
-class Mos(GuardRing):
+class Mos(GuardedDevice):
     """
     The usual parameters are l, w, nf and m, mirroring the SG13G2 devices.
     The remaining parameters are simulation-only overrides for the BSIM4
@@ -1045,13 +1045,10 @@ class Mos(GuardRing):
 
     @classmethod
     def params_check(cls, params):
-        l, w, nf, m = params['l'], params['w'], params['nf'], params['m']
+        check_counts(params, "nf", "m")
+        l, w, nf = params['l'], params['w'], params['nf']
         if l is None or w is None:
             return
-        if nf < 1:
-            raise ParameterError("nf must be at least 1.")
-        if m < 1:
-            raise ParameterError("m must be at least 1.")
         if l < cls.min_l:
             raise ParameterError(f"l = {l} below the poly.1a minimum of {cls.min_l}.")
         if w/nf < cls.min_w:
@@ -1180,7 +1177,6 @@ class NmosLvt(Nmos):
     """1.8 V low-threshold NMOS."""
     model_name = "sky130_fd_pr__nfet_01v8_lvt"
     rules = MosRules(**NFET | dict(gate_type="nfetlvt"))
-    min_l = R("150n")
 
 @public
 class NmosHv(Nmos):
@@ -1236,13 +1232,9 @@ class PmosHv(Pmos):
 
 class SimOnlyMos(Mos):
     """A MOS device of the ngspice models without a generator in the PDK, so without layout."""
-    rules = None
+    min_w = R("0.14u")
+    subckt_pins = ("d", "g", "s", "b")
     subckt_params = ("w", "l", "nf")
-
-    def ngspice_save_params(self):
-        return self.save_params
-
-    save_params = ["gm", "gds", "vth", "vdsat", "id", "vgs", "vds"]
 
     @viewgen_noctx
     def layout(self) -> Layout:
@@ -1266,45 +1258,53 @@ class SimOnlyMos(Mos):
             self.model_name,
             *spice_params({k: params[k] for k in self.subckt_params} | {'m': self.m}))
 
-    subckt_pins = ("d", "g", "s", "b")
+class MultiDeviceMos(SimOnlyMos):
+    """A model of several devices (16 V and 20 V), without a single one to read parameters from."""
+    def ngspice_save_params(self):
+        return []
 
-def sim_only(name: str, model: str, doc: str, base, min_l: str, params=("w", "l", "nf"), save_params=None):
-    cls = type(name, (SimOnlyMos, base), dict(__doc__=doc, model_name=f"sky130_fd_pr__{model}",
-        min_l=R(min_l), min_w=R("0.14u"), subckt_params=params, __module__=__name__,
-        save_params=SimOnlyMos.save_params if save_params is None else save_params))
-    public(**{name: cls})
-    return cls
+@public
+class NmosG5v0d16v0(MultiDeviceMos, Nmos):
+    """16 V NMOS."""
+    model_name = "sky130_fd_pr__nfet_g5v0d16v0"
+    min_l = R("0.7u")
 
-# The 16 V and 20 V models are several devices, without a single one to read
-# parameters from.
-M20 = ("w", "l")
-for name, model, doc, device, min_l, params in (
-        ("NmosG5v0d16v0", "nfet_g5v0d16v0", "16 V NMOS.", Nmos, "0.7u", ("w", "l", "nf")),
-        ("PmosG5v0d16v0", "pfet_g5v0d16v0", "16 V PMOS.", Pmos, "0.66u", ("w", "l", "nf")),
-        ("Nmos20v0", "nfet_20v0", "20 V NMOS.", Nmos, "0.15u", M20),
-        ("Pmos20v0", "pfet_20v0", "20 V PMOS.", Pmos, "0.15u", M20),
-        ("Nmos20v0Nvt", "nfet_20v0_nvt", "20 V native NMOS.", Nmos, "0.15u", M20),
-        ("Nmos20v0Zvt", "nfet_20v0_zvt", "20 V zero-threshold NMOS.", Nmos, "0.15u", M20),
-        ("EsdNmos01v8", "esd_nfet_01v8", "1.8 V ESD NMOS.", Nmos, "0.15u", ("w", "l", "nf")),
-        ("EsdNmosHv", "esd_nfet_g5v0d10v5", "5 V ESD NMOS.", Nmos, "0.5u", ("w", "l", "nf")),
-        ("EsdPmosHv", "esd_pfet_g5v0d10v5", "5 V ESD PMOS.", Pmos, "0.5u", ("w", "l", "nf")),
-        ("NmosLatch", "special_nfet_latch", "SRAM latch NMOS.", Nmos, "0.15u", ("w", "l")),
-        ("NmosPass", "special_nfet_pass", "SRAM pass NMOS.", Nmos, "0.15u", ("w", "l")),
-        ("NmosPassFlash", "special_nfet_pass_flash", "Flash pass NMOS.", Nmos, "0.15u", ("w", "l")),
-        ("NmosPassLvt", "special_nfet_pass_lvt", "Low-threshold SRAM pass NMOS.", Nmos, "0.15u", ("w", "l")),
-        ("PmosPass", "special_pfet_pass", "SRAM pull-up PMOS.", Pmos, "0.15u", ("w", "l")),
-        ("PmosMvt", "pfet_01v8_mvt", "1.8 V medium-threshold PMOS.", Pmos, "0.15u", ("w", "l", "nf"))):
-    sim_only(name, model, doc, device, min_l, params, [] if "_20v0" in model or "d16v0" in model else None)
+@public
+class PmosG5v0d16v0(MultiDeviceMos, Pmos):
+    """16 V PMOS."""
+    model_name = "sky130_fd_pr__pfet_g5v0d16v0"
+    min_l = R("0.66u")
 
-class Nmos20v0IsoBase(SimOnlyMos, Nmos):
-    """
-    Shared base class of the isolated 20 V NMOS devices, with the substrate
-    below their deep N-well on ``sub``.
-    """
-    min_l, min_w = R("0.15u"), R("0.14u")
-    subckt_params = M20
+@public
+class Nmos20v0(MultiDeviceMos, Nmos):
+    """20 V NMOS."""
+    model_name = "sky130_fd_pr__nfet_20v0"
+    subckt_params = ("w", "l")
+
+@public
+class Pmos20v0(MultiDeviceMos, Pmos):
+    """20 V PMOS."""
+    model_name = "sky130_fd_pr__pfet_20v0"
+    subckt_params = ("w", "l")
+
+@public
+class Nmos20v0Nvt(MultiDeviceMos, Nmos):
+    """20 V native NMOS."""
+    model_name = "sky130_fd_pr__nfet_20v0_nvt"
+    subckt_params = ("w", "l")
+
+@public
+class Nmos20v0Zvt(MultiDeviceMos, Nmos):
+    """20 V zero-threshold NMOS."""
+    model_name = "sky130_fd_pr__nfet_20v0_zvt"
+    subckt_params = ("w", "l")
+
+@public
+class Nmos20v0Iso(MultiDeviceMos, Nmos):
+    """Isolated 20 V NMOS, with the substrate below its deep N-well on ``sub``."""
+    model_name = "sky130_fd_pr__nfet_20v0_iso"
+    subckt_params = ("w", "l")
     subckt_pins = ("d", "g", "s", "b", "sub")
-    save_params = []
 
     @viewgen_noctx
     def symbol(self) -> Symbol:
@@ -1313,16 +1313,63 @@ class Nmos20v0IsoBase(SimOnlyMos, Nmos):
         return s
 
 @public
-class Nmos20v0Iso(Nmos20v0IsoBase):
-    """Isolated 20 V NMOS."""
-    model_name = "sky130_fd_pr__nfet_20v0_iso"
-
-@public
-class Nmos20v0ReverseIso(Nmos20v0IsoBase):
+class Nmos20v0ReverseIso(Nmos20v0Iso):
     """Isolated 20 V NMOS, reverse (nfet_20v0_reverse_iso)."""
     model_name = "sky130_fd_pr__nfet_20v0_reverse_iso"
 
-class VarCap(Mos):
+@public
+class EsdNmos(SimOnlyMos, Nmos):
+    """1.8 V ESD NMOS."""
+    model_name = "sky130_fd_pr__esd_nfet_01v8"
+
+@public
+class EsdNmosHv(SimOnlyMos, Nmos):
+    """5 V ESD NMOS."""
+    model_name = "sky130_fd_pr__esd_nfet_g5v0d10v5"
+    min_l = R("0.5u")
+
+@public
+class EsdPmosHv(SimOnlyMos, Pmos):
+    """5 V ESD PMOS."""
+    model_name = "sky130_fd_pr__esd_pfet_g5v0d10v5"
+    min_l = R("0.5u")
+
+@public
+class NmosLatch(SimOnlyMos, Nmos):
+    """SRAM latch NMOS."""
+    model_name = "sky130_fd_pr__special_nfet_latch"
+    subckt_params = ("w", "l")
+
+@public
+class NmosPass(SimOnlyMos, Nmos):
+    """SRAM pass NMOS."""
+    model_name = "sky130_fd_pr__special_nfet_pass"
+    subckt_params = ("w", "l")
+
+@public
+class NmosPassFlash(SimOnlyMos, Nmos):
+    """Flash pass NMOS."""
+    model_name = "sky130_fd_pr__special_nfet_pass_flash"
+    subckt_params = ("w", "l")
+
+@public
+class NmosPassLvt(SimOnlyMos, Nmos):
+    """Low-threshold SRAM pass NMOS."""
+    model_name = "sky130_fd_pr__special_nfet_pass_lvt"
+    subckt_params = ("w", "l")
+
+@public
+class PmosPass(SimOnlyMos, Pmos):
+    """SRAM pull-up PMOS."""
+    model_name = "sky130_fd_pr__special_pfet_pass"
+    subckt_params = ("w", "l")
+
+@public
+class PmosMvt(SimOnlyMos, Pmos):
+    """1.8 V medium-threshold PMOS."""
+    model_name = "sky130_fd_pr__pfet_01v8_mvt"
+
+class Varactor(Mos):
     """
     Shared base class of the MOS varactors between the gate ``g`` and the N-well
     ``nw``, ``sub`` on the substrate. Their layout uses the MOS generator.
@@ -1369,6 +1416,11 @@ class VarCap(Mos):
             self.model_name,
             *spice_params({"w": self.w / self.nf * R("1e6"), "l": self.l * R("1e6"), "vm": self.nf * self.m}))
 
+    @viewgen_noctx
+    def layout(self) -> Layout:
+        # varac.5: the well encloses the gate poly, with its contact pads, by 0.15 um.
+        return layoutgen_mos(self, replace(self.rules, poly_sub_surround=150) if self.well_enclosure else self.rules)
+
     @classmethod
     def discoverable_instances(cls):
         return [cls(w=cls.min_w, l=cls.min_l)] if hasattr(cls, "model_name") else []
@@ -1377,40 +1429,38 @@ VAR = dict(diff_overlap_cont=60, gate_to_diffcont=340, diff_extension=485, plus_
     plus_contact_type="psc", dev_sub_type="nwell")
 
 @public
-class VarCapLvt(VarCap):
+class CapVarLvt(Varactor):
     """1.8 V MOS varactor (cap_var_lvt)."""
     model_name = "sky130_fd_pr__cap_var_lvt"
     rules = MosRules(gate_type="var", diff_type="nnd", diff_contact_type="nsc", dev_sub_dist=140, dev_sub_space=1270, **VAR)
     min_l = R("0.18u")
 
 @public
-class VarCapHvt(VarCap):
+class CapVarHvt(Varactor):
     """1.8 V high-threshold MOS varactor (cap_var_hvt)."""
     model_name = "sky130_fd_pr__cap_var_hvt"
     rules = MosRules(gate_type="varhvt", diff_type="nnd", diff_contact_type="nsc", dev_sub_dist=140, dev_sub_space=1270, **VAR)
     min_l = R("0.18u")
 
 @public
-class VarCap5v(VarCap):
+class CapVarHv(Varactor):
     """5 V MOS varactor (cap_var)."""
     model_name = "sky130_fd_pr__cap_var"
+    rules = MosRules(**VAR | dict(gate_type="mvvar", diff_type="mvnsd", diff_contact_type="mvnsc",
+        plus_diff_type="mvpsd", plus_contact_type="mvpsc", sub_surround=380, sub_surround_dev=560,
+        guard_sub_surround=180, dev_sub_dist=785, dev_sub_space=2000))
+    min_l = R("0.5u")
+
     def ngspice_netlist(self, netlister, inst):
         if not netlister.lvs:
             raise ParameterError("sky130.lib.spice has no model of cap_var.")
         super().ngspice_netlist(netlister, inst)
-
-    rules = MosRules(gate_type="mvvar", diff_type="mvnsd", diff_contact_type="mvnsc", sub_surround=380,
-        sub_surround_dev=560, guard_sub_surround=180, dev_sub_dist=785, dev_sub_space=2000,
-        diff_overlap_cont=60, gate_to_diffcont=340, diff_extension=485, plus_diff_type="mvpsd",
-        plus_contact_type="mvpsc", dev_sub_type="nwell")
-    min_l = R("0.5u")
 
 @public
 class SonosFet(Nmos):
     """SONOS flash FET (special_sonosfet_star) in a DNWell, magic's generator only draws it."""
     model_name = "sky130_fd_bs_flash__special_sonosfet_star"
     rules = MosRules(**NFET | dict(gate_type="nsonos", id_type="dnwell", id_surround=1355))
-    min_l = R("0.15u")
     #: Space the diffusion contacts to the 0.075 µm of licon.11 from the SONOS gate, unlike the generator
     contact_spacing = Parameter(bool, default=True)
 
@@ -1422,31 +1472,6 @@ class SonosFet(Nmos):
         if not netlister.lvs:
             raise ParameterError("sky130.lib.spice has no SONOS model.")
         super().ngspice_netlist(netlister, inst)
-
-def met1_min_area_rect(mcon_rect: Rect4I, grow_axis: str) -> tuple:
-    """
-    met1 rect over an mcon array with m1.4/m1.5 enclosures, stretched along
-    grow_axis (on the manufacturing grid) if needed to reach the m1.6
-    minimum area.
-    """
-    mg = 5  # manufacturing grid
-    encl, encl_end = 30, 60  # m1.4, m1.5
-    if grow_axis == 'y':
-        fix_lo = mcon_rect.lx - encl
-        fix_hi = mcon_rect.ux + encl
-        grow_lo, grow_hi = mcon_rect.ly, mcon_rect.uy
-    else:
-        fix_lo = mcon_rect.ly - encl
-        fix_hi = mcon_rect.uy + encl
-        grow_lo, grow_hi = mcon_rect.lx, mcon_rect.ux
-    span = grow_hi - grow_lo + 2*encl_end
-    min_span = -(-M1_MIN_AREA // (fix_hi - fix_lo))
-    span = max(span, -(-min_span // mg) * mg)
-    grow = (span - (grow_hi - grow_lo)) // 2 // mg * mg
-    if grow_axis == 'y':
-        return (fix_lo, grow_lo - grow, fix_hi, grow_lo - grow + span)
-    else:
-        return (grow_lo - grow, fix_lo, grow_lo - grow + span, fix_hi)
 
 def layoutgen_tap(cell: Cell, length: R, width: R, nwell: bool):
     layers = SKY130().layers
@@ -1494,7 +1519,11 @@ def layoutgen_tap(cell: Cell, length: R, width: R, nwell: bool):
         spacing=Vec2I(190, 190),
         margin=Vec2I(0, 0),
         )
-    l.m1.rect = met1_min_area_rect(mcon_rect, grow_axis='y')
+    # met1 over the mcon array with the m1.4/m1.5 enclosures, stretched in y
+    # on the 5 nm grid to the m1.6 minimum area:
+    height = max(mcon_rect.height + 2*60, 5 * -(-M1_MIN_AREA // (mcon_rect.width + 2*30) // 5))
+    grow = (height - mcon_rect.height) // 2 // 5 * 5
+    l.m1.rect = (mcon_rect.lx - 30, mcon_rect.ly - grow, mcon_rect.ux + 30, mcon_rect.ly - grow + height)
 
     return l
 
@@ -1565,7 +1594,6 @@ class ResRules(GuardRules):
     #: The guard ring is the bulk terminal (a well), not the common substrate.
     bulk_on_guard: bool = False
 
-LAYER_LI1, LAYER_MET1 = "li1", "met1"
 METAL_OF = {"li": "li1", "m1": "met1", "m2": "met2", "m3": "met3", "m4": "met4", "m5": "met5"}
 
 def res_end(p: Paint, cell: Cell, r: ResRules, x: int, y: int, epl: int, cpl: int, size: int, hesz: int, hepl: int,
@@ -1574,15 +1602,15 @@ def res_end(p: Paint, cell: Cell, r: ResRules, x: int, y: int, epl: int, cpl: in
     via_side draws mcons reaching towards the body, which lies in that direction."""
     ext = [p.paint(r.end_type, box(x, y, hepl, hepl, hesz, hesz))]
     # A metal resistor's end is its own metal.
-    term = (METAL_OF.get(r.end_type), ext[0]) if r.end_type in METAL_OF else None
+    term = (METAL_OF[r.end_type], ext[0]) if r.end_type in METAL_OF else None
     if r.end_contact_type:
         half_w, half_h = rnd(max(cpl, size) / 2) + r.metal_surround, rnd(size / 2)
-        term = (LAYER_LI1, (x - half_w, y - half_h, x + half_w, y + half_h))
+        term = ("li1", (x - half_w, y - half_h, x + half_w, y + half_h))
         if via_side != 0 and cell.vias:
             ch = max(r.res_to_endcont, r.via_size)
             half_w, half_via = rnd(max(epl, r.via_size) / 2), rnd(r.via_size / 2)
             far, near = half_via, rnd(ch - r.via_size / 2)
-            term = (LAYER_MET1, mcon_draw(p, box(x, y, half_w, half_w, near if via_side > 0 else far,
+            term = ("met1", mcon_draw(p, box(x, y, half_w, half_w, near if via_side > 0 else far,
                 far if via_side > 0 else near), False))
         ext.append(draw_contact(p, x, y, cpl, 0, r.end_surround, r.metal_surround, size,
             r.end_type, r.end_contact_type, False))
@@ -1723,7 +1751,7 @@ def layoutgen_res(cell: Cell, r: ResRules) -> Layout:
     return l
 
 
-class Res(GuardRing):
+class Res(GuardedDevice):
     """
     Shared base class of the resistors. The layout options are the ones of
     magic's generator (sky130::res_draw), with its defaults: nx and m repeat
@@ -1741,6 +1769,7 @@ class Res(GuardRing):
 
     bulk = None  # third model pin, if any
     lvs_model = None  # name in the LVS deck, if it differs from the model's
+    spice_prefix = "R"
 
     @classmethod
     def params_check(cls, params):
@@ -1818,8 +1847,6 @@ class Res(GuardRing):
     def parallel(self) -> int:
         return self.m * (1 if self.snake else self.nx)
 
-    spice_prefix = "R"
-
     @viewgen_noctx
     def layout(self) -> Layout:
         return layoutgen_res(self, self.rules)
@@ -1845,17 +1872,8 @@ def resistor_zigzag() -> list[Vec2R]:
         Vec2R(2, 4),
     ]
 
-def res_po_rules(res_type: str, rho: float, term: float, mask_clearance: int, end_spacing=480,
-    res_diff_spacing=480) -> ResRules:
-    """Precision poly resistors: one contact slot in the xpc end, no well."""
-    return ResRules(res_type=res_type, end_type="xpc", end_contact_type="xpc", end_surround=80,
-        n_guard_end_spacing=525, n_guard_res_diff_spacing=785,
-        end_contact_size=190, end_spacing=end_spacing, end_to_end_space=520, res_to_endcont=1985,
-        res_spacing=480, res_diff_spacing=res_diff_spacing, mask_clearance=mask_clearance,
-        overlap_compress=360, rho=rho, term=term, lvs_extend=60)
-
-class PolyGuard(Res):
-    """The poly resistors' guard ring options of magic's generator."""
+class ResPoly(Res):
+    """Shared base class of the poly resistors, with the guard ring options of magic's generator for them."""
     hv_guard = Parameter(bool, default=False)  #: 5 V guard ring
     n_guard = Parameter(bool, default=False)  #: N+ guard ring in an N-well
 
@@ -1869,7 +1887,7 @@ class PolyGuard(Res):
                 changes.update(end_spacing=r.n_guard_end_spacing, res_diff_spacing=r.n_guard_res_diff_spacing)
         return replace(r, **changes)
 
-class ResPo(PolyGuard):
+class ResPrecision(ResPoly):
     """
     Shared base class of the precision poly resistors, whose width is fixed by
     the model. Their ends are slots in the xpc layer with the model's b as a
@@ -1893,8 +1911,13 @@ class ResPo(PolyGuard):
     def discoverable_instances(cls):
         return [cls(l=R("2u"), w=cls.width)] if hasattr(cls, "width") else []
 
+# Precision poly resistors: one contact slot in the xpc end, no well.
+PO_RES = dict(end_type="xpc", end_contact_type="xpc", end_surround=80, n_guard_end_spacing=525,
+    n_guard_res_diff_spacing=785, end_contact_size=190, end_spacing=480, end_to_end_space=520,
+    res_to_endcont=1985, res_spacing=480, res_diff_spacing=480, overlap_compress=360, lvs_extend=60)
+
 @public
-class Rpoly(PolyGuard):
+class Rpoly(ResPoly):
     """Salicided generic polysilicon resistor (res_generic_po, 48.2 ohm/sq)."""
     model_name = "sky130_fd_pr__res_generic_po"
     # res_spacing is the generator's 210 raised to poly.9, see the docs.
@@ -1904,18 +1927,18 @@ class Rpoly(PolyGuard):
     min_l, min_w = R("1.65u"), R("0.33u")
 
 @public
-class RhighPo0p69(ResPo):
+class RhighPo0p69(ResPrecision):
     """P+ poly resistor of width 0.69 um (res_high_po_0p69, 319.8 ohm/sq)."""
     model_name = "sky130_fd_pr__res_high_po_0p69"
     width = R("0.69u")
-    rules = res_po_rules("xhrpoly", 319.8, 194.82, 520)
+    rules = ResRules(res_type="xhrpoly", rho=319.8, term=194.82, mask_clearance=520, **PO_RES)
 
 @public
 class RhighPo0p35(RhighPo0p69):
     """P+ poly resistor of width 0.35 um (res_high_po_0p35, 319.8 ohm/sq)."""
     model_name = "sky130_fd_pr__res_high_po_0p35"
     width = R("0.35u")
-    rules = res_po_rules("xhrpoly", 319.8, 194.82, -2160)
+    rules = ResRules(res_type="xhrpoly", rho=319.8, term=194.82, mask_clearance=-2160, **PO_RES)
 
 @public
 class RhighPo1p41(RhighPo0p69):
@@ -1936,11 +1959,11 @@ class RhighPo5p73(RhighPo0p69):
     width = R("5.73u")
 
 @public
-class RxhighPo0p35(ResPo):
+class RxhighPo0p35(ResPrecision):
     """P- poly resistor of width 0.35 um (res_xhigh_po_0p35, 2000 ohm/sq)."""
     model_name = "sky130_fd_pr__res_xhigh_po_0p35"
     width = R("0.35u")
-    rules = res_po_rules("uhrpoly", 2000, 188.2, 520)
+    rules = ResRules(res_type="uhrpoly", rho=2000, term=188.2, mask_clearance=520, **PO_RES)
 
 @public
 class RxhighPo0p69(RxhighPo0p35):
@@ -2140,11 +2163,11 @@ def diode_device(p: Paint, cell: Cell, r: DiodeRules, x: int, y: int, w: int, l:
     p.paint(r.dev_type, (x - hw, y - hl, x + hw, y + hl))
 
     cw, cl = w - 2*r.dev_surround, l - 2*r.dev_surround
-    term = (LAYER_LI1, (x - rnd(max(cw, r.contact_size) / 2), y - rnd(max(cl, r.contact_size) / 2),
+    term = ("li1", (x - rnd(max(cw, r.contact_size) / 2), y - rnd(max(cl, r.contact_size) / 2),
         x + rnd(max(cw, r.contact_size) / 2), y + rnd(max(cl, r.contact_size) / 2)))
     if cell.vias:
         half_w, half_h = rnd(max(cw, r.via_size) / 2), rnd(max(cl, r.via_size) / 2)
-        term = (LAYER_MET1, mcon_draw(p, box(x, y, half_w, half_w, half_h, half_h), False))
+        term = ("met1", mcon_draw(p, box(x, y, half_w, half_w, half_h, half_h), False))
     draw_contact(p, x, y, cw, cl, r.dev_surround, r.metal_surround, r.contact_size, r.dev_type,
         r.dev_contact_type, w < l)
     return dict(bbox=ext, term=term, ring=ring)
@@ -2185,7 +2208,7 @@ def layoutgen_diode(cell: Cell, r: DiodeRules) -> Layout:
         (l % LayoutRect(layer=layers.li1, rect=Rect4I(*first["ring"][0]))).create_pin(cell.symbol[cell.ring])
     return l
 
-class Diode(GuardRing):
+class Diode(GuardedDevice):
     """
     Shared base class of the diodes from ``p`` to ``n``. The layout options are
     the ones of magic's generator (sky130::diode_draw), with its defaults: nx
@@ -2247,66 +2270,60 @@ class Diode(GuardRing):
     def discoverable_instances(cls):
         return [cls()] if hasattr(cls, "model_name") else []
 
-class DiodePw2ndBase(Diode):
-    """Diode from the p-substrate to an N+ region."""
-    contact, ring = "n", "p"
-    guard = Parameter(bool, default=False)
-
-class DiodePd2nwBase(Diode):
-    """Diode from a P+ region to the N-well around it, with a guard ring."""
-    contact, ring = "p", "n"
-
 @public
-class DiodePw2nd(DiodePw2ndBase):
+class DiodePw2nd(Diode):
     """N+ to p-substrate diode (diode_pw2nd_05v5)."""
     model_name = "sky130_fd_pr__diode_pw2nd_05v5"
+    contact, ring = "n", "p"
+    guard = Parameter(bool, default=False)
     rules = DiodeRules(dev_type="ndiode", dev_contact_type="ndic", end_type="psd", end_contact_type="psc",
         end_sub_type="psub", end_surround=0)
 
 @public
-class DiodePw2ndLvt(DiodePw2ndBase):
+class DiodePw2ndLvt(DiodePw2nd):
     """Low-threshold N+ to p-substrate diode (diode_pw2nd_05v5_lvt)."""
     model_name = "sky130_fd_pr__diode_pw2nd_05v5_lvt"
     rules = DiodeRules(dev_type="ndiodelvt", dev_contact_type="ndilvtc", end_type="ppd", end_contact_type="psc",
         end_sub_type="psub", end_surround=60)
 
 @public
-class DiodePw2ndNvt(DiodePw2ndBase):
+class DiodePw2ndNvt(DiodePw2nd):
     """Native N+ to p-substrate diode (diode_pw2nd_05v5_nvt)."""
     model_name = "sky130_fd_pr__diode_pw2nd_05v5_nvt"
     rules = DiodeRules(dev_type="nndiode", dev_contact_type="nndic", end_type="mvpsd", end_contact_type="mvpsc",
         end_sub_type="psub", end_surround=60, dev_spacing=370, end_spacing=300)
 
 @public
-class DiodePw2nd11v0(DiodePw2ndBase):
+class DiodePw2nd11v0(DiodePw2nd):
     """11 V N+ to p-substrate diode (diode_pw2nd_11v0)."""
     model_name = "sky130_fd_pr__diode_pw2nd_11v0"
     rules = DiodeRules(dev_type="mvndiode", dev_contact_type="mvndic", end_type="mvpsd", end_contact_type="mvpsc",
         end_sub_type="psub", end_surround=60, diff_spacing=370, dev_spacing=390, end_spacing=360)
 
 @public
-class DiodePd2nw(DiodePd2nwBase):
-    """P+ to N-well diode (diode_pd2nw_05v5)."""
+class DiodePd2nw(Diode):
+    """P+ to N-well diode (diode_pd2nw_05v5), with a guard ring."""
     model_name = "sky130_fd_pr__diode_pd2nw_05v5"
+    contact, ring = "p", "n"
     rules = DiodeRules(dev_type="pdiode", dev_contact_type="pdic", end_type="nsd", end_contact_type="nsc",
         end_sub_type="nwell", end_surround=0)
 
 @public
-class DiodePd2nwLvt(DiodePd2nwBase):
+class DiodePd2nwLvt(DiodePd2nw):
     """Low-threshold P+ to N-well diode (diode_pd2nw_05v5_lvt)."""
     model_name = "sky130_fd_pr__diode_pd2nw_05v5_lvt"
     rules = DiodeRules(dev_type="pdiodelvt", dev_contact_type="pdilvtc", end_type="nnd", end_contact_type="nsc",
         end_sub_type="nwell", end_surround=60)
 
 @public
-class DiodePd2nwHvt(DiodePd2nwBase):
+class DiodePd2nwHvt(DiodePd2nw):
     """High-threshold P+ to N-well diode (diode_pd2nw_05v5_hvt)."""
     model_name = "sky130_fd_pr__diode_pd2nw_05v5_hvt"
     rules = DiodeRules(dev_type="pdiodehvt", dev_contact_type="pdihvtc", end_type="nnd", end_contact_type="nsc",
         end_sub_type="nwell", end_surround=60)
 
 @public
-class DiodePd2nw11v0(DiodePd2nwBase):
+class DiodePd2nw11v0(DiodePd2nw):
     """11 V P+ to N-well diode (diode_pd2nw_11v0)."""
     model_name = "sky130_fd_pr__diode_pd2nw_11v0"
     rules = DiodeRules(dev_type="mvpdiode", dev_contact_type="mvpdic", end_type="mvnsd", end_contact_type="mvnsc",
@@ -2413,7 +2430,7 @@ def layoutgen_cap(cell: Cell, r: CapRules) -> Layout:
                     sx = (dev["end"][0] + dev["end"][2]) // 2 if cell.deck_spacing else x + cdx
                     p.paint(r.top_type, box(sx, y, hmw, hmw, hdy, hdy))
     p.draw(l)
-    metal = getattr(layers, {"m4": "met4", "m5": "met5"}[r.top_type])
+    metal = layers[METAL_OF[r.top_type]]
     (l % LayoutRect(layer=metal, rect=Rect4I(*first["top"]))).create_pin(cell.symbol.p)
     (l % LayoutRect(layer=metal, rect=Rect4I(*first["end"]))).create_pin(cell.symbol.n)
     return l
@@ -2577,7 +2594,7 @@ class Subconn(Cell):
         return [cls()]
 
 @public
-class MvSubconn(Subconn):
+class HvSubconn(Subconn):
     """5 V substrate contact without metal, as magic's command."""
     @viewgen_noctx
     def layout(self) -> Layout:
@@ -2668,7 +2685,7 @@ class PhotoRing(GuardRules):
     sub_surround: int = 180
 
 @public
-class Photodiode(GuardRing):
+class Photodiode(GuardedDevice):
     """
     Photodiode (photodiode) with the fixed geometry of sky130::photodiode_draw:
     nx times ny N-well contacts in a deep N-well area, with an N-well ring and a
@@ -2682,9 +2699,7 @@ class Photodiode(GuardRing):
     def params_check(cls, params):
         check_counts(params, "nx", "ny")
 
-    @viewgen_noctx
-    def symbol(self) -> Symbol:
-        return Diode.symbol.func(self)
+    symbol = Diode.symbol
 
     def ngspice_netlist(self, netlister, inst):
         if not netlister.lvs:
@@ -3093,16 +3108,16 @@ def varcap_of_card(cell, l, w, vm=1):
     """The varactor of a SPICE card, whose w is the width of one of its vm fingers."""
     return cell(l=l, w=w * vm, nf=vm)
 
-#: Device map for spice_in. Netlists must give sizes in meters (magic's and
-#: xschem's assume ".option scale=1.0u").
 MOS_PINS = ("d", "g", "s", "b")
 MOS_PARAMS = dict(real_params=("l", "w"), int_params=("nf", "m"))
 RES_PARAMS = dict(real_params=("l", "w"), int_params=("m",))
+#: Device map for spice_in. Netlists must give sizes in meters (magic's and
+#: xschem's assume ".option scale=1.0u").
 device_map = {
     cell.model_name: DeviceMapping(cell, getattr(cell, "subckt_pins", MOS_PINS), **MOS_PARAMS)
     for cell in (Nmos, NmosLvt, NmosHv, Nmos05v0Nvt, Nmos03v3Nvt, Pmos, PmosLvt, PmosHvt, PmosHv, PmosMvt,
         NmosG5v0d16v0, PmosG5v0d16v0, Nmos20v0, Pmos20v0, Nmos20v0Nvt, Nmos20v0Zvt, Nmos20v0Iso,
-        Nmos20v0ReverseIso, EsdNmos01v8, EsdNmosHv, EsdPmosHv, NmosLatch, NmosPass, NmosPassFlash,
+        Nmos20v0ReverseIso, EsdNmos, EsdNmosHv, EsdPmosHv, NmosLatch, NmosPass, NmosPassFlash,
         NmosPassLvt, PmosPass)
 } | {
     cell.model_name: DeviceMapping(cell, ("p", "n"), **RES_PARAMS) for cell in (Rpoly, Rl1, Rm1, Rm2, Rm3, Rm4, Rm5)
@@ -3118,7 +3133,7 @@ device_map = {
 } | {
     cell.model_name: DeviceMapping(functools.partial(varcap_of_card, cell), ("g", "nw", "sub"),
         real_params=("l", "w"), int_params=("vm",))
-    for cell in (VarCapLvt, VarCapHvt)
+    for cell in (CapVarLvt, CapVarHvt)
 } | {
     f"sky130_fd_pr__{device}": DeviceMapping(functools.partial(cell, device=device), pins, int_params=("m",))
     for cell, pins, devices in (
@@ -3151,9 +3166,6 @@ def run_drc(l: Layout, use_tempdir: bool=True, feol: bool=True,
     """
     directory = Directory()
 
-    def flag(b):
-        return "true" if b else "false"
-
     with rundir('drc', use_tempdir) as cwd:
         with open(cwd / "layout.gds", "wb") as f:
             write_gds(l, f, directory)
@@ -3175,9 +3187,9 @@ def run_drc(l: Layout, use_tempdir: bool=True, feol: bool=True,
 
         run_deck(pdk().klayout_drc_deck, "main.log",
             report="main.lyrdb",
-            feol=flag(feol),
-            beol=flag(beol),
-            offgrid=flag(offgrid),
+            feol=str(feol).lower(),
+            beol=str(beol).lower(),
+            offgrid=str(offgrid).lower(),
             seal="false",
             floating_met="false",
             **klayout_shared_opts

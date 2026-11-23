@@ -37,7 +37,7 @@ Coverage
 The cells cover ``sky130_fd_pr`` with these limits:
 
 * The layout generators of magic and the fixed cells of ``sky130_fd_pr.gds`` define which devices have layouts. The 16 V and 20 V MOS devices, ``PmosMvt``, ESD MOS devices and SRAM and flash cells are simulation-only, their special sizes being model bins.
-* ``VarCap5v``: the LVS deck does not extract ``sky130_fd_pr__cap_var``, and ``sky130.lib.spice`` has no model of it. ``SonosFet`` has no model there either. Simulating them raises an error.
+* ``CapVarHv``: the LVS deck does not extract ``sky130_fd_pr__cap_var``, and ``sky130.lib.spice`` has no model of it. ``SonosFet`` has no model there either. Simulating them raises an error.
 * ``RfMos``: the LVS deck extracts no devices from the RF cells, also when run on the PDK's GDS alone.
 * ``Npn``, ``Pnp`` and ``Inductor``: most of these fixed cells hold no labels, so their layouts have no pins, and ``Npn`` cells fail ``nwell.1``, ``nwell.6`` and ``difftap.10a`` of the DRC deck. They stay out of the DRC and LVS gallery.
 * Models that ``sky130.lib.spice`` does not include have no cell (``esd_nfet_05v0_nvt``, ``nfet_20v0_nvt_iso``). Neither have the resistor models that no generator draws: ``res_high_po`` and ``res_xhigh_po`` of any width, and ``res_generic_nw``.
@@ -56,7 +56,7 @@ The layouts reproduce the device generators of the PDK's magic technology (``sky
 * **Photodiode**: N-well covers the whole deep N-well ring, whose inner edge the generator's N-well ring leaves uncovered, failing nwell.5a and nwell.7.
 * **Via** and **Subconn**: as the generator, so small ones need a route to pass the minimum area rules.
 * **Cmim** arrays: spaced to the 1.2 µm of capm.2b. ``deck_spacing=False`` draws the generator's spacing, which fails it.
-* **VarCapLvt**, **VarCapHvt**: the N-well encloses the gate poly with its contact pads by the 0.15 µm of varac.5. ``well_enclosure=False`` draws the generator's well, which fails it (magic's DRC checks it on ``VarCapLvt`` only).
+* **CapVarLvt**, **CapVarHvt**: the N-well encloses the gate poly with its contact pads by the 0.15 µm of varac.5. ``well_enclosure=False`` draws the generator's well, which fails it (magic's DRC checks it on ``CapVarLvt`` only).
 * **SonosFet**: the diffusion contacts keep the 0.075 µm of licon.11 from the SONOS gate. ``contact_spacing=False`` draws the generator's 0.06 µm, which fails it. Like the generator, it leaves the N-well ring of its deep N-well (nwell.5a and nwell.7) to the array.
 * **Rpoly** with ``nx`` > 1: the generator's 210 nm between the stripes is raised to the 480 nm of poly.9.
 * **RisoPw** snakes with odd ``nx``: the guard ring clears the last end's well, which the generator leaves out of its bounding box, so that its ring fails nwell.6.

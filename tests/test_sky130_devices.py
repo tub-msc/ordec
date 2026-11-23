@@ -28,7 +28,7 @@ GALLERY = [
     sky130.Cmim(l="8u", w="8u", ny=2), sky130.Cmim2(l="8u", w="8u", ny=2),
     sky130.DiodePw2nd(), sky130.DiodePw2ndLvt(), sky130.DiodePw2ndNvt(), sky130.DiodePw2nd11v0(),
     sky130.DiodePd2nw(), sky130.DiodePd2nwLvt(), sky130.DiodePd2nwHvt(), sky130.DiodePd2nw11v0(),
-    sky130.VarCapLvt(w="1u", l="180n"), sky130.VarCapHvt(w="1u", l="180n"),
+    sky130.CapVarLvt(w="1u", l="180n"), sky130.CapVarHvt(w="1u", l="180n"),
     sky130.CapVpp(device="cap_vpp_11p5x11p7_m1m2_noshield"), sky130.Photodiode(),
 ]
 SUBSTRATE = "nmos0_b"
@@ -212,7 +212,7 @@ def test_diode_op(cell, expected_i):
     (sky130.Nmos03v3Nvt(w="1u", l="0.5u"), 1.31e-4),
     (sky130.NmosG5v0d16v0(w="5u", l="0.7u"), 1.91e-5),
     (sky130.Nmos20v0(w="30u", l="2u"), 4.81e-5),
-    (sky130.EsdNmos01v8(w="20.35u", l="0.165u"), 1.84e-3),
+    (sky130.EsdNmos(w="20.35u", l="0.165u"), 1.84e-3),
     (sky130.NmosLatch(w="0.21u", l="0.15u"), 1.4e-5),
     (sky130.PmosPass(w="0.14u", l="0.15u"), 2.08e-2),
 ])

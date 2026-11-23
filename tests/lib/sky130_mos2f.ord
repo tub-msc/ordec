@@ -1,0 +1,86 @@
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+"""
+A two-finger NMOS with its fingers strapped, for the multi-finger MOS LVS
+pathway (see tests/test_sky130_inv.py): the layout draws the fingers as two
+devices, the schematic has one card with nf=2.
+"""
+
+from ordec.core import *
+from ordec.lib.sky130 import Nmos, Ptap, SKY130, run_drc, run_lvs
+
+cell Mos2f:
+    viewgen symbol(self) -> Symbol:
+        inout d: .orient=North
+        input g
+        inout s: .orient=South
+        inout b: .orient=South
+
+    viewgen schematic(self) -> Schematic:
+        port d: .pos=(5, 6); .orient=North
+        port g: .pos=(3, 4); .orient=West
+        port s: .pos=(5, 2); .orient=South
+        port b: .pos=(7, 4); .orient=East
+
+        Nmos(w=1u, l=300n, nf=2, guard=False, topc=False, botc=False) m: .pos=(3, 2); .d -- d; .g -- g; .s -- s; .b -- b
+
+    viewgen layout(self) -> Layout:
+        .ref_layers = SKY130().layers
+        layers = .ref_layers
+
+        Nmos(w=1u, l=300n, nf=2, guard=False, topc=False, botc=False) m:
+            ! .pos == (0, 0)
+        Ptap(l=0.7u, w=0.7u) tap:
+            ! .pos == (-2000, -350)
+
+        # Poly strap joining both gate fingers above the diffusion. The LVS
+        # deck reads poly labels, so the pin can sit directly on the strap.
+        LayoutRect gstrap:
+            .layer = layers.poly
+            ! .lx == m.poly[0].lx
+            ! .ux == m.poly[1].ux
+            ! .ly == m.poly[0].uy
+            ! .height == 150
+            .create_pin(self.symbol.g)
+
+        # met1 strap joining the two source columns, routed below the drain:
+        LayoutRect sdrop0:
+            .layer = layers.met1
+            ! .x_extent == m.sd[0].x_extent
+            ! .uy == m.sd[0].ly + 50
+            ! .ly == m.sd[0].ly - 400
+        LayoutRect sdrop2:
+            .layer = layers.met1
+            ! .x_extent == m.sd[2].x_extent
+            ! .uy == m.sd[2].ly + 50
+            ! .ly == m.sd[2].ly - 400
+        LayoutRect sstrap:
+            .layer = layers.met1
+            ! .lx == m.sd[0].lx
+            ! .ux == m.sd[2].ux
+            ! .uy == m.sd[0].ly - 230
+            ! .height == 170
+            .create_pin(self.symbol.s)
+
+        # The drain pin extends past the sd column, as an onward route would.
+        # The bare column alone is below met1 minimum area at this size.
+        LayoutRect dpin:
+            .layer = layers.met1
+            ! .x_extent == m.sd[1].x_extent
+            ! .ly == m.sd[1].ly
+            ! .uy == m.sd[1].uy + 300
+            .create_pin(self.symbol.d)
+
+        LayoutRect bpin:
+            .layer = layers.met1
+            ! .rect == tap.m1.rect
+            .create_pin(self.symbol.b)
+
+    viewgen drc(self) -> DrcReport:
+        . = run_drc(self.layout)
+
+    viewgen lvs(self) -> LvsReport:
+        # The deck's global substrate net must carry the name of the net
+        # tying the substrate tap, here the bulk pin b.
+        . = run_lvs(self.layout, self.symbol, substrate_net='b')
