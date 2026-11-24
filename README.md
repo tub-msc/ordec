@@ -23,7 +23,7 @@ Further documentation is located in the *docs/* folder and is available online: 
 
 ## Quick start with Docker
 
-The Docker image contains ORDeC with all tools (Ngspice, KLayout, Yosys, OpenVAF) and PDKs (SKY130, IHP-Open-PDK):
+The Docker image contains ORDeC with all tools (Ngspice, KLayout, Magic, Yosys, OpenVAF) and PDKs (SKY130, IHP-Open-PDK):
 
 ```
 docker pull ghcr.io/tub-msc/ordec:latest
