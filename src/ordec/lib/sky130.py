@@ -474,6 +474,11 @@ class Paint:
 
     def __init__(self):
         self.types = {}
+        self.layers = SKY130().layers
+        layers = self.layers
+        #: Layer of each metal type
+        self.metal = {"li": layers.li1, "m1": layers.met1, "m2": layers.met2, "m3": layers.met3, "m4": layers.met4,
+            "m5": layers.met5}
 
     def paint(self, type: str, rect: Rect4I) -> Rect4I:
         self.types.setdefault(type, []).append(rect)
@@ -512,8 +517,8 @@ class Paint:
         shapes(layers.poly, self.of("poly", "pc", "mrp1", "xpc") + polyres)
         shapes(layers.poly.res, self.of("mrp1") + polyres)
         # An mcon also paints li1 and met1, a precision resistor's end li1.
-        for type_, res, metal in (("li", "rli", layers.li1), ("m1", "rm1", layers.met1), ("m2", "rm2", layers.met2),
-                ("m3", "rm3", layers.met3), ("m4", "rm4", layers.met4), ("m5", "rm5", layers.met5)):
+        for type_, metal in self.metal.items():
+            res = "r" + type_  # its resistor type: rli, rm1, ...
             shapes(metal, self.of(type_, res) + (self.of("mcon") if type_ in ("li", "m1") else [])
                 + (self.of("xpc") if type_ == "li" else []))
             shapes(metal.res, self.of(res))
@@ -832,7 +837,7 @@ def mos_device(p: Paint, cell: Cell, r: MosRules, x: int, y: int, w: int, l: int
             r.diff_type, r.diff_contact_type, True))
         li = Rect4I(cx - contact_half, y - cdw_half - r.metal_surround,
             cx + contact_half, y + cdw_half + r.metal_surround)
-        sd[side] = ("met1", top) if top is not None else ("li1", li)
+        sd[side] = (p.layers.met1, top) if top is not None else (p.layers.li1, li)
 
     diffarea = bbox_of(ext)
     gate = []
@@ -962,7 +967,7 @@ def layoutgen_mos(cell: Cell, r: MosRules) -> Layout:
     p.draw(l)
     for i, x in enumerate(sorted(sd_by_x)):
         layer, rect = sd_by_x[x]
-        l.sd[i] = LayoutRect(layer=layers[layer], rect=rect)
+        l.sd[i] = LayoutRect(layer=layer, rect=rect)
     # s on the even regions, d on the odd ones, as in ihp130. (Magic names
     # them the other way around, so its viasrc is our viadrn.) Without
     # doverlap each finger has regions of its own, mirrored from finger to
@@ -1603,8 +1608,6 @@ class ResRules(GuardRules):
     #: The guard ring is the bulk terminal (a well), not the common substrate.
     bulk_on_guard: bool = False
 
-METAL_OF = {"li": "li1", "m1": "met1", "m2": "met2", "m3": "met3", "m4": "met4", "m5": "met5"}
-
 def res_end(p: Paint, cell: Cell, r: ResRules, x: int, y: int, epl: int, cpl_half: int, size: int, hesz: int,
     hepl: int, via_side: int = 0) -> tuple:
     """End material and contact of a resistor at (x, y), returns its rects. A nonzero
@@ -1612,15 +1615,15 @@ def res_end(p: Paint, cell: Cell, r: ResRules, x: int, y: int, epl: int, cpl_hal
     cpl_half is the rounded half length of the contact, at least half its size."""
     ext = [p.paint(r.end_type, box(x, y, hepl, hepl, hesz, hesz))]
     # A metal resistor's end is its own metal.
-    term = (METAL_OF[r.end_type], ext[0]) if r.end_type in METAL_OF else None
+    term = (p.metal[r.end_type], ext[0]) if r.end_type in p.metal else None
     if r.end_contact_type:
         half_w, half_h = cpl_half + r.metal_surround, rnd(size, 2)
-        term = ("li1", Rect4I(x - half_w, y - half_h, x + half_w, y + half_h))
+        term = (p.layers.li1, Rect4I(x - half_w, y - half_h, x + half_w, y + half_h))
         if via_side != 0 and cell.vias:
             ch = max(r.res_to_endcont, r.via_size)
             half_w, half_via = rnd(max(epl, r.via_size), 2), rnd(r.via_size, 2)
             far, near = half_via, rnd(2*ch - r.via_size, 2)
-            term = ("met1", mcon_draw(p, box(x, y, half_w, half_w, near if via_side > 0 else far,
+            term = (p.layers.met1, mcon_draw(p, box(x, y, half_w, half_w, near if via_side > 0 else far,
                 far if via_side > 0 else near), False))
         ext.append(draw_contact(p, x, y, cpl_half, half_h, r.end_surround, r.metal_surround,
             r.end_type, r.end_contact_type, False))
@@ -1754,7 +1757,7 @@ def layoutgen_res(cell: Cell, r: ResRules) -> Layout:
     # own metal, reaching res_to_endcont beyond the body.
     for side, pin in ((1, cell.symbol.p), (-1, cell.symbol.n)):
         if terms[side] is not None:
-            (l % LayoutRect(layer=layers[terms[side][0]], rect=terms[side][1])).create_pin(pin)
+            (l % LayoutRect(layer=terms[side][0], rect=terms[side][1])).create_pin(pin)
     if ring and r.bulk_on_guard:
         (l % LayoutRect(layer=layers.li1, rect=ring[0])).create_pin(cell.symbol[cell.bulk])
     return l
@@ -2178,10 +2181,10 @@ def diode_device(p: Paint, cell: Cell, r: DiodeRules, x: int, y: int, w: int, l:
 
     cw, cl = w - 2*r.dev_surround, l - 2*r.dev_surround
     cw_half, cl_half = rnd(max(cw, r.contact_size), 2), rnd(max(cl, r.contact_size), 2)
-    term = ("li1", Rect4I(x - cw_half, y - cl_half, x + cw_half, y + cl_half))
+    term = (p.layers.li1, Rect4I(x - cw_half, y - cl_half, x + cw_half, y + cl_half))
     if cell.vias:
         half_w, half_h = rnd(max(cw, r.via_size), 2), rnd(max(cl, r.via_size), 2)
-        term = ("met1", mcon_draw(p, box(x, y, half_w, half_w, half_h, half_h), False))
+        term = (p.layers.met1, mcon_draw(p, box(x, y, half_w, half_w, half_h, half_h), False))
     draw_contact(p, x, y, cw_half, cl_half, r.dev_surround, r.metal_surround, r.dev_type,
         r.dev_contact_type, w < l)
     return dict(bbox=ext, term=term, ring=ring)
@@ -2216,7 +2219,7 @@ def layoutgen_diode(cell: Cell, r: DiodeRules) -> Layout:
     p.draw(l)
 
     # The contact is the anode of Pd2nw, the cathode of Pw2nd, the ring the other terminal.
-    (l % LayoutRect(layer=layers[first["term"][0]], rect=first["term"][1])).create_pin(cell.symbol[cell.contact])
+    (l % LayoutRect(layer=first["term"][0], rect=first["term"][1])).create_pin(cell.symbol[cell.contact])
     if first["ring"]:
         (l % LayoutRect(layer=layers.li1, rect=first["ring"][0])).create_pin(cell.symbol[cell.ring])
     return l
@@ -2410,7 +2413,6 @@ def layoutgen_cap(cell: Cell, r: CapRules) -> Layout:
         raise ParameterError("m != 1 not supported for layout, use nx and ny.")
     check_grid(cell, R("10n"), "w", "l")
     l = Layout(ref_layers=SKY130().layers, cell=cell, symbol=cell.symbol)
-    layers = l.ref_layers
     p = Paint()
     w, L = int(cell.w / R("1n")), int(cell.l / R("1n"))
     bbox = cap_device(Paint(), cell, r, 0, 0, w, L)["bbox"]
@@ -2440,7 +2442,7 @@ def layoutgen_cap(cell: Cell, r: CapRules) -> Layout:
                     sx = (dev["end"].lx + dev["end"].ux) // 2 if cell.deck_spacing else x + cdx
                     p.paint(r.top_type, box(sx, y, hmw, hmw, hdy, hdy))
     p.draw(l)
-    metal = layers[METAL_OF[r.top_type]]
+    metal = p.metal[r.top_type]
     (l % LayoutRect(layer=metal, rect=first["top"])).create_pin(cell.symbol.p)
     (l % LayoutRect(layer=metal, rect=first["end"])).create_pin(cell.symbol.n)
     return l
