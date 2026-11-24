@@ -116,10 +116,10 @@ def netlist_setup(netlister):
     rc = f"res_{corner.res.value}__cap_{corner.cap.value}"
     netlister.add(".param", "mc_mm_switch=0")
     netlister.add(".param", "mc_pr_switch=0")
-    netlister.add(".include", f"\"{root / 'corners' / (corner.mos.value + '.spice')}\"")
-    netlister.add(".include", f"\"{root / 'r+c' / (rc + '.spice')}\"")
-    netlister.add(".include", f"\"{root / 'r+c' / (rc + '__lin.spice')}\"")
-    netlister.add(".include", f"\"{root / 'corners' / corner.mos.value / 'specialized_cells.spice'}\"")
+    mos = corner.mos.value
+    for path in (f"corners/{mos}.spice", f"r+c/{rc}.spice", f"r+c/{rc}__lin.spice",
+            f"corners/{mos}/specialized_cells.spice"):
+        netlister.add(".include", f"\"{root / path}\"")
 
 @public
 class SKY130(Cell):
