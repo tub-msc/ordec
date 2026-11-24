@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: 2026 ORDeC contributors
 # SPDX-License-Identifier: Apache-2.0
 
+import pytest
+
 from ordec.layout import SRouter, SRouterException, compare
 from ordec.lib import ihp130
 from ordec.core import *
@@ -110,7 +112,7 @@ def layout_pass_through_riser():
     s.solve()
     return l
 
-def test_pass_through_riser_gets_a_full_pad_on_the_stack_top():
+def test_pass_through_riser_pad():
     # The Metal1 start pad and the Metal3 destination pad are wire-sized.
     # The Metal2 start pad of the second layer() call sits on top of the
     # first stack and gets the full route_via pad.
@@ -126,8 +128,7 @@ def test_pass_through_riser_gets_a_full_pad_on_the_stack_top():
         vertices=[Vec2I(0, 0), Vec2I(1000, 0)])
     assert compare(layout_pass_through_riser(), expected) is None
 
-def test_path_after_layer_change_raises_with_the_idiom():
-    import pytest
+def test_path_ends_at_layer_change():
     l = Layout(ref_layers=layers)
     s = Solver(l)
     sr = SRouter(rs, layout=l, solver=s)
