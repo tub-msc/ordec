@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import pytest
+from textwrap import dedent
 
 from ordec.core import *
 from ordec.extlibrary import ExtLibrary
@@ -54,14 +55,16 @@ def test_netlist_corner():
 def test_read_spice_device_map(tmp_path):
     """Imported devices become the cells with their sizes."""
     spice = tmp_path / "t.spice"
-    spice.write_text(".subckt t a b\n"
-        "X1 a a b b sky130_fd_pr__nfet_01v8 w=2u l=150n nf=2 m=3\n"
-        "R1 a b sky130_fd_pr__res_generic_po w=1u l=2u m=2\n"
-        "X2 a b b sky130_fd_pr__res_high_po_0p35 l=2.12u\n"
-        "X3 a b b sky130_fd_pr__cap_var_lvt w=1u l=180n vm=2 m=3\n"
-        "X4 a a b b b sky130_fd_pr__nfet_20v0_iso w=60u l=2u\n"
-        "X5 a a b b sky130_fd_pr__npn_05v5_W1p00L1p00 m=2\n"
-        ".ends\n")
+    spice.write_text(dedent("""\
+        .subckt t a b
+        X1 a a b b sky130_fd_pr__nfet_01v8 w=2u l=150n nf=2 m=3
+        R1 a b sky130_fd_pr__res_generic_po w=1u l=2u m=2
+        X2 a b b sky130_fd_pr__res_high_po_0p35 l=2.12u
+        X3 a b b sky130_fd_pr__cap_var_lvt w=1u l=180n vm=2 m=3
+        X4 a a b b b sky130_fd_pr__nfet_20v0_iso w=60u l=2u
+        X5 a a b b sky130_fd_pr__npn_05v5_W1p00L1p00 m=2
+        .ends
+        """))
     lib = ExtLibrary()
     lib.read_spice(spice, device_map=sky130.device_map)
     cells = {type(i.symbol.cell): i.symbol.cell for i in lib["t"].schematic.all(SchemInstance)}
