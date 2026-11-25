@@ -12,11 +12,6 @@ from .style import (default_style, user_style_path, read_customization,
 INT32_MIN = -2**31
 INT32_MAX = 2**31 - 1
 
-# Whether LayoutPins of instantiated cells are shown (pin shape and name at
-# every placement). False matches the viewer before the hierarchical webdata,
-# which showed the pins of the requested layout only.
-SUBCELL_PINS = False
-
 def int32(values) -> np.ndarray:
     a = np.asarray(values, dtype=np.int64)
     if a.size and (a.min() < INT32_MIN or a.max() > INT32_MAX):
@@ -85,6 +80,9 @@ class WebdataBuilder:
             self.layers[nid] = {
                 'nid': nid,
                 'path': layer_name(layer),
+                # Pin layers hold the pins of LayoutPins and, in layouts read
+                # from GDS (e.g. standard cells), the pin shapes and labels.
+                'pin': layer.is_pinlayer,
                 **self.layer_styles.get(nid, NO_LAYER_STYLE),
                 # For resetting the layer to the default style in the viewer.
                 'default': self.default_layer_styles.get(nid, NO_LAYER_STYLE),
@@ -113,8 +111,7 @@ class WebdataBuilder:
             add_poly(poly.layer.nid, poly.vertices())
         for path in layout.all(LayoutPath):
             add_poly(path.layer.nid, path_to_poly_vertices(path))
-        pins = layout.all(LayoutPin) if cell_id == 0 or SUBCELL_PINS else ()
-        for pin in pins:
+        for pin in layout.all(LayoutPin):
             ref = pin.ref
             if isinstance(ref, LayoutPoly):
                 vertices = ref.vertices()

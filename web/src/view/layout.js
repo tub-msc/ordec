@@ -147,6 +147,11 @@ export class LayoutView extends View {
         this.transform = d3.zoomIdentity.scale(1e-1,1e-1);
         this.projectionMatrix = mat4.create();
         this.visibility = new Map();
+        // Switches of the layer list (see updateLayerList): the shapes and
+        // labels of pin layers are shown for the top cell only, unless
+        // subcellPins is set.
+        this.showLabels = true;
+        this.subcellPins = false;
         // Style settings: LayoutStyle and viewer preferences (see
         // layout-style.js).
         this.style = {};
@@ -399,6 +404,25 @@ export class LayoutView extends View {
 
         let li;
         let id;
+
+        [['showLabels', 'labels'], ['subcellPins', 'subcell pins']].forEach(([key, text]) => {
+            li = document.createElement('li');
+            id = generateId();
+            li.innerHTML = `
+                <input type="checkbox" class="${key}" id="${id}">
+                <label for="${id}">${text}</label>
+            `;
+            const checkbox = li.querySelector('input');
+            checkbox.checked = this[key];
+            checkbox.onclick = () => {
+                this[key] = checkbox.checked;
+                if (key == 'subcellPins') {
+                    this.loadLabels(true);
+                }
+                this.drawGL();
+            };
+            layersUl.appendChild(li);
+        });
 
         li = document.createElement('li');
         id = generateId()
@@ -718,6 +742,9 @@ export class LayoutView extends View {
             const layerLabels = [];
             this.drawItems.forEach(item => {
                 const entry = this.cellLayers[item.cell].get(layer.nid);
+                if (layer.pin && item.cell != 0 && !this.subcellPins) {
+                    return;
+                }
                 entry?.labels.forEach(label => {
                     const [x, y] = transformPoint(item.m, label.pos);
                     const lines = label.text.split("\n");
@@ -1058,6 +1085,10 @@ export class LayoutView extends View {
         const drawLayer = (layer, color, mode, offsetKey, countKey) => {
             gl.uniform3fv(u.color, color.map(v => v / 255));
             this.cellLayers.forEach((layers, cellIdx) => {
+                // Cell 0 is the top cell, with its only placement.
+                if (layer.pin && cellIdx != 0 && !this.subcellPins) {
+                    return;
+                }
                 const entry = layers.get(layer.nid);
                 const placements = this.cellPlacements[cellIdx];
                 if (entry && entry[countKey] > 0 && placements.count > 0) {
@@ -1135,6 +1166,9 @@ export class LayoutView extends View {
     }
 
     drawGLLabels() {
+        if (!this.showLabels) {
+            return;
+        }
         const gl = this.gl;
         const programInfo = this.programInfos.labels;
 

@@ -799,10 +799,11 @@ def test_expand_pins():
     labels.sort()
     assert labels == [(Vec2I(50, 50), "my_pin"), (Vec2I(250, 50), "my_pin0")]
 
-    # The anonymous pin layer is labeled after its parent in the web viewer.
+    # The anonymous pin layer is labeled after its parent in the web viewer,
+    # and marked as pin layer.
     from ordec.layout.webdata import webdata
     weblayers = webdata(layout.freeze())[1]['layers']
-    assert sorted(l['path'] for l in weblayers) == ['Metal1', 'Metal1.pin']
+    assert sorted((l['path'], l['pin']) for l in weblayers) == [('Metal1', False), ('Metal1.pin', True)]
 
 
 def test_compare_identical_different_order():

@@ -1258,6 +1258,10 @@ def test_layoutgl(web):
 
     web.wait_for_ready()
 
+    # The red Metal3.pin square below is in a subcell, so it needs the
+    # subcell pins switch.
+    web.driver.find_element(By.CSS_SELECTOR, "input.subcellPins").click()
+
     time.sleep(1)
     canvas=web.driver.find_element(By.CSS_SELECTOR, "canvas.layoutFit")
     png = canvas.screenshot_as_png
