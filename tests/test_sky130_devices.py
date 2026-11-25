@@ -1,0 +1,307 @@
+# SPDX-FileCopyrightText: 2026 ORDeC contributors
+# SPDX-License-Identifier: Apache-2.0
+
+import math
+
+import pytest
+
+from ordec.core import *
+from ordec.lib import sky130, Gnd, Vdc
+from .lib.thinwrap import gallery_wrapper_cell
+
+# One gallery for a single DRC and a single LVS run (deck startup dominates).
+# The guard rings of the NMOS devices and the substrate resistors tie the
+# common substrate, whose net the LVS deck merges by name.
+GALLERY = [
+    sky130.Nmos(w="1u", l="150n"), sky130.NmosLvt(w="1u", l="150n"), sky130.NmosHv(w="1u", l="500n"),
+    sky130.Nmos05v0Nvt(w="1u", l="900n"), sky130.Nmos03v3Nvt(w="1u", l="500n"),
+    sky130.Pmos(w="1u", l="150n"), sky130.PmosLvt(w="1u", l="350n"), sky130.PmosHvt(w="1u", l="150n"),
+    sky130.PmosHv(w="1u", l="500n"),
+    sky130.Rpoly(l="1.65u", w="0.33u"), sky130.Rpoly(l="2u", w="0.5u", nx=3, snake=True),
+    sky130.Rnd(l="2.1u", w="0.42u"), sky130.Rpd(l="2.1u", w="0.42u"), sky130.RndHv(l="2.1u", w="0.42u"),
+    sky130.RpdHv(l="2.1u", w="0.42u"), sky130.RhighPo0p35(l="2u", w="0.35u"),
+    sky130.RxhighPo0p69(l="2u", w="0.69u"), sky130.RhighPo5p73(l="2u", w="5.73u"),
+    sky130.RisoPw(l="26.5u", w="2.65u"),
+    sky130.Rl1(l="2u", w="0.5u"), sky130.Rm1(l="2u", w="0.5u"), sky130.Rm3(l="2u", w="1u"), sky130.Rm5(l="5u", w="2u"),
+    sky130.Rpoly(l="1.65u", w="0.33u", hv_guard=True), sky130.RhighPo0p35(l="2u", w="0.35u", n_guard=True),
+    sky130.Cmim(l="5u", w="5u"), sky130.Cmim2(l="5u", w="5u"),
+    sky130.Cmim(l="8u", w="8u", ny=2), sky130.Cmim2(l="8u", w="8u", ny=2),
+    sky130.DiodePw2nd(), sky130.DiodePw2ndLvt(), sky130.DiodePw2ndNvt(), sky130.DiodePw2nd11v0(),
+    sky130.DiodePd2nw(), sky130.DiodePd2nwLvt(), sky130.DiodePd2nwHvt(), sky130.DiodePd2nw11v0(),
+    sky130.CapVarLvt(w="1u", l="180n"), sky130.CapVarHvt(w="1u", l="180n"),
+    sky130.CapVpp(device="cap_vpp_11p5x11p7_m1m2_noshield"), sky130.Photodiode(),
+]
+SUBSTRATE = "nmos0_b"
+TIES = ("nmoslvt1_b", "nmoshv2_b", "nmos05v0nvt3_b", "nmos03v3nvt4_b")
+
+def test_gallery():
+    wrapper = gallery_wrapper_cell(GALLERY, "Gallery", substrate=SUBSTRATE, ties=TIES)
+    assert sky130.run_drc(wrapper.layout, use_tempdir=True).summary() == {}
+    assert sky130.run_lvs(wrapper.layout, wrapper.symbol, use_tempdir=True, substrate_net=SUBSTRATE).clean()
+
+
+@pytest.mark.magic
+def test_gallery_magic():
+    wrapper = gallery_wrapper_cell(GALLERY, "Gallery", substrate=SUBSTRATE, ties=TIES)
+    # Magic reads the contacts of the LVT, NVT and HVT diodes from GDS as
+    # plain diode contacts, which then fail licon.5a: the copyup rules of the
+    # cifinput section of sky130A.tech ignore the threshold implants.
+    assert sky130.run_magic_drc(wrapper.layout).summary() == {"licon.5a": 32}
+    # The N-well ring of the SONOS FET's deep N-well is left to the array.
+    assert sky130.run_magic_drc(sky130.SonosFet(w="1u", l="150n").layout).summary() == {"nwell.5a, 7": 4}
+
+
+@pytest.mark.parametrize("build", [
+    lambda: sky130.Nmos(w="1u", l="100n"),
+    lambda: sky130.Nmos(w="300n", l="150n"),
+    lambda: sky130.Nmos(w="1u", l="150n", nf=4),
+    lambda: sky130.Nmos(w="2u", l="150n", nf=3),
+    lambda: sky130.Rpoly(l="2u", w="1u", nx=0),
+    lambda: sky130.Rm1(l="1u", w="0.039u"),
+    lambda: sky130.Photodiode(nx=0),
+    lambda: sky130.CapVpp(device="npn_05v5_W1p00L1p00"),
+], ids=["short-l", "narrow-w", "narrow-finger", "indivisible", "no-stripe", "narrow-res", "no-diode", "other-family"])
+def test_dimension_limits(build):
+    """Out-of-range dimensions are rejected at cell construction, before
+    they can silently reach simulation or layout."""
+    with pytest.raises(ParameterError):
+        build()
+
+
+def test_layout_limits():
+    """Snakes that the generator cannot draw and repeats of a fixed cell are
+    rejected at layout generation."""
+    for cell in (sky130.RhighPo0p69(l="0.5u", w="0.69u", nx=2, snake=True),
+            sky130.RhighPo0p35(l="2.5u", w="0.35u", nx=2, snake=True),
+            sky130.CapVpp(device="cap_vpp_11p5x11p7_m1m2_noshield", m=2)):
+        with pytest.raises(ParameterError):
+            cell.layout
+
+
+def test_mos_diffusion_per_finger():
+    """ad/as/pd/ps derive from the per-finger width, since each diffusion
+    region is w/nf wide."""
+    d1 = sky130.Nmos(w="500n", l="150n").diffusion_params()
+    d4 = sky130.Nmos(w="2u", l="150n", nf=4).diffusion_params()
+    assert d4['ad'] == 2 * d1['ad']   # two drain regions of the same width
+    assert d4['as_'] == 3 * d1['as_']
+
+
+def resistor_tb(res_cell):
+    """1 V source in series with the resistor, bulk pin tied where present."""
+    class Tb(Cell):
+        @viewgen_noctx
+        def schematic(self):
+            s = Schematic(cell=self)
+            s.vdd = Net()
+            s.vss = Net()
+
+            s.i_gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(0, -1))
+            s.i_vdc = SchemInstance(
+                Vdc(dc=1).symbol.portmap(n=s.vss, p=s.vdd), pos=Vec2R(0, 5)
+            )
+            portmap = dict(p=s.vdd, n=s.vss)
+            if res_cell.bulk:
+                portmap[res_cell.bulk] = s.vss
+            s.r = SchemInstance(res_cell.symbol.portmap(**portmap), pos=Vec2R(12, 5))
+
+            s.auto_wire()
+            s.check(add_conn_points=True, add_terminal_taps=True)
+            return s
+    return Tb()
+
+
+# Reference values are op-point results captured from ngspice.
+@pytest.mark.parametrize("cell,expected_r", [
+    (sky130.Rpoly(l="2u", w="2u"), 48.07),
+    (sky130.Rpoly(l="2u", w="0.5u", nx=3, snake=True), 769.1),
+    (sky130.RhighPo0p35(l="2u", w="0.35u"), 2977),
+    (sky130.RhighPo5p73(l="6u", w="5.73u"), 413.7),
+    (sky130.RxhighPo0p35(l="2u", w="0.35u"), 1.273e4),
+    (sky130.Rnd(l="2.1u", w="0.42u"), 574.2),
+    (sky130.Rpd(l="2.1u", w="0.42u"), 900.7),
+    (sky130.RndHv(l="2.1u", w="0.42u"), 545.5),
+    (sky130.RpdHv(l="2.1u", w="0.42u"), 916.5),
+    (sky130.Rl1(l="2u", w="0.17u"), 130.2),
+    (sky130.Rm1(l="10u", w="0.14u"), 12.26),
+    (sky130.Rm5(l="20u", w="1.6u"), 0.3735),
+    (sky130.RisoPw(l="26.5u", w="2.65u"), 3.799e4),
+    (sky130.RisoPw(l="26.5u", w="2.65u", nx=3, snake=True), 1.164e5),
+    (sky130.RhighPo0p35(l="4u", w="0.35u", nx=2, snake=True), 5354),
+    (sky130.RhighPo0p35(l="2u", w="0.35u", m=2), 2977 / 2),
+    (sky130.Rnd(l="2.1u", w="0.42u", nx=2), 574.2 / 2),
+])
+def test_resistor_op(cell, expected_r):
+    """Ngspice op-point: drive each resistor with 1 V and check R = V / I."""
+    h = SimHierarchy.from_schematic(resistor_tb(cell).schematic)
+    h.simulate().op()
+    # The source branch current equals the resistor current.
+    r = 1.0 / abs(float(h.i_vdc.p.current[0]))
+    assert r == pytest.approx(expected_r, rel=0.02)
+    assert cell.nominal_resistance() == pytest.approx(r, rel=0.1)
+
+
+# A 1 V AC source gives C = |I| / (2*pi*f). Reference values are AC results
+# captured from ngspice.
+@pytest.mark.parametrize("cell,expected_c", [
+    (sky130.Cmim(l="5u", w="5u"), 5.3282e-14),
+    (sky130.Cmim(l="10u", w="8u"), 1.6592e-13),
+    (sky130.Cmim2(l="5u", w="5u"), 5.3282e-14),
+    (sky130.Cmim(l="5u", w="5u", m=2), 2 * 5.3282e-14),
+])
+def test_cmim_ac(cell, expected_c):
+    freq = 1e6
+
+    class Tb(Cell):
+        @viewgen_noctx
+        def schematic(self):
+            s = Schematic(cell=self)
+            s.vdd = Net()
+            s.vss = Net()
+
+            s.i_gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(0, -1))
+            s.i_vac = SchemInstance(
+                Vdc(ac_mag=1).symbol.portmap(n=s.vss, p=s.vdd),
+                pos=Vec2R(0, 5),
+            )
+            s.c = SchemInstance(cell.symbol.portmap(p=s.vdd, n=s.vss), pos=Vec2R(12, 5))
+
+            s.auto_wire()
+            s.check(add_conn_points=True, add_terminal_taps=True)
+            return s
+
+    h = SimHierarchy.from_schematic(Tb().schematic)
+    h.simulate().ac("lin", 1, freq, freq)
+    c = abs(complex(h.i_vac.p.current[0])) / (2 * math.pi * freq)
+    assert c == pytest.approx(expected_c, rel=0.02)
+
+
+@pytest.mark.parametrize("cell,expected_i", [
+    (sky130.DiodePw2nd(w="1u", l="1u"), 3.31e-5),
+    (sky130.DiodePd2nw(w="1u", l="1u"), 1.2e-5),
+    (sky130.DiodePd2nw11v0(w="1u", l="1u"), 1.75e-7),
+])
+def test_diode_op(cell, expected_i):
+    """Ngspice op-point: forward current at 0.8 V, captured from ngspice."""
+    class Tb(Cell):
+        @viewgen_noctx
+        def schematic(self):
+            s = Schematic(cell=self)
+            s.vdd = Net()
+            s.vss = Net()
+            s.i_gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(0, -1))
+            s.i_vdc = SchemInstance(Vdc(dc=R("0.8")).symbol.portmap(n=s.vss, p=s.vdd), pos=Vec2R(0, 5))
+            s.d = SchemInstance(cell.symbol.portmap(p=s.vdd, n=s.vss), pos=Vec2R(12, 5))
+            s.auto_wire()
+            s.check(add_conn_points=True, add_terminal_taps=True)
+            return s
+
+    h = SimHierarchy.from_schematic(Tb().schematic)
+    h.simulate().op()
+    assert abs(float(h.i_vdc.p.current[0])) == pytest.approx(expected_i, rel=0.05)
+
+
+# The current through a diode-connected device, captured from ngspice. Sizes
+# of the special cells are bins of their models.
+@pytest.mark.parametrize("cell,expected_i", [
+    (sky130.NmosLvt(w="1u", l="0.15u"), 1.25e-4),
+    (sky130.PmosHvt(w="1u", l="0.15u"), 1.57e-3),
+    (sky130.NmosHv(w="1u", l="0.5u"), 7.44e-6),
+    (sky130.PmosHv(w="1u", l="0.5u"), 1.07e-5),
+    (sky130.Nmos05v0Nvt(w="1u", l="0.9u"), 5.6e-5),
+    (sky130.Nmos03v3Nvt(w="1u", l="0.5u"), 1.31e-4),
+    (sky130.NmosG5v0d16v0(w="5u", l="0.7u"), 1.91e-5),
+    (sky130.Nmos20v0(w="30u", l="2u"), 4.81e-5),
+    (sky130.EsdNmos(w="20.35u", l="0.165u"), 1.84e-3),
+    (sky130.NmosLatch(w="0.21u", l="0.15u"), 1.4e-5),
+    (sky130.PmosPass(w="0.14u", l="0.15u"), 2.08e-2),
+])
+def test_mos_op(cell, expected_i):
+    class Tb(Cell):
+        @viewgen_noctx
+        def schematic(self):
+            s = Schematic(cell=self)
+            s.vdd = Net()
+            s.vss = Net()
+            s.i_gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(0, -1))
+            s.i_vdc = SchemInstance(Vdc(dc=1).symbol.portmap(n=s.vss, p=s.vdd), pos=Vec2R(0, 5))
+            s.m = SchemInstance(cell.symbol.portmap(d=s.vdd, g=s.vdd, s=s.vss, b=s.vss), pos=Vec2R(12, 5))
+            s.auto_wire()
+            s.check(add_conn_points=True, add_terminal_taps=True)
+            return s
+
+    h = SimHierarchy.from_schematic(Tb().schematic)
+    h.simulate().op()
+    assert abs(float(h.i_vdc.p.current[0])) == pytest.approx(expected_i, rel=0.05)
+
+
+@pytest.mark.parametrize("cell,conn,expected_i", [
+    (sky130.RfNmos(device="rf_nfet_01v8_aM02W1p65L0p15"), dict(d=1, g=1, s=0, b=0), 2.56e-4),
+    (sky130.RfPmos(device="rf_pfet_01v8_aM02W1p65L0p15"), dict(d=0, g=0, s=1, b=1), None),
+    (sky130.Npn(device="npn_05v5_W1p00L1p00"), dict(c=1, b=1, e=0, sub=0), None),
+    (sky130.Pnp(device="pnp_05v5_W0p68L0p68"), dict(c=0, b=0, e=1), 2.22e-4),
+    (sky130.Inductor(device="ind_03_90"), dict(a=1, b=0, ct=0, sub=0), None),
+])
+def test_fixed_device_op(cell, conn, expected_i):
+    """Each model simulates and each fixed cell loads from the PDK's GDS."""
+    class Tb(Cell):
+        @viewgen_noctx
+        def schematic(self):
+            s = Schematic(cell=self)
+            s.vdd = Net()
+            s.vss = Net()
+            s.i_gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(0, -1))
+            s.i_vdc = SchemInstance(Vdc(dc=1).symbol.portmap(n=s.vss, p=s.vdd), pos=Vec2R(0, 5))
+            s.d = SchemInstance(cell.symbol.portmap(**{k: s.vdd if v else s.vss for k, v in conn.items()}), pos=Vec2R(12, 5))
+            s.auto_wire()
+            s.check(add_conn_points=True, add_terminal_taps=True)
+            return s
+
+    h = SimHierarchy.from_schematic(Tb().schematic)
+    h.simulate().op()
+    current = abs(float(h.i_vdc.p.current[0]))
+    assert current > 0
+    if expected_i is not None:
+        assert current == pytest.approx(expected_i, rel=0.05)
+    assert any(True for _ in cell.layout.all(LayoutRect))
+
+
+def test_discoverable_instances():
+    """The instances that the web UI lists have a symbol, and the shared base
+    classes list none."""
+    for cls in vars(sky130).values():
+        if isinstance(cls, type) and issubclass(cls, SimLeafCell):
+            for cell in cls.discoverable_instances():
+                cell.symbol
+    assert sky130.Mos.discoverable_instances() == []
+
+
+def test_fixed_cells_load():
+    """Every cell of sky130_fd_pr.gds reads with the layer stack."""
+    lib = sky130.pr_library()
+    assert len(lib.layout_funcs) == 292
+    for name in lib.layout_funcs:
+        lib[name].layout
+
+
+def test_mos_save_params():
+    """Device parameters are read through the model subcircuit."""
+    class Tb(Cell):
+        @viewgen_noctx
+        def schematic(self):
+            s = Schematic(cell=self)
+            s.vdd = Net()
+            s.vss = Net()
+            s.i_gnd = SchemInstance(Gnd().symbol.portmap(p=s.vss), pos=Vec2R(0, -1))
+            s.i_vdc = SchemInstance(Vdc(dc=1).symbol.portmap(n=s.vss, p=s.vdd), pos=Vec2R(0, 5))
+            s.m = SchemInstance(sky130.Nmos(w="1u", l="150n").symbol.portmap(d=s.vdd, g=s.vdd, s=s.vss, b=s.vss),
+                pos=Vec2R(12, 5))
+            s.auto_wire()
+            s.check(add_conn_points=True, add_terminal_taps=True)
+            return s
+
+    h = SimHierarchy.from_schematic(Tb().schematic)
+    h.simulate().op(save_params=True)
+    assert h.m.params['id'].value[0] == pytest.approx(abs(float(h.i_vdc.p.current[0])), rel=0.01)
+    assert h.m.params['vth'].value[0] > 0
+
