@@ -236,6 +236,11 @@ def test_source_ac_spec_netlist():
     assert f" ac {src.ac_mag.compat_str()} {src.ac_phase.compat_str()} " in nl.out()
 
 
+def test_lvs_netlist_source():
+    with pytest.raises(ValueError, match="no counterpart in a layout"):
+        Netlister(Directory(), lvs=True).netlist_hier(lib_test.AcRC().schematic)
+
+
 def test_sim_acrc_ac():
     tb = lib_test.AcRC()
     r = float(tb.schematic.res.symbol.cell.r)

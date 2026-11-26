@@ -245,6 +245,8 @@ class Netlister:
         for inst in s.all(SchemInstance):
             cell = inst.symbol.cell
             if isinstance(cell, SimLeafCell):
+                if self.lvs and not cell.lvs_comparable():
+                    raise ValueError(f"{cell} in {s.cell} has no counterpart in a layout, so an LVS netlist cannot contain it.")
                 cell.ngspice_netlist(self, inst)
             else:
                 pins = self.pinlist(inst.symbol)

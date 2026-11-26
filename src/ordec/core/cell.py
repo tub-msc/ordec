@@ -588,6 +588,11 @@ class SimLeafCell(Cell, ABC):
         """Return device parameter names to save via ngspice."""
         return []
 
+    def lvs_comparable(self) -> bool:
+        """Return whether LVS can compare this cell with a layout. An LVS
+        netlist cannot contain it otherwise."""
+        return True
+
     def ngspice_internal_device(self) -> str | None:
         """
         Name of the real device inside the model subcircuit that

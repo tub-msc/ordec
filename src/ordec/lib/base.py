@@ -163,6 +163,10 @@ class Gnd(SimLeafCell):
         pins = [inst.symbol.p]
         netlister.add(netlister.name_obj(inst, prefix="v"), netlister.portmap(inst, pins), '0', f'dc 0')
 
+    def lvs_comparable(self):
+        # A cell takes its ground through a port.
+        return False
+
 @public
 class NoConn(SimLeafCell):
     """No connection"""
@@ -202,6 +206,10 @@ class AcStimulusMixin:
     """
     def ngspice_current_pins(self):
         return {"branch": "p"}
+
+    def lvs_comparable(self):
+        # A source belongs in a testbench.
+        return False
 
     @staticmethod
     def ngspice_wave_args(args):
@@ -791,6 +799,9 @@ class DependentSource(SimLeafCell):
     def ngspice_current_pins(self):
         return {"branch": "p"}
 
+    def lvs_comparable(self):
+        return False
+
     @viewgen_noctx
     def symbol(self) -> Symbol:
         s = diamond_source_symbol(self, self.voltage_out)
@@ -893,6 +904,9 @@ class ExprSource(SimLeafCell):
 
     def ngspice_current_pins(self):
         return {"branch": "p"}
+
+    def lvs_comparable(self):
+        return False
 
     @viewgen_noctx
     def symbol(self) -> Symbol:
