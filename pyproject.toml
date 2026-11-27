@@ -31,6 +31,7 @@ dependencies = [
     "sc-leflib>=0.5.1",
     "cbor2>=6.0.0",
     "tomlkit>=0.13",
+    "resvg-py>=0.5.0",
 ]
 dynamic = ["version"]
 license = "Apache-2.0"

@@ -16,6 +16,7 @@ User Reference
    extlibrary
    layout
    layout_klayout
+   render
    pnr
 
 .. _data-schema:

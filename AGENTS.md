@@ -19,7 +19,7 @@ For narrative descriptions, see `docs/ref/` (data model, ORD language, cells/vie
 - **ORD language** (`src/ordec/language.py`, `src/ordec/ord/`, `src/ordec/importer.py`): Python-superset HDL; `.ord` files compile to Python AST then `exec()` into ORDB structures. The importer adds an import hook so `.ord` files import like `.py` files. See `docs/ref/ord.rst` and `docs/guides/ord_tutorial.py`. Use ORD (not Python) for new standalone hardware designs.
 - **Schema** (`src/ordec/core/schema/`): node type definitions, one module per view family (`schematic.py`, `layout.py`, `simhier.py`, `drc.py`, `lvs.py`, `report.py`, on the common `base.py`). See `docs/ref/schema.rst`.
 - **Simulation**: `src/ordec/schematic/netlister.py` (Schematic → SPICE netlist), `src/ordec/core/simarray.py` (SimArray/SimColumn), `src/ordec/sim/ngspice.py` and `src/ordec/sim/simulator.py` (ngspice integration), `src/ordec/core/schema/simhier.py` (SimHierarchy).
-- **Layout** (`src/ordec/layout/`): GDS import/export, KLayout integration, via generation; constraint helpers in `src/ordec/core/constraints.py`. See `docs/ref/layout.rst` and `docs/ref/layout_klayout.rst`.
+- **Layout** (`src/ordec/layout/`): GDS import/export, KLayout integration, via generation, SVG rendering (`svg.py`; PNG of layouts, schematics and symbols in `src/ordec/render.py`); constraint helpers in `src/ordec/core/constraints.py`. See `docs/ref/layout.rst`, `docs/ref/layout_klayout.rst` and `docs/ref/render.rst`.
 - **Web interface**: backend `src/ordec/server.py` (WebSocket protocol, token auth, integrated/local mode); frontend `web/src/` (Golden Layout app, WebSocket client, renderers). See `docs/dev/webui.rst`.
 - **Library system** (`src/ordec/lib/`): PDK primitives and integrations (base, sky130, ihp130, generic_mos), configured via `ORDEC_PDK_*` environment variables. Examples in `src/ordec/examples/`. Standard cell libraries are components on top of PDKs, not parts of PDKs.
 - **External libraries** (`src/ordec/extlibrary.py`): external library/GDS cell integration. See `docs/ref/extlibrary.rst`.
@@ -103,6 +103,12 @@ Alternatively, run `npm run dev` in `web/` and `ordec -b` (backend only) separat
 3. Server auto-reloads on file changes (inotify)
 4. Check server terminal for Python tracebacks
 5. Browser console shows WebSocket messages and client-side errors
+
+To look at a layout, schematic or symbol without a browser, render it to PNG (`ordec.render`, see `docs/ref/render.rst`):
+```bash
+python3 -c 'import ordec.importer; from ordec.render import render_png; from mymodule import MyCell; render_png(MyCell().layout, "/tmp/mycell.png")'
+```
+`render_png` takes `size` (pixels of the longer side) and, for layouts, `region` (a `Rect4I` in layout coordinates) to zoom in, `labels` and `subcell_pins`.
 
 ### Documentation
 
