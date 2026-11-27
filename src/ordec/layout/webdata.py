@@ -226,7 +226,7 @@ def webstyle(style: LayoutStyle | None, default: LayoutStyle | None,
         'default': websettings(default),
     }
 
-def webdata(layout: Layout.Frozen, customize: bool = False):
+def webdata(layout: Layout.Frozen, customize: bool = False, style: LayoutStyle | None = None):
     """
     Web viewer data (web/src/view/layout.js) of a layout, keeping its
     hierarchy: every distinct layout (the given one and all instantiated
@@ -239,9 +239,14 @@ def webdata(layout: Layout.Frozen, customize: bool = False):
             LayoutStyle (see LayoutStyle.customized); only for the live
             viewer, as it makes the result depend on a file outside the
             design.
+        style: LayoutStyle to use instead of the default one of the
+            layout's LayerStack (see default_style).
     """
-    default = default_style(layout.ref_layers)
-    style = default
+    if style is None:
+        style = default_style(layout.ref_layers)
+    elif style.ref_layers.subgraph != layout.ref_layers.subgraph:
+        raise ValueError("The LayoutStyle refers to a different LayerStack than the layout.")
+    default = style
     customization = None
     if customize and default is not None:
         customization = read_customization(default.key)

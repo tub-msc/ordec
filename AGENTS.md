@@ -108,7 +108,7 @@ To look at a layout, schematic or symbol without a browser, render it to PNG (`o
 ```bash
 python3 -c 'import ordec.importer; from ordec.render import render_png; from mymodule import MyCell; render_png(MyCell().layout, "/tmp/mycell.png")'
 ```
-`render_png` takes `size` (pixels of the longer side) and, for layouts, `region` (a `Rect4I` in layout coordinates) to zoom in, `labels` and `subcell_pins`.
+`render_png` takes `size` (pixels of the longer side) and, for layouts, `region` (a `Rect4I` in layout coordinates) to zoom in, `labels`, `subcell_pins` and `style` (a `LayoutStyle` instead of the default one).
 
 ### Documentation
 

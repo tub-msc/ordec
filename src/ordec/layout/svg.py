@@ -13,9 +13,9 @@ the viewer.
 The blend modes of the LayoutStyle map to SVG blend modes, one blended group
 per layer: additive to screen, ink to multiply, max to lighten (on a
 transparent backdrop, then over the background), over to normal with the
-group opacity. Layer colors are adjusted so that additive and ink match the
-viewer at its default intensity. The mix blend mode has no SVG counterpart
-and is not supported.
+opacity on the fills. Layer colors are adjusted so that additive and ink
+match the viewer at its default intensity. The mix blend mode has no SVG
+counterpart and is not supported.
 """
 
 import math
@@ -24,7 +24,8 @@ from public import public
 from ..core import *
 from .webdata import webdata
 
-FONT_SIZE = 14 # label font size in pixels
+# Label font (see loadLabels in web/src/view/layout.js).
+FONT_SIZE = 20 # pixels
 LINE_HEIGHT = 1.1 * FONT_SIZE
 
 # Viewer gains at the default intensity (see drawGLShapes in
@@ -80,6 +81,13 @@ def cross_path(entry) -> str:
             parts.append(f'M{x0} {y0}L{x2} {y2}M{x1} {y1}L{x3} {y3}')
     return ''.join(parts)
 
+def label_text(line: str) -> str:
+    """
+    A label line as SVG text. Unprintable characters, among them all those
+    not allowed in XML, are shown by their Python escape (e.g. \\x01).
+    """
+    return escape(''.join(c if c.isprintable() else repr(c)[1:-1] for c in line))
+
 def svg_matrix(m) -> str:
     """SVG transform of a webdata transform (a, b, c, d, tx, ty)."""
     a, b, c, d, tx, ty = m
@@ -95,27 +103,36 @@ def compose(m1, m2):
 
 @public
 def layout_svg(layout: Layout.Frozen, *, region: Rect4I | None = None, size: int = 1600,
-        labels: bool = True, subcell_pins: bool = False) -> bytes:
+    labels: bool = True, subcell_pins: bool = False, style: LayoutStyle | None = None) -> bytes:
     """
-    Renders a layout with its LayoutStyle to SVG.
+    Renders a layout to SVG.
 
     Args:
         layout: The layout.
         region: Area to render, in layout coordinates. Defaults to the
             extent of the layout plus a small margin.
         size: Size of the longer side of the image in pixels.
-        labels: Whether labels are drawn.
+        labels: Whether labels are drawn. Only labels whose position is
+            inside the image are drawn: a label just outside is left out,
+            even if part of its text would be visible.
         subcell_pins: Whether the shapes and labels on pin layers (pins) of
             instantiated cells are drawn, not only those of the layout
             itself.
+        style: LayoutStyle to use. Defaults to the default LayoutStyle of
+            the layout's LayerStack. The user's customization of it, which
+            the web viewer applies, is not applied here.
 
     Returns:
         The SVG document.
+
+    Raises:
+        ValueError: If the layout is empty and no region is given, or if the
+            LayoutStyle uses the mix blend mode.
     """
-    _, data = webdata(layout)
-    style = data['style']
-    blend = 'additive' if style is None else style['blend']
-    background = RGBColor(0, 0, 0) if style is None else style['background']
+    _, data = webdata(layout, style=style)
+    wstyle = data['style'] # the LayoutStyle as sent to the viewer
+    blend = 'additive' if wstyle is None else wstyle['blend']
+    background = RGBColor(0, 0, 0) if wstyle is None else wstyle['background']
     if blend not in BLEND_CSS:
         raise ValueError(f"Blend mode {blend!r} is not supported in SVG rendering.")
     light = is_light(background)
@@ -163,7 +180,7 @@ def layout_svg(layout: Layout.Frozen, *, region: Rect4I | None = None, size: int
         return groups[key]
 
     # By index: pattern names are not necessarily valid as SVG ids.
-    patterns = {p['name']: (i, p['rows']) for i, p in enumerate(style['patterns'])} if style else {}
+    patterns = {p['name']: (i, p['rows']) for i, p in enumerate(wstyle['patterns'])} if wstyle else {}
     pattern_ids = set()
     def pattern(name, color):
         index, rows = patterns[name]
@@ -192,8 +209,10 @@ def layout_svg(layout: Layout.Frozen, *, region: Rect4I | None = None, size: int
         content = []
         if fill is not None:
             color = layer_color(fill, blend)
+            # The opacity of the over blend mode is a fill opacity.
+            fill_attrs = f'opacity="{wstyle["opacity"]}"' if blend == 'over' else ''
             if layer['pattern'] is None:
-                content.append(f'<use href="#{gid}" transform="{root}" fill="{color}"/>')
+                content.append(f'<use href="#{gid}" transform="{root}" fill="{color}" {fill_attrs}/>')
             else:
                 # Patterns are fixed to the image, not to the shapes (as in
                 # the viewer), so the shapes are a mask for a patterned area.
@@ -201,22 +220,25 @@ def layout_svg(layout: Layout.Frozen, *, region: Rect4I | None = None, size: int
                     f'width="{width}" height="{height}">'
                     f'<use href="#{gid}" transform="{root}" fill="#fff"/></mask>')
                 content.append(f'<rect width="{width}" height="{height}" '
-                    f'fill="url(#{pattern(layer["pattern"], color)})" mask="url(#m{nid})"/>')
+                    f'fill="url(#{pattern(layer["pattern"], color)})" mask="url(#m{nid})" {fill_attrs}/>')
         if stroke is not None:
-            stroke_attrs = f'fill="none" stroke="{layer_color(stroke, blend)}" stroke-width="{1/scale}"'
+            # crispEdges: 1-pixel lines as in the viewer, not 2 pixels at
+            # half intensity where the edges fall on pixel boundaries.
+            stroke_attrs = (f'fill="none" stroke="{layer_color(stroke, blend)}" '
+                f'stroke-width="{1/scale}" shape-rendering="crispEdges"')
             content.append(f'<use href="#{gid}" transform="{root}" {stroke_attrs}/>')
             cid = group(cross_path, 0, nid) if layer['styleCrossRect'] else None
             if cid:
                 content.append(f'<use href="#{cid}" transform="{root}" {stroke_attrs}/>')
-        opacity = f' opacity="{style["opacity"]}"' if blend == 'over' else ''
-        body.append(f'<g style="mix-blend-mode:{BLEND_CSS[blend]}"{opacity}>{"".join(content)}</g>')
+        body.append(f'<g style="mix-blend-mode:{BLEND_CSS[blend]}">{"".join(content)}</g>')
     if blend == 'max':
         # Lighten among the layers only, then over the background.
         body = ['<g style="isolation:isolate">'] + body + ['</g>']
 
     if labels:
         text_color = '#000' if light else '#fff'
-        body.append(f'<g font-family="Inconsolata" font-size="{FONT_SIZE}" text-anchor="middle" '
+        body.append(f'<g font-family="Inconsolata" font-size="{FONT_SIZE}" '
+            'font-stretch="semi-condensed" text-anchor="middle" '
             f'fill="{text_color}" stroke="{hexcolor([v / 255 for v in background])}" '
             'stroke-width="3" stroke-linejoin="round" paint-order="stroke">')
         def walk(cell, m):
@@ -235,7 +257,7 @@ def layout_svg(layout: Layout.Frozen, *, region: Rect4I | None = None, size: int
                         # about half the height of capitals above the
                         # baseline.
                         ty = py + (j - (len(lines) - 1) / 2) * LINE_HEIGHT + 0.35 * FONT_SIZE
-                        body.append(f'<text x="{px:.1f}" y="{ty:.1f}">{escape(line)}</text>')
+                        body.append(f'<text x="{px:.1f}" y="{ty:.1f}">{label_text(line)}</text>')
             inst = cells[cell]['instances']
             for child, t in zip(inst['cell'].tolist(), inst['transform'].reshape(-1, 6).tolist()):
                 walk(child, compose(m, t))
